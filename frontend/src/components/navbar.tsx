@@ -17,9 +17,10 @@ export function Navbar() {
 
     const navItems = [
         { href: "/", label: "Home" },
-        { href: "/inventario", label: "Inventario" },
+        { href: "/acciones", label: "Acciones" },
+        { href: "/lista", label: "Lista" },
         { href: "/procesos", label: "Procesos" },
-        { href: "/produccion", label: "Producción" },
+        { href: "/compras", label: "Compras" },
     ];
 
     useEffect(() => {
