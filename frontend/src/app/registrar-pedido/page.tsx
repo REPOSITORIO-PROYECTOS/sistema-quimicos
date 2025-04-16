@@ -44,21 +44,21 @@ export default function RegistrarPedidoPage() {
     const cantidad = nuevosProductos[index].qx;
   
     if (productoNombre && cantidad > 0) {
-      try {
-        const idRes = await fetch(`/api/productos/nombre/${productoNombre}`);  //cambiar cuando se tenga la direcicon
-        if (!idRes.ok) throw new Error("No se pudo obtener el ID del producto");
+      try {   /*
+        const idRes = await fetch(`http://82.25.69.192:8000/calculate_price/${productoNombre}`);  //cambiar cuando se tenga la direcicon
+        if (!idRes.ok) throw new Error("No se pudo obtener el ID del producto"); */
   
-        const idData = await idRes.json();
-        const productId = idData.id;
+        //const idData = await idRes.json();
+        //const productId = 1;
   
-        const precioRes = await fetch("/calculate_price", {
+        const precioRes = await fetch("http://82.25.69.192:8000/calculate_price", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            product_id: productId,
-            quantity: cantidad.toString(),
+            product_id: 1,
+            quantity: cantidad,
           }),
         });
   
@@ -95,7 +95,7 @@ export default function RegistrarPedidoPage() {
 
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+   /* e.preventDefault();
   
     const data = {
       usuario_interno_id: 1, //aca hay que cambiarlo  por el numero de usuario
@@ -128,7 +128,7 @@ export default function RegistrarPedidoPage() {
       }
     } catch (err) {
       console.error("Error en la petición:", err);
-    }
+    }*/
   };
   
 
