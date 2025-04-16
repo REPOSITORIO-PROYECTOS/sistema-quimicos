@@ -2,21 +2,29 @@
 
 import { useState } from "react";
 
+type ProductoI = {
+  producto: string;
+  qx: number;
+  precio: number;
+  total: number;
+};
+
+interface IFormData {
+  nombre:string;
+  cuit: string;
+  direccion: string;
+  fechaEmision: string;
+  fechaEntrega: string;
+}
+
 export default function RegistrarPedidoPage() {
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<IFormData>({
     nombre: "",
     cuit: "",
     direccion: "",
     fechaEmision: "",
     fechaEntrega: "",
   });
-
-  type ProductoI = {
-    producto: string;
-    qx: number;
-    precio: number;
-    total: number;
-  };
 
   const [productos, setProductos] = useState<ProductoI[]>([
     { producto: "", qx: 0, precio: 0, total: 0 },
@@ -94,7 +102,7 @@ export default function RegistrarPedidoPage() {
 
 
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (/*e: React.FormEvent */) => {
    /* e.preventDefault();
   
     const data = {
@@ -154,6 +162,8 @@ export default function RegistrarPedidoPage() {
                 type={campo.includes("fecha") ? "date" : "text"}
                 name={campo}
                 id={campo}
+                //TODO quitar este any
+                // eslint-disable-next-line
                 value={(formData as any)[campo]}
                 onChange={handleFormChange}
               />

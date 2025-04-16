@@ -2,6 +2,27 @@
 
 import React, { useState } from 'react';
 
+interface ISolicitudes {
+  fecha: string,
+  proveedor: string,
+  producto: string,
+  codigo: string,
+  moneda: string,
+  cantidad: string,
+  tipo: string,
+  importeTotal: string,
+  estadoRecepcion: string,
+  cantidadRecepcionada: string,
+  ajusteTC: string,
+  importeCC: string,
+  cantidadAcumulada: string,
+  ajusteXTC: string,
+  diferenciaCambio: string,
+  importeAbonado: string,
+  formaPago: string,
+  chequePerteneceA: string,
+}
+
 export default function SolicitudIngresoPage() {
   const [fecha, setFecha] = useState('');
   const [proveedor, setProveedor] = useState('');
@@ -22,12 +43,12 @@ export default function SolicitudIngresoPage() {
   const [formaPago, setFormaPago] = useState('');
   const [chequePerteneceA, setChequePerteneceA] = useState('');
 
-  const [solicitudes, setSolicitudes] = useState<any[]>([]);
+  const [solicitudes, setSolicitudes] = useState<ISolicitudes[]>([]);
 
   const handleAgregar = () => {
     if (!producto || !cantidad || !fecha || !moneda) return;
 
-    const nuevaSolicitud = {
+    const nuevaSolicitud:ISolicitudes = {
       fecha,
       proveedor,
       producto,

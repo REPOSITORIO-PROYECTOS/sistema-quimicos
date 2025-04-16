@@ -48,7 +48,7 @@ export function Navbar() {
         <nav className="relative z-50 shadow-md border-b dark:border-gray-700">
             <div className="container mx-auto px-6 py-3 flex justify-between items-center space-x-4">
                 <div className="space-x-2 relative" ref={navRef}>
-                    {navItems.map((item, index) => (
+                    {navItems.map((item) => (
                         <Button
                             key={item.href}
                             variant="ghost"

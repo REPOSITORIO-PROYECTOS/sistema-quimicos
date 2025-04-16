@@ -272,7 +272,6 @@ def calculate_price():
 
 # --- Endpoint: Registrar Nueva Venta (Usa Margen Fijo) ---
 @app.route('/register_sale', methods=['POST'])
-@app.route('/register_sale', methods=['POST'])
 def register_sale():
     data = request.get_json()
     if not data:
@@ -388,7 +387,7 @@ def update_sale(venta_id):
         return jsonify({"status": "error", "message": "Se requiere una lista válida de 'items'"}), 400
 
     try:
-        venta = session.query(Venta).filter_by(id=venta_id).one()
+        venta = db.session.query(Venta).filter_by(id=venta_id).one()
     except NoResultFound:
         return jsonify({"status": "error", "message": f"Venta ID {venta_id} no encontrada"}), 404
 
@@ -407,7 +406,7 @@ def update_sale(venta_id):
             if quantity <= 0:
                 return jsonify({"status": "error", "message": f"Cantidad inválida en item #{index+1}"}), 400
 
-            producto = session.query(Producto).filter_by(id=product_id).first()
+            producto = db.session.query(Producto).filter_by(id=product_id).first()
             if not producto:
                 return jsonify({"status": "error", "message": f"Producto ID {product_id} no encontrado"}), 404
 
@@ -443,7 +442,7 @@ def update_sale(venta_id):
 
     try:
         # Eliminar ítems anteriores
-        session.query(DetalleVenta).filter_by(venta_id=venta_id).delete()
+        db.session.query(DetalleVenta).filter_by(venta_id=venta_id).delete()
 
         # Actualizar venta
         venta.cliente_id = data.get('cliente_id', venta.cliente_id)
@@ -455,8 +454,8 @@ def update_sale(venta_id):
         venta.monto_total = round(nuevo_monto_total, 2)
 
         # Agregar nuevos detalles
-        session.add_all(nuevos_detalles)
-        session.commit()
+        db.session.add_all(nuevos_detalles)
+        db.session.commit()
 
         print(f"--- INFO: Venta ID {venta_id} actualizada correctamente.")
         return jsonify({
@@ -467,7 +466,7 @@ def update_sale(venta_id):
         }), 200
 
     except Exception as e:
-        session.rollback()
+        db.session.rollback()
         print(f"--- ERROR al guardar venta ID {venta_id}: {e}")
         traceback.print_exc()
         return jsonify({"status": "error", "message": "Error al actualizar la venta"}), 500
@@ -574,7 +573,7 @@ def search_products():
         term_like = f"%{search_term.lower()}%"
 
         # Query base
-        query = session.query(Producto).filter(
+        query = db.session.query(Producto).filter(
             or_(
                 Producto.nombre.ilike(term_like),
                 Producto.codigo.ilike(term_like),
