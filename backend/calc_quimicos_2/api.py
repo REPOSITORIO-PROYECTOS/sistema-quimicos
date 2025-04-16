@@ -7,9 +7,21 @@ import traceback
 import math
 import datetime
 from flask import Flask, request, jsonify
+from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import or_
+from sqlalchemy.orm.exc import NoResultFound
 
 # --- Configuración Flask ---
 app = Flask(__name__)
+DB_USER = os.environ.get("DB_USER", "root")
+DB_PASSWORD = os.environ.get("DB_PASSWORD", "")
+DB_HOST = os.environ.get("DB_HOST", "localhost")
+DB_PORT = os.environ.get("DB_PORT", "3306")
+DB_NAME = os.environ.get("DB_NAME", "quimex_db")
+DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/quimex_db"
+app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL #'mysql+pymysql://usuario:password@host/quimex_db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+db = SQLAlchemy(app)
 print("--- INFO [api.py]: Iniciando API Flask (MODO SIMULADO - Margen x Producto) ---")
 
 # --- Importación del Core ---
@@ -64,6 +76,100 @@ def _get_next_venta_id():
 # --- Endpoint: Calcular Precio (Usa Margen Fijo) ---
 @app.route('/calculate_price', methods=['POST'])
 def calculate_price():
+    print("\n--- INFO [api.py]: Recibida solicitud POST en /calculate_price ---")
+    data = request.get_json()
+
+    if not data:
+        return jsonify({"status": "error", "message": "No se recibió payload JSON"}), 400
+
+    product_id_input = data.get('product_id')
+    quantity_str_input = data.get('quantity')
+
+    missing = []
+    if product_id_input is None: missing.append('product_id')
+    if quantity_str_input is None: missing.append('quantity')
+    if missing:
+        return jsonify({"status": "error", "message": f"Faltan parámetros requeridos: {', '.join(missing)}"}), 400
+
+    try:
+        product_id = int(product_id_input)
+        quantity_str = str(quantity_str_input).strip()
+        quantity_float = float(quantity_str.replace(',', '.'))
+        if quantity_float <= 0:
+            return jsonify({"status": "error", "message": "La cantidad debe ser positiva."}), 400
+    except (ValueError, TypeError):
+        return jsonify({"status": "error", "message": "ID debe ser entero y cantidad debe ser número válido."}), 400
+    except Exception as e:
+        print(f"--- ERROR [api.py]: Error validando entrada /calculate_price: {e}")
+        return jsonify({"status": "error", "message": "Error procesando datos de entrada."}), 500
+
+    print(f"--- DEBUG [api.py]: Calculando precio para ID: {product_id}, Cantidad: '{quantity_str}' ({quantity_float})")
+
+    producto = db.session.query(Producto).filter_by(id=product_id).first()
+    if not producto:
+        return jsonify({"status": "error", "message": f"Producto con ID {product_id} no encontrado"}), 404
+
+    tipo_calculo = producto.tipo_calculo
+    ref_calculo = producto.ref_calculo
+    costo_base = producto.costo
+    margen_decimal = producto.margen
+    unidad_venta = producto.unidad_venta or "N/A"
+
+    missing_data = []
+    if not tipo_calculo: missing_data.append('tipo_calculo')
+    if ref_calculo is None: missing_data.append('ref_calculo')
+    if costo_base is None or not isinstance(costo_base, (int, float)) or costo_base < 0:
+        missing_data.append('costo (inválido)')
+    if margen_decimal is None or not isinstance(margen_decimal, (int, float)) or margen_decimal >= 1 or margen_decimal < 0:
+        missing_data.append(f'margen (inválido: {margen_decimal})')
+
+    if missing_data:
+        print(f"--- ERROR [api.py]: Producto ID {product_id} mal configurado. Falta/Inválido: {', '.join(missing_data)}")
+        return jsonify({"status": "error", "message": f"Producto ID {product_id} no tiene datos de cálculo completos o válidos."}), 400
+
+    ref_calculo_str = str(ref_calculo)
+    print(f"--- DEBUG [api.py]: Datos para cálculo: Tipo='{tipo_calculo}', Ref='{ref_calculo_str}', Costo={costo_base}, Margen={margen_decimal}")
+
+    try:
+        coeficiente = obtener_coeficiente_por_rango(ref_calculo_str, quantity_str, tipo_calculo)
+        print(f"--- DEBUG [api.py]: Coeficiente obtenido: {coeficiente}")
+
+        if coeficiente is not None:
+            try:
+                denominador = 1 - margen_decimal
+                precio_venta_unitario = round((costo_base / denominador) * coeficiente, 2)
+                precio_total_calculado = round(precio_venta_unitario * quantity_float, 2)
+
+                response_data = {
+                    "status": "success", "product_id_solicitado": product_id,
+                    "nombre_producto": producto.nombre,
+                    "cantidad_solicitada": quantity_float, "unidad_venta": unidad_venta,
+                    "margen_aplicado": margen_decimal, "costo_base_unitario": costo_base,
+                    "tipo_calculo_usado": tipo_calculo, "referencia_interna_usada": ref_calculo_str,
+                    "coeficiente_aplicado": coeficiente, "precio_venta_unitario": precio_venta_unitario,
+                    "precio_total_calculado": precio_total_calculado
+                }
+                print(f"--- INFO [api.py]: Precio calculado exitosamente: {response_data}")
+                return jsonify(response_data), 200
+
+            except Exception as calc_err:
+                print(f"--- ERROR [api.py]: Error durante el cálculo del precio: {calc_err}")
+                traceback.print_exc()
+                return jsonify({"status": "error", "message": "Error interno durante el cálculo del precio final."}), 500
+        else:
+            return jsonify({
+                "status": "not_found", "reason": "coefficient_not_found",
+                "product_id_solicitado": product_id, "nombre_producto": producto.nombre,
+                "cantidad_solicitada": quantity_float, "unidad_venta": unidad_venta,
+                "margen_del_producto": margen_decimal, "costo_base": costo_base,
+                "tipo_calculo_intentado": tipo_calculo, "referencia_interna_intentada": ref_calculo_str,
+                "message": "No se encontró coeficiente aplicable, no se puede calcular precio."
+            }), 404
+
+    except Exception as e:
+        print(f"--- ERROR CRITICO [api.py]: Error inesperado en /calculate_price: {e}")
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": "Error interno grave al procesar la solicitud."}), 500
     """
     Calcula precio unitario/total para producto y cantidad.
     Usa el MARGEN FIJO definido en los datos del producto.
@@ -166,103 +272,99 @@ def calculate_price():
 
 # --- Endpoint: Registrar Nueva Venta (Usa Margen Fijo) ---
 @app.route('/register_sale', methods=['POST'])
+@app.route('/register_sale', methods=['POST'])
 def register_sale():
-    """
-    Registra una nueva venta (simulado). Usa el MARGEN FIJO del producto.
-    Espera JSON: {usuario_interno_id, cliente_id (opc), ..., items: [{product_id, quantity}]}
-    Devuelve JSON con resultado o error.
-    """
-    print("\n--- INFO [api.py]: Recibida solicitud POST en /register_sale ---")
     data = request.get_json()
-
-    if not data: return jsonify({"status": "error", "message": "No se recibió payload JSON"}), 400
+    if not data:
+        return jsonify({"status": "error", "message": "No se recibió payload JSON"}), 400
 
     user_id = data.get('usuario_interno_id')
-    if user_id is None: return jsonify({"status": "error", "message": "Falta 'usuario_interno_id'"}), 400
-    try:
-        user_id = int(user_id)
-        if not _validate_user(user_id): return jsonify({"status": "error", "message": f"Usuario interno ID {user_id} no válido"}), 401
-    except ValueError: return jsonify({"status": "error", "message": "'usuario_interno_id' debe ser un número"}), 400
+    if not user_id or not isinstance(user_id, int):
+        return jsonify({"status": "error", "message": "usuario_interno_id inválido"}), 400
+
+    usuario = UsuarioInterno.query.get(user_id)
+    if not usuario:
+        return jsonify({"status": "error", "message": f"Usuario ID {user_id} no encontrado"}), 401
 
     items = data.get('items')
-    if not items or not isinstance(items, list) or len(items) == 0:
-        return jsonify({"status": "error", "message": "La lista 'items' es requerida (con product_id y quantity)"}), 400
+    if not items or not isinstance(items, list):
+        return jsonify({"status": "error", "message": "Items inválidos"}), 400
 
-    detalles_venta_calculados = []
-    monto_total_venta = 0
-    fecha_registro_actual = datetime.datetime.utcnow().isoformat() + "Z"
-
-    for index, item in enumerate(items):
-        product_id = item.get('product_id')
-        quantity_str = item.get('quantity')
-
-        if product_id is None or quantity_str is None: return jsonify({"status": "error", "message": f"Item #{index+1} incompleto (faltan product_id o quantity)"}), 400
-
-        try:
-            product_id = int(product_id)
-            quantity_str = str(quantity_str).strip()
-            quantity_float = float(quantity_str.replace(',', '.'))
-            if quantity_float <= 0: return jsonify({"status": "error", "message": f"Item #{index+1} (ID:{product_id}): la cantidad debe ser positiva."}), 400
-
-            producto = _find_product(product_id)
-            if not producto: return jsonify({"status": "error", "message": f"Item #{index+1}: Producto ID {product_id} no encontrado"}), 404
-
-            tipo_calculo = producto.get('tipo_calculo')
-            ref_calculo = producto.get('ref_calculo')
-            costo_base = producto.get('costo')
-            margen_decimal = producto.get('margen') # <-- OBTENER MARGEN FIJO
-
-            missing_data = []
-            if not tipo_calculo: missing_data.append('tipo_calculo')
-            if ref_calculo is None: missing_data.append('ref_calculo')
-            if costo_base is None: missing_data.append('costo')
-            if margen_decimal is None or margen_decimal >= 1 or margen_decimal < 0: missing_data.append('margen')
-            if missing_data: return jsonify({"status": "error", "message": f"Item #{index+1} (ID:{product_id}): Producto mal configurado ({', '.join(missing_data)})"}), 400
-
-            ref_calculo_str = str(ref_calculo)
-            coeficiente = obtener_coeficiente_por_rango(ref_calculo_str, quantity_str, tipo_calculo)
-            if coeficiente is None: return jsonify({"status": "error", "reason":"coefficient_not_found", "message": f"Item #{index+1} (ID:{product_id}): No se encontró coeficiente", "product_id_error": product_id}), 400
-
-            denominador = 1 - margen_decimal
-            precio_unitario = round((costo_base / denominador) * coeficiente, 2)
-            precio_total_item = round(precio_unitario * quantity_float, 2)
-
-            detalles_venta_calculados.append({
-                "product_id": product_id, "nombre_producto": producto.get("nombre", "N/A"),
-                "unidad_venta": producto.get("unidad_venta", "N/A"), "cantidad": quantity_float,
-                "margen_aplicado": margen_decimal, "costo_unitario_momento": costo_base,
-                "coeficiente_usado": coeficiente, "precio_unitario_venta": precio_unitario,
-                "precio_total_item": precio_total_item
-            })
-            monto_total_venta += precio_total_item
-
-        except (ValueError, TypeError) as e: return jsonify({"status": "error", "message": f"Item #{index+1}: Datos inválidos - {e}"}), 400
-        except Exception as e_item:
-             print(f"--- ERROR [api.py]: Error procesando item #{index+1} (ID:{product_id}): {e_item}")
-             traceback.print_exc()
-             return jsonify({"status": "error", "message": f"Error interno procesando el item con ID {product_id}"}), 500
+    detalles = []
+    monto_total = 0
 
     try:
-        nueva_venta_id = _get_next_venta_id()
-        venta_data = {
-            "id": nueva_venta_id, "usuario_interno_id": user_id,
-            "cliente_id": data.get('cliente_id'), "fecha_registro": fecha_registro_actual,
-            "fecha_pedido": data.get('fecha_pedido'), "direccion_entrega": data.get('direccion_entrega'),
-            "cuit_cliente": data.get('cuit_cliente'), "observaciones": data.get('observaciones'),
-            "monto_total": round(monto_total_venta, 2), "items": detalles_venta_calculados
-        }
-        VENTAS_REGISTRADAS[nueva_venta_id] = venta_data
-        print(f"--- INFO [api.py]: Venta simulada registrada con ID: {nueva_venta_id}")
+        for idx, item in enumerate(items):
+            product_id = item.get("product_id")
+            quantity_str = str(item.get("quantity", "")).strip().replace(',', '.')
+
+            try:
+                product_id = int(product_id)
+                quantity = float(quantity_str)
+                if quantity <= 0:
+                    raise ValueError("Cantidad no válida")
+            except Exception:
+                return jsonify({"status": "error", "message": f"Item #{idx+1}: Datos inválidos"}), 400
+
+            producto = Producto.query.get(product_id)
+            if not producto:
+                return jsonify({"status": "error", "message": f"Producto ID {product_id} no encontrado"}), 404
+
+            if not all([producto.tipo_calculo, producto.ref_calculo is not None, producto.costo is not None]):
+                return jsonify({"status": "error", "message": f"Producto ID {product_id} mal configurado"}), 400
+
+            if producto.margen is None or not (0 <= producto.margen < 1):
+                return jsonify({"status": "error", "message": f"Producto ID {product_id}: margen inválido"}), 400
+
+            coef = obtener_coeficiente_por_rango(str(producto.ref_calculo), quantity_str, producto.tipo_calculo)
+            if coef is None:
+                return jsonify({"status": "error", "message": f"Producto ID {product_id}: coeficiente no encontrado"}), 400
+
+            denominador = 1 - producto.margen
+            precio_unitario = round((producto.costo / denominador) * coef, 2)
+            total_item = round(precio_unitario * quantity, 2)
+
+            detalle = DetalleVenta(
+                producto_id=product_id,
+                cantidad=quantity,
+                margen_aplicado=producto.margen,
+                costo_unitario_momento=producto.costo,
+                coeficiente_usado=coef,
+                precio_unitario_venta=precio_unitario,
+                precio_total_item=total_item
+            )
+            detalles.append(detalle)
+            monto_total += total_item
+
+        nueva_venta = Venta(
+            usuario_interno_id=user_id,
+            cliente_id=data.get('cliente_id'),
+            fecha_pedido=data.get('fecha_pedido'),
+            direccion_entrega=data.get('direccion_entrega'),
+            cuit_cliente=data.get('cuit_cliente'),
+            observaciones=data.get('observaciones'),
+            monto_total=round(monto_total, 2)
+        )
+        db.session.add(nueva_venta)
+        db.session.flush()  # Para obtener el ID generado
+
+        for d in detalles:
+            d.venta_id = nueva_venta.id
+            db.session.add(d)
+
+        db.session.commit()
 
         return jsonify({
-            "status": "success", "message": "Venta registrada exitosamente (simulado).",
-            "venta_id": nueva_venta_id, "monto_total_calculado": round(monto_total_venta, 2)
+            "status": "success",
+            "message": "Venta registrada exitosamente.",
+            "venta_id": nueva_venta.id,
+            "monto_total_calculado": round(monto_total, 2)
         }), 201
 
-    except Exception as e_final:
-        print(f"--- ERROR [api.py]: Error finalizando registro de venta: {e_final}")
+    except Exception as e:
+        db.session.rollback()
         traceback.print_exc()
-        return jsonify({"status": "error", "message": "Error interno al finalizar el registro"}), 500
+        return jsonify({"status": "error", "message": f"Error interno al registrar venta: {str(e)}"}), 500
 
 # --- FIN Endpoint Registrar Venta ---
 
@@ -271,78 +373,161 @@ def register_sale():
 @app.route('/update_sale/<int:venta_id>', methods=['PUT'])
 def update_sale(venta_id):
     """
-    Actualiza una venta (simulado). Usa MARGEN FIJO del producto.
-    Espera JSON similar a /register_sale (sin usuario_id, items solo con product_id y quantity).
-    Reemplaza cabecera (campos permitidos) y TODOS los items.
+    Actualiza una venta usando base de datos real. Reemplaza cabecera permitida y TODOS los ítems.
+    Espera JSON: items [{product_id, quantity}], y opcionalmente: cliente_id, fecha_pedido, direccion_entrega, cuit_cliente, observaciones.
     """
+    from sqlalchemy.orm.exc import NoResultFound
+
     print(f"\n--- INFO [api.py]: Recibida solicitud PUT en /update_sale/{venta_id} ---")
-
-    if venta_id not in VENTAS_REGISTRADAS: return jsonify({"status": "error", "message": f"Venta ID {venta_id} no encontrada"}), 404
     data = request.get_json()
-    if not data: return jsonify({"status": "error", "message": "No se recibió payload JSON"}), 400
+    if not data:
+        return jsonify({"status": "error", "message": "No se recibió payload JSON"}), 400
+
     items = data.get('items')
-    if not items or not isinstance(items, list) or len(items) == 0: return jsonify({"status": "error", "message": "La lista 'items' (con product_id y quantity) es requerida"}), 400
+    if not items or not isinstance(items, list) or len(items) == 0:
+        return jsonify({"status": "error", "message": "Se requiere una lista válida de 'items'"}), 400
 
-    nuevos_detalles_calculados = []
+    try:
+        venta = session.query(Venta).filter_by(id=venta_id).one()
+    except NoResultFound:
+        return jsonify({"status": "error", "message": f"Venta ID {venta_id} no encontrada"}), 404
+
+    nuevos_detalles = []
     nuevo_monto_total = 0
-    fecha_registro_original = VENTAS_REGISTRADAS[venta_id]['fecha_registro']
-    usuario_original = VENTAS_REGISTRADAS[venta_id]['usuario_interno_id']
 
-    for index, item in enumerate(items): # Bucle para procesar y recalcular items
+    for index, item in enumerate(items):
         product_id = item.get('product_id')
-        quantity_str = item.get('quantity')
-        if product_id is None or quantity_str is None: return jsonify({"status": "error", "message": f"Nuevo Item #{index+1} incompleto"}), 400
-        try:
-            product_id = int(product_id)
-            quantity_str = str(quantity_str).strip()
-            quantity_float = float(quantity_str.replace(',', '.'))
-            if quantity_float <= 0: return jsonify({"status": "error", "message": f"Nuevo Item #{index+1} (ID:{product_id}): cantidad inválida."}), 400
-            producto = _find_product(product_id)
-            if not producto: return jsonify({"status": "error", "message": f"Nuevo Item #{index+1}: Producto ID {product_id} no encontrado"}), 404
-            tipo_calculo = producto.get('tipo_calculo'); ref_calculo = producto.get('ref_calculo'); costo_base = producto.get('costo'); margen_decimal = producto.get('margen') # Obtener margen fijo
-            missing_data = [f for f, v in {'tipo': tipo_calculo, 'ref': ref_calculo, 'costo': costo_base, 'margen': margen_decimal}.items() if v is None or (f=='margen' and (v>=1 or v<0)) or (f=='costo' and v<0)]
-            if missing_data: return jsonify({"status": "error", "message": f"Nuevo Item #{index+1} (ID:{product_id}): Producto mal configurado ({', '.join(missing_data)})"}), 400
-            ref_calculo_str = str(ref_calculo)
-            coeficiente = obtener_coeficiente_por_rango(ref_calculo_str, quantity_str, tipo_calculo)
-            if coeficiente is None: return jsonify({"status": "error", "message": f"Nuevo Item #{index+1} (ID:{product_id}): No se encontró coeficiente"}), 400
-            denominador = 1 - margen_decimal
-            precio_unitario = round((costo_base / denominador) * coeficiente, 2)
-            precio_total_item = round(precio_unitario * quantity_float, 2)
-            nuevos_detalles_calculados.append({
-                "product_id": product_id, "nombre_producto": producto.get("nombre", "N/A"), "unidad_venta": producto.get("unidad_venta", "N/A"),
-                "cantidad": quantity_float, "margen_aplicado": margen_decimal, "costo_unitario_momento": costo_base,
-                "coeficiente_usado": coeficiente, "precio_unitario_venta": precio_unitario, "precio_total_item": precio_total_item })
-            nuevo_monto_total += precio_total_item
-        except (ValueError, TypeError) as e: return jsonify({"status": "error", "message": f"Nuevo Item #{index+1}: Datos inválidos - {e}"}), 400
-        except Exception as e_item: print(f"ERROR procesando item {index+1} en update: {e_item}"); traceback.print_exc(); return jsonify({"status": "error", "message": f"Error interno procesando el nuevo item ID {product_id}"}), 500
+        quantity_str = str(item.get('quantity')).strip()
 
-    try: # "Actualizar" Venta en memoria
-        venta_actualizada_data = {
-            "id": venta_id, "usuario_interno_id": usuario_original,
-            "cliente_id": data.get('cliente_id', VENTAS_REGISTRADAS[venta_id]['cliente_id']),
-            "fecha_registro": fecha_registro_original, "fecha_modificacion": datetime.datetime.utcnow().isoformat() + "Z",
-            "fecha_pedido": data.get('fecha_pedido', VENTAS_REGISTRADAS[venta_id]['fecha_pedido']),
-            "direccion_entrega": data.get('direccion_entrega', VENTAS_REGISTRADAS[venta_id]['direccion_entrega']),
-            "cuit_cliente": data.get('cuit_cliente', VENTAS_REGISTRADAS[venta_id]['cuit_cliente']),
-            "observaciones": data.get('observaciones', VENTAS_REGISTRADAS[venta_id]['observaciones']),
-            "monto_total": round(nuevo_monto_total, 2), "items": nuevos_detalles_calculados }
-        VENTAS_REGISTRADAS[venta_id] = venta_actualizada_data
-        print(f"--- INFO [api.py]: Venta simulada ACTUALIZADA ID: {venta_id}")
-        return jsonify({"status": "success", "message": "Venta actualizada (simulado).", "venta_id": venta_id, "monto_total_actualizado": round(nuevo_monto_total, 2)}), 200
-    except Exception as e_final: print(f"ERROR finalizando update venta ID {venta_id}: {e_final}"); traceback.print_exc(); return jsonify({"status": "error", "message": "Error interno al finalizar la actualización"}), 500
+        if not product_id or not quantity_str:
+            return jsonify({"status": "error", "message": f"Item #{index+1} incompleto"}), 400
+
+        try:
+            quantity = float(quantity_str.replace(",", "."))
+            if quantity <= 0:
+                return jsonify({"status": "error", "message": f"Cantidad inválida en item #{index+1}"}), 400
+
+            producto = session.query(Producto).filter_by(id=product_id).first()
+            if not producto:
+                return jsonify({"status": "error", "message": f"Producto ID {product_id} no encontrado"}), 404
+
+            coeficiente = obtener_coeficiente_por_rango(
+                str(producto.ref_calculo),
+                quantity_str,
+                producto.tipo_calculo
+            )
+            if coeficiente is None:
+                return jsonify({"status": "error", "message": f"No se encontró coeficiente para producto ID {product_id}"}), 400
+
+            denominador = 1 - producto.margen
+            precio_unitario = round((producto.costo / denominador) * coeficiente, 2)
+            precio_total_item = round(precio_unitario * quantity, 2)
+
+            nuevo_detalle = DetalleVenta(
+                venta_id=venta_id,
+                producto_id=product_id,
+                cantidad=quantity,
+                margen_aplicado=producto.margen,
+                costo_unitario_momento=producto.costo,
+                coeficiente_usado=coeficiente,
+                precio_unitario_venta=precio_unitario,
+                precio_total_item=precio_total_item
+            )
+            nuevos_detalles.append(nuevo_detalle)
+            nuevo_monto_total += precio_total_item
+
+        except Exception as e:
+            print(f"--- ERROR procesando item #{index+1}: {e}")
+            traceback.print_exc()
+            return jsonify({"status": "error", "message": f"Error procesando item #{index+1}"}), 500
+
+    try:
+        # Eliminar ítems anteriores
+        session.query(DetalleVenta).filter_by(venta_id=venta_id).delete()
+
+        # Actualizar venta
+        venta.cliente_id = data.get('cliente_id', venta.cliente_id)
+        venta.fecha_pedido = data.get('fecha_pedido', venta.fecha_pedido)
+        venta.direccion_entrega = data.get('direccion_entrega', venta.direccion_entrega)
+        venta.cuit_cliente = data.get('cuit_cliente', venta.cuit_cliente)
+        venta.observaciones = data.get('observaciones', venta.observaciones)
+        venta.fecha_modificacion = datetime.datetime.utcnow()
+        venta.monto_total = round(nuevo_monto_total, 2)
+
+        # Agregar nuevos detalles
+        session.add_all(nuevos_detalles)
+        session.commit()
+
+        print(f"--- INFO: Venta ID {venta_id} actualizada correctamente.")
+        return jsonify({
+            "status": "success",
+            "message": "Venta actualizada correctamente",
+            "venta_id": venta_id,
+            "monto_total_actualizado": venta.monto_total
+        }), 200
+
+    except Exception as e:
+        session.rollback()
+        print(f"--- ERROR al guardar venta ID {venta_id}: {e}")
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": "Error al actualizar la venta"}), 500
 
 # --- FIN Endpoint Modificar Venta ---
 
 
 # --- Endpoint GET /sale/<id> (Sin cambios) ---
-@app.route('/sale/<int:venta_id>', methods=['GET'])
+@app.route('/get_sale/<int:venta_id>', methods=['GET'])
 def get_sale(venta_id):
-    # ... (código sin cambios) ...
-    print(f"\n--- INFO [api.py]: Recibida solicitud GET en /sale/{venta_id} ---")
-    venta_encontrada = VENTAS_REGISTRADAS.get(venta_id)
-    if not venta_encontrada: return jsonify({"status": "error", "message": f"Venta ID {venta_id} no encontrada"}), 404
-    print(f"--- INFO [api.py]: Devolviendo datos de venta ID: {venta_id}")
-    return jsonify(venta_encontrada), 200
+    """
+    Obtiene los datos completos de una venta específica, incluyendo detalles de productos.
+    """
+
+    print(f"\n--- INFO: Recibida solicitud GET en /get_sale/{venta_id} ---")
+    venta = None
+    try:
+        venta = db.session.query(Venta).filter_by(id=venta_id).one()
+    except NoResultFound:
+        return jsonify({"status": "error", "message": f"Venta ID {venta_id} no encontrada"}), 404
+
+    try:
+        detalles = db.session.query(DetalleVenta).filter_by(venta_id=venta.id).all()
+        detalles_serializados = []
+        for detalle in detalles:
+            producto = db.session.query(Producto).filter_by(id=detalle.producto_id).first()
+            detalles_serializados.append({
+                "producto_id": detalle.producto_id,
+                "nombre_producto": producto.nombre if producto else "Desconocido",
+                "cantidad": detalle.cantidad,
+                "margen_aplicado": detalle.margen_aplicado,
+                "costo_unitario_momento": detalle.costo_unitario_momento,
+                "coeficiente_usado": detalle.coeficiente_usado,
+                "precio_unitario_venta": detalle.precio_unitario_venta,
+                "precio_total_item": detalle.precio_total_item
+            })
+
+        venta_serializada = {
+            "venta_id": venta.id,
+            "cliente_id": venta.cliente_id,
+            "fecha_pedido": venta.fecha_pedido.isoformat() if venta.fecha_pedido else None,
+            "direccion_entrega": venta.direccion_entrega,
+            "cuit_cliente": venta.cuit_cliente,
+            "observaciones": venta.observaciones,
+            "monto_total": venta.monto_total,
+            "fecha_creacion": venta.fecha_creacion.isoformat() if venta.fecha_creacion else None,
+            "fecha_modificacion": venta.fecha_modificacion.isoformat() if venta.fecha_modificacion else None,
+            "detalles": detalles_serializados
+        }
+
+        return jsonify({
+            "status": "success",
+            "venta": venta_serializada
+        }), 200
+
+    except Exception as e:
+        print(f"--- ERROR al recuperar venta: {e}")
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": "Error al recuperar la venta"}), 500
+
 
 
 # --- Endpoint Legado y Búsqueda (Sin cambios) ---
@@ -363,16 +548,73 @@ def calculate_coefficient_legacy():
         else: return jsonify({"status": "not_found", "tipo_producto": tipo_str, "referencia": ref_str, "cantidad_solicitada": qty_str, "message": "No se encontró coeficiente."}), 404
     except Exception as e: print(f"ERROR en legacy: {e}"); traceback.print_exc(); return jsonify({"status": "error", "message": "Error interno"}), 500
 
-@app.route('/search_products', methods=['GET'])
+@app.route('/search_products', methods=['POST'])
 def search_products():
-    # ... (código search sin cambios) ...
-    term = request.args.get('term', '').strip().lower()
-    print(f"\n--- INFO [api.py]: Recibida solicitud GET en /search_products?term={term} ---")
-    if not term: return jsonify([])
-    resultados = [{"id": prod['id'], "codigo": prod['codigo'], "nombre": prod['nombre'], "unidad_venta": prod['unidad_venta']}
-                  for prod in PRODUCTOS_SIMULADOS if term in prod['nombre'].lower()]
-    print(f"--- DEBUG [api.py]: Productos encontrados para '{term}': {len(resultados)}")
-    return jsonify(resultados), 200
+    """
+    Busca productos por nombre, código o familia en la base de datos con paginación.
+    Espera JSON con:
+        - search_term: str
+        - page: int (opcional, default=1)
+        - per_page: int (opcional, default=10)
+    """
+    data = request.get_json()
+    search_term = data.get("search_term", "").strip()
+    page = int(data.get("page", 1))
+    per_page = int(data.get("per_page", 10))
+
+    if page < 1: page = 1
+    if per_page < 1: per_page = 10
+
+    print(f"\n--- INFO: Búsqueda paginada de productos: término='{search_term}', página={page}, por página={per_page}")
+
+    if not search_term:
+        return jsonify({"status": "error", "message": "Debe proporcionar un término de búsqueda."}), 400
+
+    try:
+        term_like = f"%{search_term.lower()}%"
+
+        # Query base
+        query = session.query(Producto).filter(
+            or_(
+                Producto.nombre.ilike(term_like),
+                Producto.codigo.ilike(term_like),
+                Producto.familia.ilike(term_like)
+            )
+        )
+
+        total_resultados = query.count()
+        productos = query.offset((page - 1) * per_page).limit(per_page).all()
+
+        productos_serializados = [
+            {
+                "id": p.id,
+                "codigo": p.codigo,
+                "nombre": p.nombre,
+                "familia": p.familia,
+                "unidad_medida": p.unidad_medida,
+                "costo_unitario": p.costo_unitario,
+                "coeficiente": p.coeficiente
+            }
+            for p in productos
+        ]
+
+        return jsonify({
+            "status": "success",
+            "productos": productos_serializados,
+            "pagination": {
+                "total": total_resultados,
+                "page": page,
+                "per_page": per_page,
+                "total_pages": (total_resultados + per_page - 1) // per_page
+            }
+        }), 200
+
+    except Exception as e:
+        print(f"--- ERROR al buscar productos: {e}")
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": "Error al buscar productos."}), 500
+
+
 
 
 # --- Punto de Entrada (Actualizar descripciones) ---
