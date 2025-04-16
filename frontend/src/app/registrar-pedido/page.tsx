@@ -1,5 +1,6 @@
 "use client";
 
+import { useProductsContext } from "@/context/ProductsContext";
 import { useState } from "react";
 
 type ProductoI = {
@@ -30,6 +31,8 @@ export default function RegistrarPedidoPage() {
     { producto: "", qx: 0, precio: 0, total: 0 },
   ]);
 
+  const productosContext = useProductsContext();
+
   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
@@ -37,7 +40,7 @@ export default function RegistrarPedidoPage() {
 
   const handleProductoChange = async (
     index: number,
-    e: React.ChangeEvent<HTMLInputElement>
+    e: React.ChangeEvent<HTMLInputElement> | React.ChangeEvent<HTMLSelectElement>
   ) => {
     const { name, value } = e.target;
     const nuevosProductos = [...productos];
@@ -59,13 +62,13 @@ export default function RegistrarPedidoPage() {
         //const idData = await idRes.json();
         //const productId = 1;
   
-        const precioRes = await fetch("http://82.25.69.192:8000/calculate_price", {
+        const precioRes = await fetch("http://82.25.69.192:8001/calculate_price", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            product_id: 1,
+            product_id: e.target.value,
             quantity: cantidad,
           }),
         });
@@ -87,7 +90,7 @@ export default function RegistrarPedidoPage() {
   
 
   const agregarProducto = () => {
-    setProductos([...productos, { producto: "", qx: 0, precio: 0, total: 0 }]);
+    setProductos([...productos, {producto: "", qx: 0, precio: 0, total: 0 }]);
   };
 
   const eliminarProducto = (index: number) => {
@@ -183,14 +186,21 @@ export default function RegistrarPedidoPage() {
             {productos.map((item, index) => (
             <div key={index} className="flex items-center gap-2 mb-2">
               {/* Producto */}
-              <input
+              {/* <input
                 className="shadow border rounded w-full py-2 px-3 text-gray-700 focus:outline-none"
                 type="text"
                 name="producto"
                 placeholder="Producto"
                 value={item.producto}
                 onChange={(e) => handleProductoChange(index, e)}
-              />
+              /> */}
+              <select name="" id="" onChange={(e) => handleProductoChange(index, e)}>
+                {
+                  productosContext?.productos.map(producto=>{
+                    return <option value={producto.codigo}>{producto.nombre}</option>
+                  })
+                }
+              </select>
               {/* Cantidad (Qx) */}
               <input
                 className="shadow border rounded w-16 py-2 px-2 text-gray-700 text-left focus:outline-none"

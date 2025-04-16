@@ -547,6 +547,85 @@ def calculate_coefficient_legacy():
         else: return jsonify({"status": "not_found", "tipo_producto": tipo_str, "referencia": ref_str, "cantidad_solicitada": qty_str, "message": "No se encontró coeficiente."}), 404
     except Exception as e: print(f"ERROR en legacy: {e}"); traceback.print_exc(); return jsonify({"status": "error", "message": "Error interno"}), 500
 
+# --- Endpoint para obtener todos los productos ---
+@app.route('/get_all_products', methods=['GET'])
+def get_all_products():
+    """
+    Obtiene todos los productos sin paginación.
+    """
+    try:
+        productos = db.session.query(Producto).all()
+
+        productos_serializados = [
+            {
+                "id": p.id,
+                "nombre": p.nombre
+            }
+            for p in productos
+        ]
+
+        return jsonify({
+            "status": "success",
+            "productos": productos_serializados
+        }), 200
+
+    except Exception as e:
+        print(f"--- ERROR al obtener productos: {e}")
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": "Error al obtener productos."}), 500
+
+
+# --- Endpoint para obtener todos los productos paginados ---
+@app.route('/get_all_products_paged', methods=['GET'])
+def get_all_products_paged():
+    """
+    Obtiene todos los productos con paginación opcional.
+    Parámetros query (opcionales):
+        - page: int (default=1)
+        - per_page: int (default=10)
+    """
+    try:
+        page = int(request.args.get("page", 1))
+        per_page = int(request.args.get("per_page", 10))
+
+        if page < 1: page = 1
+        if per_page < 1: per_page = 10
+
+        print(f"\n--- INFO: Obtener todos los productos: página={page}, por página={per_page}")
+
+        query = db.session.query(Producto)
+        total_resultados = query.count()
+        productos = query.offset((page - 1) * per_page).limit(per_page).all()
+
+        productos_serializados = [
+            {
+                "id": p.id,
+                "codigo": p.codigo,
+                "nombre": p.nombre,
+                "familia": p.familia,
+                "unidad_medida": p.unidad_medida,
+                "costo_unitario": p.costo_unitario,
+                "coeficiente": p.coeficiente
+            }
+            for p in productos
+        ]
+
+        return jsonify({
+            "status": "success",
+            "productos": productos_serializados,
+            "pagination": {
+                "total": total_resultados,
+                "page": page,
+                "per_page": per_page,
+                "total_pages": (total_resultados + per_page - 1) // per_page
+            }
+        }), 200
+
+    except Exception as e:
+        print(f"--- ERROR al obtener productos: {e}")
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": "Error al obtener productos."}), 500
+
 @app.route('/search_products', methods=['POST'])
 def search_products():
     """
