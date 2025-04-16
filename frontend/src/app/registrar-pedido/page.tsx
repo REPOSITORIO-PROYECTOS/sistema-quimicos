@@ -196,8 +196,8 @@ export default function RegistrarPedidoPage() {
               /> */}
               <select name="" id="" onChange={(e) => handleProductoChange(index, e)}>
                 {
-                  productosContext?.productos.map(producto=>{
-                    return <option value={producto.codigo}>{producto.nombre}</option>
+                  productosContext?.productos.map((producto, index)=>{
+                    return <option value={producto.id} key={index}>{producto.nombre}</option>
                   })
                 }
               </select>

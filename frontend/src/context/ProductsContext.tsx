@@ -21,6 +21,8 @@ type Producto = {
 
 const ProductsContext = createContext<ProductsContextType | undefined>(undefined);
 
+//TODO quitar este any
+// eslint-disable-next-line
 export const ProductsProvider = ({ children }:any) => {
   const [productos, setProductos] = useState<Producto[]>([]);
   const [loading, setLoading] = useState(true);
@@ -34,7 +36,7 @@ export const ProductsProvider = ({ children }:any) => {
 
       if (data.status === 'success') {
         setProductos(data.productos);
-        
+
       } else {
         console.log("error al obtener los productos");
         setError(data.message || 'Error al obtener productos');
