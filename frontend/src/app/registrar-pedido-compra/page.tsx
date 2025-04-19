@@ -34,9 +34,9 @@ export default function RegistrarPedidoPage() {
     }[]
   >([]);
 
-  const handleAgregar = () => {
+  const handleAgregar = async () => {
     if (!fecha || !codigo || !producto || !cantidad || !tipoCambio || !precioSinIva || !importeTotal || !importeAbonado) return;
-
+  
     const nuevoPedido = {
       fecha,
       codigo,
@@ -52,28 +52,66 @@ export default function RegistrarPedidoPage() {
       formaPago,
       chequePerteneciente,
     };
-
-    setPedidos((prev) => [...prev, nuevoPedido]);
-
-    // Limpiar campos
-    setFecha('');
-    setCodigo('');
-    setProducto('');
-    setProveedor('');
-    setCantidad('');
-    setTipoCambio('');
-    setPrecioSinIva('');
-    setCuenta('');
-    setIibb('');
-    setImporteTotal('');
-    setImporteAbonado('');
-    setFormaPago('');
-    setChequePerteneciente('');
+  
+    const ventaPayload = {
+      usuario_interno_id: 123, // todavia no hay endpoint
+      items: [
+        {
+          product_id: parseInt(codigo),
+          quantity: cantidad.toString(),
+        },
+      ],
+      cliente_id: 123, // todavia no hay endpoint
+      fecha_pedido: fecha,
+      direccion_entrega: '',
+      cuit_cliente: '',
+      observaciones: '',
+    };
+  
+    try {
+      const response = await fetch('http://82.25.69.192:8000/register_sale', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(ventaPayload),
+      });
+  
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('Error en la respuesta:', errorData);
+        return;
+      }
+  
+      const data = await response.json();
+      console.log('Venta registrada con éxito:', data);
+  
+      setPedidos((prev) => [...prev, nuevoPedido]);
+  
+      // Limpiar campos
+      setFecha('');
+      setCodigo('');
+      setProducto('');
+      setProveedor('');
+      setCantidad('');
+      setTipoCambio('');
+      setPrecioSinIva('');
+      setCuenta('');
+      setIibb('');
+      setImporteTotal('');
+      setImporteAbonado('');
+      setFormaPago('');
+      setChequePerteneciente('');
+    } catch (error) {
+      console.error('Error al registrar venta:', error);
+    }
   };
+
 
   const handleComprar = () => {
     console.log('Comprar');
   };
+
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-[#20119d] px-4 py-10">

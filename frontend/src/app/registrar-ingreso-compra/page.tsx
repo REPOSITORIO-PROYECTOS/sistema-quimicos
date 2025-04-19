@@ -45,10 +45,34 @@ export default function SolicitudIngresoPage() {
 
   const [solicitudes, setSolicitudes] = useState<ISolicitudes[]>([]);
 
-  const handleAgregar = () => {
-    if (!producto || !cantidad || !fecha || !moneda) return;
 
-    const nuevaSolicitud:ISolicitudes = {
+  const enviarSolicitudAPI = async (solicitud: ISolicitudes) => {
+    try {
+      const response = await fetch('endpooooooooint', { //poner el endpoint cuando se tenga
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(solicitud),
+      });
+  
+      if (!response.ok) {
+        throw new Error('Error al enviar la solicitud');
+      }
+  
+      console.log('Solicitud enviada correctamente');
+    } catch (error) {
+      console.error('Error al enviar la solicitud:', error);
+    }
+  };
+  
+
+
+
+  const handleAgregar = async () => {
+    if (!producto || !cantidad || !fecha || !moneda) return;
+  
+    const nuevaSolicitud: ISolicitudes = {
       fecha,
       proveedor,
       producto,
@@ -68,9 +92,11 @@ export default function SolicitudIngresoPage() {
       formaPago,
       chequePerteneceA,
     };
-
+  
     setSolicitudes((prev) => [...prev, nuevaSolicitud]);
-
+    
+    await enviarSolicitudAPI(nuevaSolicitud);
+  
     // Limpiar campos
     setFecha('');
     setProveedor('');

@@ -5,6 +5,8 @@ import { Navbar } from "@/components/navbar";
 import { AuthProvider } from "@/components/providers/auth-provider";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { ProductsProvider } from "@/context/ProductsContext";
+import { Header } from "@/components/header";
+
 
 const geistSans = Geist({
     variable: "--font-geist-sans",
@@ -38,10 +40,11 @@ export default function RootLayout({
                     disableTransitionOnChange
                 >
                     <AuthProvider>
-                        <ProductsProvider>
-                            <Navbar />
-                            {children}
-                        </ProductsProvider>
+                    <ProductsProvider>
+                        <Header />
+                        <Navbar />
+                        {children}
+                    </ProductsProvider>
                     </AuthProvider>
                 </ThemeProvider>
             </body>
