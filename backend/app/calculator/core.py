@@ -15,7 +15,7 @@ DATOS_TABLA_PD_RAW = None
 modulo_cargado_path = "No cargado"
 
 try:
-    import data.tabla_multiplicadores as modulo_datos_imp
+    from ..data import tabla_multiplicadores as modulo_datos_imp
     modulo_cargado_path = getattr(modulo_datos_imp, '__file__', 'Ruta desconocida')
 
     # Busca los atributos de las tablas RAW dentro del módulo cargado

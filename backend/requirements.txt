@@ -1,0 +1,27 @@
+# requirements.txt
+
+# --- Core Framework ---
+Flask>=2.0 # O la versión específica que estés usando
+
+# --- Database & ORM ---
+Flask-SQLAlchemy>=3.0 # Para integrar SQLAlchemy con Flask
+SQLAlchemy>=1.4,<2.0 # El ORM principal (o >=2.0 si ya lo usas)
+PyMySQL>=1.0 # Driver para conectar a MySQL (si usas MySQL)
+python-dotenv>=0.15 # Si usas .env para variables de entorno (recomendado)
+
+# --- PDF/HTML Generation & Formatting (Si usas Opción 2 o 3 de comprobantes) ---
+Babel>=2.9 # Para formateo de números y fechas (filtros Jinja2)
+# reportlab>=3.6 # Descomenta si eliges ReportLab para generar PDF
+# WeasyPrint>=52 # Descomenta si eliges WeasyPrint para generar PDF (requiere dependencias externas!)
+# Flask-WeasyPrint # Extensión opcional para WeasyPrint
+
+# --- API Testing & Requests ---
+requests>=2.25 # Para hacer llamadas a tu propia API (en scripts de prueba)
+
+# --- WSGI Server (Para Producción - Opcional en requirements, pero necesario) ---
+# gunicorn>=20.0 # Popular servidor WSGI para Linux/macOS
+# waitress>=2.0 # Alternativa WSGI multi-plataforma
+
+# --- Database Migrations (Recomendado para producción) ---
+# Flask-Migrate>=4.0 # Para manejar cambios en el esquema de la DB con Alembic
+# Alembic>=1.7 # Dependencia de Flask-Migrate

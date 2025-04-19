@@ -62,7 +62,7 @@ export default function RegistrarPedidoPage() {
         //const idData = await idRes.json();
         //const productId = 1;
   
-        const precioRes = await fetch("http://82.25.69.192:8001/calculate_price", {
+        const precioRes = await fetch("http://82.25.69.192:8001/", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -186,20 +186,24 @@ export default function RegistrarPedidoPage() {
             {productos.map((item, index) => (
             <div key={index} className="flex items-center gap-2 mb-2">
               {/* Producto */}
-              {/* <input
+              {/*
+              <input
                 className="shadow border rounded w-full py-2 px-3 text-gray-700 focus:outline-none"
                 type="text"
                 name="producto"
                 placeholder="Producto"
                 value={item.producto}
                 onChange={(e) => handleProductoChange(index, e)}
-              /> */}
+              />
+              */}
               <select name="" id="" onChange={(e) => handleProductoChange(index, e)}>
-                {
-                  productosContext?.productos.map((producto, index)=>{
-                    return <option value={producto.id} key={index}>{producto.nombre}</option>
+              {
+                  productosContext?.productos.map((producto: any, index: number) => {
+                    return <option value={producto.id} key={index}>
+                      {producto.nombre}
+                    </option>
                   })
-                }
+              }
               </select>
               {/* Cantidad (Qx) */}
               <input

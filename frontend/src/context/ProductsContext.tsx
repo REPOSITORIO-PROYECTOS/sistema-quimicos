@@ -31,11 +31,11 @@ export const ProductsProvider = ({ children }:any) => {
   const fetchProductos = async () => {
     try {
       setLoading(true);
-      const res = await fetch('http://82.25.69.192:8001/get_all_products'); // O tu URL completa si es un backend externo
+      const res = await fetch('http://82.25.69.192:8001/productos/obtener_todos'); // O tu URL completa si es un backend externo
       const data = await res.json();
-
+      setProductos(data);
       if (data.status === 'success') {
-        setProductos(data.productos);
+        
 
       } else {
         console.log("error al obtener los productos");

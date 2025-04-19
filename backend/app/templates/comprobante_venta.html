@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comprobante de Venta N° {{ venta.venta_id }}</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 20px;
+            line-height: 1.4;
+        }
+        .comprobante {
+            border: 1px solid #ccc;
+            padding: 25px;
+            max-width: 800px;
+            margin: auto;
+            background-color: #fff;
+        }
+        .encabezado {
+            text-align: center;
+            margin-bottom: 30px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 15px;
+        }
+        .encabezado h1 {
+            margin: 0;
+            font-size: 1.8em;
+            color: #333;
+        }
+        .encabezado p {
+            margin: 5px 0 0;
+            color: #555;
+            font-size: 0.9em;
+        }
+        .datos-venta {
+            margin-bottom: 25px;
+            display: grid;
+            grid-template-columns: 1fr 1fr; /* Dos columnas */
+            gap: 15px;
+        }
+        .datos-venta div p {
+             margin: 3px 0;
+             font-size: 0.95em;
+        }
+         .datos-venta strong {
+            display: inline-block;
+            min-width: 120px; /* Ajusta según necesidad */
+            color: #444;
+         }
+        .tabla-items {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        .tabla-items th, .tabla-items td {
+            border: 1px solid #ddd;
+            padding: 8px 10px;
+            text-align: left;
+            font-size: 0.9em;
+        }
+        .tabla-items th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+        }
+        .tabla-items td.numero {
+            text-align: right;
+        }
+        .totales {
+            margin-top: 25px;
+            padding-top: 15px;
+            border-top: 1px solid #eee;
+            text-align: right; /* Alinea los totales a la derecha */
+        }
+        .totales table {
+             margin-left: auto; /* Empuja la tabla a la derecha */
+             width: auto; /* Ancho automático basado en contenido */
+             border-collapse: collapse;
+        }
+         .totales td {
+             padding: 4px 0; /* Espaciado vertical */
+             padding-left: 20px; /* Espacio a la izquierda del valor */
+             font-size: 0.95em;
+         }
+        .totales strong {
+            color: #333;
+        }
+        .pie-pagina {
+            margin-top: 40px;
+            text-align: center;
+            font-size: 0.8em;
+            color: #888;
+        }
+        @media print {
+            body {
+                margin: 0;
+                font-size: 10pt; /* Ajusta tamaño para impresión */
+            }
+            .comprobante {
+                border: none;
+                box-shadow: none;
+                max-width: 100%;
+                padding: 5mm;
+            }
+            .no-imprimir {
+                 display: none; /* Oculta botones u otros elementos */
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="comprobante">
+        <div class="encabezado">
+            <h1>COMPROBANTE DE VENTA</h1>
+            <p>DOCUMENTO NO VÁLIDO COMO FACTURA</p>
+            <!-- Puedes añadir aquí el logo o nombre de tu empresa -->
+            <p><strong>[Nombre de tu Empresa]</strong> - CUIT: [Tu CUIT] - Dirección: [Tu Dirección]</p>
+        </div>
+
+        <div class="datos-venta">
+            <div> <!-- Columna Izquierda -->
+                <p><strong>N° Comprobante:</strong> {{ venta.venta_id }}</p>
+                <p><strong>Fecha Registro:</strong> {{ venta.fecha_registro | format_datetime }}</p>
+                {% if venta.fecha_pedido %}
+                <p><strong>Fecha Pedido:</strong> {{ venta.fecha_pedido | format_datetime }}</p>
+                {% endif %}
+                 <p><strong>Vendedor:</strong> {{ venta.usuario_nombre | default('N/A') }}</p>
+            </div>
+             <div> <!-- Columna Derecha -->
+                <p><strong>Cliente ID:</strong> {{ venta.cliente_id | default('N/A') }}</p>
+                <p><strong>CUIT Cliente:</strong> {{ venta.cuit_cliente | default('N/A') }}</p>
+                <p><strong>Dirección Entrega:</strong> {{ venta.direccion_entrega | default('N/A') }}</p>
+                 <p><strong>Forma de Pago:</strong> {{ venta.forma_pago | default('No especificada') }}</p>
+                 <p><strong>Factura:</strong> {% if venta.requiere_factura %}SI{% else %}NO{% endif %}</p>
+            </div>
+        </div>
+
+        <table class="tabla-items">
+            <thead>
+                <tr>
+                    <th>Código</th>
+                    <th>Descripción</th>
+                    <th>Cant.</th>
+                    <th>Precio Unit. (ARS)</th>
+                    <th>Total Item (ARS)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in venta.detalles %}
+                <tr>
+                    <td>{{ item.producto_codigo | default('N/A') }}</td>
+                    <td>{{ item.producto_nombre | default('N/A') }}</td>
+                    <td class="numero">{{ item.cantidad | format_decimal(4) }}</td> {# Mostrar 4 decimales para cantidad #}
+                    <td class="numero">{{ item.precio_unitario_venta_ars | format_currency }}</td>
+                    <td class="numero">{{ item.precio_total_item_ars | format_currency }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="5" style="text-align: center;">No hay items en esta venta.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <div class="totales">
+           <table>
+                <tr>
+                    <td><strong>Subtotal Items:</strong></td>
+                    <td class="numero">{{ venta.monto_total_base | format_currency }}</td>
+                </tr>
+                {% if venta.recargos.transferencia > 0 %}
+                <tr>
+                    <td>Recargo Transferencia ({{ RECARGO_TRANSFERENCIA_PORC }}%):</td>
+                    <td class="numero">{{ venta.recargos.transferencia | format_currency }}</td>
+                </tr>
+                 {% endif %}
+                 {% if venta.recargos.factura_iva > 0 %}
+                <tr>
+                     <td>Recargo Factura/IVA ({{ RECARGO_FACTURA_PORC }}%):</td>
+                     <td class="numero">{{ venta.recargos.factura_iva | format_currency }}</td>
+                </tr>
+                 {% endif %}
+                 <tr>
+                    <td><strong>TOTAL FINAL (ARS):</strong></td>
+                    <td class="numero"><strong>{{ venta.monto_final_con_recargos | format_currency }}</strong></td>
+                 </tr>
+                  {% if venta.monto_pagado_cliente is not none %}
+                  <tr>
+                      <td>Monto Pagado:</td>
+                      <td class="numero">{{ venta.monto_pagado_cliente | format_currency }}</td>
+                  </tr>
+                  {% endif %}
+                   {% if venta.vuelto_calculado is not none %}
+                  <tr>
+                      <td>Vuelto:</td>
+                      <td class="numero">{{ venta.vuelto_calculado | format_currency }}</td>
+                  </tr>
+                  {% endif %}
+           </table>
+        </div>
+
+         {% if venta.observaciones %}
+         <div style="margin-top: 20px; padding-top: 10px; border-top: 1px dashed #ccc;">
+             <p><strong>Observaciones:</strong><br>{{ venta.observaciones }}</p>
+         </div>
+         {% endif %}
+
+
+        <div class="pie-pagina">
+            <p>Gracias por su compra.</p>
+             <p><button class="no-imprimir" onclick="window.print();">Imprimir Comprobante</button></p>
+        </div>
+    </div>
+
+</body>
+</html>
