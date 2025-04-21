@@ -11,8 +11,16 @@ interface ISolicitudes {
   cantidad: string,
   tipo: string,
   importeTotal: string,
-  estadoRecepcion: string,
-  cantidadRecepcionada: string,
+  estado_recepcion: string,
+  cantidad_recepcionada: string,
+  items_recibidos: [
+    {
+     "id_linea": 8,
+     "cantidad_recibida": 450.0,
+     "costo_unitario_ars": 12.34,
+     "notas_item": "Caja abierta",
+     },
+  ]
   ajusteTC: string,
   importeCC: string,
   cantidadAcumulada: string,
@@ -21,6 +29,7 @@ interface ISolicitudes {
   importeAbonado: string,
   formaPago: string,
   chequePerteneceA: string,
+  nro_remito_proveedor : string,
 }
 
 export default function SolicitudIngresoPage() {
@@ -32,8 +41,8 @@ export default function SolicitudIngresoPage() {
   const [cantidad, setCantidad] = useState('');
   const [tipo, setTipo] = useState('Litro');
   const [importeTotal, setImporteTotal] = useState('');
-  const [estadoRecepcion, setEstadoRecepcion] = useState('completa');
-  const [cantidadRecepcionada, setCantidadRecepcionada] = useState('');
+  const [estado_recepcion, setEstadoRecepcion] = useState('Completa');
+  const [cantidad_recepcionada, setCantidadRecepcionada] = useState('');
   const [ajusteTC, setAjusteTC] = useState('');
   const [importeCC, setImporteCC] = useState('');
   const [cantidadAcumulada, setCantidadAcumulada] = useState('');
@@ -42,16 +51,18 @@ export default function SolicitudIngresoPage() {
   const [importeAbonado, setImporteAbonado] = useState('');
   const [formaPago, setFormaPago] = useState('');
   const [chequePerteneceA, setChequePerteneceA] = useState('');
-
+  const [nro_remito_proveedor,setNroRemito] = useState('remitoProv');
   const [solicitudes, setSolicitudes] = useState<ISolicitudes[]>([]);
 
 
   const enviarSolicitudAPI = async (solicitud: ISolicitudes) => {
-    try {
-      const response = await fetch('endpooooooooint', { //poner el endpoint cuando se tenga
-        method: 'POST',
+    try {                                                                                         //TODO
+      const response = await fetch('https://sistemataup.online/ordenes_compra/recibir/7/recibir', { //Queda estatico de momento
+        method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
+          'X-User-Role' : 'admin',
+          'X-User-Name' : '1'
         },
         body: JSON.stringify(solicitud),
       });
@@ -68,8 +79,8 @@ export default function SolicitudIngresoPage() {
   
 
 
-
-  const handleAgregar = async () => {
+                                      //TODO
+  const handleAgregar = async () => { //CAMBIAR TODOS LOS DATOS ESTATICOS
     if (!producto || !cantidad || !fecha || !moneda) return;
   
     const nuevaSolicitud: ISolicitudes = {
@@ -81,8 +92,16 @@ export default function SolicitudIngresoPage() {
       cantidad,
       tipo,
       importeTotal,
-      estadoRecepcion,
-      cantidadRecepcionada,
+      estado_recepcion,
+      items_recibidos: [
+        {
+         "id_linea": 8,
+         "cantidad_recibida": 450.0,
+         "costo_unitario_ars": 12.34,
+         "notas_item": "Caja abierta",
+         },
+      ],
+      cantidad_recepcionada,
       ajusteTC,
       importeCC,
       cantidadAcumulada,
@@ -91,6 +110,7 @@ export default function SolicitudIngresoPage() {
       importeAbonado,
       formaPago,
       chequePerteneceA,
+      nro_remito_proveedor,
     };
   
     setSolicitudes((prev) => [...prev, nuevaSolicitud]);
@@ -167,14 +187,16 @@ export default function SolicitudIngresoPage() {
           </div>
           <div>
             <label>Estado Recepción</label>
-            <select value={estadoRecepcion} onChange={(e) => setEstadoRecepcion(e.target.value)} className="w-full px-3 py-2 rounded bg-white text-black">
+            <select value={estado_recepcion} onChange={(e) => setEstadoRecepcion(e.target.value)} className="w-full px-3 py-2 rounded bg-white text-black">
               <option value="completa">Completa</option>
-              <option value="incompleta">Incompleta</option>
+              <option value="Parcial">Parcial</option>
+              <option value="Extra">Extra</option>
+              <option value="Con Daños">Con Daños</option>
             </select>
           </div>
           <div>
             <label>Cantidad Recepcionada</label>
-            <input type="number" value={cantidadRecepcionada} onChange={(e) => setCantidadRecepcionada(e.target.value)} className="w-full px-3 py-2 rounded bg-white text-black" />
+            <input type="number" value={cantidad_recepcionada} onChange={(e) => setCantidadRecepcionada(e.target.value)} className="w-full px-3 py-2 rounded bg-white text-black" />
           </div>
           <div>
             <label>Ajuste TC</label>
@@ -228,8 +250,8 @@ export default function SolicitudIngresoPage() {
               <div key={idx} className="border-b border-gray-300 pb-2 mb-2">
                 <p><strong>Producto:</strong> {s.producto} | <strong>Cantidad:</strong> {s.cantidad} {s.tipo} | <strong>Fecha:</strong> {s.fecha}</p>
                 <p><strong>Proveedor:</strong> {s.proveedor} | <strong>Código:</strong> {s.codigo} | <strong>Moneda:</strong> {s.moneda}</p>
-                <p><strong>Importe Total:</strong> {s.importeTotal} | <strong>Estado Recepción:</strong> {s.estadoRecepcion}</p>
-                <p><strong>Recepcionada:</strong> {s.cantidadRecepcionada} | <strong>Acumulada:</strong> {s.cantidadAcumulada}</p>
+                <p><strong>Importe Total:</strong> {s.importeTotal} | <strong>Estado Recepción:</strong> {s.estado_recepcion}</p>
+                <p><strong>Recepcionada:</strong> {s.cantidad_recepcionada} | <strong>Acumulada:</strong> {s.cantidadAcumulada}</p>
                 <p><strong>Ajuste TC:</strong> {s.ajusteTC} | <strong>Ajuste x TC:</strong> {s.ajusteXTC}</p>
                 <p><strong>Diferencia Cambio:</strong> {s.diferenciaCambio} | <strong>Importe a CC:</strong> {s.importeCC}</p>
                 <p><strong>Importe Abonado:</strong> {s.importeAbonado} | <strong>Forma de Pago:</strong> {s.formaPago}</p>

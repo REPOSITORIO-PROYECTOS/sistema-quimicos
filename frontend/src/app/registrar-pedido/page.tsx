@@ -1,10 +1,11 @@
 "use client";
-
+//TODO
+//meter dentro del formulario el producto, que no se salga
+//recargar la pagina o limpiar los datos cuando se agrega un pedido de compra en acciones
 import { useProductsContext } from "@/context/ProductsContext";
 import { useState } from "react";
-
 type ProductoI = {
-  producto: string;
+  producto: number;
   qx: number;
   precio: number;
   total: number;
@@ -28,7 +29,7 @@ export default function RegistrarPedidoPage() {
   });
 
   const [productos, setProductos] = useState<ProductoI[]>([
-    { producto: "", qx: 0, precio: 0, total: 0 },
+    { producto: 0, qx: 0, precio: 0, total: 0 },
   ]);
 
   const productosContext = useProductsContext();
@@ -48,12 +49,13 @@ export default function RegistrarPedidoPage() {
     if (name === "qx") {
       nuevosProductos[index].qx = parseInt(value) || 0;
     } else if (name === "producto") {
-      nuevosProductos[index].producto = value;
+      nuevosProductos[index].producto = parseInt(value);
     }
-  
+
     const productoNombre = nuevosProductos[index].producto;
     const cantidad = nuevosProductos[index].qx;
-  
+    console.log("antes del if");
+    console.log(cantidad);
     if (productoNombre && cantidad > 0) {
       try {   /*
         const idRes = await fetch(`http://82.25.69.192:8000/calculate_price/${productoNombre}`);  //cambiar cuando se tenga la direcicon
@@ -61,14 +63,19 @@ export default function RegistrarPedidoPage() {
   
         //const idData = await idRes.json();
         //const productId = 1;
+<<<<<<< Updated upstream
   
         const precioRes = await fetch("http://82.25.69.192:8001/", {
+=======
+        console.log("entra al try");
+        const precioRes = await fetch(`https://sistemataup.online/productos/calcular_precio/${productoNombre}`, {
+>>>>>>> Stashed changes
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            product_id: e.target.value,
+            producto_id: productoNombre,
             quantity: cantidad,
           }),
         });
@@ -76,8 +83,8 @@ export default function RegistrarPedidoPage() {
         if (!precioRes.ok) throw new Error("Error al calcular el precio");
   
         const precioData = await precioRes.json();
-        nuevosProductos[index].precio = precioData.precio_venta_unitario;
-        nuevosProductos[index].total = precioData.precio_total_calculado;
+        nuevosProductos[index].precio = precioData.precio_venta_unitario_ars;
+        nuevosProductos[index].total = precioData.precio_total_calculado_ars;
       } catch (error) {
         console.error("Error en la carga de producto:", error);
         nuevosProductos[index].precio = 0;
@@ -90,7 +97,12 @@ export default function RegistrarPedidoPage() {
   
 
   const agregarProducto = () => {
-    setProductos([...productos, {producto: "", qx: 0, precio: 0, total: 0 }]);
+
+
+
+    setProductos([...productos, {producto: 0, qx: 0, precio: 0, total: 0 }]);
+
+
   };
 
   const eliminarProducto = (index: number) => {
@@ -105,14 +117,14 @@ export default function RegistrarPedidoPage() {
 
 
 
-  const handleSubmit = async (/*e: React.FormEvent */) => {
-   /* e.preventDefault();
+  const handleSubmit = async (e: React.FormEvent ) => {
+    e.preventDefault();
   
     const data = {
       usuario_interno_id: 1, //aca hay que cambiarlo  por el numero de usuario
       items: productos.map((item) => ({
-        product_id: item.producto, 
-        quantity: item.qx.toString(), 
+        producto_id: item.producto, 
+        cantidad: item.qx.toString(), 
       })),
       cliente_id: formData.cuit ? 123 : null, 
       fecha_pedido: formData.fechaEmision,
@@ -122,7 +134,7 @@ export default function RegistrarPedidoPage() {
     };
   
     try {
-      const response = await fetch("http://localhost:8000/register_sale", {
+      const response = await fetch("https://sistemataup.online/ventas/registrar", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -139,7 +151,7 @@ export default function RegistrarPedidoPage() {
       }
     } catch (err) {
       console.error("Error en la petición:", err);
-    }*/
+    }
   };
   
 
@@ -194,6 +206,7 @@ export default function RegistrarPedidoPage() {
                 placeholder="Producto"
                 value={item.producto}
                 onChange={(e) => handleProductoChange(index, e)}
+<<<<<<< Updated upstream
               />
               */}
               <select name="" id="" onChange={(e) => handleProductoChange(index, e)}>
@@ -202,6 +215,13 @@ export default function RegistrarPedidoPage() {
                     return <option value={producto.id} key={index}>
                       {producto.nombre}
                     </option>
+=======
+              /> */}
+              <select name="producto" id="producto" onChange={(e) => handleProductoChange(index, e)}>
+                {
+                  productosContext?.productos.map((producto, index)=>{
+                    return <option value={producto.id} key={index}>{producto.nombre}</option>
+>>>>>>> Stashed changes
                   })
               }
               </select>
