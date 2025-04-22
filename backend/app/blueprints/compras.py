@@ -227,42 +227,70 @@ def crear_orden_compra():
 @compras_bp.route('/obtener_todas', methods=['GET'])
 @login_required
 def obtener_ordenes_compra():
-    """Obtiene lista de órdenes, con filtros opcionales y formateada por rol."""
+    """Obtiene lista de órdenes de compra, con filtros opcionales y paginación."""
     print("\n--- INFO: Recibida solicitud GET en /ordenes_compra ---")
-    rol_usuario = request.headers.get("X-User-Role", "almacen") # Simular rol
+    rol_usuario = request.headers.get("X-User-Role", "almacen")
 
     try:
-        query = OrdenCompra.query
+        query = OrdenCompra.query.options(
+            # Podés agregar lazyload/selectinload si cargás relaciones
+        )
 
-        # --- Aplicar Filtros ---
+        # --- Filtros ---
         estado_filtro = request.args.get('estado')
         if estado_filtro:
-            if estado_filtro not in ESTADOS_ORDEN: # Validar estado
+            if estado_filtro not in ESTADOS_ORDEN:
                 return jsonify({"error": f"Estado de filtro inválido: '{estado_filtro}'"}), 400
             query = query.filter(OrdenCompra.estado == estado_filtro)
-            print(f"--- DEBUG: Filtrando por estado: {estado_filtro}")
 
         proveedor_id_filtro = request.args.get('proveedor_id', type=int)
         if proveedor_id_filtro:
             query = query.filter(OrdenCompra.proveedor_id == proveedor_id_filtro)
-            print(f"--- DEBUG: Filtrando por proveedor ID: {proveedor_id_filtro}")
 
-        # Ordenar (ej: por fecha creación descendente)
+        fecha_desde_str = request.args.get('fecha_desde')
+        if fecha_desde_str:
+            try:
+                fecha_desde = datetime.date.fromisoformat(fecha_desde_str)
+                query = query.filter(OrdenCompra.fecha_creacion >= datetime.datetime.combine(fecha_desde, datetime.time.min))
+            except ValueError:
+                return jsonify({"error": "Formato inválido en 'fecha_desde' (YYYY-MM-DD)"}), 400
+
+        fecha_hasta_str = request.args.get('fecha_hasta')
+        if fecha_hasta_str:
+            try:
+                fecha_hasta = datetime.date.fromisoformat(fecha_hasta_str)
+                query = query.filter(OrdenCompra.fecha_creacion < datetime.datetime.combine(fecha_hasta + datetime.timedelta(days=1), datetime.time.min))
+            except ValueError:
+                return jsonify({"error": "Formato inválido en 'fecha_hasta' (YYYY-MM-DD)"}), 400
+
+        # --- Ordenar por fecha de creación ---
         query = query.order_by(OrdenCompra.fecha_creacion.desc())
 
-        # Considerar paginación aquí también para listas largas
-        ordenes_db = query.all()
+        # --- Paginación ---
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 20, type=int)
+        paginated_result = query.paginate(page=page, per_page=per_page, error_out=False)
+        ordenes_db = paginated_result.items
 
-        # Formatear resultado según rol
-        ordenes_formateadas = [formatear_orden_por_rol(orden, rol_usuario) for orden in ordenes_db]
+        # --- Formatear salida según el rol ---
+        ordenes_list = [formatear_orden_por_rol(o, rol_usuario) for o in ordenes_db]
 
-        print(f"--- INFO: Devolviendo {len(ordenes_formateadas)} órdenes para rol '{rol_usuario}'")
-        return jsonify(ordenes_formateadas)
+        return jsonify({
+            "ordenes": ordenes_list,
+            "pagination": {
+                "total_items": paginated_result.total,
+                "total_pages": paginated_result.pages,
+                "current_page": page,
+                "per_page": per_page,
+                "has_next": paginated_result.has_next,
+                "has_prev": paginated_result.has_prev
+            }
+        })
 
     except Exception as e:
-        print(f"ERROR: Excepción inesperada al obtener órdenes de compra")
+        print("ERROR [obtener_ordenes_compra]: Excepción inesperada")
         traceback.print_exc()
-        return jsonify({"error": "Error interno del servidor al obtener las órdenes"}), 500
+        return jsonify({"error": "Error interno al obtener las órdenes"}), 500
 
 
 # --- Endpoint: Obtener Orden de Compra Específica ---
