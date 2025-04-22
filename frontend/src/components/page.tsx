@@ -1,5 +1,6 @@
 'use client';
 
+import { useProductsContext } from "@/context/ProductsContext";
 import React, { useEffect, useState } from 'react';
 
 interface ISolicitudes {
@@ -53,6 +54,7 @@ export default function SolicitudIngresoPage({ id }: any) {
   const [chequePerteneceA, setChequePerteneceA] = useState('');
   const [nro_remito_proveedor,setNroRemito] = useState('remitoProv');
   const [solicitudes, setSolicitudes] = useState<ISolicitudes[]>([]);
+  const { productos, loading, error } = useProductsContext();
 
 
   useEffect(() => {
@@ -67,13 +69,14 @@ export default function SolicitudIngresoPage({ id }: any) {
         throw new Error(`Error al traer boletas: ${response.statusText}`);
       }
       const data = await response.json();
+      setEstadoRecepcion(data.estado_recepcion);
       console.log(data);
-      // Aquí deberías actualizar los estados con los datos recibidos
-      // Ejemplo:
-      // setFecha(data.fecha);
-      // setCodigo(data.codigo);
-      // etc.
-      // eslint-disable-next-line
+      setFecha(formatearFecha(data.fecha_creacion));
+      setCantidadRecepcionada(data.items[0].cantidad_recibida);
+      let cant = data.items[0].cantidad_solicitada;
+      setCantidad(data.items[0].cantidad_solicitada);
+      setProveedor(data.proveedor_nombre);
+      cargarCamposProducto(data.items[0].producto_id,cant);
     } catch (err: any) {
       console.log("error", err);
     } 
@@ -81,11 +84,71 @@ export default function SolicitudIngresoPage({ id }: any) {
 
 
 
+  async function cargarCamposProducto(id_producto:number,cantidad_f : number){
+    try{
+      const response = await fetch(`https://sistemataup.online/productos/obtener/${id_producto}`);
+      if (!response.ok) {
+        throw new Error(`Error al traer boletas: ${response.statusText}`);
+      }
+      const data = await response.json();
+      console.log(data);
+      setCodigo(id_producto.toString());
+      setProducto(data.id.toString());
+      const unidad = data.unidad_venta;
+      if (unidad == 'LT')
+        setTipo('Litro')
+      else if (unidad == 'KG')
+        setTipo('Kilo');
+        else setTipo('Unidad');
+
+      calcular_precio(id_producto,cantidad_f);
+    }
+    catch (err: any) {
+      console.log("error", err);
+    } 
+  }
+
+
+  async function calcular_precio(id_producto:number,cantidad_f:number){
+    try{
+      const response = await fetch(`https://sistemataup.online/productos/calcular_precio/${id_producto}`,{
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          producto_id: id_producto,
+          quantity: cantidad_f,
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Error al traer boletas: ${response.statusText}`);
+      }
+
+      const precioData = await response.json();
+      setImporteTotal(precioData.precio_total_calculado_ars);
+    }
+    catch (err: any) {
+      console.log("error", err);
+    } 
+
+  }
+
+  const formatearFecha = (fechaOriginal: string): string => {
+    const fecha = new Date(fechaOriginal);
+    const year = fecha.getFullYear();
+    const month = String(fecha.getMonth() + 1).padStart(2, '0');
+    const day = String(fecha.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
 
 
   const enviarSolicitudAPI = async (solicitud: ISolicitudes) => {
-    try {                                                                                         //TODO
-      const response = await fetch('https://sistemataup.online/ordenes_compra/recibir/7/recibir', { //Queda estatico de momento
+    try { 
+      console.log(solicitud);                                                                                    
+      const response = await fetch(`https://sistemataup.online/ordenes_compra/recibir/${id}/recibir`, { 
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -186,8 +249,22 @@ export default function SolicitudIngresoPage({ id }: any) {
           </div>
           <div>
             <label>Producto *</label>
-            <input value={producto} onChange={(e) => setProducto(e.target.value)} className="w-full px-3 py-2 rounded bg-white text-black" />
-          </div>
+            <select
+                name="producto"
+                value={producto}
+                onChange={(e) => setProducto(e.target.value)}
+                className="w-full px-3 py-2 rounded bg-white text-black"
+              >
+                <option value={0} disabled>Seleccionar producto</option>
+
+                {productos.map((producto: any, index: number) => (
+                  <option value={producto.id} key={index}>
+                    {producto.nombre}
+                  </option>
+                ))}
+          </select>
+
+            </div>
           <div>
             <label>Código</label>
             <input value={codigo} onChange={(e) => setCodigo(e.target.value)} className="w-full px-3 py-2 rounded bg-white text-black" />
