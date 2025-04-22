@@ -6,21 +6,22 @@ from sqlalchemy import event, CheckConstraint, ForeignKey
 from sqlalchemy.orm import validates, relationship
 from datetime import datetime, timezone
 from decimal import Decimal
+from flask_login import UserMixin
 
 # Importa la instancia 'db' creada en app/__init__.py
 from . import db
 
 # --- Modelo Usuario Interno ---
-class UsuarioInterno(db.Model):
+
+class UsuarioInterno(db.Model, UserMixin):
     __tablename__ = 'usuarios_internos'
-    # ... (Pega aquí las columnas y relaciones de UsuarioInterno) ...
     id = db.Column(db.Integer, primary_key=True)
     nombre = db.Column(db.String(100), nullable=False)
     apellido = db.Column(db.String(100), nullable=False)
     nombre_usuario = db.Column(db.String(50), unique=True, nullable=False)
-    contrasena = db.Column(db.String(200), nullable=False) # Guardar HASH
+    contrasena = db.Column(db.String(200), nullable=False)
     email = db.Column(db.String(100), unique=True, nullable=False)
-    rol = db.Column(db.String(50), nullable=False) # admin, almacen, ventas, etc.
+    rol = db.Column(db.String(50), nullable=False)
     ventas = db.relationship('Venta', back_populates='usuario_interno', lazy='dynamic')
     ordenes_compra_solicitadas = db.relationship('OrdenCompra', foreign_keys='OrdenCompra.solicitado_por_id', back_populates='solicitante', lazy='dynamic')
     ordenes_compra_aprobadas = db.relationship('OrdenCompra', foreign_keys='OrdenCompra.aprobado_por_id', back_populates='aprobador', lazy='dynamic')
@@ -46,7 +47,6 @@ class Producto(db.Model):
     # __table_args__ = {'extend_existing': True} # <-- Añadir si el error se mueve aquí
     id = db.Column(db.Integer, primary_key=True)
     # ... (Pega aquí el resto de columnas y relaciones de Producto) ...
-    codigo_interno = db.Column(db.String(50), unique=True, nullable=False, index=True)
     nombre = db.Column(db.String(200), nullable=False)
     unidad_venta = db.Column(db.String(50), nullable=True)
     tipo_calculo = db.Column(db.String(2), nullable=True)
@@ -214,3 +214,28 @@ class DetalleOrdenCompra(db.Model):
     notas_item_recepcion = db.Column(db.String(255), nullable=True)
     orden = db.relationship('OrdenCompra', back_populates='items')
     producto = db.relationship('Producto', back_populates='detalles_orden_compra')
+
+class Cliente(db.Model):
+    __tablename__ = 'clientes'
+    id = db.Column(db.Integer, primary_key=True)
+    nombre_razon_social = db.Column(db.String(255), nullable=False, index=True) # Nombre o Razón Social
+    cuit = db.Column(db.String(20), unique=True, nullable=True, index=True) # CUIT/Identificación fiscal (opcional pero único)
+    direccion = db.Column(db.String(255), nullable=True)
+    localidad = db.Column(db.String(100), nullable=True)
+    provincia = db.Column(db.String(100), nullable=True)
+    codigo_postal = db.Column(db.String(20), nullable=True)
+    telefono = db.Column(db.String(50), nullable=True)
+    email = db.Column(db.String(100), nullable=True, index=True)
+    contacto_principal = db.Column(db.String(150), nullable=True) # Nombre de la persona de contacto
+    condicion_iva = db.Column(db.String(50), nullable=True) # Ej: Responsable Inscripto, Monotributista, Consumidor Final
+    lista_precio_asignada = db.Column(db.String(50), nullable=True) # Si manejas diferentes listas
+    observaciones = db.Column(db.Text, nullable=True)
+    fecha_alta = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    activo = db.Column(db.Boolean, default=True, nullable=False) # Para bajas lógicas
+
+    # Relación inversa con Ventas (Un cliente puede tener muchas ventas)
+    # Asumiendo que en Venta tienes: cliente = db.relationship('Cliente', back_populates='ventas')
+    ventas = db.relationship('Venta', back_populates='cliente', lazy='dynamic')
+
+    def repr(self):
+        return f'<Cliente ID:{self.id} {self.nombre_razon_social}>'

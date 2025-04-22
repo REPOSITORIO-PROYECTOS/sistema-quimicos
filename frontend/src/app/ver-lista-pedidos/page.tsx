@@ -21,7 +21,7 @@ export default function ListaBoletas() {
         if (!response.ok) {
           throw new Error(`Error al traer boletas: ${response.statusText}`);
         }
-        const data: Boleta[] = await response.json();
+        const data: Boleta[] = (await response.json()).ventas;
         setBoletas(data);
       } catch (err: any) {
         setError(err.message || 'Error desconocido');

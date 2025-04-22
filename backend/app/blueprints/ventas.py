@@ -47,7 +47,7 @@ def calcular_precio_item_venta(producto_id, cantidad_decimal):
         costo_momento_ars = (costo_ref_usd * tipo_cambio.valor).quantize(Decimal("0.0001")) # 4 dec precisión interna
 
         # 4. Obtener datos para fórmula de venta (margen, coeficiente)
-        margen = producto.margen if producto.margen is not None else Decimal(0)
+        margen = Decimal(producto.margen) if producto.margen is not None else Decimal(0)
         # margen_float = float(margen) # Usaremos Decimal para cálculo
         tipo_calculo = producto.tipo_calculo
         ref_calculo_str = str(producto.ref_calculo) if producto.ref_calculo is not None else None
@@ -607,7 +607,7 @@ def detalle_venta_a_dict(detalle):
     return {
         "detalle_id": detalle.id,
         "producto_id": detalle.producto_id,
-        "producto_codigo": detalle.producto.codigo_interno if detalle.producto else None,
+        "producto_codigo": detalle.producto.id if detalle.producto else None,
         "producto_nombre": detalle.producto.nombre if detalle.producto else None,
         "cantidad": float(detalle.cantidad) if detalle.cantidad is not None else None,
         "margen_aplicado": float(detalle.margen_aplicado) if detalle.margen_aplicado is not None else None,

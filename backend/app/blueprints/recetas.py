@@ -21,7 +21,6 @@ def receta_a_dict(receta: Receta) -> dict:
     if receta.producto_final:
         producto_final_info = {
             "id": receta.producto_final.id,
-            "codigo_interno": receta.producto_final.codigo_interno,
             "nombre": receta.producto_final.nombre
         }
 
@@ -32,7 +31,7 @@ def receta_a_dict(receta: Receta) -> dict:
          items_list.append({
              "ingrediente_id": item.ingrediente_id,
              # Añadir chequeos por si acaso ingrediente es None (integridad BD)
-             "ingrediente_codigo": item.ingrediente.codigo_interno if item.ingrediente else 'N/A',
+             "ingrediente_codigo": item.ingrediente.id if item.ingrediente else 'N/A',
              "ingrediente_nombre": item.ingrediente.nombre if item.ingrediente else 'N/A',
              "porcentaje": float(item.porcentaje) if item.porcentaje is not None else None
          })

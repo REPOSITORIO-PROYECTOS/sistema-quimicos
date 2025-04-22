@@ -11,12 +11,13 @@ import datetime
 import uuid # Sigue siendo útil si usas UUIDs para IDs de OrdenCompra
 import traceback
 import requests # Necesario para llamar al endpoint de actualizar costo
+from flask_login import login_required
 
 # --- Configuración ---
 # Obtener la URL base de la app actual o definirla. OJO: esto puede ser problemático.
 # Es MEJOR pasar la URL base o usar una configuración central.
 # Por ahora, asumimos que corre en localhost:5000. ¡¡AJUSTAR SI ES NECESARIO!!
-BASE_API_URL = "http://localhost:5000"
+BASE_API_URL = "http://localhost:8001"
 
 
 # Crear el Blueprint
@@ -70,7 +71,7 @@ def formatear_orden_por_rol(orden_db, rol="almacen"):
             item_dict = {
                 "id_linea": item_db.id, # ID del detalle
                 "producto_id": item_db.producto_id,
-                "producto_codigo": item_db.producto.codigo_interno if item_db.producto else 'N/A',
+                "producto_codigo": item_db.producto.id if item_db.producto else 'N/A',
                 "producto_nombre": item_db.producto.nombre if item_db.producto else 'N/A',
                 "cantidad_solicitada": float(item_db.cantidad_solicitada) if item_db.cantidad_solicitada is not None else None,
                 "cantidad_recibida": float(item_db.cantidad_recibida) if item_db.cantidad_recibida is not None else None,
@@ -105,6 +106,7 @@ def formatear_orden_por_rol(orden_db, rol="almacen"):
 
 # --- Endpoint: Crear Nueva Orden de Compra (Solicitud) ---
 @compras_bp.route('/crear', methods=['POST'])
+@login_required
 def crear_orden_compra():
     """Registra una nueva solicitud de orden de compra."""
     print("\n--- INFO: Recibida solicitud POST en /ordenes_compra ---")
@@ -139,18 +141,18 @@ def crear_orden_compra():
     try:
         # --- Procesar Items ---
         for idx, item_data in enumerate(items_payload):
-            codigo_interno_prod = item_data.get("codigo_interno")
+            id_prod = item_data.get("id")
             cantidad_str = str(item_data.get("cantidad", "0")).replace(',', '.')
             # Precio estimado opcional que podría venir del front o calcularse
             precio_estimado_str = str(item_data.get("precio_unitario_estimado", "0")).replace(',', '.')
 
-            if not codigo_interno_prod:
-                return jsonify({"error": f"Falta 'codigo_interno' en item #{idx+1}"}), 400
+            if not id_prod:
+                return jsonify({"error": f"Falta 'id' en item #{idx+1}"}), 400
 
             # Validar y obtener producto
-            producto = Producto.query.filter_by(codigo_interno=codigo_interno_prod).first()
+            producto = Producto.query.filter_by(id=id_prod).first()
             if not producto:
-                return jsonify({"error": f"Producto con código interno '{codigo_interno_prod}' no encontrado (item #{idx+1})"}), 404
+                return jsonify({"error": f"Producto con código interno '{id_prod}' no encontrado (item #{idx+1})"}), 404
 
             try:
                 cantidad = Decimal(cantidad_str)
@@ -192,7 +194,7 @@ def crear_orden_compra():
             importe_total_estimado=importe_total_estimado_calc,
             observaciones_solicitud=data.get("observaciones_solicitud"),
             estado="Solicitado", # Estado inicial
-            solicitado_por=usuario_solicitante # Guardar quién solicitó
+            solicitado_por_id=usuario_solicitante # Guardar quién solicitó
             # Otros campos se inicializan con default/None en el modelo
         )
 
@@ -223,6 +225,7 @@ def crear_orden_compra():
 
 # --- Endpoint: Obtener Órdenes de Compra (Lista) ---
 @compras_bp.route('/obtener_todas', methods=['GET'])
+@login_required
 def obtener_ordenes_compra():
     """Obtiene lista de órdenes, con filtros opcionales y formateada por rol."""
     print("\n--- INFO: Recibida solicitud GET en /ordenes_compra ---")
@@ -265,6 +268,7 @@ def obtener_ordenes_compra():
 # --- Endpoint: Obtener Orden de Compra Específica ---
 @compras_bp.route('/obtener/<int:orden_id>', methods=['GET']) # Asume ID entero autoincremental
 # @compras_bp.route('/<string:orden_id>', methods=['GET']) # Si usas UUID string
+@login_required
 def obtener_orden_compra_por_id(orden_id):
     """Obtiene una orden específica, formateada por rol."""
     print(f"\n--- INFO: Recibida solicitud GET en /ordenes_compra/{orden_id} ---")
@@ -288,7 +292,8 @@ def obtener_orden_compra_por_id(orden_id):
 
 
 # --- Endpoint: Aprobar Orden de Compra ---
-@compras_bp.route('/aprobar/<int:orden_id>/aprobar', methods=['PUT'])
+@compras_bp.route('/aprobar/<int:orden_id>', methods=['PUT'])
+@login_required
 def aprobar_orden_compra(orden_id):
     """Cambia el estado de una orden a 'Aprobado' (Rol Admin)."""
     print(f"\n--- INFO: Recibida solicitud PUT en /ordenes_compra/{orden_id}/aprobar ---")
@@ -331,7 +336,8 @@ def aprobar_orden_compra(orden_id):
 
 
 # --- Endpoint: Rechazar Orden de Compra ---
-@compras_bp.route('/rechazar/<int:orden_id>/rechazar', methods=['PUT'])
+@compras_bp.route('/rechazar/<int:orden_id>', methods=['PUT'])
+@login_required
 def rechazar_orden_compra(orden_id):
     """Cambia el estado de una orden a 'Rechazado' (Rol Admin)."""
     print(f"\n--- INFO: Recibida solicitud PUT en /ordenes_compra/{orden_id}/rechazar ---")
@@ -376,7 +382,8 @@ def rechazar_orden_compra(orden_id):
 
 
 # --- Endpoint: Recibir Mercadería de Orden de Compra ---
-@compras_bp.route('/recibir/<int:orden_id>/recibir', methods=['PUT'])
+@compras_bp.route('/recibir/<int:orden_id>', methods=['PUT'])
+@login_required
 def recibir_orden_compra(orden_id):
     """
     Registra la recepción de mercadería, actualiza cantidades y llama a actualizar costos.
@@ -454,7 +461,7 @@ def recibir_orden_compra(orden_id):
             elif codigo_prod:
                 # Buscar por código si no hay ID (menos preciso si el mismo producto está varias veces)
                 for det in orden_db.items:
-                    if det.producto and det.producto.codigo_interno == codigo_prod:
+                    if det.producto and det.producto.id == codigo_prod:
                         detalle_orden_db = det
                         break # Tomar el primero que coincida
 
@@ -493,7 +500,7 @@ def recibir_orden_compra(orden_id):
                 not producto_actual.es_receta and
                 producto_actual.id not in productos_procesados_costo):
 
-                print(f"--- [Recibir OC] Preparando para actualizar costo de Producto ID: {producto_actual.id} ({producto_actual.codigo_interno}) con ARS {costo_unitario_ars}")
+                print(f"--- [Recibir OC] Preparando para actualizar costo de Producto ID: {producto_actual.id} ({producto_actual.id}) con ARS {costo_unitario_ars}")
                 try:
                     # *** LLAMADA AL ENDPOINT DE ACTUALIZACIÓN DE COSTO ***
                     update_url = f"{BASE_API_URL}/productos/{producto_actual.id}/actualizar_costo_compra"
@@ -502,21 +509,21 @@ def recibir_orden_compra(orden_id):
                     update_response = requests.post(update_url, json=update_payload, headers=request.headers, timeout=15) # Reenviar headers? O usar uno específico?
 
                     if update_response.status_code == 200:
-                        print(f"--- [Recibir OC] Costo de referencia para {producto_actual.codigo_interno} actualizado OK.")
+                        print(f"--- [Recibir OC] Costo de referencia para {producto_actual.id} actualizado OK.")
                         productos_procesados_costo.add(producto_actual.id) # Marcar como procesado
                     else:
                         # Falló la actualización, loggear pero continuar con la recepción?
-                        print(f"WARN: Falló la llamada para actualizar costo de {producto_actual.codigo_interno}. Status: {update_response.status_code}")
+                        print(f"WARN: Falló la llamada para actualizar costo de {producto_actual.id}. Status: {update_response.status_code}")
                         print(f"WARN: Respuesta: {update_response.text}")
                         # Podrías decidir si esto es un error fatal para la recepción o no.
 
                 except requests.exceptions.RequestException as req_err:
                      # Error de red al llamar al endpoint de productos
-                     print(f"ERROR: Falla de red al llamar a actualizar_costo_compra para {producto_actual.codigo_interno}: {req_err}")
+                     print(f"ERROR: Falla de red al llamar a actualizar_costo_compra para {producto_actual.id}: {req_err}")
                      # Considerar si esto debe detener la recepción.
                 except Exception as call_err:
                      # Otro error inesperado
-                     print(f"ERROR: Inesperado al llamar a actualizar_costo_compra para {producto_actual.codigo_interno}: {call_err}")
+                     print(f"ERROR: Inesperado al llamar a actualizar_costo_compra para {producto_actual.id}: {call_err}")
 
         # --- Actualizar Cabecera de la Orden ---
         # Determinar estado final (podría ser más complejo si hay multi-recepción)

@@ -51,24 +51,23 @@ export default function RegistrarPedidoPage() {
       nuevosProductos[index].producto = value;
     }
   
-    const productoNombre = nuevosProductos[index].producto;
+    const productoId = nuevosProductos[index].producto;
     const cantidad = nuevosProductos[index].qx;
   
-    if (productoNombre && cantidad > 0) {
+    if (productoId && cantidad > 0) {
       try {   /*
         const idRes = await fetch(`http://82.25.69.192:8000/calculate_price/${productoNombre}`);  //cambiar cuando se tenga la direcicon
         if (!idRes.ok) throw new Error("No se pudo obtener el ID del producto"); */
   
         //const idData = await idRes.json();
         //const productId = 1;
-  
-        const precioRes = await fetch("http://82.25.69.192:8001/", {
+        const precioRes = await fetch("http://82.25.69.192:8001/productos/calcular_precio/" + productoId, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            product_id: e.target.value,
+            //product_id: e.target.value,
             quantity: cantidad,
           }),
         });
@@ -196,7 +195,7 @@ export default function RegistrarPedidoPage() {
                 onChange={(e) => handleProductoChange(index, e)}
               />
               */}
-              <select name="" id="" onChange={(e) => handleProductoChange(index, e)}>
+              <select name="producto" id="producto" value={item.producto} onChange={(e) => handleProductoChange(index, e)}>
               {
                   productosContext?.productos.map((producto: any, index: number) => {
                     return <option value={producto.id} key={index}>

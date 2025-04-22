@@ -33,10 +33,8 @@ export const ProductsProvider = ({ children }:any) => {
       setLoading(true);
       const res = await fetch('http://82.25.69.192:8001/productos/obtener_todos'); // O tu URL completa si es un backend externo
       const data = await res.json();
-      setProductos(data);
-      if (data.status === 'success') {
-        
-
+      if (data) {
+        setProductos(data);
       } else {
         console.log("error al obtener los productos");
         setError(data.message || 'Error al obtener productos');

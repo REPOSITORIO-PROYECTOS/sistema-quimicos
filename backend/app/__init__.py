@@ -4,6 +4,9 @@ from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from decimal import Decimal
 import traceback
+from flask_login import LoginManager
+from your_app.models import UsuarioInterno
+from app.routes import register_routes
 # Imports para los filtros (asegúrate que Babel esté instalado: pip install Babel)
 try:
     from babel.numbers import format_currency as babel_format_currency, format_decimal as babel_format_decimal
@@ -22,10 +25,19 @@ except ImportError:
 db = SQLAlchemy()
 print("--- INFO [app/__init__.py]: Instancia SQLAlchemy 'db' creada.")
 
+@login_manager.user_loader
+def load_user(user_id):
+    return UsuarioInterno.query.get(int(user_id))
+
 def create_app(config_object='config.Config'):
     """Fábrica de la aplicación."""
     app = Flask(__name__, instance_relative_config=True)
     print("--- INFO [app/__init__.py]: App Flask creada.")
+
+    
+    login_manager = LoginManager()
+    login_manager.init_app(app)
+    register_routes(app)
 
     # --- Cargar Configuración ---
     try:

@@ -42,7 +42,7 @@ def calcular_costo_producto_referencia(producto_id, visited=None):
         # Es una receta: calcular sumando costos de referencia de ingredientes ponderados
         if not producto.receta:
             # Caso borde: Marcado como receta pero sin relación/items definidos
-            print(f"WARN: Producto {producto_id} ({producto.codigo_interno}) está marcado como receta pero no tiene items asociados.")
+            print(f"WARN: Producto {producto_id} ({producto.id}) está marcado como receta pero no tiene items asociados.")
             costo_calculado_ref = Decimal(0) # O podrías lanzar un error si esto no debería pasar
         else:
             # Si la relación es lazy='dynamic', necesitamos .all() para iterar
@@ -68,7 +68,7 @@ def calcular_costo_producto_referencia(producto_id, visited=None):
                         costo_calculado_ref += costo_ingrediente_ref * (porcentaje_item / Decimal(100))
                     except ValueError as e:
                         # Propagar error si un ingrediente no se encuentra o hay un ciclo más abajo
-                        raise ValueError(f"Error calculando costo ref para ingrediente ID {item.ingrediente_id} en receta de '{producto.codigo_interno}': {e}")
+                        raise ValueError(f"Error calculando costo ref para ingrediente ID {item.ingrediente_id} en receta de '{producto.id}': {e}")
                     except Exception as e:
                         # Capturar otros errores inesperados en la recursión
                         print(f"ERROR inesperado calculando costo para ingrediente ID {item.ingrediente_id}")
@@ -86,7 +86,6 @@ def producto_a_dict(producto):
     if not producto: return None
     return {
         "id": producto.id,
-        "codigo_interno": producto.codigo_interno,
         "nombre": producto.nombre,
         "unidad_venta": producto.unidad_venta,
         "tipo_calculo": producto.tipo_calculo,
@@ -106,12 +105,12 @@ def producto_a_dict(producto):
 def crear_producto():
     """Crea un nuevo producto."""
     data = request.get_json()
-    if not data or not data.get('codigo_interno') or not data.get('nombre'):
-        return jsonify({"error": "Faltan campos requeridos: 'codigo_interno', 'nombre'"}), 400
+    if not data or not data.get('id') or not data.get('nombre'):
+        return jsonify({"error": "Faltan campos requeridos: 'id', 'nombre'"}), 400
 
     # Validar si el código ya existe
-    if Producto.query.filter_by(codigo_interno=data['codigo_interno']).first():
-        return jsonify({"error": f"El código interno '{data['codigo_interno']}' ya existe"}), 409 # Conflict
+    if Producto.query.filter_by(id=data['id']).first():
+        return jsonify({"error": f"El código interno '{data['id']}' ya existe"}), 409 # Conflict
 
     try:
         # Manejar costo inicial opcional solo si no es receta
@@ -121,7 +120,7 @@ def crear_producto():
 
         # Crear instancia del modelo
         nuevo_producto = Producto(
-            codigo_interno=data['codigo_interno'],
+            id=data['id'],
             nombre=data['nombre'],
             unidad_venta=data.get('unidad_venta'),
             tipo_calculo=data.get('tipo_calculo'),
@@ -133,7 +132,7 @@ def crear_producto():
         )
         db.session.add(nuevo_producto)
         db.session.commit()
-        print(f"INFO: Producto creado: ID {nuevo_producto.id}, Código: {nuevo_producto.codigo_interno}")
+        print(f"INFO: Producto creado: ID {nuevo_producto.id}, Código: {nuevo_producto.id}")
         return jsonify(producto_a_dict(nuevo_producto)), 201 # Created
 
     except (ValueError, TypeError, InvalidOperation) as e:
@@ -142,7 +141,7 @@ def crear_producto():
          return jsonify({"error": f"Error en los datos numéricos (margen, costo_referencia_usd): {e}"}), 400
     except Exception as e:
         db.session.rollback()
-        print(f"ERROR: Excepción inesperada al crear producto {data.get('codigo_interno', 'N/A')}")
+        print(f"ERROR: Excepción inesperada al crear producto {data.get('id', 'N/A')}")
         traceback.print_exc()
         return jsonify({"error": "Error interno del servidor al crear el producto"}), 500
 
@@ -191,14 +190,14 @@ def actualizar_producto(producto_id):
         return jsonify({"error": "No se recibieron datos JSON en el payload"}), 400
 
     # Validar código interno único si se intenta cambiar
-    nuevo_codigo = data.get('codigo_interno')
-    if nuevo_codigo and nuevo_codigo != producto.codigo_interno:
-        if Producto.query.filter(Producto.id != producto_id, Producto.codigo_interno == nuevo_codigo).first():
+    nuevo_codigo = data.get('id')
+    if nuevo_codigo and nuevo_codigo != producto.id:
+        if Producto.query.filter(Producto.id != producto_id, Producto.id == nuevo_codigo).first():
             return jsonify({"error": f"El código interno '{nuevo_codigo}' ya está en uso por otro producto"}), 409 # Conflict
 
     try:
         # Actualizar campos básicos
-        producto.codigo_interno = data.get('codigo_interno', producto.codigo_interno)
+        producto.id = data.get('id', producto.id)
         producto.nombre = data.get('nombre', producto.nombre)
         producto.unidad_venta = data.get('unidad_venta', producto.unidad_venta)
         producto.tipo_calculo = data.get('tipo_calculo', producto.tipo_calculo)
@@ -220,7 +219,7 @@ def actualizar_producto(producto_id):
         # Debe hacerse a través de los endpoints de recetas (crear/eliminar receta).
 
         db.session.commit()
-        print(f"INFO: Producto actualizado: ID {producto_id}, Código: {producto.codigo_interno}")
+        print(f"INFO: Producto actualizado: ID {producto_id}, Código: {producto.id}")
         return jsonify(producto_a_dict(producto))
 
     except (ValueError, TypeError, InvalidOperation) as e:
@@ -251,7 +250,7 @@ def eliminar_producto(producto_id):
 
     try:
         nombre_eliminado = producto.nombre
-        codigo_eliminado = producto.codigo_interno
+        codigo_eliminado = producto.id
         db.session.delete(producto)
         db.session.commit()
         print(f"INFO: Producto eliminado: ID {producto_id}, Código: {codigo_eliminado}, Nombre: {nombre_eliminado}")
@@ -290,7 +289,7 @@ def obtener_costos_producto(producto_id):
 
         return jsonify({
             "producto_id": producto_id,
-            "codigo_interno": producto.codigo_interno,
+            "id": producto.id,
             "nombre": producto.nombre,
             "costo_referencia_usd": float(costo_ref_usd), # Costo base de cálculo
             "costo_final_venta_ars": float(costo_ars_calculado) if costo_ars_calculado is not None else None, # Costo a usar en precio venta
@@ -346,7 +345,7 @@ def actualizar_costo_desde_compra(producto_id):
         # Calcular nuevo costo referencia USD = ARS / TC
         nuevo_costo_ref_usd = (costo_recepcion_ars / tipo_cambio.valor).quantize(Decimal("0.0001")) # 4 decimales USD
 
-        print(f"INFO: Actualizando costo producto ID {producto_id} ({producto.codigo_interno}). Recepción ARS: {costo_recepcion_ars}, TC: {nombre_tc_conversion} ({tipo_cambio.valor}), Nuevo Costo Ref USD: {nuevo_costo_ref_usd}")
+        print(f"INFO: Actualizando costo producto ID {producto_id} ({producto.id}). Recepción ARS: {costo_recepcion_ars}, TC: {nombre_tc_conversion} ({tipo_cambio.valor}), Nuevo Costo Ref USD: {nuevo_costo_ref_usd}")
 
         # Actualizar el costo en el producto
         producto.costo_referencia_usd = nuevo_costo_ref_usd
@@ -357,7 +356,7 @@ def actualizar_costo_desde_compra(producto_id):
         return jsonify({
             "message": "Costo de referencia actualizado exitosamente",
             "producto_id": producto_id,
-            "codigo_interno": producto.codigo_interno,
+            "id": producto.id,
             "nuevo_costo_referencia_usd": float(nuevo_costo_ref_usd)
         })
 
@@ -377,7 +376,7 @@ def actualizar_costo_desde_compra(producto_id):
 
 
 # --- Endpoint para Calcular Precio de Venta Final ---
-@productos_bp.route('/calcular_precio/<int:product_id>/calculate_price', methods=['POST'])
+@productos_bp.route('/calcular_precio/<int:product_id>', methods=['POST'])
 def calculate_price(product_id):
     """
     Calcula el precio de venta final en ARS para un producto y cantidad dados.
@@ -467,7 +466,7 @@ def calculate_price(product_id):
             "precio_venta_unitario_ars": precio_venta_unitario,
             "precio_total_calculado_ars": precio_total_calculado
         }
-        print(f"--- INFO [calculate_price]: Precio calculado para {producto.codigo_interno}: {response_data}")
+        print(f"--- INFO [calculate_price]: Precio calculado para {producto.id}: {response_data}")
         return jsonify(response_data), 200
 
     except ValueError as e: # Errores controlados (TC no válido, margen inválido, etc.)
