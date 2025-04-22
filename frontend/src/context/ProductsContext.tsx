@@ -35,7 +35,7 @@ export const ProductsProvider = ({ children }: any) => {
       const res = await fetch('https://sistemataup.online/productos/obtener_todos');
       const data = await res.json();
       setProductos(data);
-  
+    // eslint-disable-next-line
     } catch (err: any) {
       setError(err.message || 'Error al obtener productos');
       console.error('Error al obtener productos:', err);

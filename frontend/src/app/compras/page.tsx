@@ -1,14 +1,13 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { FaRegFileAlt, FaFileInvoice, FaBoxOpen, FaUserPlus } from 'react-icons/fa';
+import { FaRegFileAlt, FaFileInvoice, FaUserPlus } from 'react-icons/fa';
 
 export default function AccionesPedidos() {
   const router = useRouter();
 
   const irARegistrarPedido = () => router.push('/registrar-pedido-compra');
   const irAVerListaPedidos = () => router.push('/ver-lista-pedidos');
-  const irRegistrarIngreso = () => router.push('/registrar-ingreso-compra');
 
 
   return (
@@ -22,14 +21,6 @@ export default function AccionesPedidos() {
         >
           <FaRegFileAlt className="text-xl" />
           Soliciar Compra
-        </button>
-
-        <button
-          onClick={irRegistrarIngreso}
-          className="flex items-center justify-center gap-3 px-6 py-4 bg-white text-[#2c239d] rounded-lg shadow hover:scale-105 transition"
-        >
-          <FaBoxOpen className="text-xl" />
-          Registrar Ingreso
         </button>
 
         <button

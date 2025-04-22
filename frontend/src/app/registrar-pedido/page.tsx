@@ -218,7 +218,9 @@ export default function RegistrarPedidoPage() {
                   className="shadow border rounded w-full py-2 px-3 text-gray-700 focus:outline-none"
                 >
                   <option value={0} disabled>Seleccionar producto</option>
-                  {productosContext?.productos.map((producto: any, index: number) => (
+                  
+                  {// eslint-disable-next-line
+                  productosContext?.productos.map((producto: any, index: number) => (
                     <option value={producto.id} key={index}>
                       {producto.nombre}
                     </option>

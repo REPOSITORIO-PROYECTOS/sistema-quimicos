@@ -17,7 +17,7 @@ export function Navbar() {
 
     const navItems = [
         { href: "/", label: "Home" },
-        { href: "/acciones", label: "Acciones" },
+        { href: "/acciones", label: "Ventas" },
         { href: "/lista", label: "Lista" },
         { href: "/procesos", label: "Procesos" },
         { href: "/compras", label: "Compras" },
@@ -28,7 +28,7 @@ export function Navbar() {
             (item) => item.href === pathname
         );
         setActiveIndex(newActiveIndex);
-    }, [pathname]);
+    }, [pathname, navItems]);
 
     useEffect(() => {
         if (navRef.current) {

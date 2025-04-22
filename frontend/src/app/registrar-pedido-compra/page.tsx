@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, {  useState } from 'react';
 
-export default function RegistrarPedidoPage() {
+export default function RegistrarIngreso() {
+  
   const [fecha, setFecha] = useState('');
   const [codigo, setCodigo] = useState('');
   const [producto, setProducto] = useState('');
@@ -34,9 +35,12 @@ export default function RegistrarPedidoPage() {
     }[]
   >([]);
 
+  
+
+
   const handleAgregar = async () => {
     if (!fecha || !codigo || !producto || !cantidad || !moneda || !precioSinIva || !importeTotal || !importeAbonado) return;
-  
+   
     const nuevoPedido = {
       fecha,
       codigo,
@@ -137,16 +141,6 @@ export default function RegistrarPedidoPage() {
         </div>
 
         <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium">Código</label>
-          <input
-            value={codigo}
-            onChange={(e) => setCodigo(e.target.value)}
-            type="text"
-            className="px-4 py-3 rounded bg-white text-black"
-          />
-        </div>
-
-        <div className="flex flex-col gap-1">
           <label className="text-sm font-medium">Producto</label>
           <input
             value={producto}
@@ -172,16 +166,6 @@ export default function RegistrarPedidoPage() {
             value={cantidad}
             onChange={(e) => setCantidad(e.target.value)}
             type="number"
-            className="px-4 py-3 rounded bg-white text-black"
-          />
-        </div>
-
-        <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium">Tipo de Cambio</label>
-          <input
-            value={moneda}
-            onChange={(e) => setTipoCambio(e.target.value)}
-            type="text"
             className="px-4 py-3 rounded bg-white text-black"
           />
         </div>
@@ -218,42 +202,10 @@ export default function RegistrarPedidoPage() {
         </div>
 
         <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium">Importe Total</label>
-          <input
-            value={importeTotal}
-            onChange={(e) => setImporteTotal(e.target.value)}
-            type="number"
-            step="0.01"
-            className="px-4 py-3 rounded bg-white text-black"
-          />
-        </div>
-
-        <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium">Importe Abonado</label>
-          <input
-            value={importeAbonado}
-            onChange={(e) => setImporteAbonado(e.target.value)}
-            type="number"
-            step="0.01"
-            className="px-4 py-3 rounded bg-white text-black"
-          />
-        </div>
-
-        <div className="flex flex-col gap-1">
           <label className="text-sm font-medium">Forma de Pago</label>
           <input
             value={formaPago}
             onChange={(e) => setFormaPago(e.target.value)}
-            type="text"
-            className="px-4 py-3 rounded bg-white text-black"
-          />
-        </div>
-
-        <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium">Cheque Perteneciente a</label>
-          <input
-            value={chequePerteneciente}
-            onChange={(e) => setChequePerteneciente(e.target.value)}
             type="text"
             className="px-4 py-3 rounded bg-white text-black"
           />
@@ -290,3 +242,4 @@ export default function RegistrarPedidoPage() {
     </div>
   );
 }
+
