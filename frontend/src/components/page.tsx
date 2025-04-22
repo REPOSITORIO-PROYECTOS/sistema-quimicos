@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 interface ISolicitudes {
   fecha: string,
@@ -31,8 +31,8 @@ interface ISolicitudes {
   chequePerteneceA: string,
   nro_remito_proveedor : string,
 }
-
-export default function SolicitudIngresoPage() {
+//eslint-disable-next-line
+export default function SolicitudIngresoPage({ id }: any) {
   const [fecha, setFecha] = useState('');
   const [proveedor, setProveedor] = useState('');
   const [producto, setProducto] = useState('');
@@ -53,6 +53,34 @@ export default function SolicitudIngresoPage() {
   const [chequePerteneceA, setChequePerteneceA] = useState('');
   const [nro_remito_proveedor,setNroRemito] = useState('remitoProv');
   const [solicitudes, setSolicitudes] = useState<ISolicitudes[]>([]);
+
+
+  useEffect(() => {
+    cargarFormulario();
+  }, []);
+
+  async function cargarFormulario() {
+    try {
+      const response = await fetch(`https://sistemataup.online/ordenes_compra/obtener/${id}`);
+
+      if (!response.ok) {
+        throw new Error(`Error al traer boletas: ${response.statusText}`);
+      }
+      const data = await response.json();
+      console.log(data);
+      // Aquí deberías actualizar los estados con los datos recibidos
+      // Ejemplo:
+      // setFecha(data.fecha);
+      // setCodigo(data.codigo);
+      // etc.
+      // eslint-disable-next-line
+    } catch (err: any) {
+      console.log("error", err);
+    } 
+  }
+
+
+
 
 
   const enviarSolicitudAPI = async (solicitud: ISolicitudes) => {
@@ -134,6 +162,7 @@ export default function SolicitudIngresoPage() {
     setImporteAbonado('');
     setFormaPago('');
     setChequePerteneceA('');
+    setNroRemito('');
   };
 
   const handleComprar = () => {
@@ -197,24 +226,8 @@ export default function SolicitudIngresoPage() {
             <input type="number" value={cantidad_recepcionada} onChange={(e) => setCantidadRecepcionada(e.target.value)} className="w-full px-3 py-2 rounded bg-white text-black" />
           </div>
           <div>
-            <label>Ajuste TC</label>
-            <input value={ajusteTC} onChange={(e) => setAjusteTC(e.target.value)} className="w-full px-3 py-2 rounded bg-white text-black" />
-          </div>
-          <div>
             <label>Importe a CC</label>
             <input value={importeCC} onChange={(e) => setImporteCC(e.target.value)} className="w-full px-3 py-2 rounded bg-white text-black" />
-          </div>
-          <div>
-            <label>Cant. Recepcionada Acumulada</label>
-            <input value={cantidadAcumulada} onChange={(e) => setCantidadAcumulada(e.target.value)} className="w-full px-3 py-2 rounded bg-white text-black" />
-          </div>
-          <div>
-            <label>Ajuste x TC</label>
-            <input value={ajusteXTC} onChange={(e) => setAjusteXTC(e.target.value)} className="w-full px-3 py-2 rounded bg-white text-black" />
-          </div>
-          <div>
-            <label>Diferencia por Ajuste de Cambio</label>
-            <input value={diferenciaCambio} onChange={(e) => setDiferenciaCambio(e.target.value)} className="w-full px-3 py-2 rounded bg-white text-black" />
           </div>
           <div>
             <label>Importe Abonado</label>
