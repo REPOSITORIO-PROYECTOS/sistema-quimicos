@@ -6,9 +6,9 @@ export default function RegistrarPedidoPage() {
   const [fecha, setFecha] = useState('');
   const [codigo, setCodigo] = useState('');
   const [producto, setProducto] = useState('');
-  const [proveedor, setProveedor] = useState('');
+  const [proveedor_id, setProveedor] = useState('');
   const [cantidad, setCantidad] = useState('');
-  const [tipoCambio, setTipoCambio] = useState('');
+  const [moneda, setTipoCambio] = useState('');
   const [precioSinIva, setPrecioSinIva] = useState('');
   const [cuenta, setCuenta] = useState('');
   const [iibb, setIibb] = useState('');
@@ -21,9 +21,9 @@ export default function RegistrarPedidoPage() {
       fecha: string;
       codigo: string;
       producto: string;
-      proveedor: string;
+      proveedor_id: string;
       cantidad: string;
-      tipoCambio: string;
+      moneda: string;
       precioSinIva: string;
       cuenta: string;
       iibb: string;
@@ -35,15 +35,15 @@ export default function RegistrarPedidoPage() {
   >([]);
 
   const handleAgregar = async () => {
-    if (!fecha || !codigo || !producto || !cantidad || !tipoCambio || !precioSinIva || !importeTotal || !importeAbonado) return;
+    if (!fecha || !codigo || !producto || !cantidad || !moneda || !precioSinIva || !importeTotal || !importeAbonado) return;
   
     const nuevoPedido = {
       fecha,
       codigo,
       producto,
-      proveedor,
+      proveedor_id,
       cantidad,
-      tipoCambio,
+      moneda,
       precioSinIva,
       cuenta,
       iibb,
@@ -57,22 +57,28 @@ export default function RegistrarPedidoPage() {
       usuario_interno_id: 123, // todavia no hay endpoint
       items: [
         {
-          product_id: parseInt(codigo),
-          quantity: cantidad.toString(),
+          id: parseInt(codigo),  //HACE REFERENCIA AL ID DEL PRODUCTO
+          cantidad: cantidad.toString(),
         },
       ],
       cliente_id: 123, // todavia no hay endpoint
+      producto,
       fecha_pedido: fecha,
       direccion_entrega: '',
       cuit_cliente: '',
       observaciones: '',
+      proveedor_id:parseInt(proveedor_id),
+      moneda
     };
   
-    try {
-      const response = await fetch('http://82.25.69.192:8000/register_sale', {
+    try { 
+      console.log("entra al try");  
+      const response = await fetch('https://sistemataup.online/ordenes_compra/crear', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'X-User-Role' : 'admin',
+          'X-User-Name' : '1'
         },
         body: JSON.stringify(ventaPayload),
       });
@@ -153,7 +159,7 @@ export default function RegistrarPedidoPage() {
         <div className="flex flex-col gap-1">
           <label className="text-sm font-medium">Proveedor</label>
           <input
-            value={proveedor}
+            value={proveedor_id}
             onChange={(e) => setProveedor(e.target.value)}
             type="text"
             className="px-4 py-3 rounded bg-white text-black"
@@ -173,10 +179,9 @@ export default function RegistrarPedidoPage() {
         <div className="flex flex-col gap-1">
           <label className="text-sm font-medium">Tipo de Cambio</label>
           <input
-            value={tipoCambio}
+            value={moneda}
             onChange={(e) => setTipoCambio(e.target.value)}
-            type="number"
-            step="0.01"
+            type="text"
             className="px-4 py-3 rounded bg-white text-black"
           />
         </div>
@@ -276,7 +281,7 @@ export default function RegistrarPedidoPage() {
           <ul className="space-y-2 max-h-64 overflow-y-auto text-sm">
             {pedidos.map((pedido, idx) => (
               <li key={idx} className="border-b border-gray-300 pb-2">
-                {pedido.producto} - {pedido.cantidad} unidades - Código: {pedido.codigo} - Proveedor: {pedido.proveedor} - {pedido.fecha} - Importe Total: ${pedido.importeTotal}
+                {pedido.producto} - {pedido.cantidad} unidades - Código: {pedido.codigo} - Proveedor: {pedido.proveedor_id} - {pedido.fecha} - Importe Total: ${pedido.importeTotal}
               </li>
             ))}
           </ul>
