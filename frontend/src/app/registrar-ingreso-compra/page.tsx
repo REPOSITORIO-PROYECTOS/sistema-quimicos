@@ -76,8 +76,6 @@ export default function SolicitudIngresoPage() {
       console.error('Error al enviar la solicitud:', error);
     }
   };
-  
-
 
                                       //TODO
   const handleAgregar = async () => { //CAMBIAR TODOS LOS DATOS ESTATICOS

@@ -63,13 +63,9 @@ export default function RegistrarPedidoPage() {
   
         //const idData = await idRes.json();
         //const productId = 1;
-<<<<<<< Updated upstream
   
-        const precioRes = await fetch("http://82.25.69.192:8001/", {
-=======
         console.log("entra al try");
         const precioRes = await fetch(`https://sistemataup.online/productos/calcular_precio/${productoNombre}`, {
->>>>>>> Stashed changes
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -146,8 +142,15 @@ export default function RegistrarPedidoPage() {
   
       if (response.ok) {
         console.log("Venta registrada:", result);
-      } else {
-        console.error("Error al registrar venta:", result);
+        // Limpiar formulario
+        setFormData({
+          nombre: "",
+          cuit: "",
+          direccion: "",
+          fechaEmision: "",
+          fechaEntrega: "",
+        });
+        setProductos([{ producto: 0, qx: 0, precio: 0, total: 0 }]);
       }
     } catch (err) {
       console.error("Error en la petición:", err);
@@ -206,24 +209,20 @@ export default function RegistrarPedidoPage() {
                 placeholder="Producto"
                 value={item.producto}
                 onChange={(e) => handleProductoChange(index, e)}
-<<<<<<< Updated upstream
               />
               */}
-              <select name="" id="" onChange={(e) => handleProductoChange(index, e)}>
-              {
-                  productosContext?.productos.map((producto: any, index: number) => {
-                    return <option value={producto.id} key={index}>
+              <select
+                  name="producto"
+                  value={item.producto}
+                  onChange={(e) => handleProductoChange(index, e)}
+                  className="shadow border rounded w-full py-2 px-3 text-gray-700 focus:outline-none"
+                >
+                  <option value={0} disabled>Seleccionar producto</option>
+                  {productosContext?.productos.map((producto: any, index: number) => (
+                    <option value={producto.id} key={index}>
                       {producto.nombre}
                     </option>
-=======
-              /> */}
-              <select name="producto" id="producto" onChange={(e) => handleProductoChange(index, e)}>
-                {
-                  productosContext?.productos.map((producto, index)=>{
-                    return <option value={producto.id} key={index}>{producto.nombre}</option>
->>>>>>> Stashed changes
-                  })
-              }
+                  ))}
               </select>
               {/* Cantidad (Qx) */}
               <input

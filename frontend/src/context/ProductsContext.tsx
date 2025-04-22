@@ -30,21 +30,6 @@ export const ProductsProvider = ({ children }: any) => {
   const fetchProductos = async () => {
     try {
       setLoading(true);
-<<<<<<< Updated upstream
-      const res = await fetch('http://82.25.69.192:8001/productos/obtener_todos'); // O tu URL completa si es un backend externo
-      const data = await res.json();
-      setProductos(data);
-      if (data.status === 'success') {
-        
-
-      } else {
-        console.log("error al obtener los productos");
-        setError(data.message || 'Error al obtener productos');
-      }
-    } catch (err) {
-      setError('Error de red al obtener productos');
-      console.error(err);
-=======
       setError(null);
   
       const res = await fetch('https://sistemataup.online/productos/obtener_todos');
@@ -54,7 +39,6 @@ export const ProductsProvider = ({ children }: any) => {
     } catch (err: any) {
       setError(err.message || 'Error al obtener productos');
       console.error('Error al obtener productos:', err);
->>>>>>> Stashed changes
     } finally {
       setLoading(false);
     }
