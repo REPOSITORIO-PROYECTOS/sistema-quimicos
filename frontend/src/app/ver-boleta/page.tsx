@@ -8,7 +8,7 @@ type Boleta = {
   monto_final_con_recargos: number;
   fecha_pedido: string;
   usuario_nombre: string;
-  direccion: string;
+  direccion_entrega: string;
 };
 
 type Pagination = {
@@ -83,7 +83,7 @@ export default function ListaBoletas() {
                   <span className="text-sm">{`Nº ${boleta.venta_id.toString().padStart(4, '0')}`}</span>
                   <span className="text-sm">${boleta.monto_final_con_recargos.toFixed(2)}</span>
                   <span className="text-sm">{boleta.fecha_pedido}</span>
-                  <span className="text-sm truncate">{boleta.direccion}</span>
+                  <span className="text-sm truncate">{boleta.direccion_entrega}</span>
                   <span className="text-sm truncate">{boleta.usuario_nombre}</span>
                   <div className="flex items-center justify-center gap-2">
                     <button
