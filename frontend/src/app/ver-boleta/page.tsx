@@ -1,5 +1,6 @@
 "use client";
 
+import FormularioActualizarPedido from '@/components/formularioActualizacionPedido';
 import { useState, useEffect } from 'react';
 
 type Boleta = {
@@ -23,6 +24,7 @@ export default function ListaBoletas() {
   const [boletas, setBoletas] = useState<Boleta[]>([]);
   const [pagination, setPagination] = useState<Pagination | null>(null);
   const [loading, setLoading] = useState(true);
+  const [idBoleta, setIdBoleta] = useState<number|undefined>();
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
 
@@ -50,7 +52,10 @@ export default function ListaBoletas() {
   }, [page]);
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-indigo-900">
+    <>
+      {
+        idBoleta === undefined ? (
+          <div className="flex flex-col items-center justify-center min-h-screen bg-indigo-900">
       <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-5xl">
         <h2 className="text-3xl font-semibold mb-6 text-center text-indigo-800">
           Lista de Pedidos
@@ -83,7 +88,7 @@ export default function ListaBoletas() {
                   <div className="flex items-center justify-center gap-2">
                     <button
                       className="text-indigo-700 hover:text-indigo-900 text-xl"
-                      onClick={() => alert(`Acción para boleta ${boleta.venta_id}`)}
+                      onClick={() => setIdBoleta(boleta.venta_id)}
                     >
                       ⚙️
                     </button>
@@ -125,5 +130,8 @@ export default function ListaBoletas() {
         )}
       </div>
     </div>
+        ):<FormularioActualizarPedido id={idBoleta}/>
+      }
+    </>
   );
 }

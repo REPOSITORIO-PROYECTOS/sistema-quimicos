@@ -1,9 +1,8 @@
 "use client";
-//TODO
-//meter dentro del formulario el producto, que no se salga
-//recargar la pagina o limpiar los datos cuando se agrega un pedido de compra en acciones
+
 import { useProductsContext } from "@/context/ProductsContext";
-import {  useState } from "react";
+import React, { useEffect, useState } from 'react';
+
 type ProductoI = {
   producto: number;
   qx: number;
@@ -22,74 +21,109 @@ interface IFormData {
   vuelto: number
 }
 
-export default function RegistrarPedidoPage() {
-  const [formData, setFormData] = useState<IFormData>({
-    nombre: "",
-    cuit: "",
-    direccion: "",
-    fechaEmision: "",
-    fechaEntrega: "",
-    formaPago:"",
-    montoPagado:0,
-    vuelto:0,
-  });
+ export default function RegistrarPedidoPage({id}:{id:number|undefined}) {
+   const [formData, setFormData] = useState<IFormData>({
+     nombre: "",
+     cuit: "",
+     direccion: "",
+     fechaEmision: "",
+     fechaEntrega: "",
+     formaPago:"",
+     montoPagado:0,
+     vuelto:0,
+   });
 
-  const [productos, setProductos] = useState<ProductoI[]>([
-    { producto: 0, qx: 0, precio: 0, total: 0 },
-  ]);
+   
+  useEffect(() => {
+    cargarFormulario();
+  }, []);
 
-  const productosContext = useProductsContext();
 
-  const handleFormChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-  };
 
-  const handleProductoChange = async (
-    index: number,
-    e: React.ChangeEvent<HTMLInputElement> | React.ChangeEvent<HTMLSelectElement>
-  ) => {
-    const { name, value } = e.target;
-    const nuevosProductos = [...productos];
-  
-    if (name === "qx") {
-      nuevosProductos[index].qx = parseInt(value) || 0;
-    } else if (name === "producto") {
-      nuevosProductos[index].producto = parseInt(value);
-    }
-
-    const productoNombre = nuevosProductos[index].producto;
-    const cantidad = nuevosProductos[index].qx;
-    console.log("antes del if");
-    console.log(cantidad);
-    if (productoNombre && cantidad > 0) {
-      try {   
-        console.log("entra al try");
-        const precioRes = await fetch(`https://sistemataup.online/productos/calcular_precio/${productoNombre}`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            producto_id: productoNombre,
-            quantity: cantidad,
-          }),
-        });
-  
-        if (!precioRes.ok) throw new Error("Error al calcular el precio");
-  
-        const precioData = await precioRes.json();
-        nuevosProductos[index].precio = precioData.precio_venta_unitario_ars;
-        nuevosProductos[index].total = precioData.precio_total_calculado_ars;
-      } catch (error) {
-        console.error("Error en la carga de producto:", error);
-        nuevosProductos[index].precio = 0;
-        nuevosProductos[index].total = 0;
-      }
-    }
-  
+  async function cargarFormulario(){ 
+    const response = await fetch(`https://sistemataup.online/ventas/obtener/${id}`);
+    const datos = await response.json();
+    console.log(datos);
+    console.log("el vuelto es :   ",datos.vuelto_calculado);
+    let var_vuelto = datos.vuelto_calculado;
+    if (var_vuelto == null) var_vuelto = 0;
+    setFormData({
+      nombre: datos.usuario_nombre,
+      cuit: datos.cuit_cliente,
+      direccion: datos.direccion_entrega,
+      fechaEmision: formatearFecha(datos.fecha_registro),
+      fechaEntrega: formatearFecha(datos.fecha_pedido),
+      formaPago:datos.forma_pago,
+      montoPagado:datos.monto_pagado_cliente,
+      vuelto:var_vuelto,
+    });
+    // eslint-disable-next-line
+    const nuevosProductos: ProductoI[] = datos.detalles.map((detalle: any) => ({
+      producto: detalle.producto_id,
+      qx: detalle.cantidad,
+      precio: detalle.precio_unitario_venta_ars,
+      total: detalle.precio_total_item_ars  
+    }));  
     setProductos(nuevosProductos);
-  };
+  }
+  
+ 
+   const [productos, setProductos] = useState<ProductoI[]>([
+     { producto: 0, qx: 0, precio: 0, total: 0 },
+   ]);
+ 
+   const productosContext = useProductsContext();
+ 
+   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+     const { name, value } = e.target;
+     setFormData((prev) => ({ ...prev, [name]: value }));
+   };
+ 
+   const handleProductoChange = async (
+     index: number,
+     e: React.ChangeEvent<HTMLInputElement> | React.ChangeEvent<HTMLSelectElement>
+   ) => {
+     const { name, value } = e.target;
+     const nuevosProductos = [...productos];
+   
+     if (name === "qx") {
+       nuevosProductos[index].qx = parseInt(value) || 0;
+     } else if (name === "producto") {
+       nuevosProductos[index].producto = parseInt(value);
+     }
+ 
+     const productoNombre = nuevosProductos[index].producto;
+     const cantidad = nuevosProductos[index].qx;
+     console.log("antes del if");
+     console.log(cantidad);
+     if (productoNombre && cantidad > 0) {
+       try {   
+         console.log("entra al try");
+         const precioRes = await fetch(`https://sistemataup.online/productos/calcular_precio/${productoNombre}`, {
+           method: "POST",
+           headers: {
+             "Content-Type": "application/json",
+           },
+           body: JSON.stringify({
+             producto_id: productoNombre,
+             quantity: cantidad,
+           }),
+         });
+   
+         if (!precioRes.ok) throw new Error("Error al calcular el precio");
+   
+         const precioData = await precioRes.json();
+         nuevosProductos[index].precio = precioData.precio_venta_unitario_ars;
+         nuevosProductos[index].total = precioData.precio_total_calculado_ars;
+       } catch (error) {
+         console.error("Error en la carga de producto:", error);
+         nuevosProductos[index].precio = 0;
+         nuevosProductos[index].total = 0;
+       }
+     }
+   
+     setProductos(nuevosProductos);
+   };
   
 
   const agregarProducto = () => {
@@ -105,8 +139,6 @@ export default function RegistrarPedidoPage() {
   const calcularTotal = () => {
     return productos.reduce((total, item) => total + (item.total || 0), 0);
   };
-
-
 
   const handleSubmit = async (e: React.FormEvent ) => {
     e.preventDefault();
@@ -129,8 +161,8 @@ export default function RegistrarPedidoPage() {
     };
   
     try {
-      const response = await fetch("https://sistemataup.online/ventas/registrar", {
-        method: "POST",
+      const response = await fetch(`https://sistemataup.online/ventas/actualizar/${id}`, {
+        method: "PUT",
         headers: {
           "Content-Type": "application/json",
         },
@@ -197,6 +229,16 @@ export default function RegistrarPedidoPage() {
           console.error("Error en fetch a API Validación:", error);
         }
   };}
+  
+  
+  
+  const formatearFecha = (fechaOriginal: string): string => {
+    const fecha = new Date(fechaOriginal);
+    const year = fecha.getFullYear();
+    const month = String(fecha.getMonth() + 1).padStart(2, '0');
+    const day = String(fecha.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
 
 
   return (
@@ -206,34 +248,35 @@ export default function RegistrarPedidoPage() {
         <form onSubmit={handleSubmit} className="space-y-6"> {/* Espaciado entre secciones */}
 
           {/* --- Datos del cliente y Pedido --- */}
-          <fieldset className="border p-4 rounded-md">
-              <legend className="text-lg font-medium text-gray-700 px-2">Datos Cliente/Pedido</legend>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {["nombre", "cuit", "direccion", "fechaEmision", "fechaEntrega"].map((campo) => (
-                    <div key={campo}>
-                    <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor={campo}>
-                        {campo === "cuit"
-                        ? "CUIT (Opcional)"
-                        : campo === "fechaEmision"
-                        ? "Fecha de Emisión"
-                        : campo === "fechaEntrega"
-                        ? "Fecha Estimada Entrega"
-                        : campo.charAt(0).toUpperCase() + campo.slice(1)}
-                    </label>
-                    <input
-                        className="shadow-sm appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                        type={campo.includes("fecha") ? "date" : "text"}
-                        name={campo}
-                        id={campo}
-                        // eslint-disable-next-line
-                        value={(formData as any)[campo]} // Conectado a formData
-                        onChange={handleFormChange} // Usa el handler general
-                        required={campo === "fechaEntrega"}
-                    />
-                    </div>
-                ))}
-              </div>
-          </fieldset>
+        <fieldset className="border p-4 rounded-md">
+            <legend className="text-lg font-medium text-gray-700 px-2">Datos Cliente/Pedido</legend>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {["nombre", "cuit", "direccion", "fechaEmision", "fechaEntrega"].map((campo) => (
+                <div key={campo}>
+                <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor={campo}>
+                    {campo === "cuit"
+                    ? "CUIT (Opcional)"
+                    : campo === "fechaEmision"
+                    ? "Fecha de Emisión"
+                    : campo === "fechaEntrega"
+                    ? "Fecha Estimada Entrega"
+                    : campo.charAt(0).toUpperCase() + campo.slice(1)}
+                </label>
+                <input
+                    className="shadow-sm appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed" // Añadí estilos para disabled
+                    type={campo.includes("fecha") ? "date" : "text"}
+                    name={campo}
+                    // eslint-disable-next-line
+                    id={campo}
+                    // eslint-disable-next-line
+                    value={(formData as any)[campo]} // Conectado a formData
+                    onChange={handleFormChange} // Usa el handler general
+                    disabled={campo === "nombre" || campo === "fechaEmision"}
+                />
+                </div>
+            ))}
+            </div>
+        </fieldset>
 
           {/* --- Productos --- */}
           <fieldset className="border p-4 rounded-md">
@@ -254,16 +297,16 @@ export default function RegistrarPedidoPage() {
                     {/* Select Producto */}
                     <div className="flex-1">
                         <label className="md:hidden text-xs font-medium text-gray-500">Producto</label>
-                        <select
+                        <select disabled
                             name="producto"
                             value={item.producto}
                             onChange={(e) => handleProductoChange(index, e)}
                             className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                             required
                         >
-                        
                         <option value={0} disabled> -- Seleccionar -- </option>
-                        {// eslint-disable-next-line
+                        {
+                          // eslint-disable-next-line
                         productosContext?.productos.map((producto: any) => (
                             <option value={producto.id} key={producto.id}>
                             {producto.nombre} (ID: {producto.id})
@@ -274,7 +317,7 @@ export default function RegistrarPedidoPage() {
                     {/* Input Cantidad (Qx) */}
                      <div className="w-full md:w-20">
                         <label className="md:hidden text-xs font-medium text-gray-500">Cantidad</label>
-                        <input
+                        <input disabled
                             className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-center focus:outline-none focus:ring-1 focus:ring-indigo-500"
                             type="number"
                             name="qx"
@@ -288,31 +331,31 @@ export default function RegistrarPedidoPage() {
                     {/* Input Precio (calculado) */}
                     <div className="w-full md:w-24">
                         <label className="md:hidden text-xs font-medium text-gray-500">Precio Unit.</label>
-                        <input
+                        <input disabled
                             className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-right bg-gray-100 focus:outline-none"
                             type="text"
                             name="precio"
                             placeholder="$ 0.00"
-                            value={`$ ${item.precio.toFixed(2)}`}
+                            value={`$ ${item.precio}`}
                             readOnly // Cambiado a readOnly
                         />
                      </div>
                     {/* Input Total (calculado) */}
                      <div className="w-full md:w-24">
                         <label className="md:hidden text-xs font-medium text-gray-500">Total</label>
-                        <input
+                        <input disabled
                             className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-right bg-gray-100 focus:outline-none"
                             type="text"
                             name="total"
                             placeholder="$ 0.00"
-                            value={`$ ${item.total.toFixed(2)}`}
+                            value={`$ ${item.total}`}
                             readOnly // Cambiado a readOnly
                         />
                      </div>
                     {/* Botón Eliminar Producto */}
                     <div className="w-full md:w-8 flex justify-end md:justify-center items-center pt-2 md:pt-0">
                         {productos.length > 1 && (
-                        <button
+                        <button disabled
                             type="button"
                             onClick={() => eliminarProducto(index)}
                             className="text-red-500 hover:text-red-700 font-bold text-2xl leading-none p-1 rounded-full hover:bg-red-100"
@@ -328,7 +371,7 @@ export default function RegistrarPedidoPage() {
 
 
               {/* Botón Agregar Producto */}
-              <button
+              <button disabled
                 type="button"
                 onClick={agregarProducto}
                 className="mt-4 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 text-sm"
@@ -385,7 +428,7 @@ export default function RegistrarPedidoPage() {
                         type="text" 
                         name="vuelto" 
                         className="w-full bg-gray-100 shadow-sm border rounded py-2 px-3 text-gray-700 focus:outline-none text-right" // Alineado derecha
-                        value={`$ ${formData.vuelto.toFixed(2)}`} 
+                        value={`$ ${formData.vuelto}`} 
                         readOnly 
                     />
                 </div>
@@ -395,7 +438,7 @@ export default function RegistrarPedidoPage() {
                     <label className="block text-sm font-medium text-gray-500 mb-1">Total Pedido</label>
                      <input
                       type="text"
-                      value={`$ ${calcularTotal().toFixed(2)}`} 
+                      value={`$ ${calcularTotal()}`} 
                       readOnly 
                       className="w-full bg-gray-100 shadow-sm border rounded py-2 px-3 text-gray-900 text-right font-bold text-lg focus:outline-none" // Estilo resaltado
                     />
@@ -418,7 +461,7 @@ export default function RegistrarPedidoPage() {
               type="submit"
               className="bg-green-600 text-white px-6 py-2 rounded-md hover:bg-green-700 font-semibold"
             >
-              Registrar Pedido
+              Actualizar pedido
             </button>
           </div>
         </form>

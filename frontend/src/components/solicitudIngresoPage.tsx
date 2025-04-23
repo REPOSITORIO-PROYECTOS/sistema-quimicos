@@ -54,7 +54,7 @@ export default function SolicitudIngresoPage({ id }: any) {
   const [chequePerteneceA, setChequePerteneceA] = useState('');
   const [nro_remito_proveedor,setNroRemito] = useState('remitoProv');
   const [solicitudes, setSolicitudes] = useState<ISolicitudes[]>([]);
-  const { productos, loading, error } = useProductsContext();
+  const { productos} = useProductsContext();
 
 
   useEffect(() => {
@@ -73,10 +73,11 @@ export default function SolicitudIngresoPage({ id }: any) {
       console.log(data);
       setFecha(formatearFecha(data.fecha_creacion));
       setCantidadRecepcionada(data.items[0].cantidad_recibida);
-      let cant = data.items[0].cantidad_solicitada;
+      const cant = data.items[0].cantidad_solicitada;
       setCantidad(data.items[0].cantidad_solicitada);
       setProveedor(data.proveedor_nombre);
       cargarCamposProducto(data.items[0].producto_id,cant);
+      // eslint-disable-next-line
     } catch (err: any) {
       console.log("error", err);
     } 
@@ -103,6 +104,7 @@ export default function SolicitudIngresoPage({ id }: any) {
 
       calcular_precio(id_producto,cantidad_f);
     }
+    // eslint-disable-next-line
     catch (err: any) {
       console.log("error", err);
     } 
@@ -129,6 +131,7 @@ export default function SolicitudIngresoPage({ id }: any) {
       const precioData = await response.json();
       setImporteTotal(precioData.precio_total_calculado_ars);
     }
+    // eslint-disable-next-line
     catch (err: any) {
       console.log("error", err);
     } 
@@ -257,7 +260,8 @@ export default function SolicitudIngresoPage({ id }: any) {
               >
                 <option value={0} disabled>Seleccionar producto</option>
 
-                {productos.map((producto: any, index: number) => (
+                {// eslint-disable-next-line
+                productos.map((producto: any, index: number) => (
                   <option value={producto.id} key={index}>
                     {producto.nombre}
                   </option>

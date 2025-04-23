@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import SolicitudIngresoPage from '@/components/page';
+import SolicitudIngresoPage from '@/components/solicitudIngresoPage';
 
 type Boleta = {
   id: number;
