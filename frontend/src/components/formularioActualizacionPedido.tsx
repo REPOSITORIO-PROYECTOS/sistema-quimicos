@@ -33,7 +33,8 @@ interface IFormData {
      vuelto:0,
    });
 
-   
+   const [errorMensaje, setErrorMensaje] = useState('');
+
   useEffect(() => {
     cargarFormulario();
   }, []);
@@ -142,7 +143,7 @@ interface IFormData {
 
   const handleSubmit = async (e: React.FormEvent ) => {
     e.preventDefault();
-  
+    setErrorMensaje('');
     const data = {
       usuario_interno_id: 1, //aca hay que cambiarlo  por el numero de usuario
       items: productos.map((item) => ({
@@ -170,7 +171,9 @@ interface IFormData {
       });
   
       const result = await response.json();
-  
+      if(!response.ok){
+        setErrorMensaje(result?.mensaje || 'Error al enviar el formulario');
+      }
       if (response.ok) {
         console.log("Venta registrada:", result);
         // Limpiar formulario
@@ -245,6 +248,9 @@ interface IFormData {
     <div className="flex items-center justify-center min-h-screen bg-indigo-900 py-10"> {/* Añadido padding */}
       <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-3xl"> {/* Ancho ajustado */}
         <h2 className="text-2xl font-semibold mb-6 text-center text-indigo-800">Registrar Pedido</h2>
+        {errorMensaje && (
+      <div className="text-red-600 font-semibold mb-4">{errorMensaje}</div>)}
+
         <form onSubmit={handleSubmit} className="space-y-6"> {/* Espaciado entre secciones */}
 
           {/* --- Datos del cliente y Pedido --- */}

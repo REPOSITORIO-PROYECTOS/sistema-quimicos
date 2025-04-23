@@ -13,6 +13,11 @@ export default function AccionesPage() {
     router.push('/ver-boleta');
   };
 
+  const handleClientes = () => {
+    router.push('/opciones-cliente');
+  };
+
+
   return (
     <div className="min-h-screen flex items-start justify-center pt-20 bg-indigo-900">
       <div className="text-center">
@@ -35,13 +40,15 @@ export default function AccionesPage() {
           </button>
           <button
             className="bg-white text-indigo-800 font-medium py-3 px-6 rounded-lg shadow hover:bg-indigo-100 transition-all flex items-center justify-center gap-2"
-          >
+            
+         >
             📦 Pedidos
           </button>
           <button
             className="bg-white text-indigo-800 font-medium py-3 px-6 rounded-lg shadow hover:bg-indigo-100 transition-all flex items-center justify-center gap-2"
+            onClick={handleClientes}
           >
-            👤 Registrar Cliente
+            👤 Clientes
           </button>
         </div>
       </div>

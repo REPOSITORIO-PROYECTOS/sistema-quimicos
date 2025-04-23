@@ -117,7 +117,7 @@ export default function RegistrarPedidoPage() {
         producto_id: item.producto, 
         cantidad: item.qx.toString(), 
       })),
-      cliente_id: formData.cuit ? 123 : null, 
+      cliente_id: formData.cuit ? 1 : null, 
       fecha_pedido: formData.fechaEntrega,
       fecha_emision: formData.fechaEmision,
       direccion_entrega: formData.direccion,

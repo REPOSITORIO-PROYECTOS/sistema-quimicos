@@ -2,6 +2,7 @@
 
 import { useProductsContext } from "@/context/ProductsContext";
 import React, { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 
 interface ISolicitudes {
   fecha: string,
@@ -55,7 +56,10 @@ export default function SolicitudIngresoPage({ id }: any) {
   const [nro_remito_proveedor,setNroRemito] = useState('remitoProv');
   const [solicitudes, setSolicitudes] = useState<ISolicitudes[]>([]);
   const { productos} = useProductsContext();
-
+  const [errorMensaje, setErrorMensaje] = useState('');
+  let problema = false;
+  
+  const router = useRouter();
 
   useEffect(() => {
     cargarFormulario();
@@ -150,7 +154,8 @@ export default function SolicitudIngresoPage({ id }: any) {
 
   const enviarSolicitudAPI = async (solicitud: ISolicitudes) => {
     try { 
-      console.log(solicitud);                                                                                    
+      problema = false;
+      setErrorMensaje('');                                                                             
       const response = await fetch(`https://sistemataup.online/ordenes_compra/recibir/${id}/recibir`, { 
         method: 'PUT',
         headers: {
@@ -160,7 +165,13 @@ export default function SolicitudIngresoPage({ id }: any) {
         },
         body: JSON.stringify(solicitud),
       });
-  
+      const data = await response.json();
+      if (!response.ok) {
+        problema = true;
+        // Si la respuesta tiene mensaje de error, lo mostramos
+        setErrorMensaje(data.mensaje || 'Error al enviar el formulario');
+        return;
+      }
       if (!response.ok) {
         throw new Error('Error al enviar la solicitud');
       }
@@ -229,6 +240,8 @@ export default function SolicitudIngresoPage({ id }: any) {
     setFormaPago('');
     setChequePerteneceA('');
     setNroRemito('');
+    if(!problema)
+      router.push('/compras');
   };
 
   const handleComprar = () => {
@@ -239,12 +252,13 @@ export default function SolicitudIngresoPage({ id }: any) {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-[#20119d] px-4 py-10">
       <h1 className="text-white text-3xl font-bold mb-8 text-center">Solicitud de Ingreso</h1>
-
+      {errorMensaje && (
+      <div className="text-red-600 font-semibold mb-4">{errorMensaje}</div>)}
       <div className="flex flex-col gap-4 w-full max-w-4xl text-white">
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           <div>
             <label>Fecha *</label>
-            <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className="w-full px-3 py-2 rounded bg-white text-black" />
+            <input required type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className="w-full px-3 py-2 rounded bg-white text-black" />
           </div>
           <div>
             <label>Proveedor</label>
@@ -252,8 +266,9 @@ export default function SolicitudIngresoPage({ id }: any) {
           </div>
           <div>
             <label>Producto *</label>
-            <select
+            <select 
                 name="producto"
+                required
                 value={producto}
                 onChange={(e) => setProducto(e.target.value)}
                 className="w-full px-3 py-2 rounded bg-white text-black"
@@ -275,11 +290,11 @@ export default function SolicitudIngresoPage({ id }: any) {
           </div>
           <div>
             <label>Moneda *</label>
-            <input value={moneda} onChange={(e) => setMoneda(e.target.value)} className="w-full px-3 py-2 rounded bg-white text-black" />
+            <input required value={moneda} onChange={(e) => setMoneda(e.target.value)} className="w-full px-3 py-2 rounded bg-white text-black" />
           </div>
           <div>
             <label>Cantidad *</label>
-            <input type="number" value={cantidad} onChange={(e) => setCantidad(e.target.value)} className="w-full px-3 py-2 rounded bg-white text-black" />
+            <input required type="number" value={cantidad} onChange={(e) => setCantidad(e.target.value)} className="w-full px-3 py-2 rounded bg-white text-black" />
           </div>
           <div>
             <label>Tipo</label>
