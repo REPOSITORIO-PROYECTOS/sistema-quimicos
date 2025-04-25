@@ -2,7 +2,7 @@
 
 import { useProductsContext } from "@/context/ProductsContext";
 import React, { useEffect, useState } from 'react';
-const cliente_id = 0;
+let cliente_id = 0;
 type ProductoI = {
   producto: number;
   qx: number;
@@ -19,10 +19,10 @@ interface IFormData {
   formaPago: string;
   montoPagado: number;
   vuelto: number,
-  cliente_id:number,
+  cliente_id:number
 }
 
- export default function RegistrarPedidoPage({id}:{id:number|undefined}) {
+ export default function RegistrarPedidoPuertaPage({id}:{id:number|undefined}) {
    const [formData, setFormData] = useState<IFormData>({
      nombre: "",
      cuit: "",
@@ -50,6 +50,7 @@ interface IFormData {
     console.log("el vuelto es :   ",datos.vuelto_calculado);
     let var_vuelto = datos.vuelto_calculado;
     if (var_vuelto == null) var_vuelto = 0;
+    cliente_id = datos.cliente_id;
     setFormData({
       nombre: datos.usuario_nombre,
       cuit: datos.cuit_cliente,
@@ -59,7 +60,7 @@ interface IFormData {
       formaPago:datos.forma_pago,
       montoPagado:datos.monto_pagado_cliente,
       vuelto:var_vuelto,
-      cliente_id:datos.cliente_id
+      cliente_id:datos.cliente_id,
     });
     // eslint-disable-next-line
     const nuevosProductos: ProductoI[] = datos.detalles.map((detalle: any) => ({
@@ -154,9 +155,9 @@ interface IFormData {
         cantidad: item.qx.toString(), 
       })),
       cliente_id,
-      fecha_pedido: formData.fechaEntrega,
+      fecha_pedido: "",
       fecha_emision: formData.fechaEmision,
-      direccion_entrega: formData.direccion,
+      direccion_entrega: "",
       cuit_cliente: formData.cuit,
       monto_pagado_cliente:formData.montoPagado,
       forma_pago:formData.formaPago,
@@ -189,7 +190,7 @@ interface IFormData {
           formaPago:"",
           montoPagado:0,
           vuelto:0,
-          cliente_id:cliente_id
+          cliente_id:cliente_id,
         });
         setProductos([{ producto: 0, qx: 0, precio: 0, total: 0 }]);
       }
@@ -261,15 +262,13 @@ interface IFormData {
         <fieldset className="border p-4 rounded-md">
             <legend className="text-lg font-medium text-gray-700 px-2">Datos Cliente/Pedido</legend>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {["nombre", "cuit", "direccion", "fechaEmision", "fechaEntrega"].map((campo) => (
+            {["nombre", "cuit",  "fechaEmision"].map((campo) => (
                 <div key={campo}>
                 <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor={campo}>
                     {campo === "cuit"
                     ? "CUIT (Opcional)"
                     : campo === "fechaEmision"
                     ? "Fecha de Emisión"
-                    : campo === "fechaEntrega"
-                    ? "Fecha Estimada Entrega"
                     : campo.charAt(0).toUpperCase() + campo.slice(1)}
                 </label>
                 <input

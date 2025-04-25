@@ -26,9 +26,10 @@ interface IFormData {
   formaPago: string;
   montoPagado: number;
   vuelto: number;
+
 }
 
-export default function RegistrarPedidoPage() {
+export default function RegistrarPedidoPuertaPage() {
   // --- PASO 3: Consumir el contexto de clientes ---
   const {
     clientes,
@@ -71,10 +72,8 @@ export default function RegistrarPedidoPage() {
       clienteId: selectedId || null, // Guarda el ID seleccionado (o null si es la opción default)
       // Autocompleta CUIT y Dirección al seleccionar cliente
       cuit: selectedCliente ? String(selectedCliente.cuit) : "",
-      direccion: selectedCliente?.direccion || "",
       // Mantenemos el resto de los campos del estado anterior
       fechaEmision: prev.fechaEmision,
-      fechaEntrega: prev.fechaEntrega,
       formaPago: prev.formaPago,
       montoPagado: prev.montoPagado,
       vuelto: prev.vuelto,
@@ -162,14 +161,13 @@ export default function RegistrarPedidoPage() {
       })),
       // --- Usar el ID convertido ---
       cliente_id: clienteIdParaApi,
-      fecha_pedido: formData.fechaEntrega,
       fecha_emision: formData.fechaEmision,
-      // --- Usar CUIT y Dirección del estado formData (que pueden haber sido editados) ---
-      direccion_entrega: formData.direccion,
       cuit_cliente: formData.cuit,
       monto_pagado_cliente: formData.montoPagado,
       forma_pago: formData.formaPago,
       vuelto: formData.vuelto,
+      direccion_entrega:"",
+      fechaEntrega:"",
       observaciones: "",
     };
 
@@ -293,7 +291,7 @@ export default function RegistrarPedidoPage() {
               {/* --- PASO 8: Modificar el renderizado del map --- */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4"> {/* Cambiado a 3 cols para mejor layout */}
                 {/* Mapeamos los campos originales, pero interceptamos "nombre" */}
-                {["cliente", "cuit", "direccion", "fechaEmision", "fechaEntrega"].map((campo) => {
+                {["cliente", "cuit", "fechaEmision"].map((campo) => {
                   // --- RENDERIZADO CONDICIONAL PARA EL SELECT ---
                   if (campo === "cliente") {
                     return (
@@ -328,12 +326,9 @@ export default function RegistrarPedidoPage() {
                           ? "CUIT" // Ya no es opcional si se autocompleta
                           : campo === "fechaEmision"
                           ? "Fecha Emisión"
-                          : campo === "fechaEntrega"
-                          ? "Fecha Entrega Est."
                           : campo.charAt(0).toUpperCase() + campo.slice(1)}
-
                          {/* Indicador si el dato viene del cliente */}
-                         {(campo === 'cuit' || campo === 'direccion') && formData.clienteId && <span className="text-xs text-gray-500"> (del cliente)</span>}
+                         {(campo === 'cuit') && formData.clienteId && <span className="text-xs text-gray-500"> (del cliente)</span>}
                       </label>
                       <input
                         className="shadow-sm appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
@@ -341,12 +336,9 @@ export default function RegistrarPedidoPage() {
                         name={campo} // <- name coincide con la key en formData
                         id={campo}
                         value={//eslint-disable-next-line
-                          (formData as any)[campo]} // Conectado a formData (cuit, direccion, fechas)
+                          (formData as any)[campo]} 
                         onChange={handleFormChange} // <-- USA EL HANDLER GENERAL para permitir edición manual
-                        required={campo === "fechaEntrega" || campo === "direccion"}
-                         // Requerido solo para fecha entrega
-                        placeholder={//eslint-disable-next-line
-                          campo === 'cuit' ? 'Ingrese CUIT' : campo === 'direccion' ? 'Ingrese Dirección' : ''}
+                        placeholder={'Ingrese CUIT'}
                       />
                     </div>
                   );

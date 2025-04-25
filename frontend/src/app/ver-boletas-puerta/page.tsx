@@ -1,6 +1,6 @@
 "use client";
 
-import FormularioActualizarPedido from '@/components/formularioActualizacionPedido';
+import FormularioActualizarPedidoPuerta from '@/components/formularioActualizarPedidoPuerta';
 import { useState, useEffect } from 'react';
 
 type Boleta = {
@@ -20,7 +20,7 @@ type Pagination = {
   has_prev: boolean;
 };
 
-export default function ListaBoletas() {
+export default function ListaBoletasPuerta() {
   const [boletas, setBoletas] = useState<Boleta[]>([]);
   const [pagination, setPagination] = useState<Pagination | null>(null);
   const [loading, setLoading] = useState(true);
@@ -39,11 +39,11 @@ export default function ListaBoletas() {
         const data = await response.json();
         console.log(data.ventas);
         let filtrados = data.ventas.filter(
-          (item: { direccion_entrega: string | null }) =>
-            item.direccion_entrega && item.direccion_entrega.trim() !== ""
-        );
-        
-        //eslint-disable-next-line
+            (item: { direccion_entrega: string | null }) =>
+              !item.direccion_entrega || item.direccion_entrega.trim() === ""
+          );
+          
+          //eslint-disable-next-line
         filtrados = filtrados.map((item: { fecha_pedido?: string; [key: string]: any }) => {
           const fechaFormateada = item.fecha_pedido
             ? new Date(item.fecha_pedido).toLocaleDateString("es-AR", {
@@ -93,8 +93,6 @@ export default function ListaBoletas() {
               <li className="grid grid-cols-6 gap-4 items-center bg-indigo-100 p-4 rounded-md font-semibold text-indigo-800 text-sm uppercase">
                 <span>Nº Boleta</span>
                 <span>Monto</span>
-                <span>Fecha Pedido</span>
-                <span>Dirección</span>
                 <span>Nombre / Razón Social</span>
                 <span className="text-center">Acción</span>
               </li>
@@ -104,8 +102,6 @@ export default function ListaBoletas() {
                 <li key={boleta.venta_id} className="grid grid-cols-6 gap-4 items-center bg-gray-100 p-4 rounded-md">
                   <span className="text-sm">{`Nº ${boleta.venta_id.toString().padStart(4, '0')}`}</span>
                   <span className="text-sm">${boleta.monto_final_con_recargos.toFixed(2)}</span>
-                  <span className="text-sm">{boleta.fecha_pedido}</span>
-                  <span className="text-sm truncate">{boleta.direccion_entrega}</span>
                   <span className="text-sm truncate">{boleta.usuario_nombre}</span>
                   <div className="flex items-center justify-center gap-2">
                     <button
@@ -152,7 +148,7 @@ export default function ListaBoletas() {
         )}
       </div>
     </div>
-        ):<FormularioActualizarPedido id={idBoleta}/>
+        ):<FormularioActualizarPedidoPuerta id={idBoleta}/> 
       }
     </>
   );
