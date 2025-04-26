@@ -78,7 +78,7 @@ export default function TotalPedidos() {
 
         setBoletas(itemsToShow);
         setPagination(data.pagination);
-      } //eslint-disable-next-line
+      } //eslint-disable-next-line  
         catch (err: any) {
         setError(err.message || 'Error desconocido');
         setBoletas([]);

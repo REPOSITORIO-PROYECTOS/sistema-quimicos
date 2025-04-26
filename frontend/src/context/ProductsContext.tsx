@@ -34,6 +34,9 @@ export const ProductsProvider = ({ children }: any) => {
   
       const res = await fetch('https://sistemataup.online/productos/obtener_todos');
       const data = await res.json();
+      const resa = await fetch('https://sistemataup.online/productos/obtener/15');
+     const  resae = await resa.json();
+      console.log(resae);
       setProductos(data);
       console.log(data);
     // eslint-disable-next-line
