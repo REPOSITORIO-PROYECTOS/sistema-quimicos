@@ -115,7 +115,6 @@ export default function RegistrarPedidoPage() {
         });
 
         if (!precioRes.ok) throw new Error("Error al calcular el precio");
-
         const precioData = await precioRes.json();
         nuevosProductos[index].precio = precioData.precio_venta_unitario_ars;
         nuevosProductos[index].total = precioData.precio_total_calculado_ars;
@@ -337,7 +336,7 @@ export default function RegistrarPedidoPage() {
                       </label>
                       <input
                         className="shadow-sm appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                        type={campo.includes("fecha") ? "date" : "text"}
+                        type={campo.includes("fecha") ? "datetime-local" : "text"}
                         name={campo} // <- name coincide con la key en formData
                         id={campo}
                         value={//eslint-disable-next-line

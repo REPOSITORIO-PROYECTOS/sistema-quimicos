@@ -50,12 +50,13 @@ interface IFormData {
     console.log("el vuelto es :   ",datos.vuelto_calculado);
     let var_vuelto = datos.vuelto_calculado;
     if (var_vuelto == null) var_vuelto = 0;
+    
     setFormData({
-      nombre: datos.usuario_nombre,
+      nombre: datos.nombre_razon_social,
       cuit: datos.cuit_cliente,
       direccion: datos.direccion_entrega,
-      fechaEmision: formatearFecha(datos.fecha_registro),
-      fechaEntrega: formatearFecha(datos.fecha_pedido),
+      fechaEmision: datos.fecha_registro,
+      fechaEntrega: datos.fecha_pedido,
       formaPago:datos.forma_pago,
       montoPagado:datos.monto_pagado_cliente,
       vuelto:var_vuelto,
@@ -153,7 +154,7 @@ interface IFormData {
         producto_id: item.producto, 
         cantidad: item.qx.toString(), 
       })),
-      cliente_id,
+      cliente_id:formData.cliente_id,
       fecha_pedido: formData.fechaEntrega,
       fecha_emision: formData.fechaEmision,
       direccion_entrega: formData.direccion,
@@ -239,14 +240,14 @@ interface IFormData {
   
   
   
-  const formatearFecha = (fechaOriginal: string): string => {
+  /*const formatearFecha = (fechaOriginal: string): string => {
     const fecha = new Date(fechaOriginal);
     const year = fecha.getFullYear();
     const month = String(fecha.getMonth() + 1).padStart(2, '0');
     const day = String(fecha.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
   };
-
+*/
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-indigo-900 py-10"> {/* Añadido padding */}
@@ -274,7 +275,7 @@ interface IFormData {
                 </label>
                 <input
                     className="shadow-sm appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed" // Añadí estilos para disabled
-                    type={campo.includes("fecha") ? "date" : "text"}
+                    type={campo.includes("fecha") ? "datetime-local" : "text"}
                     name={campo}
                     // eslint-disable-next-line
                     id={campo}

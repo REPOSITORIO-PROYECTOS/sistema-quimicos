@@ -7,7 +7,7 @@ type Boleta = {
   venta_id: number;
   monto_final_con_recargos: number;
   fecha_pedido: string;
-  usuario_nombre: string;
+  nombre_razon_social: string;
   direccion_entrega: string;
 };
 
@@ -52,7 +52,9 @@ export default function ListaBoletasPuerta() {
                 year: "numeric",
               })
             : "";
-        
+        data.pagination.total_items = filtrados.length;
+        const cantPaginas = Math.ceil(filtrados.length / 20);
+        data.pagination.total_pages = cantPaginas;
           return {
             ...item,
             fecha_pedido: fechaFormateada,
@@ -102,7 +104,7 @@ export default function ListaBoletasPuerta() {
                 <li key={boleta.venta_id} className="grid grid-cols-6 gap-4 items-center bg-gray-100 p-4 rounded-md">
                   <span className="text-sm">{`Nº ${boleta.venta_id.toString().padStart(4, '0')}`}</span>
                   <span className="text-sm">${boleta.monto_final_con_recargos.toFixed(2)}</span>
-                  <span className="text-sm truncate">{boleta.usuario_nombre}</span>
+                  <span className="text-sm truncate">{boleta.nombre_razon_social}</span>
                   <div className="flex items-center justify-center gap-2">
                     <button
                       className="text-indigo-700 hover:text-indigo-900 text-xl"
