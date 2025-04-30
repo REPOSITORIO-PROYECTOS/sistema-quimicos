@@ -43,6 +43,8 @@ export default function ListaClientes() {
           throw new Error(`Error al traer clientes: ${response.statusText} (${response.status})`);
         }
         const data = await response.json();
+        console.log("Los cliente");
+        console.log(data);
         setClientes(data.clientes);
         setPagination(data.pagination);
 

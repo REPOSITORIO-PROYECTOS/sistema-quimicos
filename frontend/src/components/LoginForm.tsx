@@ -2,13 +2,15 @@
 "use client";
 
 import React, { useState } from 'react';
-import Link from 'next/link';
-import { useAuth } from '@/components/providers/auth-provider'; 
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/components/providers/auth-provider';
 
 type UserRole = "admin" | "empleado";
 
 const LoginForm: React.FC = () => {
     const { login } = useAuth();
+    const router = useRouter();
+
     const [loginUsuario, setLoginUsuario] = useState<string>('');
     const [loginContrasena, setLoginContrasena] = useState<string>('');
     const [loginRole, setLoginRole] = useState<UserRole>('empleado');
@@ -53,16 +55,14 @@ const LoginForm: React.FC = () => {
                     Iniciar Sesión
                 </h2>
 
-                {/* Formulario SOLO maneja el login */}
                 <form onSubmit={handleLoginSubmit} className="space-y-5">
-                    {/* Campo Usuario */}
                     <div>
                         <label htmlFor="loginUsuario" className={labelClasses}>Usuario</label>
                         <input
                             type="text"
                             id="loginUsuario"
                             value={loginUsuario}
-                            onChange={(e) => { setLoginUsuario(e.target.value); }}
+                            onChange={(e) => setLoginUsuario(e.target.value)}
                             required
                             disabled={loginIsLoading}
                             className={inputClasses}
@@ -71,14 +71,13 @@ const LoginForm: React.FC = () => {
                         />
                     </div>
 
-                    {/* Campo Contraseña */}
                     <div>
                         <label htmlFor="loginContrasena" className={labelClasses}>Contraseña</label>
                         <input
                             type="password"
                             id="loginContrasena"
                             value={loginContrasena}
-                            onChange={(e) => { setLoginContrasena(e.target.value); }}
+                            onChange={(e) => setLoginContrasena(e.target.value)}
                             required
                             disabled={loginIsLoading}
                             className={inputClasses}
@@ -87,13 +86,12 @@ const LoginForm: React.FC = () => {
                         />
                     </div>
 
-                    {/* Selector de Rol */}
                     <div>
                         <label htmlFor="loginRole" className={labelClasses}>Rol</label>
                         <select
                             id="loginRole"
                             value={loginRole}
-                            onChange={(e) => { setLoginRole(e.target.value as UserRole); }}
+                            onChange={(e) => setLoginRole(e.target.value as UserRole)}
                             disabled={loginIsLoading}
                             required
                             className={selectClasses}
@@ -103,28 +101,29 @@ const LoginForm: React.FC = () => {
                         </select>
                     </div>
 
-                    {/* Botón Ingresar */}
                     <div>
                         <button type="submit" disabled={loginIsLoading} className={primaryButtonClasses}>
-                            {loginIsLoading ? (<>Ingresando...</>) : ('Ingresar')}
+                            {loginIsLoading ? 'Ingresando...' : 'Ingresar'}
                         </button>
                     </div>
                 </form>
 
-                {/* 🔥 Link a Registro (sacado afuera del form) */}
+                {/* Redirección usando router.push */}
                 <div className="mt-6 text-center">
                     <p className="text-sm text-muted-foreground">
                         ¿No tienes una cuenta?{' '}
-                        <Link
-                            href="/register"
+                        <button
+                            type="button"
+                            onClick={() => router.push('/register')}
                             className="font-medium text-primary hover:underline focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 rounded-sm"
                         >
                             Regístrate aquí
-                        </Link>
+                        </button>
                     </p>
                 </div>
             </div>
         </div>
+        
     );
 };
 
