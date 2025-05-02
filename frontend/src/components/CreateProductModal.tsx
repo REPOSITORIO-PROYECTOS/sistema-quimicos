@@ -142,7 +142,7 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({ onClose, onProd
         console.log("Enviando Payload Producto:", JSON.stringify(productPayload, null, 2));
 
         try {
-            const productResponse = await fetch('https://sistemataup.online/productos/crear', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(productPayload), });
+            const productResponse = await fetch('https://quimex.sistemataup.online/productos/crear', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(productPayload), });
             const productResultText = await productResponse.text();
             console.log("Respuesta Producto:", productResultText);
 
@@ -165,7 +165,7 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({ onClose, onProd
                     items: ingredients.map(item => ({ ingrediente_id: item.ingrediente_id, porcentaje: item.porcentaje }))
                 };
                 console.log("Enviando Payload Receta:", JSON.stringify(recipePayload, null, 2));
-                const recipeResponse = await fetch('https://sistemataup.online/recetas/crear', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(recipePayload), });
+                const recipeResponse = await fetch('https://quimex.sistemataup.online/recetas/crear', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(recipePayload), });
                 const recipeResultText = await recipeResponse.text();
                 console.log("Respuesta Receta:", recipeResultText);
                 if (!recipeResponse.ok) {

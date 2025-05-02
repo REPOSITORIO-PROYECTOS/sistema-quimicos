@@ -46,7 +46,7 @@ export const ClientesProvider = ({ children }: ClientesProviderProps) => {
     setLoading(true); // Inicia carga
     setError(null);   // Limpia error anterior
     try {
-      const res = await fetch(`https://sistemataup.online/clientes/obtener_todos`);
+      const res = await fetch(`https://quimex.sistemataup.online/clientes/obtener_todos`);
       // console.log("Fetch response status:", res.status); // Log para depurar
       if (!res.ok) {
         throw new Error(`Error ${res.status}: ${res.statusText}`);

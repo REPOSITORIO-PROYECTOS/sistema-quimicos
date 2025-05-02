@@ -44,7 +44,7 @@ interface IFormData {
 
 
   async function cargarFormulario(){ 
-    const response = await fetch(`https://sistemataup.online/ventas/obtener/${id}`);
+    const response = await fetch(`https://quimex.sistemataup.online/ventas/obtener/${id}`);
     const datos = await response.json();
     console.log(datos);
     console.log("el vuelto es :   ",datos.vuelto_calculado);
@@ -104,7 +104,7 @@ interface IFormData {
      if (productoNombre && cantidad > 0) {
        try {   
          console.log("entra al try");
-         const precioRes = await fetch(`https://sistemataup.online/productos/calcular_precio/${productoNombre}`, {
+         const precioRes = await fetch(`https://quimex.sistemataup.online/productos/calcular_precio/${productoNombre}`, {
            method: "POST",
            headers: {
              "Content-Type": "application/json",
@@ -166,7 +166,7 @@ interface IFormData {
     };
   
     try {
-      const response = await fetch(`https://sistemataup.online/ventas/actualizar/${id}`, {
+      const response = await fetch(`https://quimex.sistemataup.online/ventas/actualizar/${id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -214,7 +214,7 @@ interface IFormData {
       monto_total_final: totalACobrar,
   
     };
-    const URL_API_VALIDACION_PAGO = "https://sistemataup.online/ventas/calcular_vuelto"; 
+    const URL_API_VALIDACION_PAGO = "https://quimex.sistemataup.online/ventas/calcular_vuelto"; 
 
     if (montoIngresado >= totalACobrar){
         try {

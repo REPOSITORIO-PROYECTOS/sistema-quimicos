@@ -32,10 +32,10 @@ export const ProductsProvider = ({ children }: any) => {
       setLoading(true);
       setError(null);
   
-      const res = await fetch('https://sistemataup.online/productos/obtener_todos');
+      const res = await fetch('https://quimex.sistemataup.online/productos/obtener_todos');
       const data = await res.json();
       console.log(data);
-      /*const res1 = await fetch('https://sistemataup.online/recetas/obtener/1');
+      /*const res1 = await fetch('https://quimex.sistemataup.online/recetas/obtener/1');
       const data1 = await res1.json();
       console.log(data1);*/
 

@@ -71,7 +71,7 @@ export default function RegistrarIngreso() {
     console.log("Payload:", ventaPayload);
 
     try {
-      const response = await fetch('https://sistemataup.online/ordenes_compra/crear', {
+      const response = await fetch('https://quimex.sistemataup.online/ordenes_compra/crear', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

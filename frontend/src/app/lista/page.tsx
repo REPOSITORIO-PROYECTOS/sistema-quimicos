@@ -76,7 +76,7 @@ export default function ProductPriceTable() {
     setErrorDolar(null);
     setErrorDolarSave(null);
     try {
-      const res = await fetch('https://sistemataup.online/tipos_cambio/obtener_todos');
+      const res = await fetch('https://quimex.sistemataup.online/tipos_cambio/obtener_todos');
       if (!res.ok) throw new Error(`Error ${res.status}`);
       const data = await res.json();
       if (!Array.isArray(data) || data.length < 2) throw new Error("Formato inesperado TC");
@@ -97,7 +97,7 @@ export default function ProductPriceTable() {
      if (isNaN(oficialNum) || oficialNum < 0 || isNaN(quimexNum) || quimexNum < 0) { setErrorDolarSave("Valores inválidos."); return; }
      setLoadingDolarSave(true); setErrorDolarSave(null);
      const nombreOficial = "Oficial"; const nombreEmpresa = "Empresa";
-     const baseUrl = 'https://sistemataup.online/tipos_cambio/actualizar';
+     const baseUrl = 'https://quimex.sistemataup.online/tipos_cambio/actualizar';
      try {
          const responses = await Promise.allSettled([
              fetch(`${baseUrl}/${nombreOficial}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ valor: oficialNum }), }),
@@ -124,7 +124,7 @@ export default function ProductPriceTable() {
     if (pageToFetch === 1 && products.length === 0) { setLoadingInitial(true); } else { setLoadingPageChange(true); }
     setErrorInitial(null); setDeleteError(null);
     try {
-      const apiUrl = `https://sistemataup.online/productos/obtener_todos_paginado?page=${pageToFetch}`;
+      const apiUrl = `https://quimex.sistemataup.online/productos/obtener_todos_paginado?page=${pageToFetch}`;
       const initialResponse = await fetch(apiUrl);
       if (!initialResponse.ok) throw new Error(`Error ${initialResponse.status}`);
       const data = await initialResponse.json();
@@ -159,7 +159,7 @@ export default function ProductPriceTable() {
   // --- Función Calcular Precio ---
   const calculatePrice = async (productoId: number): Promise<number> => {
     try {
-      const response = await fetch(`https://sistemataup.online/productos/calcular_precio/${productoId}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ producto_id: productoId, quantity: 1 }), });
+      const response = await fetch(`https://quimex.sistemataup.online/productos/calcular_precio/${productoId}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ producto_id: productoId, quantity: 1 }), });
       if (!response.ok) { const errorData = await response.json().catch(() => ({})); throw new Error(errorData.mensaje || `Error ${response.status}`); }
       const data = await response.json();
       const precioCalculado = data.precio_total_calculado_ars;
@@ -193,7 +193,7 @@ export default function ProductPriceTable() {
   const handleDeleteProduct = async (productId: number, productName: string) => {
      if (!window.confirm(`¿Seguro de eliminar "${productName}" (ID: ${productId})?`)) return;
      setDeletingProductId(productId); setDeleteError(null);
-     const deleteUrl = `https://sistemataup.online/productos/eliminar/${productId}`;
+     const deleteUrl = `https://quimex.sistemataup.online/productos/eliminar/${productId}`;
      console.log("Attempting DELETE:", deleteUrl);
      try {
          const response = await fetch(deleteUrl, { method: 'DELETE' });

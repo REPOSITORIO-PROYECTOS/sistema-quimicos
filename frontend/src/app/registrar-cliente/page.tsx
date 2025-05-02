@@ -110,7 +110,7 @@ export default function RegistrarCliente() {
     console.log("Enviando:", JSON.stringify(dataToSend, null, 2));
 
     try {
-      const res = await fetch(`https://sistemataup.online/clientes/crear`, {
+      const res = await fetch(`https://quimex.sistemataup.online/clientes/crear`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(dataToSend),

@@ -74,7 +74,7 @@ export default function SolicitudIngresoPage({ id }: any) {
   async function cargarFormulario() {
     try {
       setErrorMensaje(''); // Limpiar errores previos
-      const response = await fetch(`https://sistemataup.online/ordenes_compra/obtener/${id}`);
+      const response = await fetch(`https://quimex.sistemataup.online/ordenes_compra/obtener/${id}`);
       if (!response.ok) throw new Error(`Error al traer la orden: ${response.statusText}`);
       const data = await response.json();
       if (!data || !data.items || data.items.length === 0) {
@@ -116,7 +116,7 @@ export default function SolicitudIngresoPage({ id }: any) {
   // --- cargarCamposProducto, calcular_precio, formatearFecha (sin cambios) ---
   async function cargarCamposProducto(id_producto:number,cantidad_f : number){
     try{
-      const response = await fetch(`https://sistemataup.online/productos/obtener/${id_producto}`);
+      const response = await fetch(`https://quimex.sistemataup.online/productos/obtener/${id_producto}`);
       if (!response.ok) throw new Error(`Error al traer producto ${id_producto}: ${response.statusText}`);
       const data = await response.json();
       console.log("Datos producto:", data);
@@ -142,7 +142,7 @@ export default function SolicitudIngresoPage({ id }: any) {
     }
     try{
       // Asegúrate que la API espera 'quantity', si espera 'cantidad' debes cambiarlo abajo
-      const response = await fetch(`https://sistemataup.online/productos/calcular_precio/${id_producto}`,{
+      const response = await fetch(`https://quimex.sistemataup.online/productos/calcular_precio/${id_producto}`,{
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ producto_id: id_producto, quantity: cantidad_f }), // OJO: quantity o cantidad?
       });
@@ -201,7 +201,7 @@ export default function SolicitudIngresoPage({ id }: any) {
       console.log("Enviando payload a API:", JSON.stringify(payload, null, 2));
 
 
-      const response = await fetch(`https://sistemataup.online/ordenes_compra/${id}/recibir`, { // Ajustada URL, quitando duplicado /recibir
+      const response = await fetch(`https://quimex.sistemataup.online/ordenes_compra/${id}/recibir`, { // Ajustada URL, quitando duplicado /recibir
         method: 'PUT', // O POST según tu API
         headers: { 'Content-Type': 'application/json', 'X-User-Role' : 'admin', 'X-User-Name' : '1' },
         body: JSON.stringify(payload), // Enviar el payload preparado

@@ -32,7 +32,7 @@ export default function ListaBoletasPuerta() {
     const fetchBoletas = async () => {
       try {
         setLoading(true);
-        const response = await fetch(`https://sistemataup.online/ventas/obtener_todas`);
+        const response = await fetch(`https://quimex.sistemataup.online/ventas/obtener_todas`);
         if (!response.ok) {
           throw new Error(`Error al traer boletas: ${response.statusText}`);
         }

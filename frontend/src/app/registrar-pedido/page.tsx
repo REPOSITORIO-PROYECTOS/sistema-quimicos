@@ -103,7 +103,7 @@ export default function RegistrarPedidoPage() {
     if (productoId && cantidad > 0) {
       try {
         // console.log("entra al try");
-        const precioRes = await fetch(`https://sistemataup.online/productos/calcular_precio/${productoId}`, {
+        const precioRes = await fetch(`https://quimex.sistemataup.online/productos/calcular_precio/${productoId}`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -175,7 +175,7 @@ export default function RegistrarPedidoPage() {
     console.log("Enviando datos:", data); // Para depuración
 
     try {
-      const response = await fetch("https://sistemataup.online/ventas/registrar", {
+      const response = await fetch("https://quimex.sistemataup.online/ventas/registrar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -228,7 +228,7 @@ export default function RegistrarPedidoPage() {
           monto_pagado: montoIngresado,
           monto_total_final: totalACobrar,
         };
-        const URL_API_VALIDACION_PAGO = "https://sistemataup.online/ventas/calcular_vuelto";
+        const URL_API_VALIDACION_PAGO = "https://quimex.sistemataup.online/ventas/calcular_vuelto";
         try {
           const response = await fetch(URL_API_VALIDACION_PAGO, {
             method: "POST",

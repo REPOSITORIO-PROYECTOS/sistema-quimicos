@@ -72,7 +72,7 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
     setIsLoading(true);
     setErrorCarga(null);
     try {
-      const response = await fetch(`https://sistemataup.online/clientes/obtener/${id_cliente}`);
+      const response = await fetch(`https://quimex.sistemataup.online/clientes/obtener/${id_cliente}`);
       if (!response.ok) {
         throw new Error(`Error al cargar datos del cliente: ${response.statusText}`);
       }
@@ -179,7 +179,7 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
     console.log("Enviando actualización:", JSON.stringify(dataToSend, null, 2));
 
     try {
-      const res = await fetch(`https://sistemataup.online/clientes/actualizar/${id_cliente}`, {
+      const res = await fetch(`https://quimex.sistemataup.online/clientes/actualizar/${id_cliente}`, {
         method: 'PUT', // Método correcto para actualizar
         headers: {
           'Content-Type': 'application/json',

@@ -36,7 +36,7 @@ export default function ListaClientes() {
         setLoading(true);
         setError(null); // Limpia errores anteriores al reintentar
 
-        const apiUrl = `https://sistemataup.online/clientes/obtener_todos`; 
+        const apiUrl = `https://quimex.sistemataup.online/clientes/obtener_todos`; 
 
         const response = await fetch(apiUrl);
         if (!response.ok) {
@@ -68,7 +68,7 @@ export default function ListaClientes() {
       console.log('Eliminar cliente con ID:', id);
       try {
         // !!! IMPORTANTE: Reemplaza '/api/clientes/${id}' con la URL real de tu API para borrar !!!
-        const response = await fetch(`https://sistemataup.online/clientes/desactivar/${id}`, {
+        const response = await fetch(`https://quimex.sistemataup.online/clientes/desactivar/${id}`, {
           method: 'DELETE',
         });
 
