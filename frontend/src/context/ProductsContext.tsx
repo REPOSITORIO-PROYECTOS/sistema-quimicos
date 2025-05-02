@@ -34,9 +34,11 @@ export const ProductsProvider = ({ children }: any) => {
   
       const res = await fetch('https://sistemataup.online/productos/obtener_todos');
       const data = await res.json();
-      const res1 = await fetch('https://sistemataup.online/tipos_cambio/obtener_todos');
+      console.log(data);
+      /*const res1 = await fetch('https://sistemataup.online/recetas/obtener/1');
       const data1 = await res1.json();
-      console.log(data1);
+      console.log(data1);*/
+
       setProductos(data);
     // eslint-disable-next-line
     } catch (err: any) {
