@@ -42,7 +42,7 @@ export default function SolicitudIngresoPage({ id }: any) {
   const [proveedor, setProveedor] = useState('');
   const [producto, setProducto] = useState('0');
   const [codigo, setCodigo] = useState('');
-  const [moneda] = useState('');
+  const [moneda,setMoneda] = useState('');
   const [cantidad, setCantidad] = useState('');
   const [tipo, setTipo] = useState('Litro');
   const [importeTotal, setImporteTotal] = useState('');
@@ -352,7 +352,7 @@ export default function SolicitudIngresoPage({ id }: any) {
           </div>
           <div>
             <label htmlFor="moneda" className={labelClass}>Moneda OC</label> {/* Cambiado texto, quitado * */}
-            <input id="moneda" required value={moneda} readOnly className={`${baseInputClass} ${disabledInputClass}`} /> {/* Hacerla readonly? */}
+            <input id="moneda" required value={moneda} onChange={(e) => setMoneda(e.target.value)}  className={`${baseInputClass} ${disabledInputClass}`} /> {/* Hacerla readonly? */}
           </div>
           <div>
             <label htmlFor="cantidad" className={labelClass}>Cant. Solicitada</label> {/* Cambiado texto, quitado * */}
