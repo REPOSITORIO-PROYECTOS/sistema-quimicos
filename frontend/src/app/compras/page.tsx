@@ -12,7 +12,7 @@ export default function AccionesPedidos() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-[#2c239d] px-4">
-      <h1 className="text-white text-4xl md:text-5xl font-bold mb-10">Acciones Posibles Pedidos.</h1>
+      <h1 className="text-white text-4xl md:text-5xl font-bold mb-10">Acciones Posibles Compras</h1>
 
       <div className="flex flex-col gap-5 w-full max-w-md">
         <button

@@ -1,22 +1,24 @@
+// src/providers/auth-provider.tsx
 "use client";
 
 import type React from "react";
-
 import { createContext, useContext, useEffect, useState } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter } from "next/navigation";
+
+type UserRole = "admin" | "empleado";
 
 type User = {
-    email: string;
+    usuario: string;
     name: string;
-    role: "admin" | "estudiante";
+    role: UserRole;
 } | null;
 
 type AuthContextType = {
     user: User;
     login: (
-        email: string,
+        usuario: string,
         password: string,
-        role: "admin" | "estudiante"
+        role: UserRole
     ) => Promise<boolean>;
     logout: () => void;
     isLoading: boolean;
@@ -28,88 +30,118 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [user, setUser] = useState<User>(null);
     const [isLoading, setIsLoading] = useState(true);
     const router = useRouter();
-    const pathname = usePathname();
+    //const pathname = usePathname();
 
+    // Efecto para cargar desde sessionStorage al inicio
     useEffect(() => {
-        // Verificar si hay un usuario en sessionStorage
         const storedUser = sessionStorage.getItem("user");
         if (storedUser) {
-            setUser(JSON.parse(storedUser));
+            try {
+                const parsedUser = JSON.parse(storedUser);
+                // Validación básica del objeto parseado
+                if (parsedUser && typeof parsedUser.usuario === 'string' && typeof parsedUser.name === 'string' && (parsedUser.role === 'admin' || parsedUser.role === 'empleado')) {
+                     setUser(parsedUser as User);
+                } else {
+                    console.warn("AuthProvider: Datos de usuario en sessionStorage no válidos.");
+                    sessionStorage.removeItem("user");
+                }
+            } catch (error) {
+                console.error("AuthProvider: Error al parsear usuario de sessionStorage", error);
+                sessionStorage.removeItem("user");
+            }
         }
         setIsLoading(false);
     }, []);
 
-    useEffect(() => {
-        // // Proteger rutas
-        // if (!isLoading) {
-        //     // Si no hay usuario y no estamos en login, redirigir a login
-        //     if (!user && pathname !== "/login") {
-        //         router.push("/login");
-        //     }
-        //     // Si hay usuario admin y está intentando acceder a rutas de estudiante
-        //     if (
-        //         user?.role === "admin" &&
-        //         pathname.startsWith("/aula-virtual")
-        //     ) {
-        //         router.push("/admin");
-        //     }
-        //     // Si hay usuario estudiante y está intentando acceder a rutas de admin
-        //     if (user?.role === "estudiante" && pathname.startsWith("/admin")) {
-        //         router.push("/");
-        //     }
-        // }
-    }, [user, isLoading, pathname, router]);
+    // useEffect de protección de rutas (mantenlo comentado mientras depuras el login/link)
+    // useEffect(() => {
+    //     if (!isLoading) {
+    //          // Lógica para redirigir si no está logueado fuera de login/register
+    //          if (!user && pathname !== "/login" && pathname !== "/register") {
+    //              router.push("/login");
+    //          }
+    //          // Lógica para redirigir si está logueado y en login/register (OJO: esto se maneja ahora en login())
+    //          // else if (user && (pathname === "/login" || pathname === "/register")) {
+    //          //    router.push('/'); // O a su dashboard
+    //          // }
+    //          // Lógica de protección por roles (si es necesaria)
+    //     }
+    // }, [user, isLoading, pathname, router]);
 
     const login = async (
-        email: string,
+        usuario: string,
         password: string,
-        role: "admin" | "estudiante"
+        role: UserRole
     ): Promise<boolean> => {
         setIsLoading(true);
+        console.log("AuthProvider: Intentando login con", { usuario, role });
 
-        // Simulación de autenticación
+        // Simulación de autenticación (Reemplazar con API real)
         return new Promise((resolve) => {
             setTimeout(() => {
-                if (
-                    role === "admin" &&
-                    email === "admin@example.com" &&
-                    password === "admin123"
-                ) {
-                    const userData: User = {
-                        email,
-                        role: "admin",
-                        name: "Administrador",
-                    };
-                    sessionStorage.setItem("user", JSON.stringify(userData));
-                    setUser(userData);
-                    setIsLoading(false);
-                    resolve(true);
-                } else if (
-                    role === "estudiante" &&
-                    email === "estudiante@example.com" &&
-                    password === "estudiante123"
-                ) {
-                    const userData: User = {
-                        email,
-                        role: "estudiante",
-                        name: "Estudiante Demo",
-                    };
-                    sessionStorage.setItem("user", JSON.stringify(userData));
-                    setUser(userData);
-                    setIsLoading(false);
-                    resolve(true);
+                let success = false;
+                let userData: User = null;
+
+                // Lógica de credenciales simuladas (¡Ajusta esto!)
+                if (role === "admin" && usuario === "admin_user" && password === "admin123") {
+                    userData = { usuario, role: "admin", name: "Administrador" };
+                    success = true;
+                } else if (role === "empleado" && usuario === "empleado_user" && password === "empleado123") {
+                    userData = { usuario, role: "empleado", name: "Empleado Demo" };
+                    success = true;
                 } else {
-                    setIsLoading(false);
-                    resolve(false);
+                    success = false;
                 }
-            }, 1000);
+
+                if (success && userData) {
+                    console.log(`AuthProvider: Login como ${userData.role} exitoso.`);
+                    try {
+                        sessionStorage.setItem("user", JSON.stringify(userData));
+                        setUser(userData); // Actualiza estado
+
+                        // --- ✨ CORRECCIÓN DE REDIRECCIÓN ✨ ---
+                        // Redirige SIEMPRE a la raíz ('/') después del login exitoso.
+                        // Cambia '/' por la ruta de dashboard principal si es diferente.
+                        // Si necesitas rutas DIFERENTES por rol, asegúrate que esas rutas existan.
+                        const redirectPath = '/';
+                        console.log(`AuthProvider: Redirigiendo a ${redirectPath} después del login...`);
+                        router.push(redirectPath); // ¡¡NAVEGACIÓN EXPLÍCITA!!
+                        // --- ✨ FIN CORRECCIÓN ✨ ---
+
+                        // Nota: setIsLoading podría ir después de router.push,
+                        // ya que la navegación puede desmontar el componente actual.
+                        // Dejarlo aquí está bien por ahora.
+                        setIsLoading(false);
+                        resolve(true); // Éxito
+
+                    } catch (error) {
+                         console.error("AuthProvider: Error guardando usuario o redirigiendo", error);
+                         try { sessionStorage.removeItem("user"); } catch(e){console.log(e);}
+                         setUser(null);
+                         setIsLoading(false);
+                         resolve(false); // Falla
+                    }
+                } else {
+                     // Login fallido
+                     console.log("AuthProvider: Login fallido - Credenciales o rol incorrectos.");
+                     try { sessionStorage.removeItem("user"); } catch (error) {console.log(error);}
+                     setUser(null);
+                     setIsLoading(false);
+                     resolve(false); // Falla
+                }
+            }, 500); // Reducido el timeout para pruebas más rápidas
         });
     };
 
     const logout = () => {
-        sessionStorage.removeItem("user");
+        console.log("AuthProvider: Cerrando sesión...");
+        try {
+            sessionStorage.removeItem("user");
+        } catch (error) {
+            console.error("AuthProvider: Error limpiando sessionStorage al hacer logout", error);
+        }
         setUser(null);
-        router.push("/login");
+        router.push("/login"); // Redirige a login al cerrar sesión
     };
 
     return (

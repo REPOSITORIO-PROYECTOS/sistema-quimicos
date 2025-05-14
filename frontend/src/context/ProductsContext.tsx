@@ -2,7 +2,7 @@
 "use client"
 import { createContext, useContext, useEffect, useState } from 'react';
 
-type Producto = {
+export type Producto = {
   id: number;
   codigo: string;
   nombre: string;
@@ -32,7 +32,7 @@ export const ProductsProvider = ({ children }: any) => {
       setLoading(true);
       setError(null);
   
-      const res = await fetch('https://sistemataup.online/productos/obtener_todos');
+      const res = await fetch('https://quimex.sistemataup.online/productos/obtener_todos');
       const data = await res.json();
       setProductos(data);
     // eslint-disable-next-line

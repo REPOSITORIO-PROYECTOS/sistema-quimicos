@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import SolicitudIngresoPage from '@/components/page';
+import SolicitudIngresoPage from '@/components/solicitudIngresoPage';
 
 type Boleta = {
   id: number;
@@ -30,7 +30,7 @@ export default function ListaBoletas() {
     const fetchBoletas = async () => {
       try {
         setLoading(true);
-        const response = await fetch(`https://sistemataup.online/ordenes_compra/obtener_todas`);
+        const response = await fetch(`https://quimex.sistemataup.online/ordenes_compra/obtener_todas`);
         if (!response.ok) {
           throw new Error(`Error al traer boletas: ${response.statusText}`);
         }
@@ -54,66 +54,90 @@ export default function ListaBoletas() {
     <>
     {
       id_boleta === 0 ?
-        <div className="flex flex-col items-center justify-center min-h-screen bg-indigo-900">
-      <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-2xl">
-        <h2 className="text-3xl font-semibold mb-6 text-center text-indigo-800">
+        <div className="flex flex-col items-center justify-center min-h-screen bg-indigo-900 py-10 px-4">
+      <div className="bg-white p-6 md:p-8 rounded-lg shadow-md w-full max-w-3xl"> {/* Ajustado max-w */}
+        <h2 className="text-2xl md:text-3xl font-semibold mb-6 text-center text-indigo-800">
           Lista de Pedidos
         </h2>
 
-        {loading && <p className="text-center text-gray-600">Cargando boletas...</p>}
-        {error && <p className="text-center text-red-600">{error}</p>}
+        {loading && <p className="text-center text-gray-600 my-4 text-sm">Cargando boletas...</p>}
+        {error && <p className="text-center text-red-600 my-4 text-sm">{error}</p>}
 
         {!loading && !error && (
           <>
-            <ul className="space-y-4">
-              <li className="grid grid-cols-5 gap-4 items-center bg-gray-100 p-4 rounded-md">
-                <span className="font-semibold">Nº Boleta</span>
-                <span className="font-semibold">Fecha y Hora</span>
-                <span className="font-semibold">Estado</span>
-                <span className="font-semibold text-center">Acción</span>
+            <ul className="space-y-2 divide-y divide-gray-200">
+              {/* Encabezado: grid-cols-10, col-span ajustado, gap reducido */}
+              <li className="grid grid-cols-10 gap-2 items-center bg-gray-100 p-3 rounded-t-md font-semibold text-sm text-gray-700"> {/* gap-2 */}
+                {/* Col Spans: 2 + 3 + 3 + 2 = 10 */}
+                <span className="col-span-2">Nº Boleta</span>
+                <span className="col-span-3">Fecha</span> {/* Cambiado texto */}
+                <span className="col-span-3">Estado</span>
+                <span className="col-span-2 text-center">Acción</span>
               </li>
 
-              {boletas.map((boleta) => (
-                <li key={boleta.id} className="grid grid-cols-5 gap-4 items-center bg-gray-100 p-4 rounded-md">
-                  <span>{`Nº ${boleta.id.toString().padStart(4, '0')}`}</span>
-                  <span>{boleta.fecha_creacion}</span>
-                  <span>{boleta.estado}</span>
-                  <div className="flex items-center justify-center gap-2">
-                    <button
-                      className="text-indigo-700 hover:text-indigo-900 text-xl"
-                      onClick={() => setIdBoleta(boleta.id)} // Pasa el objeto boleta completo
-                    >
-                      ⚙️
-                    </button>
-                    <input
-                      type="checkbox"
-                      className="w-5 h-5 text-indigo-600 rounded focus:ring-indigo-500"
-                      onChange={(e) =>
-                        console.log(`Boleta ${boleta.id} ${e.target.checked ? 'seleccionada' : 'deseleccionada'}`)
-                      }
-                    />
-                  </div>
-                </li>
-              ))}
+              {/* Filas de datos: grid-cols-10, col-span ajustado, gap reducido */}
+              {boletas.map((boleta) => {
+                // --- FORMATEO DE FECHA ---
+                let fechaFormateada = 'N/A'; // Valor por defecto
+                try {
+                  fechaFormateada = new Date(boleta.fecha_creacion).toLocaleDateString("es-AR", {
+                    day: "2-digit",
+                    month: "2-digit",
+                    year: "numeric",
+                  });
+                } catch (e) {
+                  console.error("Error formateando fecha:", boleta.fecha_creacion, e);
+                }
+                // --- FIN FORMATEO ---
+
+                return (
+                  <li key={boleta.id} className="grid grid-cols-10 gap-2 items-center bg-white hover:bg-gray-50 p-3 text-sm"> {/* gap-2 */}
+                    {/* Col Spans: 2 + 3 + 3 + 2 = 10 */}
+                    <span className="col-span-2">{`Nº ${boleta.id.toString().padStart(4, '0')}`}</span>
+                    {/* Mostrar fecha formateada */}
+                    <span className="col-span-3">{fechaFormateada}</span>
+                    <span className="col-span-3">{boleta.estado}</span>
+                    <div className="col-span-2 flex items-center justify-center gap-2"> {/* Acción ahora tiene col-span-2 */}
+                      <button
+                        title="Ver/Procesar Pedido"
+                        className="text-indigo-600 hover:text-indigo-800 text-lg p-1 rounded focus:outline-none"
+                        onClick={() => setIdBoleta(boleta.id)}
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                      </button>
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500 border-gray-300"
+                        onChange={(e) =>
+                          console.log(`Boleta ${boleta.id} ${e.target.checked ? 'seleccionada' : 'deseleccionada'}`)
+                        }
+                      />
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
 
-            {/* Navegación de páginas */}
-            {pagination && (
+            {/* Navegación de páginas (sin cambios) */}
+            {pagination && pagination.total_pages > 1 && (
               <div className="flex justify-center mt-6 gap-4">
                 <button
                   onClick={() => setPage((prev) => Math.max(prev - 1, 1))}
-                  disabled={!pagination.has_prev}
-                  className={`px-4 py-2 rounded bg-indigo-700 text-white hover:bg-indigo-800 disabled:opacity-50`}
+                  disabled={!pagination.has_prev || loading}
+                  className={`px-4 py-2 rounded bg-indigo-700 text-white hover:bg-indigo-800 disabled:opacity-50 text-sm`}
                 >
                   Anterior
                 </button>
-                <span className="text-indigo-700 font-medium">
+                <span className="text-indigo-700 font-medium text-sm self-center">
                   Página {pagination.current_page} de {pagination.total_pages}
                 </span>
                 <button
                   onClick={() => setPage((prev) => prev + 1)}
-                  disabled={!pagination.has_next}
-                  className={`px-4 py-2 rounded bg-indigo-700 text-white hover:bg-indigo-800 disabled:opacity-50`}
+                  disabled={!pagination.has_next || loading}
+                  className={`px-4 py-2 rounded bg-indigo-700 text-white hover:bg-indigo-800 disabled:opacity-50 text-sm`}
                 >
                   Siguiente
                 </button>
@@ -123,7 +147,7 @@ export default function ListaBoletas() {
         )}
       </div>
     </div>
-      :<SolicitudIngresoPage id={id_boleta} /> 
+      :<SolicitudIngresoPage id={id_boleta} />
     }
     </>
   );
