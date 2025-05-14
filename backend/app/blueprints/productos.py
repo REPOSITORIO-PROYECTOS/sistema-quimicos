@@ -146,16 +146,48 @@ def crear_producto():
         return jsonify({"error": "Error interno del servidor al crear el producto"}), 500
 
 
+@productos_bp.route('/obtener_todos_paginado', methods=['GET'])
+def obtener_productos_paginado():
+    """Obtiene una lista de productos con paginación."""
+    try:
+        query = Producto.query.order_by(Producto.nombre)
+
+        # Paginación
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 20, type=int)
+        paginated_productos = query.paginate(page=page, per_page=per_page, error_out=False)
+        productos_db = paginated_productos.items
+
+        # Serializar Resultados
+        productos_list = [producto_a_dict(p) for p in productos_db]
+
+        return jsonify({
+            "productos": productos_list,
+            "pagination": {
+                "total_items": paginated_productos.total,
+                "total_pages": paginated_productos.pages,
+                "current_page": page,
+                "per_page": per_page,
+                "has_next": paginated_productos.has_next,
+                "has_prev": paginated_productos.has_prev
+            }
+        }), 200
+
+    except Exception as e:
+        print(f"ERROR [obtener_productos]: Excepción inesperada al obtener productos")
+        traceback.print_exc()
+        return jsonify({"error": "Error interno del servidor al obtener productos"}), 500
+
 @productos_bp.route('/obtener_todos', methods=['GET'])
 def obtener_productos():
     """Obtiene una lista de todos los productos."""
     try:
         # Considerar añadir paginación para listas potencialmente largas
-        # page = request.args.get('page', 1, type=int)
-        # per_page = request.args.get('per_page', 20, type=int)
-        # productos_paginados = Producto.query.order_by(Producto.nombre).paginate(page=page, per_page=per_page, error_out=False)
-        # productos = productos_paginados.items
-        # pagination_info = {...} # Añadir info de paginación a la respuesta
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 20, type=int)
+        productos_paginados = Producto.query.order_by(Producto.nombre).paginate(page=page, per_page=per_page, error_out=False)
+        productos = productos_paginados.items
+        #pagination_info = {...} # Añadir info de paginación a la respuesta
         productos = Producto.query.order_by(Producto.nombre).all()
         return jsonify([producto_a_dict(p) for p in productos]), 200
     except Exception as e:

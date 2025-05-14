@@ -5,9 +5,15 @@ from decimal import Decimal, InvalidOperation
 import traceback
 from .. import db
 
+# --- Imports de Seguridad ---
+from ..utils.decorators import token_required, roles_required
+from ..utils.permissions import ROLES # Importar diccionario de roles
+
 tipos_cambio_bp = Blueprint('tipos_cambio', __name__, url_prefix='/tipos_cambio')
 
 @tipos_cambio_bp.route('/crear', methods=['POST'])
+@token_required
+@roles_required(ROLES['ADMIN'])
 def crear_tipo_cambio():
     data = request.get_json()
     if not data or not data.get('nombre') or 'valor' not in data:
@@ -49,6 +55,8 @@ def obtener_tipo_cambio_por_nombre(nombre):
     return jsonify(tipo_cambio_a_dict(tc))
 
 @tipos_cambio_bp.route('/actualizar/<string:nombre>', methods=['PUT'])
+@token_required
+@roles_required(ROLES['ADMIN'])
 def actualizar_tipo_cambio(nombre):
     tc = TipoCambio.query.filter_by(nombre=nombre).first()
     if not tc:
@@ -77,6 +85,8 @@ def actualizar_tipo_cambio(nombre):
         return jsonify({"error": "Error interno"}), 500
 
 @tipos_cambio_bp.route('/eliminar/<string:nombre>', methods=['DELETE'])
+@token_required
+@roles_required(ROLES['ADMIN'])
 def eliminar_tipo_cambio(nombre):
     tc = TipoCambio.query.filter_by(nombre=nombre).first()
     if not tc:

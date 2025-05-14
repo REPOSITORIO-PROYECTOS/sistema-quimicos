@@ -6,3 +6,5 @@ def obtener_permisos(rol):
         # etc.
     }
     return permisos.get(rol, [])
+
+ROLES = ['ADMIN', 'ALMACEN', 'VENTAS']

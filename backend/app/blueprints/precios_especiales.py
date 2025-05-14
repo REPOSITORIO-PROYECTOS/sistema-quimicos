@@ -1,0 +1,235 @@
+# app/blueprints/precios_especiales.py
+from flask import Blueprint, request, jsonify
+from sqlalchemy.orm import joinedload # Para cargar datos relacionados eficientemente
+from decimal import Decimal, InvalidOperation
+import traceback
+
+# --- Imports locales ---
+from .. import db
+from ..models import PrecioEspecialCliente, Cliente, Producto
+from ..utils.decorators import token_required, roles_required
+from ..utils.permissions import ROLES
+# Importar función de redondeo si la necesitas
+# from ..utils.cost_utils import redondear_decimal
+
+# --- Blueprint ---
+precios_especiales_bp = Blueprint('precios_especiales', __name__, url_prefix='/precios-especiales')
+
+# --- Helpers ---
+def precio_especial_a_dict(precio_esp):
+    """Serializa un objeto PrecioEspecialCliente a diccionario."""
+    if not precio_esp: return None
+    return {
+        "id": precio_esp.id,
+        "cliente_id": precio_esp.cliente_id,
+        "cliente_nombre": precio_esp.cliente.razon_social if precio_esp.cliente else None, # Asume 'razon_social'
+        "producto_id": precio_esp.producto_id,
+        "producto_codigo": precio_esp.producto.codigo_interno if precio_esp.producto else None,
+        "producto_nombre": precio_esp.producto.nombre if precio_esp.producto else None,
+        "precio_unitario_fijo_ars": float(precio_esp.precio_unitario_fijo_ars) if precio_esp.precio_unitario_fijo_ars is not None else None,
+        "activo": precio_esp.activo,
+        "fecha_creacion": precio_esp.fecha_creacion.isoformat() if precio_esp.fecha_creacion else None,
+        "fecha_modificacion": precio_esp.fecha_modificacion.isoformat() if precio_esp.fecha_modificacion else None,
+    }
+
+# --- Endpoints CRUD ---
+
+@precios_especiales_bp.route('', methods=['POST'])
+@token_required
+@roles_required(ROLES['ADMIN']) # O un rol 'GESTOR_PRECIOS'
+def crear_precio_especial():
+    """Crea una nueva regla de precio especial."""
+    data = request.get_json()
+    if not data or 'cliente_id' not in data or 'producto_id' not in data or 'precio_unitario_fijo_ars' not in data:
+        return jsonify({"error": "Faltan datos: cliente_id, producto_id, precio_unitario_fijo_ars"}), 400
+
+    cliente_id = data['cliente_id']
+    producto_id = data['producto_id']
+    precio_str = str(data['precio_unitario_fijo_ars']).strip()
+    activo = data.get('activo', True) # Default a activo
+
+    # Validar IDs
+    if not isinstance(cliente_id, int) or not isinstance(producto_id, int):
+         return jsonify({"error": "cliente_id y producto_id deben ser enteros"}), 400
+    if not db.session.get(Cliente, cliente_id):
+        return jsonify({"error": f"Cliente ID {cliente_id} no encontrado"}), 404
+    if not db.session.get(Producto, producto_id):
+        return jsonify({"error": f"Producto ID {producto_id} no encontrado"}), 404
+
+    # Validar precio
+    try:
+        precio_decimal = Decimal(precio_str)
+        if precio_decimal < 0: raise ValueError("Precio no puede ser negativo")
+        # Podrías redondear aquí si quieres forzar una precisión
+        # precio_decimal = redondear_decimal(precio_decimal, 4)
+    except (InvalidOperation, ValueError) as e:
+        return jsonify({"error": f"Precio unitario inválido: {e}"}), 400
+
+    # Verificar si ya existe (manejar UniqueConstraint)
+    existente = PrecioEspecialCliente.query.filter_by(cliente_id=cliente_id, producto_id=producto_id).first()
+    if existente:
+        return jsonify({"error": f"Ya existe un precio especial para este cliente y producto (ID: {existente.id}). Use PUT para modificarlo."}), 409 # Conflict
+
+    try:
+        nuevo_precio = PrecioEspecialCliente(
+            cliente_id=cliente_id,
+            producto_id=producto_id,
+            precio_unitario_fijo_ars=precio_decimal,
+            activo=activo
+        )
+        db.session.add(nuevo_precio)
+        db.session.commit()
+
+        # Cargar relaciones para la respuesta
+        precio_cargado = db.session.query(PrecioEspecialCliente).options(
+            joinedload(PrecioEspecialCliente.cliente),
+            joinedload(PrecioEspecialCliente.producto)
+        ).get(nuevo_precio.id)
+
+        return jsonify(precio_especial_a_dict(precio_cargado)), 201
+
+    except Exception as e:
+        db.session.rollback()
+        # Podría ser un error de la UniqueConstraint si hubo una condición de carrera
+        if "uq_cliente_producto_precio_especial" in str(e):
+             return jsonify({"error": "Ya existe un precio especial para este cliente y producto."}), 409
+        print(f"ERROR [crear_precio_especial]: Excepción {e}")
+        traceback.print_exc()
+        return jsonify({"error": "Error interno al crear el precio especial"}), 500
+
+
+@precios_especiales_bp.route('', methods=['GET'])
+@token_required
+@roles_required(ROLES['ADMIN']) # O 'VENTAS', 'USER'?
+def listar_precios_especiales():
+    """Lista los precios especiales con filtros opcionales."""
+    try:
+        query = PrecioEspecialCliente.query.options(
+            joinedload(PrecioEspecialCliente.cliente), # Cargar datos relacionados
+            joinedload(PrecioEspecialCliente.producto)
+        )
+
+        # Filtros
+        cliente_id_filtro = request.args.get('cliente_id', type=int)
+        if cliente_id_filtro: query = query.filter(PrecioEspecialCliente.cliente_id == cliente_id_filtro)
+
+        producto_id_filtro = request.args.get('producto_id', type=int)
+        if producto_id_filtro: query = query.filter(PrecioEspecialCliente.producto_id == producto_id_filtro)
+
+        activo_filtro = request.args.get('activo') # Viene como string 'true'/'false'
+        if activo_filtro is not None:
+            activo_bool = activo_filtro.lower() == 'true'
+            query = query.filter(PrecioEspecialCliente.activo == activo_bool)
+
+        # Orden
+        query = query.order_by(PrecioEspecialCliente.cliente_id, PrecioEspecialCliente.producto_id) # O por fecha
+
+        # Paginación
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 20, type=int)
+        paginated_precios = query.paginate(page=page, per_page=per_page, error_out=False)
+        precios_db = paginated_precios.items
+
+        precios_list = [precio_especial_a_dict(p) for p in precios_db]
+
+        return jsonify({
+            "precios_especiales": precios_list,
+            "pagination": {
+                "total_items": paginated_precios.total,
+                "total_pages": paginated_precios.pages,
+                "current_page": page,
+                "per_page": per_page,
+                "has_next": paginated_precios.has_next,
+                "has_prev": paginated_precios.has_prev
+            }
+        })
+    except Exception as e:
+        print(f"ERROR [listar_precios_especiales]: Excepción {e}")
+        traceback.print_exc()
+        return jsonify({"error": "Error interno al listar precios especiales"}), 500
+
+
+@precios_especiales_bp.route('/<int:precio_id>', methods=['GET'])
+@token_required
+@roles_required(ROLES['ADMIN'])
+def obtener_precio_especial(precio_id):
+    """Obtiene un precio especial por su ID."""
+    precio_esp = db.session.query(PrecioEspecialCliente).options(
+        joinedload(PrecioEspecialCliente.cliente),
+        joinedload(PrecioEspecialCliente.producto)
+    ).get(precio_id)
+
+    if not precio_esp:
+        return jsonify({"error": "Precio especial no encontrado"}), 404
+    return jsonify(precio_especial_a_dict(precio_esp))
+
+
+@precios_especiales_bp.route('/<int:precio_id>', methods=['PUT'])
+@token_required
+@roles_required(ROLES['ADMIN'])
+def actualizar_precio_especial(precio_id):
+    """Actualiza un precio especial existente (precio o estado activo)."""
+    precio_esp = db.session.get(PrecioEspecialCliente, precio_id)
+    if not precio_esp:
+        return jsonify({"error": "Precio especial no encontrado"}), 404
+
+    data = request.get_json()
+    if not data: return jsonify({"error": "Payload vacío"}), 400
+
+    updated = False
+    try:
+        if 'precio_unitario_fijo_ars' in data:
+            precio_str = str(data['precio_unitario_fijo_ars']).strip()
+            try:
+                precio_decimal = Decimal(precio_str)
+                if precio_decimal < 0: raise ValueError("Precio no puede ser negativo")
+                # precio_decimal = redondear_decimal(precio_decimal, 4) # Opcional redondear
+                if precio_esp.precio_unitario_fijo_ars != precio_decimal:
+                    precio_esp.precio_unitario_fijo_ars = precio_decimal
+                    updated = True
+            except (InvalidOperation, ValueError) as e:
+                return jsonify({"error": f"Precio unitario inválido: {e}"}), 400
+
+        if 'activo' in data:
+            if not isinstance(data['activo'], bool):
+                return jsonify({"error": "'activo' debe ser un booleano (true/false)"}), 400
+            if precio_esp.activo != data['activo']:
+                precio_esp.activo = data['activo']
+                updated = True
+
+        if updated:
+            db.session.commit()
+             # Recargar datos para la respuesta
+            precio_cargado = db.session.query(PrecioEspecialCliente).options(
+                joinedload(PrecioEspecialCliente.cliente),
+                joinedload(PrecioEspecialCliente.producto)
+            ).get(precio_id)
+            return jsonify(precio_especial_a_dict(precio_cargado))
+        else:
+            return jsonify({"message": "No se realizaron cambios."}), 200 # OK, pero sin cambios
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"ERROR [actualizar_precio_especial]: Excepción {e}")
+        traceback.print_exc()
+        return jsonify({"error": "Error interno al actualizar el precio especial"}), 500
+
+
+@precios_especiales_bp.route('/<int:precio_id>', methods=['DELETE'])
+@token_required
+@roles_required(ROLES['ADMIN'])
+def eliminar_precio_especial(precio_id):
+    """Elimina una regla de precio especial."""
+    precio_esp = db.session.get(PrecioEspecialCliente, precio_id)
+    if not precio_esp:
+        return jsonify({"error": "Precio especial no encontrado"}), 404
+
+    try:
+        db.session.delete(precio_esp)
+        db.session.commit()
+        return jsonify({"message": f"Precio especial ID {precio_id} eliminado correctamente."}), 200 # O 204 No Content
+    except Exception as e:
+        db.session.rollback()
+        print(f"ERROR [eliminar_precio_especial]: Excepción {e}")
+        traceback.print_exc()
+        return jsonify({"error": "Error interno al eliminar el precio especial"}), 500

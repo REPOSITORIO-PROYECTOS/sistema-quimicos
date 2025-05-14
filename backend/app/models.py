@@ -126,7 +126,7 @@ class Venta(db.Model):
     # ---------------------------------------
     id = db.Column(db.Integer, primary_key=True)
     usuario_interno_id = db.Column(db.Integer, db.ForeignKey('usuarios_internos.id'), nullable=False)
-    cliente_id = db.Column(db.Integer, nullable=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=True)
     fecha_registro = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     fecha_pedido = db.Column(db.DateTime, nullable=True)
     direccion_entrega = db.Column(db.String(255), nullable=True)
@@ -141,6 +141,7 @@ class Venta(db.Model):
     monto_pagado_cliente = db.Column(db.Numeric(15, 2), nullable=True)
     vuelto_calculado = db.Column(db.Numeric(15, 2), nullable=True)
     usuario_interno = db.relationship('UsuarioInterno', back_populates='ventas')
+    cliente = db.relationship('Cliente', back_populates='ventas')
     detalles = db.relationship('DetalleVenta', back_populates='venta', cascade="all, delete-orphan", lazy='dynamic')
 
 # --- Modelo DetalleVenta ---
@@ -239,3 +240,28 @@ class Cliente(db.Model):
 
     def repr(self):
         return f'<Cliente ID:{self.id} {self.nombre_razon_social}>'
+
+# Modulos precios especiales
+class PrecioEspecialCliente(db.Model):
+    __tablename__ = 'precios_especiales_cliente'
+
+    id = db.Column(db.Integer, primary_key=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=False, index=True) # Asume tabla 'clientes' con id
+    producto_id = db.Column(db.Integer, db.ForeignKey('productos.id'), nullable=False, index=True) # Asume tabla 'productos' con id
+    precio_unitario_fijo_ars = db.Column(db.Numeric(15, 4), nullable=False) # Precio fijo en ARS, ajustar precisión si es necesario
+    activo = db.Column(db.Boolean, default=True, nullable=False)
+    fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow)
+    fecha_modificacion = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relaciones (opcional pero útil)
+    cliente = db.relationship('Cliente', backref='precios_especiales') # Ajusta 'Cliente' y 'backref'
+    producto = db.relationship('Producto', backref='precios_especiales_cliente')
+
+    # Restricción para evitar duplicados
+    __table_args__ = (UniqueConstraint('cliente_id', 'producto_id', name='uq_cliente_producto_precio_especial'),)
+
+    def __repr__(self):
+        estado = 'Activo' if self.activo else 'Inactivo'
+        cliente_info = f"Cliente ID {self.cliente_id}" if not self.cliente else f"'{self.cliente.razon_social}'" # Asume 'razon_social' en Cliente
+        producto_info = f"Producto ID {self.producto_id}" if not self.producto else f"'{self.producto.nombre}'"
+        return f"<PrecioEspecial {cliente_info} - {producto_info}: ARS {self.precio_unitario_fijo_ars:.2f} ({estado})>"
