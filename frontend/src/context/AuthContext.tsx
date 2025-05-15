@@ -43,7 +43,8 @@ interface AuthProviderProps {
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  // const [userRole, setUserRole] = useState<UserRole | null>(null); // Opcional: guardar rol
+  //const [user, setUser] = useState<any>()
+  // const [userRole, setUserRole] = usetate<UserRole | null>(null); // Opcional: guardar rol
 
   // --- Efecto para verificar estado inicial ---
   useEffect(() => {

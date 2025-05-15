@@ -61,7 +61,7 @@ export default function SolicitudIngresoPage({ id }: any) {
   const [errorMensaje, setErrorMensaje] = useState('');
   const [estadoOC, setEstadoOC] = useState(''); // <-- NUEVO ESTADO para el estado de la OC
   let problema = false;
-
+  const token = localStorage.getItem("token")
   const router = useRouter();
 
   useEffect(() => {
@@ -143,7 +143,7 @@ export default function SolicitudIngresoPage({ id }: any) {
     try{
       // Asegúrate que la API espera 'quantity', si espera 'cantidad' debes cambiarlo abajo
       const response = await fetch(`https://quimex.sistemataup.online/productos/calcular_precio/${id_producto}`,{
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},
         body: JSON.stringify({ producto_id: id_producto, quantity: cantidad_f }), // OJO: quantity o cantidad?
       });
       if (!response.ok) {
@@ -199,11 +199,11 @@ export default function SolicitudIngresoPage({ id }: any) {
       };
 
       console.log("Enviando payload a API:", JSON.stringify(payload, null, 2));
-
-
+      //eslint-disable-next-line
+      const user:any = localStorage.getItem("user")
       const response = await fetch(`https://quimex.sistemataup.online/ordenes_compra/${id}/recibir`, { // Ajustada URL, quitando duplicado /recibir
         method: 'PUT', // O POST según tu API
-        headers: { 'Content-Type': 'application/json', 'X-User-Role' : 'admin', 'X-User-Name' : '1' },
+        headers: { 'Content-Type': 'application/json', 'X-User-Role' : 'ADMIN', 'X-User-Name' : user.nombre_usuario },
         body: JSON.stringify(payload), // Enviar el payload preparado
       });
 

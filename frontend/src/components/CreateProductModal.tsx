@@ -39,7 +39,7 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({ onClose, onProd
     const [costoReferenciaUsd, setCostoReferenciaUsd] = useState(''); // Siempre presente
     const [esReceta, setEsReceta] = useState(false);
     const [ajustaPorTc, setAjustaPorTc] = useState(false);
-
+    const token = localStorage.getItem("token")
     const [ingredients, setIngredients] = useState<IngredientItem[]>([]);
     const [availableIngredients, setAvailableIngredients] = useState<IngredientOption[]>([]);
 
@@ -142,7 +142,7 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({ onClose, onProd
         console.log("Enviando Payload Producto:", JSON.stringify(productPayload, null, 2));
 
         try {
-            const productResponse = await fetch('https://quimex.sistemataup.online/productos/crear', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(productPayload), });
+            const productResponse = await fetch('https://quimex.sistemataup.online/productos/crear', { method: 'POST', headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`}, body: JSON.stringify(productPayload), });
             const productResultText = await productResponse.text();
             console.log("Respuesta Producto:", productResultText);
 

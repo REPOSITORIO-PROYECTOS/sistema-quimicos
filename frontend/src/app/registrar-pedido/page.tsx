@@ -175,12 +175,13 @@ export default function RegistrarPedidoPage() {
     console.log("Enviando datos:", data); // Para depuración
 
     try {
+      const token = localStorage.getItem("token")
       const response = await fetch("https://quimex.sistemataup.online/ventas/registrar", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},
         body: JSON.stringify(data),
       });
-
+      
       const result = await response.json();
       console.log("Respuesta API:", result);
 
@@ -230,9 +231,10 @@ export default function RegistrarPedidoPage() {
         };
         const URL_API_VALIDACION_PAGO = "https://quimex.sistemataup.online/ventas/calcular_vuelto";
         try {
+          const token = localStorage.getItem("token")
           const response = await fetch(URL_API_VALIDACION_PAGO, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},
             body: JSON.stringify(datosParaApi),
           });
           if (response.ok) {

@@ -1,6 +1,7 @@
 "use client";
 
 import FormularioActualizacionCliente from '@/components/formularioActualizacionCliente';
+
 import { useState, useEffect } from 'react';
 import { FaTrash, FaPencilAlt } from 'react-icons/fa'; // Importando iconos (opcional, pero recomendado)
 
@@ -35,10 +36,11 @@ export default function ListaClientes() {
       try {
         setLoading(true);
         setError(null); // Limpia errores anteriores al reintentar
-
+        const token = localStorage.getItem("token")
+        
         const apiUrl = `https://quimex.sistemataup.online/clientes/obtener_todos`; 
-
-        const response = await fetch(apiUrl);
+        
+        const response = await fetch(apiUrl,{headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`}});
         if (!response.ok) {
           throw new Error(`Error al traer clientes: ${response.statusText} (${response.status})`);
         }

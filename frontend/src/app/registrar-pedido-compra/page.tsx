@@ -55,9 +55,10 @@ export default function RegistrarIngreso() {
       fecha, producto, proveedor_id, cantidad, moneda, precioSinIva,
       cuenta, iibb, importeTotal, importeAbonado, formaPago, chequePerteneciente,
     };
-
+    //eslint-disable-next-line
+    const user:any = localStorage.getItem("user")
     const ventaPayload = {
-      usuario_interno_id: 1, // Asumiendo ID fijo
+      usuario_interno_id: user.id, // Asumiendo ID fijo
       items: [ { id: parseInt(producto), cantidad: cantidad } ], // Convertir id a number si la API lo espera
       cliente_id: 1, // Asumiendo ID fijo
       // producto, // 'producto' ya está dentro de 'items', usualmente no se repite aquí
@@ -71,12 +72,15 @@ export default function RegistrarIngreso() {
     console.log("Payload:", ventaPayload);
 
     try {
+      //eslint-disable-next-line
+      const user:any = localStorage.getItem("user")
+      
       const response = await fetch('https://quimex.sistemataup.online/ordenes_compra/crear', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-User-Role' : 'admin',
-          'X-User-Name' : '1'
+          'X-User-Role' : 'ADMIN',
+          'X-User-Name' : user.nombre_usuario
         },
         body: JSON.stringify(ventaPayload),
       });

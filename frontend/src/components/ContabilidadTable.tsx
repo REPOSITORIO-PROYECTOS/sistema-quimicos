@@ -83,7 +83,7 @@ export default function ContabilidadTable() {
     const [isLoading, setIsLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
     const [loadingStage, setLoadingStage] = useState<string>("Cargando listas...");
-
+    const token = localStorage.getItem("token")
     // --- Función para Cargar Datos ---
     const fetchRegistrosContables = useCallback(async () => {
         setIsLoading(true);
@@ -103,8 +103,8 @@ export default function ContabilidadTable() {
             // 1. Fetch inicial de listas
             console.log("Fetching listas iniciales...");
             const [ventasResult, comprasListResult] = await Promise.allSettled([
-                fetch(ventasApiUrl),
-                fetch(comprasListApiUrl)
+                fetch(ventasApiUrl,{headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`}}),
+                fetch(comprasListApiUrl,{headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`}})
             ]);
 
             let ventasData: Venta[] = [];

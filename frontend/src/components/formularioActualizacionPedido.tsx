@@ -9,7 +9,7 @@ type ProductoI = {
   precio: number;
   total: number;
 };
-
+const token = localStorage.getItem("token")
 interface IFormData {
   nombre:string;
   cuit: string;
@@ -44,7 +44,7 @@ interface IFormData {
 
 
   async function cargarFormulario(){ 
-    const response = await fetch(`https://quimex.sistemataup.online/ventas/obtener/${id}`);
+    const response = await fetch(`https://quimex.sistemataup.online/ventas/obtener/${id}`,{headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`}});
     const datos = await response.json();
     console.log(datos);
     console.log("el vuelto es :   ",datos.vuelto_calculado);
@@ -106,9 +106,7 @@ interface IFormData {
          console.log("entra al try");
          const precioRes = await fetch(`https://quimex.sistemataup.online/productos/calcular_precio/${productoNombre}`, {
            method: "POST",
-           headers: {
-             "Content-Type": "application/json",
-           },
+           headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},
            body: JSON.stringify({
              producto_id: productoNombre,
              quantity: cantidad,
@@ -168,9 +166,7 @@ interface IFormData {
     try {
       const response = await fetch(`https://quimex.sistemataup.online/ventas/actualizar/${id}`, {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},
         body: JSON.stringify(data),
       });
   
@@ -221,9 +217,7 @@ interface IFormData {
 
           const response = await fetch(URL_API_VALIDACION_PAGO, {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
+            headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},
             body: JSON.stringify(datosParaApi),
           });
           if (response.ok) {

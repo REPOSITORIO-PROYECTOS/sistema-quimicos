@@ -3,13 +3,19 @@
 
 import type React from "react";
 import { createContext, useContext, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "next/navigation"; // No necesitamos usePathname aquí si no hay protección de rutas activa
 
-type UserRole = "admin" | "empleado";
+// (Mantén tus definiciones de ROLES_DISPONIBLES_VALUES y UserRole aquí o importadas)
+export const ROLES_DISPONIBLES_VALUES = [
+    "ADMIN", "ALMACEN", "VENTAS_LOCAL", "VENTAS_PEDIDOS", "CONTABLE"
+] as const;
+export type UserRole = typeof ROLES_DISPONIBLES_VALUES[number];
 
 type User = {
+    id?: number;
     usuario: string;
     name: string;
+    email?: string;
     role: UserRole;
 } | null;
 
@@ -18,134 +24,169 @@ type AuthContextType = {
     login: (
         usuario: string,
         password: string,
-        role: UserRole
+        roleFromLoginForm?: UserRole
     ) => Promise<boolean>;
     logout: () => void;
     isLoading: boolean;
+    getToken: () => string | null;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://quimex.sistemataup.online";
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [user, setUser] = useState<User>(null);
-    const [isLoading, setIsLoading] = useState(true);
+    const [isLoading, setIsLoading] = useState(true); // Inicia como true, para efecto de carga inicial
     const router = useRouter();
-    //const pathname = usePathname();
-
+    
     // Efecto para cargar desde sessionStorage al inicio
     useEffect(() => {
-        const storedUser = sessionStorage.getItem("user");
-        if (storedUser) {
-            try {
-                const parsedUser = JSON.parse(storedUser);
-                // Validación básica del objeto parseado
-                if (parsedUser && typeof parsedUser.usuario === 'string' && typeof parsedUser.name === 'string' && (parsedUser.role === 'admin' || parsedUser.role === 'empleado')) {
-                     setUser(parsedUser as User);
-                } else {
-                    console.warn("AuthProvider: Datos de usuario en sessionStorage no válidos.");
-                    sessionStorage.removeItem("user");
-                }
-            } catch (error) {
-                console.error("AuthProvider: Error al parsear usuario de sessionStorage", error);
-                sessionStorage.removeItem("user");
-            }
-        }
-        setIsLoading(false);
-    }, []);
+        console.log("AuthProvider useEffect: Verificando sessionStorage...");
+       
+        try {
+            const storedUser = sessionStorage.getItem("user");
+            const storedToken = sessionStorage.getItem("authToken");
 
-    // useEffect de protección de rutas (mantenlo comentado mientras depuras el login/link)
-    // useEffect(() => {
-    //     if (!isLoading) {
-    //          // Lógica para redirigir si no está logueado fuera de login/register
-    //          if (!user && pathname !== "/login" && pathname !== "/register") {
-    //              router.push("/login");
-    //          }
-    //          // Lógica para redirigir si está logueado y en login/register (OJO: esto se maneja ahora en login())
-    //          // else if (user && (pathname === "/login" || pathname === "/register")) {
-    //          //    router.push('/'); // O a su dashboard
-    //          // }
-    //          // Lógica de protección por roles (si es necesaria)
-    //     }
-    // }, [user, isLoading, pathname, router]);
+            if (storedUser && storedToken) {
+                const parsedUser = JSON.parse(storedUser);
+                if (
+                    parsedUser &&
+                    typeof parsedUser.usuario === "string" &&
+                    typeof parsedUser.name === "string" &&
+                    parsedUser.role &&
+                    ROLES_DISPONIBLES_VALUES.includes(parsedUser.role as UserRole)
+                ) {
+                    setUser(parsedUser as User);
+                    //foundUser = true;
+                    console.log("AuthProvider useEffect: Usuario cargado desde sessionStorage", parsedUser);
+                } else {
+                    console.warn(
+                        "AuthProvider useEffect: Datos de usuario en sessionStorage no válidos o rol desconocido:",
+                        parsedUser?.role
+                    );
+                    sessionStorage.removeItem("user");
+                    sessionStorage.removeItem("authToken");
+                }
+            } else {
+                 console.log("AuthProvider useEffect: No hay usuario o token en sessionStorage.");
+            }
+        } catch (error) {
+            console.error("AuthProvider useEffect: Error al parsear usuario de sessionStorage", error);
+            sessionStorage.removeItem("user");
+            sessionStorage.removeItem("authToken");
+        } finally {
+            setIsLoading(false); // CRÍTICO: Asegurar que isLoading se ponga en false
+            console.log("AuthProvider useEffect: Carga inicial completada. isLoading: false");
+        }
+    }, []); // Se ejecuta solo una vez al montar el provider
 
     const login = async (
         usuario: string,
         password: string,
-        role: UserRole
+        roleFromLoginForm?: UserRole
     ): Promise<boolean> => {
-        setIsLoading(true);
-        console.log("AuthProvider: Intentando login con", { usuario, role });
+        setIsLoading(true); // Iniciar carga para la operación de login
+        console.log("AuthProvider login: Intentando...", { usuario, roleFromLoginForm });
 
-        // Simulación de autenticación (Reemplazar con API real)
-        return new Promise((resolve) => {
-            setTimeout(() => {
-                let success = false;
-                let userData: User = null;
+        try {
+            const response = await fetch(`${API_BASE_URL}/auth/login`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ nombre_usuario: usuario, contrasena: password }),
+            });
 
-                // Lógica de credenciales simuladas (¡Ajusta esto!)
-                if (role === "admin" && usuario === "admin_user" && password === "admin123") {
-                    userData = { usuario, role: "admin", name: "Administrador" };
-                    success = true;
-                } else if (role === "empleado" && usuario === "empleado_user" && password === "empleado123") {
-                    userData = { usuario, role: "empleado", name: "Empleado Demo" };
-                    success = true;
-                } else {
-                    success = false;
-                }
+            const data = await response.json();
+            
+            if (!response.ok) {
+                
+                console.error("AuthProvider login: Fallido -", data.message || `Error ${response.status}`);
+                sessionStorage.removeItem("user");
+                sessionStorage.removeItem("authToken");
+                setUser(null);
+                setIsLoading(false); // Finalizar carga en caso de error
+                return false;
+            }
+            
+            const { token, user_info: backendUser } = data;
+            
+            localStorage.setItem("user",backendUser)
+            localStorage.setItem("token",token)
+            
+            if (!token || !backendUser || !backendUser.rol || !ROLES_DISPONIBLES_VALUES.includes(backendUser.rol as UserRole)) {
+                console.error("AuthProvider login: Respuesta incompleta o rol inválido del backend.", backendUser);
+                sessionStorage.removeItem("user");
+                sessionStorage.removeItem("authToken");
+                setUser(null);
+                setIsLoading(false); // Finalizar carga
+                return false;
+            }
 
-                if (success && userData) {
-                    console.log(`AuthProvider: Login como ${userData.role} exitoso.`);
-                    try {
-                        sessionStorage.setItem("user", JSON.stringify(userData));
-                        setUser(userData); // Actualiza estado
+            const loggedInUser: User = {
+                id: backendUser.id,
+                usuario: backendUser.nombre_usuario,
+                name: `${backendUser.nombre} ${backendUser.apellido}`.trim(),
+                email: backendUser.email,
+                role: backendUser.rol as UserRole,
+            };
 
-                        // --- ✨ CORRECCIÓN DE REDIRECCIÓN ✨ ---
-                        // Redirige SIEMPRE a la raíz ('/') después del login exitoso.
-                        // Cambia '/' por la ruta de dashboard principal si es diferente.
-                        // Si necesitas rutas DIFERENTES por rol, asegúrate que esas rutas existan.
-                        const redirectPath = '/';
-                        console.log(`AuthProvider: Redirigiendo a ${redirectPath} después del login...`);
-                        router.push(redirectPath); // ¡¡NAVEGACIÓN EXPLÍCITA!!
-                        // --- ✨ FIN CORRECCIÓN ✨ ---
+            sessionStorage.setItem("user", JSON.stringify(loggedInUser));
+            sessionStorage.setItem("authToken", token);
+            setUser(loggedInUser);
+            console.log(`AuthProvider login: Éxito como ${loggedInUser.role}. Redirigiendo...`);
 
-                        // Nota: setIsLoading podría ir después de router.push,
-                        // ya que la navegación puede desmontar el componente actual.
-                        // Dejarlo aquí está bien por ahora.
-                        setIsLoading(false);
-                        resolve(true); // Éxito
+            // La redirección se maneja ahora. setIsLoading(false) se hará después o el componente se desmontará.
+            // No necesitamos un setIsLoading(false) explícito aquí si la redirección ocurre.
+            // El estado de carga se resolverá con la nueva carga de página o
+            // si la redirección falla (aunque router.push no suele fallar así).
+            router.push("/"); // O a la ruta de dashboard principal
+            // setIsLoading(false); // Opcional: podrías ponerlo aquí, pero la redirección puede desmontar.
+                                // Si la redirección es a una ruta protegida que vuelve a verificar el auth,
+                                // el isLoading del AuthProvider se reseteará de todas formas.
+            return true;
 
-                    } catch (error) {
-                         console.error("AuthProvider: Error guardando usuario o redirigiendo", error);
-                         try { sessionStorage.removeItem("user"); } catch(e){console.log(e);}
-                         setUser(null);
-                         setIsLoading(false);
-                         resolve(false); // Falla
-                    }
-                } else {
-                     // Login fallido
-                     console.log("AuthProvider: Login fallido - Credenciales o rol incorrectos.");
-                     try { sessionStorage.removeItem("user"); } catch (error) {console.log(error);}
-                     setUser(null);
-                     setIsLoading(false);
-                     resolve(false); // Falla
-                }
-            }, 500); // Reducido el timeout para pruebas más rápidas
-        });
+        } catch (error) {
+            console.error("AuthProvider login: Error en la petición", error);
+            sessionStorage.removeItem("user");
+            sessionStorage.removeItem("authToken");
+            setUser(null);
+            setIsLoading(false); // Finalizar carga en caso de excepción
+            return false;
+        }
+        // No es necesario un 'finally' aquí para setIsLoading si todos los caminos lo manejan.
+        // Si se llega aquí, router.push() ya se llamó, o un return false con setIsLoading(false) ocurrió.
     };
 
     const logout = () => {
-        console.log("AuthProvider: Cerrando sesión...");
+        console.log("AuthProvider logout: Cerrando sesión...");
+        setIsLoading(true); // Indicar que estamos procesando algo (opcional pero puede ser bueno para UI)
         try {
             sessionStorage.removeItem("user");
+            sessionStorage.removeItem("authToken");
         } catch (error) {
-            console.error("AuthProvider: Error limpiando sessionStorage al hacer logout", error);
+            console.error("AuthProvider logout: Error limpiando sessionStorage", error);
         }
         setUser(null);
-        router.push("/login"); // Redirige a login al cerrar sesión
+        router.push("/login");
+        setIsLoading(false); // Terminar carga después de redirigir
     };
 
+    const getToken = (): string | null => {
+        if (typeof window !== "undefined") {
+            return sessionStorage.getItem("authToken");
+        }
+        return null;
+    };
+
+    // Si aún está cargando la información inicial del usuario, podrías mostrar un spinner global
+    // o simplemente no renderizar {children} hasta que isLoading sea false.
+    // Esto depende de tu UX deseada. Por ahora, renderiza children siempre.
+    // if (isLoading) {
+    //     return <p>Cargando aplicación...</p>; // O un componente Spinner global
+    // }
+
     return (
-        <AuthContext.Provider value={{ user, login, logout, isLoading }}>
+        <AuthContext.Provider value={{ user, login, logout, isLoading, getToken }}>
             {children}
         </AuthContext.Provider>
     );

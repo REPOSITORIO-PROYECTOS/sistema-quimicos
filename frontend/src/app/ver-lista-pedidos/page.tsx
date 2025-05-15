@@ -25,12 +25,12 @@ export default function ListaBoletas() {
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1); // para manejar la paginación
   const [id_boleta, setIdBoleta] = useState<number>(0);
-
+  const token = localStorage.getItem("token")
   useEffect(() => {
     const fetchBoletas = async () => {
       try {
         setLoading(true);
-        const response = await fetch(`https://quimex.sistemataup.online/ordenes_compra/obtener_todas`);
+        const response = await fetch(`https://quimex.sistemataup.online/ordenes_compra/obtener_todas`,{headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`}});
         if (!response.ok) {
           throw new Error(`Error al traer boletas: ${response.statusText}`);
         }
