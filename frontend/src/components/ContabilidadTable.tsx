@@ -114,6 +114,8 @@ export default function ContabilidadTable() {
             // Procesar Ventas...
             if (ventasResult.status === 'fulfilled' && ventasResult.value.ok) {
                 const datos = await ventasResult.value.json();
+                console.log("ventas::");
+                console.log(datos);
                 if (datos && Array.isArray(datos.ventas)) ventasData = datos.ventas as Venta[];
                 else console.warn("Respuesta de ventas inesperada:", datos);
             } else if (ventasResult.status === 'fulfilled') fetchErrors.push(`Ventas(L): HTTP ${ventasResult.value.status}`);
@@ -122,7 +124,9 @@ export default function ContabilidadTable() {
             // Procesar Lista de Compras...
             if (comprasListResult.status === 'fulfilled' && comprasListResult.value.ok) {
                 const datos2 = await comprasListResult.value.json();
-                if (datos2 && Array.isArray(datos2)) comprasInfoData = datos2 as CompraInfo[];
+                 console.log("compras::");
+                console.log(datos2);
+                if (datos2 && Array.isArray(datos2.ordenes)) comprasInfoData = datos2.ordenes as CompraInfo[];
                 else console.warn("Respuesta de lista de compras inesperada:", datos2);
             } else if (comprasListResult.status === 'fulfilled') fetchErrors.push(`Compras(L): HTTP ${comprasListResult.value.status}`);
             else fetchErrors.push(`Compras(L): ${comprasListResult.reason?.message || 'Red'}`);

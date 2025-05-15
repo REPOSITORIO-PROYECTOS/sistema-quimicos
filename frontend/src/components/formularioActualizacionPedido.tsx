@@ -44,6 +44,7 @@ interface IFormData {
 
 
   async function cargarFormulario(){ 
+    console.log("entraste")
     const response = await fetch(`https://quimex.sistemataup.online/ventas/obtener/${id}`,{headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`}});
     const datos = await response.json();
     console.log(datos);
@@ -52,7 +53,7 @@ interface IFormData {
     if (var_vuelto == null) var_vuelto = 0;
     
     setFormData({
-      nombre: datos.nombre_razon_social,
+      nombre: datos.cliente_nombre,
       cuit: datos.cuit_cliente,
       direccion: datos.direccion_entrega,
       fechaEmision: datos.fecha_registro,

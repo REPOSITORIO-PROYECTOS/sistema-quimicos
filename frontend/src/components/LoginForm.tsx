@@ -23,7 +23,7 @@ const LoginForm: React.FC = () => {
     const [loginUsuario, setLoginUsuario] = useState<string>('');
     const [loginContrasena, setLoginContrasena] = useState<string>('');
     // Establecer un rol inicial, por ejemplo, el más común o el primero
-    const [loginRole, setLoginRole] = useState<UserRole>(ROLES_DISPONIBLES[1].value); // 'ALMACEN' por defecto, ajústalo si es necesario
+    const [loginRole] = useState<UserRole>(ROLES_DISPONIBLES[1].value); // 'ALMACEN' por defecto, ajústalo si es necesario
     const [loginIsLoading, setLoginIsLoading] = useState<boolean>(false);
     const [loginError, setLoginError] = useState<string | null>(null); // Para mostrar errores en el UI
 
@@ -63,7 +63,7 @@ const LoginForm: React.FC = () => {
 
     const labelClasses = "block text-sm font-medium text-muted-foreground mb-1.5";
     const inputClasses = "h-10 px-3 py-2 text-sm w-full bg-input text-foreground border border-input rounded-md shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50";
-    const selectClasses = `${inputClasses} pl-3 pr-6`;
+  
     const buttonClasses = "w-full inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 h-10 px-4 py-2";
     const primaryButtonClasses = `${buttonClasses} bg-primary text-primary-foreground hover:bg-primary/90`;
 
@@ -105,7 +105,7 @@ const LoginForm: React.FC = () => {
                         />
                     </div>
 
-                    <div>
+                    {/*<div>
                         <label htmlFor="loginRole" className={labelClasses}>Rol (Referencial)</label>
                         <select
                             id="loginRole"
@@ -122,7 +122,7 @@ const LoginForm: React.FC = () => {
                         <p className="mt-1 text-xs text-muted-foreground">
                             Nota: El sistema verificará tu rol real al iniciar sesión.
                         </p>
-                    </div>
+                    </div>*/}
 
                     {/* Mostrar mensajes de error */}
                     {loginError && (

@@ -7,7 +7,7 @@ type Boleta = {
   venta_id: number;
   monto_final_con_recargos: number;
   fecha_pedido: string;
-  nombre_razon_social: string;
+  cliente_nombre: string;
   direccion_entrega: string;
 };
 
@@ -38,9 +38,9 @@ export default function ListaBoletas() {
           throw new Error(`Error al traer boletas: ${response.statusText}`);
         }
         const data = await response.json();
-   
+        
         console.log(data);
- 
+        console.log()
         let filtrados = data.ventas.filter(
           (item: { direccion_entrega: string | null }) =>
             item.direccion_entrega && item.direccion_entrega.trim() !== ""
@@ -111,7 +111,7 @@ export default function ListaBoletas() {
                   <span className="text-sm">${boleta.monto_final_con_recargos.toFixed(2)}</span>
                   <span className="text-sm">{boleta.fecha_pedido}</span>
                   <span className="text-sm truncate">{boleta.direccion_entrega}</span>
-                  <span className="text-sm truncate">{boleta.nombre_razon_social}</span>
+                  <span className="text-sm truncate">{boleta.cliente_nombre}</span>
                   <div className="flex items-center justify-center gap-2">
                     <button
                       className="text-indigo-700 hover:text-indigo-900 text-xl"

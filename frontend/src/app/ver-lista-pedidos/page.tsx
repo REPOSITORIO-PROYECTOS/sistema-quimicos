@@ -36,7 +36,6 @@ export default function ListaBoletas() {
         }
 
         const data = await response.json();
-        console.log(data);
         setBoletas(data.ordenes); // Accede al array de boletas
         setPagination(data.pagination); // Usa el objeto de paginación
         //eslint-disable-next-line
