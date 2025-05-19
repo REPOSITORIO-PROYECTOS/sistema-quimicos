@@ -143,6 +143,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             // setIsLoading(false); // Opcional: podrías ponerlo aquí, pero la redirección puede desmontar.
                                 // Si la redirección es a una ruta protegida que vuelve a verificar el auth,
                                 // el isLoading del AuthProvider se reseteará de todas formas.
+            setIsLoading(false);
             return true;
 
         } catch (error) {

@@ -1,7 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-
 @custom-variant dark (&:is(.dark *));
 
  @theme  inline {
@@ -121,3 +120,154 @@
     @apply bg-background text-foreground;
   }
 } 
+
+/* --- ESTILOS PARA LA IMPRESIÓN DEL PRESUPUESTO --- */
+@media print {
+  /* Configuración base para la impresión */
+  body, html { /* Aplicar a html también por robustez */
+    visibility: hidden !important; /* Oculta todo por defecto */
+    margin: 0 !important;
+    padding: 0 !important;
+    background-color: white !important; /* Asegura fondo blanco */
+    font-family: Arial, sans-serif !important; /* Fuente base para impresión */
+    font-size: 10pt !important; /* Tamaño de fuente base */
+    color: black !important; /* Color de texto base */
+    -webkit-print-color-adjust: exact !important; /* Para Chrome/Safari: imprimir colores de fondo */
+    color-adjust: exact !important; /* Estándar */
+  }
+
+  /* Muestra SOLO el contenedor del presupuesto y TODO su contenido */
+  #presupuesto-imprimible,
+  #presupuesto-imprimible * { /* El selector '*' es crucial aquí */
+    visibility: visible !important;
+  }
+
+  /* Posiciona y dimensiona el contenedor del presupuesto para que ocupe la página */
+  #presupuesto-imprimible {
+    /* Descomenta estas líneas para la prueba de borde/fondo si aún no ves nada: */
+    /*
+    border: 5px dashed red !important;
+    background-color: lightyellow !important;
+    padding: 10px !important;
+    */
+
+    position: absolute !important; /* Saca del flujo normal */
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important; /* Ocupa el ancho disponible */
+    min-height: 100vh !important; /* Intenta ocupar al menos la altura de la vista de impresión */
+    margin: 0 !important; /* Quita los márgenes del contenedor mismo si usas márgenes de @page */
+    padding: 0 !important; /* Quita padding del contenedor mismo */
+    box-sizing: border-box !important;
+  }
+
+  /* Define los márgenes de la página impresa (más estándar que margin en #presupuesto-imprimible) */
+  @page {
+    size: A4 portrait; /* O el tamaño que necesites */
+    margin: 15mm; /* Márgenes para todas las caras de la página */
+  }
+
+
+  /* --- ESTILOS DETALLADOS PARA EL CONTENIDO DEL PRESUPUESTO --- */
+  /* Estos estilos solo se aplican a los elementos DENTRO de #presupuesto-imprimible */
+  /* ya que todo lo demás está oculto por 'visibility: hidden' en body/html */
+
+  .presupuesto-header {
+    display: flex !important; /* Asegurar display flex */
+    justify-content: space-between !important;
+    align-items: flex-start !important;
+    margin-bottom: 15px !important;
+    border-bottom: 2px solid black !important;
+    padding-bottom: 10px !important;
+  }
+
+  .logo-container {
+    text-align: left !important;
+  }
+
+  .logo-container .logo {
+    max-width: 150px !important;
+    margin-bottom: 5px !important;
+    display: block !important; /* Asegurar que la imagen se muestre */
+  }
+  .sub-logo-text {
+    font-size: 0.8em !important;
+    font-weight: bold !important;
+  }
+
+  .info-empresa {
+    text-align: right !important;
+    font-size: 0.9em !important;
+  }
+  .info-empresa p {
+    margin: 2px 0 !important;
+  }
+  .info-empresa .icon {
+    margin-right: 5px !important;
+  }
+
+  .datos-pedido {
+    margin-bottom: 15px !important;
+  }
+
+  .tabla-datos-principales,
+  .tabla-datos-secundarios {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    margin-bottom: 10px !important;
+  }
+
+  .tabla-datos-principales td,
+  .tabla-datos-secundarios td {
+    padding: 3px 5px !important;
+    border: 1px solid black !important;
+  }
+  .tabla-datos-principales td:first-child,
+  .tabla-datos-secundarios td:first-child {
+    font-weight: bold !important;
+    width: 100px !important; /* Ajusta según necesites */
+  }
+
+  .detalle-productos {
+    margin-bottom: 20px !important;
+  }
+
+  .tabla-items {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    font-size: 0.9em !important;
+  }
+
+  .tabla-items th,
+  .tabla-items td {
+    border: 1px solid black !important;
+    padding: 4px 6px !important;
+    text-align: left !important;
+  }
+
+  .tabla-items th {
+    background-color: #f0f0f0 !important;
+    font-weight: bold !important;
+    text-align: center !important;
+  }
+  .tabla-items th:nth-child(1), .tabla-items td:nth-child(1) { width: 15% !important; text-align: center !important; }
+  .tabla-items th:nth-child(2), .tabla-items td:nth-child(2) { width: 45% !important; }
+  .tabla-items th:nth-child(3), .tabla-items td:nth-child(3) { width: 15% !important; text-align: center !important; }
+  .tabla-items th:nth-child(4), .tabla-items td:nth-child(4) { width: 25% !important; text-align: right !important; }
+
+  .tabla-items .empty-row td {
+    height: 1.5em !important; /* Ajusta según necesites */
+    /* border: 1px solid black !important; Ya heredado */
+  }
+
+  .text-right { text-align: right !important; }
+  .text-center { text-align: center !important; }
+
+  /* Clases para ocultar elementos específicos en la impresión */
+  .print\:hidden, /* Esta es la clase de Tailwind */
+  .no-imprimir,
+  .boton-imprimir-oculto {
+    display: none !important;
+    visibility: hidden !important; /* Doble seguro, aunque display:none suele ser suficiente */
+  }
+}

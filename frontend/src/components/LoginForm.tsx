@@ -44,6 +44,7 @@ const LoginForm: React.FC = () => {
                 // El AuthProvider ya debería manejar la lógica de mostrar errores si se comunica con el backend.
                 // Si AuthProvider no devuelve un mensaje específico, puedes poner uno genérico aquí.
                 setLoginError('Usuario, contraseña o rol incorrectos. Por favor, verifica los datos.');
+                alert('Usuario, contraseña o rol incorrectos. Por favor, verifica los datos.');
                 console.log("LoginForm: ¡Fallo detectado por loginSuccess false!");
             } else {
                 console.log("LoginForm: Login exitoso. AuthProvider debería haber manejado la redirección.");

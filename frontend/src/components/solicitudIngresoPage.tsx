@@ -74,7 +74,7 @@ export default function SolicitudIngresoPage({ id }: any) {
   async function cargarFormulario() {
     try {
       setErrorMensaje(''); // Limpiar errores previos
-      const response = await fetch(`https://quimex.sistemataup.online/ordenes_compra/obtener/${id}`);
+      const response = await fetch(`https://quimex.sistemataup.online/ordenes_compra/obtener/${id}`,{headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }});
       if (!response.ok) throw new Error(`Error al traer la orden: ${response.statusText}`);
       const data = await response.json();
       if (!data || !data.items || data.items.length === 0) {
@@ -116,7 +116,7 @@ export default function SolicitudIngresoPage({ id }: any) {
   // --- cargarCamposProducto, calcular_precio, formatearFecha (sin cambios) ---
   async function cargarCamposProducto(id_producto:number,cantidad_f : number){
     try{
-      const response = await fetch(`https://quimex.sistemataup.online/productos/obtener/${id_producto}`);
+      const response = await fetch(`https://quimex.sistemataup.online/productos/obtener/${id_producto}`,{headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }});
       if (!response.ok) throw new Error(`Error al traer producto ${id_producto}: ${response.statusText}`);
       const data = await response.json();
       console.log("Datos producto:", data);
@@ -203,7 +203,7 @@ export default function SolicitudIngresoPage({ id }: any) {
       const user:any = localStorage.getItem("user")
       const response = await fetch(`https://quimex.sistemataup.online/ordenes_compra/${id}/recibir`, { // Ajustada URL, quitando duplicado /recibir
         method: 'PUT', // O POST según tu API
-        headers: { 'Content-Type': 'application/json', 'X-User-Role' : 'ADMIN', 'X-User-Name' : user.nombre_usuario },
+        headers: { 'Content-Type': 'application/json', 'X-User-Role' : 'ADMIN', 'X-User-Name' : user.nombre_usuario, "Authorization": `Bearer ${token}`},
         body: JSON.stringify(payload), // Enviar el payload preparado
       });
 

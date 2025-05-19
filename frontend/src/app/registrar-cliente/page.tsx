@@ -50,6 +50,8 @@ export default function RegistrarCliente() {
     observaciones: '',
   });
 
+  const token = localStorage.getItem("token");
+
   // --- Manejadores de estado (sin cambios respecto a la versión anterior) ---
   const handleChange = (
     e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
@@ -92,48 +94,102 @@ export default function RegistrarCliente() {
     setForm(prev => ({ ...prev, productos: list }));
   };
 
-  // --- Manejador de envío (sin cambios lógicos importantes) ---
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    const dataToSend = {
-      ...form,
-      // Asegurarse de que producto_id se envíe como número si tu backend lo espera así
-      productos: form.productos
-        .filter(p => p.producto_id !== '' && p.valor >= 0) // Filtrar válidos (valor >= 0)
-        .map(p => ({
-            ...p,
-            producto_id: Number(p.producto_id) // Convertir ID a número antes de enviar
-        })),
-    };
+ const handleSubmit = async (e: FormEvent) => {
+  e.preventDefault();
 
-
-    console.log("Enviando:", JSON.stringify(dataToSend, null, 2));
-
-    try {
-      const res = await fetch(`https://quimex.sistemataup.online/clientes/crear`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(dataToSend),
-      });
-      if (!res.ok) {
-        const errorData = await res.text();
-        console.error("Error response:", errorData);
-        throw new Error(`Error ${res.status}: ${res.statusText}`);
-      }
-      const data = await res.json();
-      console.log('Cliente guardado:', data);
-      // Resetear formulario
-      setForm({
-        nombre_razon_social: '', cuit: 0, direccion: '', localidad: '', provincia: '',
-        codigo_postal: 0, telefono: '', email: '', contacto_principal: 0,
-        productos: [{ producto_id: '', valor: 0 }], observaciones: '',
-      });
-      alert('Cliente registrado con éxito!'); // Feedback al usuario
-    } catch (error) {
-      console.error('Error en handleSubmit:', error);
-      alert(`Error al guardar el cliente: ${error instanceof Error ? error.message : String(error)}`); // Feedback al usuario
-    }
+  // 1. Preparar los datos del cliente
+  const datosCliente = {
+    nombre_razon_social: form.nombre_razon_social,
+    cuit: form.cuit,
+    direccion: form.direccion,
+    localidad: form.localidad,
+    provincia: form.provincia,
+    codigo_postal: form.codigo_postal,
+    telefono: form.telefono,
+    email: form.email,
+    contacto_principal: form.contacto_principal,
+    observaciones: form.observaciones,
+   
+    productos_con_precio_especial: form.productos
+      .filter(p => p.producto_id !== '' && p.valor >= 0 && Number(p.producto_id) > 0) // Asegurar producto_id válido
+      .map(p => ({
+        producto_id: Number(p.producto_id), // Asegurar que es un número
+        precio_unitario_fijo_ars: p.valor,   
+      })),
   };
+
+  console.log("Enviando datos del cliente y precios especiales:", JSON.stringify(datosCliente, null, 2));
+
+  try {
+    // Petición para crear el cliente Y sus precios especiales asociados
+    const resCliente = await fetch(`https://quimex.sistemataup.online/clientes/crear`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        // Aquí iría tu token si es necesario para crear clientes
+        // 'Authorization': `Bearer ${tuToken}`,
+      },
+      body: JSON.stringify(datosCliente),
+    });
+
+    if (!resCliente.ok) {
+      const errorData = await resCliente.json().catch(() => ({ message: 'Error en la respuesta del servidor al crear cliente.' }));
+      console.error("Error response (crear cliente):", errorData);
+      throw new Error(errorData.message || `Error ${resCliente.status}: ${resCliente.statusText}`);
+    }
+
+    const clienteCreado = await resCliente.json();
+    console.log('Cliente registrado con éxito:', clienteCreado);
+
+ 
+    if (clienteCreado.id && form.productos.length > 0) {
+      const preciosEspecialesPromises = form.productos
+        .filter(p => p.producto_id !== '' && p.valor >= 0 && Number(p.producto_id) > 0)
+        .map(item => {
+          const payloadPrecioEspecial = {
+            cliente_id: clienteCreado.id, // ID del cliente recién creado
+            producto_id: Number(item.producto_id),
+            precio_unitario_fijo_ars: item.valor,
+            activo: true, // O como lo manejes
+          };
+          console.log("Enviando precio especial:", payloadPrecioEspecial);
+          return fetch(`https://quimex.sistemataup.online/precios_especiales`, { // CAMBIAR!!!!!
+            method: 'POST',
+            headers: {"Content-Type":"application/json","Authorization":`Bearer ${token}`},
+            body: JSON.stringify(payloadPrecioEspecial),
+          }).then(res => {
+            if (!res.ok) {
+              return res.json().then(err => Promise.reject({ ...err, producto_id: item.producto_id }));
+            }
+            return res.json();
+          });
+        });
+
+      try {
+        const resultadosPrecios = await Promise.all(preciosEspecialesPromises);
+        console.log('Precios especiales registrados:', resultadosPrecios);
+      } catch (errorPrecios) {
+        console.error('Error al registrar uno o más precios especiales:', errorPrecios);
+        // Aquí podrías informar al usuario que el cliente se creó pero hubo problemas con algunos precios
+        // O incluso considerar un "rollback" o eliminación del cliente si los precios son cruciales.
+        alert(`Cliente registrado, pero hubo errores al guardar algunos precios especiales. Revise la consola. Error: ${JSON.stringify(errorPrecios)}`);
+      }
+    }
+    
+
+    // Resetear formulario y dar feedback
+    setForm({
+      nombre_razon_social: '', cuit: 0, direccion: '', localidad: '', provincia: '',
+      codigo_postal: 0, telefono: '', email: '', contacto_principal: 0,
+      productos: [{ producto_id: '', valor: 0 }], observaciones: '',
+    });
+    alert('Cliente registrado con éxito!');
+
+  } catch (error) {
+    console.error('Error en handleSubmit:', error);
+    alert(`Error al guardar el cliente: ${error instanceof Error ? error.message : String(error)}`);
+  }
+};
 
   // ----- Renderizado -----
   return (
