@@ -4,8 +4,6 @@ import React, { useState, useEffect } from "react";
 import { useProductsContext, Producto as ProductoContextType } from "@/context/ProductsContext";
 import { useClientesContext, Cliente } from "@/context/ClientesContext"; 
 
-
-
 type ProductoPedido = {
   producto: number;
   qx: number;
@@ -54,7 +52,7 @@ const initialFormData: IFormData = {
 
 const initialProductos: ProductoPedido[] = [{ producto: 0, qx: 0, precio: 0, total: 0 }];
 
-export default function RegistrarPedidoPage() { // searchParams no se usará activamente aquí
+export default function RegistrarPedidoPage() { 
   const {
     clientes,
     loading: loadingClientes,
@@ -71,13 +69,20 @@ export default function RegistrarPedidoPage() { // searchParams no se usará act
   const [errorMessage, setErrorMessage] = useState('');
   
   const productosContext = useProductsContext();
-  
-  // Establecer fecha de emisión inicial al cargar el componente
+  const [nombreVendedor, setNombreVendedor] = useState<string | null>(null); // NUEVO ESTADO para el nombre del vendedor
+
+  // Establecer fecha de emisión inicial y nombre del vendedor al cargar el componente
   useEffect(() => {
     const now = new Date();
-    now.setMinutes(now.getMinutes() - now.getTimezoneOffset()); // Ajustar a zona horaria local
+    now.setMinutes(now.getMinutes() - now.getTimezoneOffset()); 
     setFormData(prev => ({...prev, fechaEmision: now.toISOString().slice(0, 16)}));
-  }, []);
+
+    // Obtener nombre del vendedor de localStorage
+    const storedUserName = localStorage.getItem("user_name");
+    if (storedUserName) {
+      setNombreVendedor(storedUserName);
+    }
+  }, []); // Se ejecuta solo una vez al montar
 
   const montoBaseProductos = React.useMemo(() => {
     return productos.reduce((sum, item) => sum + (item.total || 0), 0);
@@ -86,13 +91,24 @@ export default function RegistrarPedidoPage() { // searchParams no se usará act
   // useEffect para llamar a /ventas/calcular_total y luego /ventas/calcular_vuelto
   useEffect(() => {
     const recalcularTodo = async () => {
-      if (montoBaseProductos <= 0) {
+      if (montoBaseProductos <= 0 && formData.montoPagado <= 0) { // Modificado para no recalcular si solo montoPagado es > 0 y no hay productos
         setTotalCalculadoApi(null);
         setFormData(prev => ({ ...prev, vuelto: 0 }));
         return;
       }
+      if (montoBaseProductos <= 0 && formData.montoPagado > 0) { // Si no hay productos pero se ingresa monto pagado, no calcular recargos
+        setTotalCalculadoApi(null); 
+        // Calcular vuelto si montoPagado > 0 (y montoBase es 0)
+        if(formData.montoPagado > 0) {
+          setFormData(prev => ({ ...prev, vuelto: formData.montoPagado }));
+        } else {
+          setFormData(prev => ({ ...prev, vuelto: 0 }));
+        }
+        return;
+      }
+
       setIsCalculatingTotal(true);
-      setErrorMessage(''); // Limpiar errores previos de cálculo
+      setErrorMessage(''); 
       const token = localStorage.getItem("token");
       if (!token) {
         setErrorMessage("No autenticado para calcular total.");
@@ -138,7 +154,7 @@ export default function RegistrarPedidoPage() { // searchParams no se usará act
         } else {
             setFormData(prev => ({ ...prev, vuelto: 0 }));
         }
-        // eslint-disable-next-line
+        //eslint-disable-next-line
       } catch (error: any) {
         console.error("Error en recalcularTodo:", error);
         setErrorMessage(error.message || "Error al recalcular totales/vuelto.");
@@ -148,8 +164,7 @@ export default function RegistrarPedidoPage() { // searchParams no se usará act
         setIsCalculatingTotal(false);
       }
     };
-
-    // Solo recalcular si hay productos y forma de pago/factura/monto pagado cambian
+    
     if (montoBaseProductos > 0 || formData.montoPagado > 0) {
         recalcularTodo();
     } else {
@@ -162,9 +177,19 @@ export default function RegistrarPedidoPage() { // searchParams no se usará act
 
   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
-    const val = type === 'checkbox' ? (e.target as HTMLInputElement).checked : 
-                type === 'number' ? parseFloat(value) || 0 : value;
-    setFormData((prev) => ({ ...prev, [name]: val }));
+    const val = type === 'checkbox' 
+      ? (e.target as HTMLInputElement).checked 
+      : type === 'number' 
+      ? parseFloat(value) || 0 
+      : value;
+  
+    setFormData((prev) => {
+      const newState = { ...prev, [name]: val };
+      if (name === 'formaPago') {
+        newState.requiereFactura = (val === 'factura');
+      }
+      return newState;
+    });
   };
 
   const handleClienteSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -203,15 +228,16 @@ export default function RegistrarPedidoPage() { // searchParams no se usará act
         });
         if (!precioRes.ok) {
           const errData = await precioRes.json().catch(()=>({message:"Error al calcular precio."}));
-          throw new Error(errData.message);
+          throw new Error(errData.message || "Error al calcular precio.");
         }
         const precioData = await precioRes.json();
         currentProductItem.precio = precioData.precio_venta_unitario_ars || 0;
         currentProductItem.total = precioData.precio_total_calculado_ars || 0;
-      } catch (error) {
+        //eslint-disable-next-line
+      } catch (error: any) {
         console.error("Error en carga de precio:", error);
+        setErrorMessage(error.message || "Error al obtener precio de producto.")
         currentProductItem.precio = 0; currentProductItem.total = 0;
-        // Podrías setear un mensaje de error específico para el producto si es necesario
       }
     } else {
       currentProductItem.precio = 0; currentProductItem.total = 0;
@@ -252,12 +278,18 @@ export default function RegistrarPedidoPage() { // searchParams no se usará act
 
     const clienteIdParaApi = parseInt(formData.clienteId, 10);
     const token = localStorage.getItem("token");
+    const usuarioId = localStorage.getItem("usuario_id");
+
     if (!token) {
         setErrorMessage("No autenticado."); setIsSubmitting(false); return;
     }
+    if (!usuarioId) {
+        setErrorMessage("ID de usuario no encontrado. Por favor, vuelva a iniciar sesión."); setIsSubmitting(false); return;
+    }
+
 
     const dataPayload = {
-      usuario_interno_id: 1, // O el ID del usuario logueado
+      usuario_interno_id: parseInt(usuarioId, 10), 
       items: productos.filter(item => item.producto !== 0 && item.qx > 0).map(item => ({
         producto_id: item.producto,
         cantidad: item.qx,
@@ -291,7 +323,6 @@ export default function RegistrarPedidoPage() { // searchParams no se usará act
       if (response.ok) {
         const mensajeExito = `¡Pedido registrado exitosamente!`;
         setSuccessMessage(mensajeExito);
-        // Resetear formulario para una nueva venta
         const now = new Date();
         now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
         setFormData({...initialFormData, fechaEmision: now.toISOString().slice(0, 16)});
@@ -304,7 +335,7 @@ export default function RegistrarPedidoPage() { // searchParams no se usará act
       } else {
         setErrorMessage(result.message || result.detail || `Error ${response.status} al registrar el pedido.`);
       }
-      // eslint-disable-next-line
+      //eslint-disable-next-line
     } catch (err: any) {
       setErrorMessage(err.message || "Error de red al intentar registrar el pedido.");
     } finally {
@@ -320,7 +351,7 @@ export default function RegistrarPedidoPage() { // searchParams no se usará act
             fechaFormateada = new Date(formData.fechaEmision).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'});
         } catch(e){ console.error("Error formateando fecha para título:", e); }
     }
-    const numPedido = pedidoIdParaImprimir || "NUEVO"; // Para impresión antes de guardar, o si la API no devuelve ID
+    const numPedido = pedidoIdParaImprimir || "NUEVO"; 
 
     const originalTitle = document.title;
     document.title = `Presupuesto QuiMex - Pedido ${numPedido} - ${nombreCliente} (${fechaFormateada})`;
@@ -328,10 +359,10 @@ export default function RegistrarPedidoPage() { // searchParams no se usará act
     setTimeout(() => { document.title = originalTitle; }, 1000);
   };
 
-  if (loadingClientes) { // Solo spinner para clientes, ya que no cargamos pedido existente
+  if (loadingClientes) { 
     return <div className="flex items-center justify-center min-h-screen bg-indigo-900"><p className="text-white text-xl">Cargando clientes...</p></div>;
   }
-  if (errorClientes) { // Error si no se pueden cargar clientes
+  if (errorClientes) { 
       return <div className="flex flex-col items-center justify-center min-h-screen bg-red-900 text-white p-4">
              <h2 className="text-2xl font-bold mb-4">Error al Cargar Clientes</h2> <p className="bg-red-700 p-2 rounded mb-4 text-sm">{errorClientes}</p>
              <button onClick={() => window.location.reload()} className="bg-white text-red-900 px-4 py-2 rounded hover:bg-gray-200">Reintentar</button>
@@ -344,9 +375,22 @@ export default function RegistrarPedidoPage() { // searchParams no se usará act
     <>
       <div className="flex items-center justify-center min-h-screen bg-indigo-900 py-10 px-4 print:hidden">
         <div className="bg-white p-6 md:p-8 rounded-lg shadow-md w-full max-w-4xl">
-          <h2 className="text-2xl font-semibold mb-6 text-center text-indigo-800">
-            Registrar Pedido 
-          </h2>
+          
+          {/* MODIFICACIÓN PARA MOSTRAR NOMBRE DE VENDEDOR Y TÍTULO */}
+          <div className="relative mb-6">
+            {nombreVendedor && (
+              <div className="absolute left-0 top-1/2 transform -translate-y-1/2">
+                <span className="text-sm sm:text-base font-medium text-gray-700 whitespace-nowrap">
+                  Vendedor: {nombreVendedor}
+                </span>
+              </div>
+            )}
+            <h2 className="text-2xl font-semibold text-center text-indigo-800">
+              Registrar Pedido 
+            </h2>
+          </div>
+          {/* FIN DE MODIFICACIÓN */}
+
           {errorMessage && <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4"><p>{errorMessage}</p></div>}
           {successMessage && <div className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4"><p>{successMessage}</p></div>}
           
@@ -433,15 +477,8 @@ export default function RegistrarPedidoPage() { // searchParams no se usará act
                   <select id="formaPago" name="formaPago" value={formData.formaPago} onChange={handleFormChange}
                     className="w-full shadow-sm border rounded py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500">
                     <option value="efectivo">Efectivo</option><option value="transferencia">Transferencia</option>
-                    <option value="tarjeta_credito">Tarjeta de Crédito</option><option value="tarjeta_debito">Tarjeta de Débito</option>
-                    <option value="mercado_pago">Mercado Pago</option><option value="cuenta_corriente">Cta. Cte.</option>
+                    <option value="factura">Factura</option>
                   </select>
-                </div>
-                <div className="flex items-center pt-5"> 
-                    <input type="checkbox" id="requiereFactura" name="requiereFactura"
-                           checked={formData.requiereFactura} onChange={handleFormChange}
-                           className="h-5 w-5 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500 mr-2"/>
-                    <label className="text-sm font-medium text-gray-700" htmlFor="requiereFactura">¿Factura?</label>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="montoPagado">Monto Pagado</label>
@@ -450,12 +487,9 @@ export default function RegistrarPedidoPage() { // searchParams no se usará act
                       type="number"
                       name="montoPagado"
                       className="w-full bg-white shadow-sm border rounded py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                      // Cambia esta línea:
                       value={formData.montoPagado === 0 ? '' : formData.montoPagado}
-                      // O aún más simple si 0 es el único valor que quieres tratar como vacío:
-                      // value={formData.montoPagado || ''}
                       onChange={handleMontoPagadoChange}
-                      placeholder="0.00" // El placeholder es importante aquí
+                      placeholder="0.00" 
                       step="0.01"
                       min="0"
                     />
@@ -523,7 +557,7 @@ export default function RegistrarPedidoPage() { // searchParams no se usará act
             <thead><tr><th>ITEM</th><th>PRODUCTO</th><th>CANTIDAD</th><th>SUBTOTAL</th></tr></thead>
             <tbody>
               {productos.filter(p => p.producto && p.qx > 0).map((item, index) => {
-                const pInfo = productosContext.productos.find(p => p.id === item.producto);
+                const pInfo = productosContext?.productos.find(p => p.id === item.producto);
                 return (<tr key={`print-item-${index}`}><td>{index + 1}</td><td>{pInfo?.nombre || `ID: ${item.producto}`}</td><td className="text-center">{item.qx}</td><td className="text-right">$ {item.total.toFixed(2)}</td></tr>);
               })}
               {Array.from({ length: Math.max(0, 12 - productos.filter(p => p.producto && p.qx > 0).length) }).map((_, i) => 

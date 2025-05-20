@@ -21,8 +21,8 @@ const navItems = [
     { href: "/lista", label: "Lista" },
    // { href: "/procesos", label: "Procesos" },
     { href: "/compras", label: "Compras" },
-    {href: "/movimientos", label:"Movimientos"},
-    {href: "/acciones-proveedores", label:"Proveedores"}
+    { href: "/movimientos", label:"Movimientos"},
+    { href: "/proveedores-acciones", label:"Proveedores"}
 ];
 
 // --- SOLUCIÓN: Definir un tipo para el estilo del indicador ---

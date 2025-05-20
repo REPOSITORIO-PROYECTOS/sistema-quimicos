@@ -42,14 +42,14 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
   const [formData, setFormData] = useState<IFormData>({
     nombre: "",
     cuit: "",
-    direccion: "", // Se carga pero no se muestra para edición
+    direccion: "", 
     fechaEmision: "",
-    fechaEntrega: "", // Se carga pero no se muestra para edición
-    formaPago: "efectivo", // Default
+    fechaEntrega: "", 
+    formaPago: "efectivo", 
     montoPagado: 0,
     vuelto: 0,
     cliente_id: null,
-    requiereFactura: false, // Inicializado
+    requiereFactura: false, 
     observaciones: "",
   });
 
@@ -60,16 +60,17 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
   const [isCalculatingTotal, setIsCalculatingTotal] = useState(false);
   const [errorMensaje, setErrorMensaje] = useState('');
   const [successMensaje, setSuccessMensaje] = useState('');
-  const [isLoading, setIsLoading] = useState(true); // Para la carga inicial
+  const [isLoading, setIsLoading] = useState(true); 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [nombreVendedor, setNombreVendedor] = useState<string | null>(null); // Estado para el nombre del vendedor
 
   const productosContext = useProductsContext();
-  // const { clientes } = useClientesContext(); // Descomenta si necesitas la lista de clientes para algo
 
   const cargarFormulario = useCallback(async (pedidoId: number) => {
     setIsLoading(true);
     setErrorMensaje('');
     setSuccessMensaje('');
+    setNombreVendedor(null); // Reiniciar al cargar
     const token = localStorage.getItem("token");
     if (!token) {
       setErrorMensaje("Usuario no autenticado. Por favor, inicie sesión.");
@@ -87,6 +88,9 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
       }
       const datosAPI = await response.json();
       console.log("Datos del pedido cargados desde API:", datosAPI);
+      
+      // Obtener nombre del vendedor de la API
+      setNombreVendedor(datosAPI.nombre_vendedor || null);
 
       let var_vuelto = datosAPI.vuelto_calculado;
       if (var_vuelto == null) var_vuelto = 0;
@@ -94,14 +98,14 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
       setFormData({
         nombre: datosAPI.cliente_nombre || "N/A",
         cuit: datosAPI.cuit_cliente || "",
-        direccion: datosAPI.direccion_entrega || "", // Se carga el valor original
+        direccion: datosAPI.direccion_entrega || "", 
         fechaEmision: datosAPI.fecha_registro || "",
-        fechaEntrega: datosAPI.fecha_pedido || "",   // Se carga el valor original
+        fechaEntrega: datosAPI.fecha_pedido || "",   
         formaPago: datosAPI.forma_pago || "efectivo",
         montoPagado: datosAPI.monto_pagado_cliente || 0,
         vuelto: var_vuelto,
         cliente_id: datosAPI.cliente_id || null,
-        requiereFactura: datosAPI.requiere_factura || false, // Cargar desde API
+        requiereFactura: datosAPI.requiere_factura || false, 
         observaciones: datosAPI.observaciones || "",
       });
       //eslint-disable-next-line
@@ -120,7 +124,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     } finally {
       setIsLoading(false);
     }
-  }, []); // useCallback sin dependencias directas, id se pasa como arg.
+  }, []); 
 
   useEffect(() => {
     if (id) {
@@ -128,6 +132,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     } else {
       setErrorMensaje("ID de pedido no proporcionado para cargar los detalles.");
       setIsLoading(false);
+      setNombreVendedor(null);
     }
   }, [id, cargarFormulario]);
   
@@ -169,7 +174,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
       }
     };
     recalcularTotalConAPI();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  //eslint-disable-next-line react-hooks/exhaustive-deps
   }, [montoBaseProductos, formData.formaPago, formData.requiereFactura, isLoading]);
 
   useEffect(() => {
@@ -194,7 +199,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
                 }
                 const dataVuelto = await resVuelto.json();
                 setFormData(p => ({...p, vuelto:parseFloat((dataVuelto.vuelto||0).toFixed(2))}));
-                //eslint-disable-next-line
+              //eslint-disable-next-line  
             } catch (error: any) {
                 setErrorMensaje(error.message || "Error al calcular el vuelto.");
                 setFormData(p => ({...p, vuelto:0}));
@@ -203,7 +208,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
             setFormData(p => ({...p, vuelto:0}));
         }
     };
-    if (!isCalculatingTotal) { // Evitar calcular vuelto mientras el total principal se está calculando
+    if (!isCalculatingTotal) { 
         calcularVueltoConAPI();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -214,7 +219,13 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     const { name, value, type } = e.target;
     const val = type === 'checkbox' ? (e.target as HTMLInputElement).checked :
                 type === 'number' ? parseFloat(value) || 0 : value;
-    setFormData((prev) => ({ ...prev, [name]: val }));
+    setFormData((prev) => {
+    const newState = { ...prev, [name]: val };
+    if (name === 'formaPago') {
+      newState.requiereFactura = (val === 'factura');
+    }
+    return newState;
+    });
   };
   
 
@@ -232,12 +243,9 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         return;
     }
 
-    // Los campos direccion y fechaEntrega se envían con los valores que se cargaron originalmente
-    // ya que no son editables en este formulario.
     const dataToUpdate = {
-      // cliente_id: formData.cliente_id, // El cliente de un pedido existente no debería cambiar
-      fecha_pedido: formData.fechaEntrega,    // Valor original cargado
-      direccion_entrega: formData.direccion, // Valor original cargado
+      fecha_pedido: formData.fechaEntrega,    
+      direccion_entrega: formData.direccion, 
       monto_pagado_cliente: formData.montoPagado,
       forma_pago: formData.formaPago,
       vuelto: formData.vuelto,
@@ -261,7 +269,6 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
       } else {
         cargarFormulario(id); 
         setSuccessMensaje("¡Pedido actualizado con éxito!");
-        // Recargar datos para reflejar cualquier cambio del backend
       }
       //eslint-disable-next-line
     } catch (err: any) {
@@ -297,21 +304,31 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     <>
       <div className="flex items-center justify-center min-h-screen bg-indigo-900 py-10 px-4 print:hidden">
         <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-3xl">
-          <h2 className="text-2xl font-semibold mb-6 text-center text-indigo-800">
-            Detalle y Actualización del Pedido #{id}
-          </h2>
+          
+          {/* MODIFICACIÓN PARA MOSTRAR NOMBRE DE VENDEDOR Y TÍTULO */}
+          <div className="mb-6"> {/* Contenedor general para título y vendedor */}
+            <h2 className="text-2xl font-semibold text-center text-indigo-800">
+              Detalle y Actualización del Pedido #{id}
+            </h2>
+            {/* Nombre del vendedor debajo del título, alineado a la izquierda */}
+            <div className="mt-2 text-left"> 
+              <span className="text-sm sm:text-base font-medium text-gray-700">
+                Vendedor: {nombreVendedor ? nombreVendedor : "No encontrado"}
+              </span>
+            </div>
+          </div>
+          {/* FIN DE MODIFICACIÓN */}
+
           {errorMensaje && <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4" role="alert"><p><strong>Error:</strong> {errorMensaje}</p></div>}
           {successMensaje && <div className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4" role="alert"><p><strong>Éxito:</strong> {successMensaje}</p></div>}
           
           <form onSubmit={handleSubmit} className="space-y-6">
             <fieldset className="border p-4 rounded-md">
               <legend className="text-lg font-medium text-gray-700 px-2">Datos Cliente/Pedido</legend>
-              {/* Campos "Dirección Entrega" y "Fecha Estimada Entrega" eliminados del formulario visible */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div><label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="nombre">Nombre Cliente</label><input type="text" name="nombre" id="nombre" value={formData.nombre} readOnly disabled className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 bg-gray-100 cursor-not-allowed focus:outline-none"/></div>
                 <div><label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="cuit">CUIT</label><input type="text" name="cuit" id="cuit" value={formData.cuit} readOnly disabled className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 bg-gray-100 cursor-not-allowed focus:outline-none"/></div>
                 <div><label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="fechaEmision">Fecha de Emisión</label><input type="datetime-local" name="fechaEmision" id="fechaEmision" value={formData.fechaEmision ? formData.fechaEmision.substring(0,16) : ''} readOnly disabled className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 bg-gray-100 cursor-not-allowed focus:outline-none"/></div>
-                {/* Los campos direccion y fechaEntrega se cargan en formData pero no se muestran aquí para edición */}
                 <div className="md:col-span-2"><label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="observaciones">Observaciones</label><textarea id="observaciones" name="observaciones" value={formData.observaciones || ''} onChange={handleFormChange} rows={2} className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"/></div>
               </div>
             </fieldset>
@@ -340,12 +357,10 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
                 <div><label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="formaPago">Forma de Pago</label>
                   <select id="formaPago" name="formaPago" value={formData.formaPago} onChange={handleFormChange} className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500">
                     <option value="efectivo">Efectivo</option><option value="transferencia">Transferencia</option>
-                    <option value="tarjeta_credito">T. Crédito</option><option value="tarjeta_debito">T. Débito</option>
-                    <option value="mercado_pago">Mercado Pago</option><option value="cuenta_corriente">Cta. Cte.</option>
+                    <option value="factura">Factura</option>
                   </select>
                 </div>
-                <div className="flex items-center pt-5"><input type="checkbox" id="requiereFactura" name="requiereFactura" checked={formData.requiereFactura} onChange={handleFormChange} className="h-5 w-5 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500 mr-2"/><label className="text-sm font-medium text-gray-700" htmlFor="requiereFactura">¿Factura?</label></div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="montoPagado">Monto Pagado</label><input id="montoPagado" type="number" name="montoPagado" value={formData.montoPagado} onChange={handleMontoPagadoChange} placeholder="0.00" step="0.01" min="0" className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"/></div>
+                <div><label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="montoPagado">Monto Pagado</label><input id="montoPagado" type="number" name="montoPagado" value={formData.montoPagado === 0 ? '' : formData.montoPagado} onChange={handleMontoPagadoChange} placeholder="0.00" step="0.01" min="0" className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"/></div>
                 <div><label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="vuelto">Vuelto</label><input id="vuelto" type="text" name="vuelto" readOnly value={`$ ${formData.vuelto.toFixed(2)}`} className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 bg-gray-100 text-right focus:outline-none"/></div>
               </div>
               <div className="mt-4 text-right">
@@ -364,7 +379,6 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         </div>
       </div>
 
-      {/* SECCIÓN PARA LA IMPRESIÓN DEL PRESUPUESTO */}
       <div id="presupuesto-imprimible" className="hidden print:block presupuesto-container">
         <header className="presupuesto-header">
           <div className="logo-container"><img src="/logo.png" alt="QuiMex" className="logo" /><p className="sub-logo-text">PRESUPUESTO NO VALIDO COMO FACTURA</p></div>
@@ -378,7 +392,6 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
             <tr><td>SUBTOTAL (Productos)</td><td className="text-right">$ {montoBaseProductos.toFixed(2)}</td></tr>
           </tbody></table>
           <table className="tabla-datos-secundarios"><tbody>
-            {/* Dirección para la impresión viene de formData.direccion (cargada del pedido) */}
             <tr><td>DIRECCIÓN</td><td>{formData.direccion || '-'}</td></tr>
             {totalCalculadoApi && totalCalculadoApi.recargos.transferencia > 0 && <tr><td>RECARGO ({totalCalculadoApi.forma_pago_aplicada})</td><td className="text-right">$ {totalCalculadoApi.recargos.transferencia.toFixed(2)}</td></tr>}
             {totalCalculadoApi && totalCalculadoApi.recargos.factura_iva > 0 && <tr><td>{formData.requiereFactura ? "IVA (Factura)" : "Recargo (Factura)"}</td><td className="text-right">$ {totalCalculadoApi.recargos.factura_iva.toFixed(2)}</td></tr>}
@@ -399,7 +412,6 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
           </table>
         </section>
       </div>
-      {/* Estilos JSX Globales (mueve a globals.css para producción) */}
       <style jsx global>{`
         .inputD { @apply shadow-sm border rounded w-full py-2 px-3 text-gray-700 bg-gray-100 cursor-not-allowed focus:outline-none; }
         .inputE { @apply shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500; }

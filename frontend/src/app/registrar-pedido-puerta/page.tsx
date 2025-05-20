@@ -14,13 +14,11 @@ type ProductoPedido = {
 interface IFormData {
   clienteId: string | null;
   cuit: string;
-  // nombre: string; // El nombre del cliente se obtiene del contexto/selección
-  // direccion: string; // La dirección no está en este formulario de "puerta"
   fechaEmision: string;
   formaPago: string;
   montoPagado: number;
   vuelto: number;
-  requiereFactura: boolean; // Campo para el cálculo del total
+  requiereFactura: boolean; 
   observaciones?: string;
 }
 
@@ -35,6 +33,22 @@ interface TotalCalculadoAPI {
   monto_final_con_recargos: number;
 }
 
+const initialFormData: IFormData = {
+    clienteId: null,
+    cuit: "",
+    fechaEmision: "",
+    formaPago: "efectivo",
+    montoPagado: 0,
+    vuelto: 0,
+    requiereFactura: false,
+    observaciones: "",
+};
+
+const initialProductos: ProductoPedido[] = [
+    { producto: 0, qx: 0, precio: 0, total: 0 },
+];
+
+
 export default function RegistrarPedidoPuertaPage() {
   const {
     clientes,
@@ -42,22 +56,9 @@ export default function RegistrarPedidoPuertaPage() {
     error: errorClientes,
   } = useClientesContext();
 
-  const [formData, setFormData] = useState<IFormData>({
-    clienteId: null,
-    cuit: "",
-    // nombre: "", // Se deriva del cliente seleccionado
-    // direccion: "", // No es parte de este formulario
-    fechaEmision: "",
-    formaPago: "efectivo",
-    montoPagado: 0,
-    vuelto: 0,
-    requiereFactura: false,
-    observaciones: "",
-  });
+  const [formData, setFormData] = useState<IFormData>(initialFormData);
 
-  const [productos, setProductos] = useState<ProductoPedido[]>([
-    { producto: 0, qx: 0, precio: 0, total: 0 },
-  ]);
+  const [productos, setProductos] = useState<ProductoPedido[]>(initialProductos);
 
   const [totalCalculadoApi, setTotalCalculadoApi] = useState<TotalCalculadoAPI | null>(null);
   const [isCalculatingTotal, setIsCalculatingTotal] = useState(false);
@@ -66,12 +67,19 @@ export default function RegistrarPedidoPuertaPage() {
   const [errorMessage, setErrorMessage] = useState('');
 
   const productosContext = useProductsContext();
+  const [nombreVendedor, setNombreVendedor] = useState<string | null>(null); // NUEVO ESTADO para el nombre del vendedor
 
-  // Inicializar fechaEmision al montar
+  // Inicializar fechaEmision y nombreVendedor al montar
   useEffect(() => {
     const now = new Date();
     now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
     setFormData(prev => ({...prev, fechaEmision: now.toISOString().slice(0, 16)}));
+
+    // Obtener nombre del vendedor de localStorage
+    const storedUserName = localStorage.getItem("user_name");
+    if (storedUserName) {
+      setNombreVendedor(storedUserName);
+    }
   }, []);
 
 
@@ -82,13 +90,23 @@ export default function RegistrarPedidoPuertaPage() {
   // useEffect para llamar a /ventas/calcular_total y luego /ventas/calcular_vuelto
   useEffect(() => {
     const recalcularTodo = async () => {
-      if (montoBaseProductos <= 0) {
+      if (montoBaseProductos <= 0 && formData.montoPagado <= 0) {
         setTotalCalculadoApi(null);
         setFormData(prev => ({ ...prev, vuelto: 0 }));
         return;
       }
+      if (montoBaseProductos <= 0 && formData.montoPagado > 0) {
+        setTotalCalculadoApi(null); 
+        if(formData.montoPagado > 0) {
+          setFormData(prev => ({ ...prev, vuelto: formData.montoPagado }));
+        } else {
+          setFormData(prev => ({ ...prev, vuelto: 0 }));
+        }
+        return;
+      }
+
       setIsCalculatingTotal(true);
-      setErrorMessage(''); // Limpiar errores previos
+      setErrorMessage(''); 
       const token = localStorage.getItem("token");
       if (!token) {
         setErrorMessage("No autenticado para calcular total.");
@@ -99,7 +117,6 @@ export default function RegistrarPedidoPuertaPage() {
       let montoFinalParaVuelto = montoBaseProductos;
 
       try {
-        // 1. Calcular total con recargos
         const resTotal = await fetch("https://quimex.sistemataup.online/ventas/calcular_total", {
           method: "POST",
           headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
@@ -117,7 +134,6 @@ export default function RegistrarPedidoPuertaPage() {
         setTotalCalculadoApi(dataTotal);
         montoFinalParaVuelto = dataTotal.monto_final_con_recargos;
 
-        // 2. Calcular vuelto basado en el nuevo total y monto pagado
         if (formData.montoPagado >= montoFinalParaVuelto && montoFinalParaVuelto > 0) {
             const resVuelto = await fetch("https://quimex.sistemataup.online/ventas/calcular_vuelto", {
                 method: "POST",
@@ -136,7 +152,8 @@ export default function RegistrarPedidoPuertaPage() {
         } else {
             setFormData(prev => ({ ...prev, vuelto: 0 }));
         }
-      }//eslint-disable-next-line
+      }
+      //eslint-disable-next-line
        catch (error: any) {
         console.error("Error en recalcularTodo:", error);
         setErrorMessage(error.message || "Error al recalcular totales/vuelto.");
@@ -147,7 +164,13 @@ export default function RegistrarPedidoPuertaPage() {
       }
     };
 
-    recalcularTodo();
+    // Solo recalcular si hay productos o se ha ingresado un monto
+    if (montoBaseProductos > 0 || formData.montoPagado > 0) {
+        recalcularTodo();
+    } else {
+        setTotalCalculadoApi(null);
+        setFormData(prev => ({ ...prev, vuelto: 0 }));
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [montoBaseProductos, formData.formaPago, formData.requiereFactura, formData.montoPagado]);
 
@@ -156,7 +179,13 @@ export default function RegistrarPedidoPuertaPage() {
     const { name, value, type } = e.target;
     const val = type === 'checkbox' ? (e.target as HTMLInputElement).checked :
                 type === 'number' ? parseFloat(value) || 0 : value;
-    setFormData((prev) => ({ ...prev, [name]: val }));
+    setFormData((prev) => {
+    const newState = { ...prev, [name]: val };
+    if (name === 'formaPago') {
+      newState.requiereFactura = (val === 'factura');
+    }
+    return newState;
+    });
   };
 
   const handleClienteSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -166,7 +195,6 @@ export default function RegistrarPedidoPuertaPage() {
       ...prev,
       clienteId: selectedId || null,
       cuit: selectedCliente ? String(selectedCliente.cuit || '') : "",
-      // No autocompletamos 'nombre' ni 'direccion' en formData aquí, se obtienen de `selectedClienteInfo` para la UI
     }));
   };
 
@@ -194,13 +222,15 @@ export default function RegistrarPedidoPuertaPage() {
         });
         if (!precioRes.ok) {
           const errData = await precioRes.json().catch(()=>({message:"Error calculando precio."}));
-          throw new Error(errData.message);
+          throw new Error(errData.message || "Error calculando precio.");
         }
         const precioData = await precioRes.json();
         currentProductItem.precio = precioData.precio_venta_unitario_ars || 0;
         currentProductItem.total = precioData.precio_total_calculado_ars || 0;
-      } catch (error) {
+        //eslint-disable-next-line
+      } catch (error: any) {
         console.error("Error en carga de precio:", error);
+        setErrorMessage(error.message || "Error al obtener precio de producto.")
         currentProductItem.precio = 0; currentProductItem.total = 0;
       }
     } else {
@@ -236,15 +266,19 @@ export default function RegistrarPedidoPuertaPage() {
     }
     
     const token = localStorage.getItem("token");
+    const usuarioId = localStorage.getItem("usuario_id");
+
     if (!token) { setErrorMessage("No autenticado."); setIsSubmitting(false); return; }
+    if (!usuarioId) { setErrorMessage("ID de usuario no encontrado. Por favor, vuelva a iniciar sesión."); setIsSubmitting(false); return; }
+
 
     const dataPayload = {
-      usuario_interno_id: 1,
+      usuario_interno_id: parseInt(usuarioId, 10),
       items: productos.filter(i=>i.producto!==0&&i.qx>0).map(i=>({producto_id:i.producto,cantidad:i.qx})),
-      cliente_id: parseInt(formData.clienteId),
+      cliente_id: parseInt(formData.clienteId), // Asegurar que sea número
       fecha_emision: formData.fechaEmision || new Date().toISOString().slice(0,16),
-      fecha_pedido: formData.fechaEmision || new Date().toISOString().slice(0,16), // Para "en puerta", fecha_pedido = fecha_emision
-      direccion_entrega: "", // Pedido en puerta no tiene dirección de entrega específica del pedido
+      fecha_pedido: formData.fechaEmision || new Date().toISOString().slice(0,16),
+      direccion_entrega: "", 
       cuit_cliente: formData.cuit,
       monto_pagado_cliente: formData.montoPagado,
       forma_pago: formData.formaPago,
@@ -266,13 +300,12 @@ export default function RegistrarPedidoPuertaPage() {
       const result = await response.json();
       if (response.ok) {
         setSuccessMessage("¡Pedido registrado exitosamente!");
-        // Limpiar formulario para un nuevo pedido
         const now = new Date(); now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
         setFormData({
-            clienteId: null, cuit: "", fechaEmision: now.toISOString().slice(0,16),
-            formaPago:"efectivo", montoPagado:0, vuelto:0, requiereFactura: false, observaciones: ""
+            ...initialFormData, // Usar el objeto inicial para resetear
+            fechaEmision: now.toISOString().slice(0,16),
         });
-        setProductos([{ producto: 0, qx: 0, precio: 0, total: 0 }]);
+        setProductos(initialProductos); // Usar el objeto inicial para resetear
         setTotalCalculadoApi(null);
          if (result.venta_id) handleImprimirPresupuesto(result.venta_id); 
       } else {
@@ -286,12 +319,12 @@ export default function RegistrarPedidoPuertaPage() {
     }
   };
 
-  const handleImprimirPresupuesto = (pedidoIdParaImprimir?: number) => { // pedidoIdParaImprimir opcional
+  const handleImprimirPresupuesto = (pedidoIdParaImprimir?: number) => { 
     const clienteSeleccionado = formData.clienteId ? clientes.find(c => String(c.id) === formData.clienteId) : null;
     const nombreCliente = clienteSeleccionado?.nombre_razon_social || "Cliente";
     let fechaFormateada = "Fecha";
     if(formData.fechaEmision){try{fechaFormateada=new Date(formData.fechaEmision).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'});}catch(e){console.log(e);}}
-    const numPedido = pedidoIdParaImprimir || "NUEVO"; // Si se pasa un ID (después de guardar) se usa, sino "NUEVO"
+    const numPedido = pedidoIdParaImprimir || "NUEVO"; 
 
     const originalTitle = document.title;
     document.title = `Presupuesto QuiMex - Pedido ${numPedido} - ${nombreCliente} (${fechaFormateada})`;
@@ -316,7 +349,22 @@ export default function RegistrarPedidoPuertaPage() {
     <>
       <div className="flex items-center justify-center min-h-screen bg-indigo-900 py-10 px-4 print:hidden">
         <div className="bg-white p-6 md:p-8 rounded-lg shadow-md w-full max-w-4xl">
-          <h2 className="text-2xl font-semibold mb-6 text-center text-indigo-800">Registrar Pedido en Puerta</h2>
+          
+          {/* MODIFICACIÓN PARA MOSTRAR NOMBRE DE VENDEDOR Y TÍTULO */}
+          <div className="relative mb-6">
+            {nombreVendedor && (
+              <div className="absolute left-0 top-1/2 transform -translate-y-1/2">
+                <span className="text-sm sm:text-base font-medium text-gray-700 whitespace-nowrap">
+                  Vendedor: {nombreVendedor}
+                </span>
+              </div>
+            )}
+            <h2 className="text-2xl font-semibold text-center text-indigo-800">
+              Registrar Pedido en Puerta
+            </h2>
+          </div>
+          {/* FIN DE MODIFICACIÓN */}
+
           {errorMessage && <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4"><p>{errorMessage}</p></div>}
           {successMessage && <div className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4"><p>{successMessage}</p></div>}
           
@@ -343,7 +391,7 @@ export default function RegistrarPedidoPuertaPage() {
                   <input type="datetime-local" name="fechaEmision" id="fechaEmision" value={formData.fechaEmision} onChange={handleFormChange} required
                     className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"/>
                 </div>
-                <div className="md:col-span-3"> {/* Observaciones ocupando más espacio */}
+                <div className="md:col-span-3"> 
                   <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="observaciones">Observaciones</label>
                   <textarea id="observaciones" name="observaciones" value={formData.observaciones || ''} onChange={handleFormChange} rows={2}
                     className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"/>
@@ -393,15 +441,8 @@ export default function RegistrarPedidoPuertaPage() {
                   <select id="formaPago" name="formaPago" value={formData.formaPago} onChange={handleFormChange}
                     className="w-full shadow-sm border rounded py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500">
                     <option value="efectivo">Efectivo</option><option value="transferencia">Transferencia</option>
-                    <option value="tarjeta_credito">Tarjeta de Crédito</option><option value="tarjeta_debito">Tarjeta de Débito</option>
-                    <option value="mercado_pago">Mercado Pago</option><option value="cuenta_corriente">Cta. Cte.</option>
+                    <option value="factura">Factura</option>
                   </select>
-                </div>
-                <div className="flex items-center pt-5">
-                    <input type="checkbox" id="requiereFactura" name="requiereFactura"
-                           checked={formData.requiereFactura} onChange={handleFormChange}
-                           className="h-5 w-5 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500 mr-2"/>
-                    <label className="text-sm font-medium text-gray-700" htmlFor="requiereFactura">¿Factura?</label>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="montoPagado">Monto Pagado</label>
@@ -410,12 +451,9 @@ export default function RegistrarPedidoPuertaPage() {
                     type="number"
                     name="montoPagado"
                     className="w-full bg-white shadow-sm border rounded py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                    // Cambia esta línea:
                     value={formData.montoPagado === 0 ? '' : formData.montoPagado}
-                    // O aún más simple si 0 es el único valor que quieres tratar como vacío:
-                    // value={formData.montoPagado || ''}
                     onChange={handleMontoPagadoChange}
-                    placeholder="0.00" // El placeholder es importante aquí
+                    placeholder="0.00" 
                     step="0.01"
                     min="0"
                   />
@@ -448,6 +486,11 @@ export default function RegistrarPedidoPuertaPage() {
                 disabled={loadingClientes || isSubmitting || isCalculatingTotal}>
                 {isSubmitting ? 'Registrando...' : 'Registrar Pedido'}
               </button>
+               <button type="button" onClick={() => handleImprimirPresupuesto()}
+                className="bg-gray-500 text-white px-6 py-2 rounded-md hover:bg-gray-600 font-semibold order-2 sm:order-1 disabled:opacity-50"
+                disabled={isSubmitting || isCalculatingTotal || productos.every(p => p.producto === 0 || p.qx === 0)}>
+                Imprimir Presupuesto
+              </button>
             </div>
           </form>
         </div>
@@ -478,7 +521,7 @@ export default function RegistrarPedidoPuertaPage() {
             <thead><tr><th>ITEM</th><th>PRODUCTO</th><th>CANTIDAD</th><th>SUBTOTAL</th></tr></thead>
             <tbody>
               {productos.filter(p => p.producto && p.qx > 0).map((item, index) => {
-                const pInfo = productosContext.productos.find(p => p.id === item.producto);
+                const pInfo = productosContext?.productos.find(p => p.id === item.producto);
                 return (<tr key={`print-item-${index}`}><td>{index + 1}</td><td>{pInfo?.nombre || `ID: ${item.producto}`}</td><td className="text-center">{item.qx}</td><td className="text-right">$ {item.total.toFixed(2)}</td></tr>);
               })}
               {Array.from({ length: Math.max(0, 12 - productos.filter(p => p.producto && p.qx > 0).length) }).map((_, i) => 

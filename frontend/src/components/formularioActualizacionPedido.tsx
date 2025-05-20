@@ -1,18 +1,7 @@
 "use client";
 
 import { useProductsContext } from "@/context/ProductsContext";
-import React, { useEffect, useState, useCallback, useMemo } from 'react'; // useMemo añadido
-
-// Definición del tipo Cliente (si no lo importas de otro lado)
-// Asegúrate de que esta definición coincida con la de tu contexto si usas uno.
-// interface Cliente {
-//   id: number;
-//   nombre_razon_social: string;
-//   cuit?: string;
-//   direccion?: string;
-//   // ... otros campos del cliente
-// }
-// Si usas useClientesContext, esta definición local no es necesaria.
+import React, { useEffect, useState, useCallback, useMemo } from 'react'; 
 
 type ProductoPedido = {
   producto: number;
@@ -22,16 +11,16 @@ type ProductoPedido = {
 };
 
 interface IFormData {
-  nombre: string; // Nombre del cliente
+  nombre: string; 
   cuit: string;
-  direccion: string; // Dirección de entrega del pedido
+  direccion: string; 
   fechaEmision: string;
   fechaEntrega: string;
   formaPago: string;
   montoPagado: number;
   vuelto: number;
-  cliente_id: number | null; // ID del cliente
-  requiereFactura: boolean; // Nuevo campo para factura
+  cliente_id: number | null; 
+  requiereFactura: boolean; 
   observaciones?: string;
 }
 
@@ -57,7 +46,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     montoPagado: 0,
     vuelto: 0,
     cliente_id: null,
-    requiereFactura: false, // Inicializado
+    requiereFactura: false, 
     observaciones: "",
   });
 
@@ -69,16 +58,17 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
   const [isCalculatingTotal, setIsCalculatingTotal] = useState(false);
   const [errorMensaje, setErrorMensaje] = useState('');
   const [successMensaje, setSuccessMensaje] = useState('');
-  const [isLoading, setIsLoading] = useState(true); // Para la carga inicial
+  const [isLoading, setIsLoading] = useState(true); 
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [, setSuccessMessage] = useState('');
+  const [, setSuccessMessage] = useState(''); 
   const productosContext = useProductsContext();
-  //const { clientes } = useClientesContext(); // Para obtener el nombre del cliente para la impresión, si es necesario
+  const [nombreVendedor, setNombreVendedor] = useState<string | null>(null);
 
   const cargarFormulario = useCallback(async (pedidoId: number) => {
     setIsLoading(true);
     setErrorMensaje('');
     setSuccessMensaje('');
+    setNombreVendedor(null); 
     const token = localStorage.getItem("token");
     if (!token) {
       setErrorMensaje("Usuario no autenticado."); setIsLoading(false); return;
@@ -93,6 +83,8 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
       }
       const datosAPI = await response.json();
       
+      setNombreVendedor(datosAPI.nombre_vendedor || null); 
+
       setFormData({
         nombre: datosAPI.cliente_nombre || "N/A",
         cuit: datosAPI.cuit_cliente || "",
@@ -103,7 +95,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         montoPagado: datosAPI.monto_pagado_cliente || 0,
         vuelto: datosAPI.vuelto_calculado == null ? 0 : datosAPI.vuelto_calculado,
         cliente_id: datosAPI.cliente_id || null,
-        requiereFactura: datosAPI.requiere_factura || false, // Cargar desde API
+        requiereFactura: datosAPI.requiere_factura || false, 
         observaciones: datosAPI.observaciones || "",
       });
       //eslint-disable-next-line
@@ -114,13 +106,13 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         total: detalle.precio_total_item_ars || 0,
       })) || [];
       setProductos(productosCargados.length > 0 ? productosCargados : [{ producto: 0, qx: 0, precio: 0, total: 0 }]);
-   //eslint-disable-next-line
+    //eslint-disable-next-line
     } catch (error: any) {
       setErrorMensaje(error.message || "Ocurrió un error desconocido al cargar los detalles del pedido.");
     } finally {
       setIsLoading(false);
     }
-  }, []); // useCallback sin dependencias, ya que 'id' se pasa como argumento
+  }, []); 
 
   useEffect(() => {
     if (id) {
@@ -128,6 +120,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     } else {
       setErrorMensaje("ID de pedido no proporcionado para cargar los detalles.");
       setIsLoading(false);
+      setNombreVendedor(null); 
     }
   }, [id, cargarFormulario]);
   
@@ -135,14 +128,12 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     return productos.reduce((sum, item) => sum + (item.total || 0), 0);
   }, [productos]);
 
-  // useEffect para llamar a /ventas/calcular_total
   useEffect(() => {
     const recalcularTotalConAPI = async () => {
-      if (montoBaseProductos <= 0 && !id) { // Si es nuevo pedido y no hay productos, no calcular
+      if (montoBaseProductos <= 0 && !id) { 
         setTotalCalculadoApi(null); return;
       }
-      // Para pedidos existentes, calcular incluso si montoBase es 0 (puede tener forma de pago que afecte)
-      if (isLoading) return; // No calcular si los datos iniciales aún están cargando
+      if (isLoading) return; 
 
       setIsCalculatingTotal(true); setErrorMensaje('');
       const token = localStorage.getItem("token");
@@ -152,7 +143,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
           method: "POST",
           headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
           body: JSON.stringify({
-            monto_base: montoBaseProductos, // Aunque sea 0 para un pedido existente sin items (raro), la API lo manejará
+            monto_base: montoBaseProductos, 
             forma_pago: formData.formaPago,
             requiere_factura: formData.requiereFactura,
           }),
@@ -169,23 +160,20 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     };
     recalcularTotalConAPI();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [montoBaseProductos, formData.formaPago, formData.requiereFactura, isLoading]); // isLoading es importante aquí
+  }, [montoBaseProductos, formData.formaPago, formData.requiereFactura, isLoading, id]); 
 
-  // useEffect para llamar a /ventas/calcular_vuelto
   useEffect(() => {
     const calcularVueltoConAPI = async () => {
         const token = localStorage.getItem("token");
-        // No calcular si no hay total de API y no hay monto base (evita llamadas innecesarias al inicio)
         if (!token || (!totalCalculadoApi && montoBaseProductos === 0)) {
             if (montoBaseProductos === 0) setFormData(prev => ({ ...prev, vuelto: 0 }));
             return;
         }
-        if (isLoading) return; // No calcular si los datos iniciales aún están cargando
+        if (isLoading) return; 
         
         const montoFinalParaVuelto = totalCalculadoApi ? totalCalculadoApi.monto_final_con_recargos : montoBaseProductos;
 
-        if (formData.montoPagado >= montoFinalParaVuelto && montoFinalParaVuelto >= 0) { // Permitir montoFinal 0 si se paga
-            // setErrorMensaje(''); // Podría limpiar errores de cálculo anteriores aquí
+        if (formData.montoPagado >= montoFinalParaVuelto && montoFinalParaVuelto >= 0) { 
             try {
                 const resVuelto = await fetch("https://quimex.sistemataup.online/ventas/calcular_vuelto", {
                     method: "POST",
@@ -212,17 +200,21 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     };
     calcularVueltoConAPI();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formData.montoPagado, totalCalculadoApi, montoBaseProductos, isLoading]); // isLoading aquí también
+  }, [formData.montoPagado, totalCalculadoApi, montoBaseProductos, isLoading]); 
 
   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
     const val = type === 'checkbox' ? (e.target as HTMLInputElement).checked :
                 type === 'number' ? parseFloat(value) || 0 : value;
-    setFormData((prev) => ({ ...prev, [name]: val }));
+    setFormData((prev) => {
+    const newState = { ...prev, [name]: val };
+    if (name === 'formaPago') {
+      newState.requiereFactura = (val === 'factura');
+    }
+    return newState;
+    });
   };
   
- 
-
   const handleSubmit = async (e: React.FormEvent ) => {
     e.preventDefault();
     setErrorMensaje(''); setSuccessMensaje('');
@@ -247,8 +239,6 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
       requiere_factura: formData.requiereFactura,
       monto_total_base: montoBaseProductos,
       monto_total_final_con_recargos: totalCalculadoApi ? totalCalculadoApi.monto_final_con_recargos : montoBaseProductos,
-      // NO se envían 'items' aquí a menos que tu API PUT /ventas/actualizar/{id} los maneje explícitamente.
-      // Si necesitas actualizar items, se requeriría una lógica más compleja y probablemente otros endpoints.
     };
  
     console.log("Enviando datos para actualizar:", dataToUpdate);
@@ -263,8 +253,6 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
       if(!response.ok){
         setErrorMensaje(result?.message || result?.detail || 'Error al actualizar el pedido.');
       } else {
-       
-        // Recargar datos para ver los cambios reflejados, incluyendo el nuevo total calculado
         cargarFormulario(id); 
         setSuccessMensaje("¡Pedido actualizado con éxito!");
       }
@@ -273,7 +261,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
       setErrorMensaje(err.message || "Error de red.");
     } finally {
         const mensajeExito = `¡Pedido actualizado exitosamente!`;
-        setSuccessMessage(mensajeExito);
+        setSuccessMessage(mensajeExito); 
         setIsSubmitting(false);
     }
   };
@@ -298,16 +286,27 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     return <div className="flex items-center justify-center min-h-screen bg-indigo-900"><p className="text-white text-xl">Cargando...</p></div>;
   }
 
-  // El total que se muestra y se usa para la impresión
   const displayTotal = totalCalculadoApi ? totalCalculadoApi.monto_final_con_recargos : montoBaseProductos;
 
   return (
     <>
       <div className="flex items-center justify-center min-h-screen bg-indigo-900 py-10 px-4 print:hidden">
         <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-3xl">
-          <h2 className="text-2xl font-semibold mb-6 text-center text-indigo-800">
-            Detalle y Actualización del Pedido #{id}
-          </h2>
+          
+          {/* MODIFICACIÓN PARA MOSTRAR NOMBRE DE VENDEDOR Y TÍTULO */}
+          <div className="mb-6"> {/* Contenedor general para título y vendedor */}
+            <h2 className="text-2xl font-semibold text-center text-indigo-800">
+              Detalle y Actualización del Pedido #{id}
+            </h2>
+            {/* Nombre del vendedor debajo del título, alineado a la izquierda */}
+            <div className="mt-2 text-left"> 
+              <span className="text-sm sm:text-base font-medium text-gray-700">
+                Vendedor: {nombreVendedor ? nombreVendedor : "No encontrado"}
+              </span>
+            </div>
+          </div>
+          {/* FIN DE MODIFICACIÓN */}
+
           {errorMensaje && <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4"><p>{errorMensaje}</p></div>}
           {successMensaje && <div className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4"><p>{successMensaje}</p></div>}
           
@@ -348,12 +347,10 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
                 <div><label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="formaPago">Forma de Pago</label>
                   <select id="formaPago" name="formaPago" value={formData.formaPago} onChange={handleFormChange} className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500">
                     <option value="efectivo">Efectivo</option><option value="transferencia">Transferencia</option>
-                    <option value="tarjeta_credito">T. Crédito</option><option value="tarjeta_debito">T. Débito</option>
-                    <option value="mercado_pago">Mercado Pago</option><option value="cuenta_corriente">Cta. Cte.</option>
+                    <option value="factura">Factura</option>
                   </select>
                 </div>
-                <div className="flex items-center pt-5"><input type="checkbox" id="requiereFactura" name="requiereFactura" checked={formData.requiereFactura} onChange={handleFormChange} className="h-5 w-5 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500 mr-2"/><label className="text-sm font-medium text-gray-700" htmlFor="requiereFactura">¿Factura?</label></div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="montoPagado">Monto Pagado</label><input id="montoPagado" type="number" name="montoPagado" value={formData.montoPagado} onChange={handleMontoPagadoChange} placeholder="0.00" step="0.01" min="0" className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"/></div>
+                <div><label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="montoPagado">Monto Pagado</label><input id="montoPagado" type="number" name="montoPagado" value={formData.montoPagado === 0 ? '' : formData.montoPagado} onChange={handleMontoPagadoChange} placeholder="0.00" step="0.01" min="0" className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"/></div>
                 <div><label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="vuelto">Vuelto</label><input id="vuelto" type="text" name="vuelto" readOnly value={`$ ${formData.vuelto.toFixed(2)}`} className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 bg-gray-100 text-right focus:outline-none"/></div>
               </div>
               <div className="mt-4 text-right">
@@ -372,7 +369,6 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         </div>
       </div>
 
-      {/* SECCIÓN PARA LA IMPRESIÓN DEL PRESUPUESTO (igual que antes) */}
       <div id="presupuesto-imprimible" className="hidden print:block presupuesto-container">
         <header className="presupuesto-header">
           <div className="logo-container"><img src="/logo.png" alt="QuiMex" className="logo" /><p className="sub-logo-text">PRESUPUESTO NO VALIDO COMO FACTURA</p></div>
@@ -406,7 +402,6 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
           </table>
         </section>
       </div>
-      {/* Simplificación de clases para Tailwind (debes tenerlas en tu globals.css o config) */}
       <style jsx global>{`
         .inputD { @apply shadow-sm border rounded w-full py-2 px-3 text-gray-700 bg-gray-100 cursor-not-allowed focus:outline-none; }
         .inputE { @apply shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500; }
