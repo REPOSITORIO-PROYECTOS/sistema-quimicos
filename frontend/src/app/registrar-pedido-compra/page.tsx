@@ -38,7 +38,7 @@ export default function RegistrarIngreso() {
   const [pedidos, setPedidos] = useState<IPedido[]>([]); // Usamos la interfaz definida
   const [errorApi, setErrorApi] = useState<string | null>(null); // Estado para errores de API
   const [isLoading, setIsLoading] = useState(false); // Estado para feedback de carga
-
+  const token = localStorage.getItem("token");
   // --- Lógica handleAgregar (sin cambios funcionales, con feedback) ---
   const handleAgregar = async () => {
     // Validaciones básicas (puedes añadir más)
@@ -59,7 +59,7 @@ export default function RegistrarIngreso() {
     const user:any = localStorage.getItem("user")
     const ventaPayload = {
       usuario_interno_id: user.id, // Asumiendo ID fijo
-      items: [ { id: parseInt(producto), cantidad: cantidad } ], // Convertir id a number si la API lo espera
+      items: [ { codigo_interno: parseInt(producto), cantidad: cantidad } ], // Convertir id a number si la API lo espera
       cliente_id: 1, // Asumiendo ID fijo
       // producto, // 'producto' ya está dentro de 'items', usualmente no se repite aquí
       fecha_pedido: fecha,
@@ -80,7 +80,8 @@ export default function RegistrarIngreso() {
         headers: {
           'Content-Type': 'application/json',
           'X-User-Role' : 'ADMIN',
-          'X-User-Name' : user.nombre_usuario
+          'X-User-Name' : user.nombre_usuario,
+          "Authorization": `Bearer ${token}`,
         },
         body: JSON.stringify(ventaPayload),
       });

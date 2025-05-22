@@ -114,6 +114,8 @@ export default function ContabilidadTable() {
             // Procesar Ventas...
             if (ventasResult.status === 'fulfilled' && ventasResult.value.ok) {
                 const datos = await ventasResult.value.json();
+                console.log("ventas::");
+                console.log(datos);
                 if (datos && Array.isArray(datos.ventas)) ventasData = datos.ventas as Venta[];
                 else console.warn("Respuesta de ventas inesperada:", datos);
             } else if (ventasResult.status === 'fulfilled') fetchErrors.push(`Ventas(L): HTTP ${ventasResult.value.status}`);
@@ -122,6 +124,8 @@ export default function ContabilidadTable() {
             // Procesar Lista de Compras...
             if (comprasListResult.status === 'fulfilled' && comprasListResult.value.ok) {
                 const datos2 = await comprasListResult.value.json();
+                 console.log("compras::");
+                console.log(datos2);
                 if (datos2 && Array.isArray(datos2.ordenes)) comprasInfoData = datos2.ordenes as CompraInfo[];
                 else console.warn("Respuesta de lista de compras inesperada:", datos2);
             } else if (comprasListResult.status === 'fulfilled') fetchErrors.push(`Compras(L): HTTP ${comprasListResult.value.status}`);
@@ -138,7 +142,7 @@ export default function ContabilidadTable() {
                 setLoadingStage(`Cargando detalles de ${comprasInfoData.length} compras...`);
                 const compraDetailPromises = comprasInfoData.map(info => {
                     if (info.id == null) return Promise.reject("ID Compra Nulo");
-                    return fetch(`${compraDetailApiUrlBase}${info.id}`);
+                    return fetch(`${compraDetailApiUrlBase}${info.id}`,{headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`}});
                 });
                 const compraDetailResults = await Promise.allSettled(compraDetailPromises);
 
@@ -195,7 +199,7 @@ export default function ContabilidadTable() {
 
                             return fetch(`${calcularPrecioApiUrlBase}${item.producto_id}`, {
                                 method: "POST",
-                                headers: { "Content-Type": "application/json" },
+                                headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},
                                 body: body,
                             })
                             .then(async response => {

@@ -132,8 +132,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
             sessionStorage.setItem("user", JSON.stringify(loggedInUser));
             sessionStorage.setItem("authToken", token);
+            localStorage.setItem("user_name", loggedInUser.name);
+            localStorage.setItem("usuario_id", (loggedInUser.id ?? "").toString());
             setUser(loggedInUser);
-            console.log(`AuthProvider login: Éxito como ${loggedInUser.role}. Redirigiendo...`);
+            console.log(`AuthProvider login: Éxito como ${loggedInUser}. Redirigiendo...`);
 
             // La redirección se maneja ahora. setIsLoading(false) se hará después o el componente se desmontará.
             // No necesitamos un setIsLoading(false) explícito aquí si la redirección ocurre.
@@ -143,6 +145,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             // setIsLoading(false); // Opcional: podrías ponerlo aquí, pero la redirección puede desmontar.
                                 // Si la redirección es a una ruta protegida que vuelve a verificar el auth,
                                 // el isLoading del AuthProvider se reseteará de todas formas.
+            setIsLoading(false);
             return true;
 
         } catch (error) {

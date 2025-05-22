@@ -25,7 +25,7 @@ export default function AccionesPage() {
     <div className="min-h-screen flex items-start justify-center pt-20 bg-indigo-900">
       <div className="text-center">
         <h2 className="text-white text-5xl font-semibold mb-12 mt-0">
-          Acciones Posibles Pedidos
+          Acciones Pedidos
         </h2> 
 
         <div className="flex flex-col gap-y-6">

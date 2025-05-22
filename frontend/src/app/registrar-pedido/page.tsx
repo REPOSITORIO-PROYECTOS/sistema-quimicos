@@ -1,523 +1,571 @@
 "use client";
-//TODO
-//meter dentro del formulario el producto, que no se salga
-//recargar la pagina o limpiar los datos cuando se agrega un pedido de compra en acciones
 
-// --- PASO 1: Importar lo necesario del contexto de Clientes ---
-import React, { useState } from "react"; // Asegúrate que React esté importado
-import { useProductsContext } from "@/context/ProductsContext";
-import { useClientesContext, Cliente } from "@/context/ClientesContext"; // <-- Importa tu hook y el tipo Cliente
+import React, { useState, useEffect } from "react";
+import { useProductsContext, Producto as ProductoContextType } from "@/context/ProductsContext";
+import { useClientesContext, Cliente } from "@/context/ClientesContext"; 
 
-type ProductoI = {
+type ProductoPedido = {
   producto: number;
   qx: number;
   precio: number;
   total: number;
 };
 
-// --- PASO 2: Modificar la interfaz ---
 interface IFormData {
-  // nombre: string; // <-- Se reemplaza nombre
-  clienteId: string | null; // <-- ID del cliente seleccionado (usaremos string por el value del select)
+  clienteId: string | null;
   cuit: string;
+  nombre: string;
   direccion: string;
   fechaEmision: string;
   fechaEntrega: string;
   formaPago: string;
   montoPagado: number;
   vuelto: number;
+  requiereFactura: boolean;
+  observaciones?: string;
 }
 
-export default function RegistrarPedidoPage() {
-  // --- PASO 3: Consumir el contexto de clientes ---
+interface TotalCalculadoAPI {
+  monto_base: number;
+  forma_pago_aplicada: string;
+  requiere_factura_aplicada: boolean;
+  recargos: {
+    transferencia: number;
+    factura_iva: number;
+  };
+  monto_final_con_recargos: number;
+}
+
+const initialFormData: IFormData = {
+  clienteId: null,
+  cuit: "",
+  nombre: "",
+  direccion: "",
+  fechaEmision: "", // Se establecerá en useEffect
+  fechaEntrega: "",
+  formaPago: "efectivo",
+  montoPagado: 0,
+  vuelto: 0,
+  requiereFactura: false,
+  observaciones: "",
+};
+
+const initialProductos: ProductoPedido[] = [{ producto: 0, qx: 0, precio: 0, total: 0 }];
+
+export default function RegistrarPedidoPage() { 
   const {
     clientes,
     loading: loadingClientes,
     error: errorClientes,
   } = useClientesContext();
 
-  // --- PASO 4: Actualizar estado inicial ---
-  const [formData, setFormData] = useState<IFormData>({
-    // nombre: "", // <-- Se reemplaza
-    clienteId: null, // <-- Estado inicial para el cliente
-    cuit: "",
-    direccion: "",
-    fechaEmision: "",
-    fechaEntrega: "",
-    formaPago: "efectivo", // <- Valor por defecto
-    montoPagado: 0,
-    vuelto: 0,
-  });
+  const [formData, setFormData] = useState<IFormData>(initialFormData);
+  const [productos, setProductos] = useState<ProductoPedido[]>(initialProductos);
 
-  const [productos, setProductos] = useState<ProductoI[]>([
-    { producto: 0, qx: 0, precio: 0, total: 0 },
-  ]);
+  const [totalCalculadoApi, setTotalCalculadoApi] = useState<TotalCalculadoAPI | null>(null);
+  const [isCalculatingTotal, setIsCalculatingTotal] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
+  
+  const productosContext = useProductsContext();
+  const [nombreVendedor, setNombreVendedor] = useState<string | null>(null); // NUEVO ESTADO para el nombre del vendedor
 
-  const productosContext = useProductsContext(); // Para productos
+  // Establecer fecha de emisión inicial y nombre del vendedor al cargar el componente
+  useEffect(() => {
+    const now = new Date();
+    now.setMinutes(now.getMinutes() - now.getTimezoneOffset()); 
+    setFormData(prev => ({...prev, fechaEmision: now.toISOString().slice(0, 16)}));
 
-  // --- Handler original para la mayoría de los inputs (CUIT, Dirección, Fechas) ---
-  const handleFormChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    // Obtener nombre del vendedor de localStorage
+    const storedUserName = localStorage.getItem("user_name");
+    if (storedUserName) {
+      setNombreVendedor(storedUserName);
+    }
+  }, []); // Se ejecuta solo una vez al montar
+
+  const montoBaseProductos = React.useMemo(() => {
+    return productos.reduce((sum, item) => sum + (item.total || 0), 0);
+  }, [productos]);
+
+  // useEffect para llamar a /ventas/calcular_total y luego /ventas/calcular_vuelto
+  useEffect(() => {
+    const recalcularTodo = async () => {
+      if (montoBaseProductos <= 0 && formData.montoPagado <= 0) { // Modificado para no recalcular si solo montoPagado es > 0 y no hay productos
+        setTotalCalculadoApi(null);
+        setFormData(prev => ({ ...prev, vuelto: 0 }));
+        return;
+      }
+      if (montoBaseProductos <= 0 && formData.montoPagado > 0) { // Si no hay productos pero se ingresa monto pagado, no calcular recargos
+        setTotalCalculadoApi(null); 
+        // Calcular vuelto si montoPagado > 0 (y montoBase es 0)
+        if(formData.montoPagado > 0) {
+          setFormData(prev => ({ ...prev, vuelto: formData.montoPagado }));
+        } else {
+          setFormData(prev => ({ ...prev, vuelto: 0 }));
+        }
+        return;
+      }
+
+      setIsCalculatingTotal(true);
+      setErrorMessage(''); 
+      const token = localStorage.getItem("token");
+      if (!token) {
+        setErrorMessage("No autenticado para calcular total.");
+        setIsCalculatingTotal(false);
+        return;
+      }
+
+      let montoFinalParaVuelto = montoBaseProductos;
+
+      try {
+        const resTotal = await fetch("https://quimex.sistemataup.online/ventas/calcular_total", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+          body: JSON.stringify({
+            monto_base: montoBaseProductos,
+            forma_pago: formData.formaPago,
+            requiere_factura: formData.requiereFactura,
+          }),
+        });
+        if (!resTotal.ok) {
+          const errDataTotal = await resTotal.json().catch(() => ({ error: "Error en API de cálculo de total."}));
+          throw new Error(errDataTotal.error || `Error ${resTotal.status} al calcular total.`);
+        }
+        const dataTotal: TotalCalculadoAPI = await resTotal.json();
+        setTotalCalculadoApi(dataTotal);
+        montoFinalParaVuelto = dataTotal.monto_final_con_recargos;
+
+        if (formData.montoPagado >= montoFinalParaVuelto && montoFinalParaVuelto > 0) {
+            const resVuelto = await fetch("https://quimex.sistemataup.online/ventas/calcular_vuelto", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+                body: JSON.stringify({
+                    monto_pagado: formData.montoPagado,
+                    monto_total_final: montoFinalParaVuelto,
+                }),
+            });
+            if(!resVuelto.ok){
+                const errDataVuelto = await resVuelto.json().catch(() => ({ error: "Error en API cálculo de vuelto."}));
+                throw new Error(errDataVuelto.error || `Error ${resVuelto.status} al calcular vuelto.`);
+            }
+            const dataVuelto = await resVuelto.json();
+            setFormData(prev => ({ ...prev, vuelto: parseFloat((dataVuelto.vuelto || 0).toFixed(2)) }));
+        } else {
+            setFormData(prev => ({ ...prev, vuelto: 0 }));
+        }
+        //eslint-disable-next-line
+      } catch (error: any) {
+        console.error("Error en recalcularTodo:", error);
+        setErrorMessage(error.message || "Error al recalcular totales/vuelto.");
+        setTotalCalculadoApi(null); 
+        setFormData(prev => ({ ...prev, vuelto: 0 }));
+      } finally {
+        setIsCalculatingTotal(false);
+      }
+    };
+    
+    if (montoBaseProductos > 0 || formData.montoPagado > 0) {
+        recalcularTodo();
+    } else {
+        setTotalCalculadoApi(null);
+        setFormData(prev => ({ ...prev, vuelto: 0 }));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [montoBaseProductos, formData.formaPago, formData.requiereFactura, formData.montoPagado]);
+
+
+  const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const { name, value, type } = e.target;
+    const val = type === 'checkbox' 
+      ? (e.target as HTMLInputElement).checked 
+      : type === 'number' 
+      ? parseFloat(value) || 0 
+      : value;
+  
+    setFormData((prev) => {
+      const newState = { ...prev, [name]: val };
+      if (name === 'formaPago') {
+        newState.requiereFactura = (val === 'factura');
+      }
+      return newState;
+    });
   };
 
-  // --- PASO 5: Crear handler ESPECÍFICO para el select de cliente ---
   const handleClienteSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const selectedId = e.target.value; // El value del option es string
+    const selectedId = e.target.value;
     const selectedCliente = clientes.find(c => String(c.id) === selectedId);
-
     setFormData(prev => ({
       ...prev,
-      clienteId: selectedId || null, // Guarda el ID seleccionado (o null si es la opción default)
-      // Autocompleta CUIT y Dirección al seleccionar cliente
-      cuit: selectedCliente ? String(selectedCliente.cuit) : "",
+      clienteId: selectedId || null,
+      cuit: selectedCliente ? String(selectedCliente.cuit || '') : "",
+      nombre: selectedCliente?.nombre_razon_social || "",
       direccion: selectedCliente?.direccion || "",
-      // Mantenemos el resto de los campos del estado anterior
-      fechaEmision: prev.fechaEmision,
-      fechaEntrega: prev.fechaEntrega,
-      formaPago: prev.formaPago,
-      montoPagado: prev.montoPagado,
-      vuelto: prev.vuelto,
     }));
   };
 
-
-  // --- Sin cambios en handleProductoChange, agregarProducto, eliminarProducto, calcularTotal ---
-    const handleProductoChange = async (
+  const handleProductoChange = async (
     index: number,
     e: React.ChangeEvent<HTMLInputElement> | React.ChangeEvent<HTMLSelectElement>
   ) => {
     const { name, value } = e.target;
     const nuevosProductos = [...productos];
+    const currentProductItem = nuevosProductos[index];
 
-    if (name === "qx") {
-      nuevosProductos[index].qx = parseInt(value) || 0;
-    } else if (name === "producto") {
-      nuevosProductos[index].producto = parseInt(value);
-    }
+    if (name === "qx") currentProductItem.qx = parseInt(value) || 0;
+    else if (name === "producto") currentProductItem.producto = parseInt(value) || 0;
+    
+    const productoId = currentProductItem.producto;
+    const cantidad = currentProductItem.qx;
 
-    const productoId = nuevosProductos[index].producto;
-    const cantidad = nuevosProductos[index].qx;
-    // console.log("antes del if");
-    // console.log(cantidad);
     if (productoId && cantidad > 0) {
       try {
-        // console.log("entra al try");
+        const token = localStorage.getItem("token");
         const precioRes = await fetch(`https://quimex.sistemataup.online/productos/calcular_precio/${productoId}`, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            producto_id: productoId,
-            quantity: cantidad,
-          }),
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+          body: JSON.stringify({ producto_id: productoId, quantity: cantidad }),
         });
-
-        if (!precioRes.ok) throw new Error("Error al calcular el precio");
+        if (!precioRes.ok) {
+          const errData = await precioRes.json().catch(()=>({message:"Error al calcular precio."}));
+          throw new Error(errData.message || "Error al calcular precio.");
+        }
         const precioData = await precioRes.json();
-        nuevosProductos[index].precio = precioData.precio_venta_unitario_ars;
-        nuevosProductos[index].total = precioData.precio_total_calculado_ars;
-      } catch (error) {
-        console.error("Error en la carga de producto:", error);
-        nuevosProductos[index].precio = 0;
-        nuevosProductos[index].total = 0;
+        currentProductItem.precio = precioData.precio_venta_unitario_ars || 0;
+        currentProductItem.total = precioData.precio_total_calculado_ars || 0;
+        //eslint-disable-next-line
+      } catch (error: any) {
+        console.error("Error en carga de precio:", error);
+        setErrorMessage(error.message || "Error al obtener precio de producto.")
+        currentProductItem.precio = 0; currentProductItem.total = 0;
       }
     } else {
-      nuevosProductos[index].precio = 0;
-      nuevosProductos[index].total = 0;
+      currentProductItem.precio = 0; currentProductItem.total = 0;
     }
-
     setProductos(nuevosProductos);
   };
 
-  const agregarProducto = () => {
-    setProductos([...productos, {producto: 0, qx: 0, precio: 0, total: 0 }]);
-  };
-
+  const agregarProducto = () => setProductos([...productos, { producto: 0, qx: 0, precio: 0, total: 0 }]);
   const eliminarProducto = (index: number) => {
     const nuevosProductos = [...productos];
     nuevosProductos.splice(index, 1);
+    if (nuevosProductos.length === 0) nuevosProductos.push({ producto: 0, qx: 0, precio: 0, total: 0 });
     setProductos(nuevosProductos);
   };
-
-  const calcularTotal = () => {
-    return productos.reduce((total, item) => total + (item.total || 0), 0);
+  
+  const handleMontoPagadoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    const montoIngresado = Math.max(0, parseFloat(value) || 0);
+    setFormData((prev) => ({ ...prev, [name]: montoIngresado }));
   };
 
 
-  // --- PASO 6: Modificar handleSubmit MÍNIMAMENTE ---
   const handleSubmit = async (e: React.FormEvent ) => {
     e.preventDefault();
+    setIsSubmitting(true);
+    setSuccessMessage('');
+    setErrorMessage('');
+
+    if (!formData.clienteId) {
+        setErrorMessage("Seleccione un cliente."); setIsSubmitting(false); return;
+    }
+    if (productos.every(p => p.producto === 0 || p.qx === 0)) {
+        setErrorMessage("Añada al menos un producto."); setIsSubmitting(false); return;
+    }
+    if (!totalCalculadoApi && montoBaseProductos > 0) { 
+        setErrorMessage("Error calculando el total final. Verifique la forma de pago o intente de nuevo."); setIsSubmitting(false); return;
+    }
+
+    const clienteIdParaApi = parseInt(formData.clienteId, 10);
+    const token = localStorage.getItem("token");
+    const usuarioId = localStorage.getItem("usuario_id");
+
+    if (!token) {
+        setErrorMessage("No autenticado."); setIsSubmitting(false); return;
+    }
+    if (!usuarioId) {
+        setErrorMessage("ID de usuario no encontrado. Por favor, vuelva a iniciar sesión."); setIsSubmitting(false); return;
+    }
 
 
-    const clienteIdParaApi = formData.clienteId ? parseInt(formData.clienteId, 10) : null;
-
-    const data = {
-      usuario_interno_id: 1, //DE MOMENTO ESTATICO 
-      items: productos.map((item) => ({
+    const dataPayload = {
+      usuario_interno_id: parseInt(usuarioId, 10), 
+      items: productos.filter(item => item.producto !== 0 && item.qx > 0).map(item => ({
         producto_id: item.producto,
-        cantidad: item.qx.toString(),
+        cantidad: item.qx,
       })),
-      // --- Usar el ID convertido ---
       cliente_id: clienteIdParaApi,
-      fecha_pedido: formData.fechaEntrega,
-      fecha_emision: formData.fechaEmision,
-      // --- Usar CUIT y Dirección del estado formData (que pueden haber sido editados) ---
+      fecha_emision: formData.fechaEmision || new Date().toISOString().slice(0,16),
+      fecha_pedido: formData.fechaEntrega || formData.fechaEmision || new Date().toISOString().slice(0,16),
       direccion_entrega: formData.direccion,
       cuit_cliente: formData.cuit,
       monto_pagado_cliente: formData.montoPagado,
       forma_pago: formData.formaPago,
       vuelto: formData.vuelto,
-      observaciones: "",
+      requiere_factura: formData.requiereFactura,
+      monto_total_base: montoBaseProductos,
+      monto_total_final_con_recargos: totalCalculadoApi ? totalCalculadoApi.monto_final_con_recargos : montoBaseProductos,
+      observaciones: formData.observaciones || "",
     };
+    
+    const endpoint = "https://quimex.sistemataup.online/ventas/registrar";
+    const method = "POST";
 
-    console.log("Enviando datos:", data); // Para depuración
+    console.log(`Enviando datos (${method}) a ${endpoint}:`, dataPayload);
 
     try {
-      const token = localStorage.getItem("token")
-      const response = await fetch("https://quimex.sistemataup.online/ventas/registrar", {
-        method: "POST",
-        headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},
-        body: JSON.stringify(data),
+      const response = await fetch(endpoint, {
+        method: method,
+        headers: {"Content-Type":"application/json","Authorization":`Bearer ${token}`},
+        body: JSON.stringify(dataPayload),
       });
-      
       const result = await response.json();
-      console.log("Respuesta API:", result);
-
       if (response.ok) {
-        console.log("Venta registrada:", result);
-        // --- Limpiar formulario, incluyendo clienteId ---
-        setFormData({
-          // nombre: "", // Se elimina
-          clienteId: null, // <-- Resetear cliente
-          cuit: "",
-          direccion: "",
-          fechaEmision: "",
-          fechaEntrega: "",
-          formaPago:"efectivo",
-          montoPagado:0,
-          vuelto:0,
-        });
-        setProductos([{ producto: 0, qx: 0, precio: 0, total: 0 }]);
-        alert("¡Pedido registrado exitosamente!"); // Feedback
-      } else {
-        const errorMsg = result.message || result.detail || `Error ${response.status}`;
-        console.error("Error al registrar venta:", errorMsg);
-        alert(`Error al registrar el pedido: ${errorMsg}`);
-      }
-    } catch (err) {
-      console.error("Error en la petición fetch:", err);
-      alert("Error de red o al conectar con el servidor.");
-    }
-  };
-
-  // --- Sin cambios en handleMontoPagadoChange ---
-  const handleMontoPagadoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    const montoIngresado = Math.max(0, parseFloat(value) || 0);
-
-    setFormData((prev) => ({
-      ...prev,
-      [name]: montoIngresado,
-      vuelto: 0, // Resetear vuelto
-    }));
-    const totalACobrar = calcularTotal();
-
-    if (montoIngresado >= totalACobrar && totalACobrar > 0){
-        const datosParaApi = {
-          monto_pagado: montoIngresado,
-          monto_total_final: totalACobrar,
-        };
-        const URL_API_VALIDACION_PAGO = "https://quimex.sistemataup.online/ventas/calcular_vuelto";
-        try {
-          const token = localStorage.getItem("token")
-          const response = await fetch(URL_API_VALIDACION_PAGO, {
-            method: "POST",
-            headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},
-            body: JSON.stringify(datosParaApi),
-          });
-          if (response.ok) {
-            const data = await response.json();
-            // console.log(data);
-            setFormData(prev => ({
-              ...prev,
-              vuelto: data.vuelto || 0,
-            }));
-          } else {
-             console.error("Error API calcular vuelto:", await response.text());
-             setFormData(prev => ({ ...prev, vuelto: 0 }));
-          }
-        } catch (error) {
-          console.error("Error en fetch a API Validación:", error);
-          setFormData(prev => ({ ...prev, vuelto: 0 }));
+        const mensajeExito = `¡Pedido registrado exitosamente!`;
+        setSuccessMessage(mensajeExito);
+        const now = new Date();
+        now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+        setFormData({...initialFormData, fechaEmision: now.toISOString().slice(0, 16)});
+        setProductos(initialProductos);
+        setTotalCalculadoApi(null);
+        
+        if (result.venta_id) { 
+           handleImprimirPresupuesto(result.venta_id);
         }
-    } else {
-       setFormData(prev => ({ ...prev, vuelto: 0 }));
+      } else {
+        setErrorMessage(result.message || result.detail || `Error ${response.status} al registrar el pedido.`);
+      }
+      //eslint-disable-next-line
+    } catch (err: any) {
+      setErrorMessage(err.message || "Error de red al intentar registrar el pedido.");
+    } finally {
+        setIsSubmitting(false);
     }
   };
 
-  // --- PASO 7: Añadir manejo de carga y error para clientes ---
-  if (loadingClientes) {
-    return (
-       <div className="flex items-center justify-center min-h-screen bg-indigo-900">
-           <p className="text-white text-xl">Cargando clientes...</p>
-       </div>
-    );
+  const handleImprimirPresupuesto = (pedidoIdParaImprimir?: number) => {
+    const nombreCliente = formData.nombre || "Cliente";
+    let fechaFormateada = "Fecha";
+    if (formData.fechaEmision) {
+        try {
+            fechaFormateada = new Date(formData.fechaEmision).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'});
+        } catch(e){ console.error("Error formateando fecha para título:", e); }
+    }
+    const numPedido = pedidoIdParaImprimir || "NUEVO"; 
+
+    const originalTitle = document.title;
+    document.title = `Presupuesto QuiMex - Pedido ${numPedido} - ${nombreCliente} (${fechaFormateada})`;
+    window.print();
+    setTimeout(() => { document.title = originalTitle; }, 1000);
+  };
+
+  if (loadingClientes) { 
+    return <div className="flex items-center justify-center min-h-screen bg-indigo-900"><p className="text-white text-xl">Cargando clientes...</p></div>;
+  }
+  if (errorClientes) { 
+      return <div className="flex flex-col items-center justify-center min-h-screen bg-red-900 text-white p-4">
+             <h2 className="text-2xl font-bold mb-4">Error al Cargar Clientes</h2> <p className="bg-red-700 p-2 rounded mb-4 text-sm">{errorClientes}</p>
+             <button onClick={() => window.location.reload()} className="bg-white text-red-900 px-4 py-2 rounded hover:bg-gray-200">Reintentar</button>
+         </div>;
   }
 
-  if (errorClientes) {
-      return (
-         <div className="flex flex-col items-center justify-center min-h-screen bg-red-900 text-white p-4">
-             <h2 className="text-2xl font-bold mb-4">Error al Cargar Clientes</h2>
-             <p className="bg-red-700 p-2 rounded mb-4 text-sm">{errorClientes}</p>
-             <button
-               onClick={() => window.location.reload()}
-               className="bg-white text-red-900 px-4 py-2 rounded hover:bg-gray-200"
-             >
-               Intentar de nuevo
-             </button>
-         </div>
-      );
-  }
+  const displayTotal = totalCalculadoApi ? totalCalculadoApi.monto_final_con_recargos : montoBaseProductos;
 
-  // --- Renderizado del componente ---
   return (
-    <div className="flex items-center justify-center min-h-screen bg-indigo-900 py-10 px-4">
-      <div className="bg-white p-6 md:p-8 rounded-lg shadow-md w-full max-w-4xl"> {/* Ancho ajustado */}
-        <h2 className="text-2xl font-semibold mb-6 text-center text-indigo-800">Registrar Pedido</h2>
-        <form onSubmit={handleSubmit} className="space-y-6">
-
-          {/* --- Datos del cliente y Pedido --- */}
-          <fieldset className="border p-4 rounded-md">
-              <legend className="text-lg font-medium text-gray-700 px-2">Datos Cliente/Pedido</legend>
-              {/* --- PASO 8: Modificar el renderizado del map --- */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4"> {/* Cambiado a 3 cols para mejor layout */}
-                {/* Mapeamos los campos originales, pero interceptamos "nombre" */}
-                {["cliente", "cuit", "direccion", "fechaEmision", "fechaEntrega"].map((campo) => {
-                  // --- RENDERIZADO CONDICIONAL PARA EL SELECT ---
-                  if (campo === "cliente") {
-                    return (
-                      <div key="cliente-select-container" className="md:col-span-1"> {/* Contenedor del select */}
-                        <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="cliente-select">
-                          Cliente {(!clientes || clientes.length === 0) && '(No disponibles)'}
-                        </label>
-                        <select
-                          id="cliente-select"
-                          name="clienteId" // El name debe coincidir con el handler específico si lo usaras, pero aquí usamos onChange directo
-                          value={formData.clienteId || ""} // Enlaza al estado clienteId
-                          onChange={handleClienteSelectChange} // Usa el handler específico
-                          className="shadow-sm appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:bg-gray-100"
-                          disabled={!clientes || clientes.length === 0}
-                        >
-                          <option value="">-- Selecciona Cliente --</option>
-                          {clientes.map((cli: Cliente) => (
-                            <option key={cli.id} value={String(cli.id)}> {/* Value es el ID como string */}
-                              {cli.nombre_razon_social || `ID: ${cli.id}`} {/* Muestra el nombre/razón social */}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    );
-                  }
-
-                  // --- Renderizado normal para los otros campos (CUIT, Dirección, Fechas) ---
-                  return (
-                    <div key={campo} className="md:col-span-1"> {/* Ajusta col-span si es necesario */}
-                      <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor={campo}>
-                        {campo === "cuit"
-                          ? "CUIT" // Ya no es opcional si se autocompleta
-                          : campo === "fechaEmision"
-                          ? "Fecha Emisión"
-                          : campo === "fechaEntrega"
-                          ? "Fecha Entrega Est."
-                          : campo.charAt(0).toUpperCase() + campo.slice(1)}
-
-                         {/* Indicador si el dato viene del cliente */}
-                         {(campo === 'cuit' || campo === 'direccion') && formData.clienteId && <span className="text-xs text-gray-500"> (del cliente)</span>}
-                      </label>
-                      <input
-                        className="shadow-sm appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                        type={campo.includes("fecha") ? "datetime-local" : "text"}
-                        name={campo} // <- name coincide con la key en formData
-                        id={campo}
-                        value={//eslint-disable-next-line
-                          (formData as any)[campo]} // Conectado a formData (cuit, direccion, fechas)
-                        onChange={handleFormChange} // <-- USA EL HANDLER GENERAL para permitir edición manual
-                        required={campo === "fechaEntrega" || campo === "direccion"}
-                         // Requerido solo para fecha entrega
-                        placeholder={//eslint-disable-next-line
-                          campo === 'cuit' ? 'Ingrese CUIT' : campo === 'direccion' ? 'Ingrese Dirección' : ''}
-                      />
-                    </div>
-                  );
-                })}
+    <>
+      <div className="flex items-center justify-center min-h-screen bg-indigo-900 py-10 px-4 print:hidden">
+        <div className="bg-white p-6 md:p-8 rounded-lg shadow-md w-full max-w-4xl">
+          
+          {/* MODIFICACIÓN PARA MOSTRAR NOMBRE DE VENDEDOR Y TÍTULO */}
+          <div className="relative mb-6">
+            {nombreVendedor && (
+              <div className="absolute left-0 top-1/2 transform -translate-y-1/2">
+                <span className="text-sm sm:text-base font-medium text-gray-700 whitespace-nowrap">
+                  Vendedor: {nombreVendedor}
+                </span>
               </div>
-          </fieldset>
+            )}
+            <h2 className="text-2xl font-semibold text-center text-indigo-800">
+              Registrar Pedido 
+            </h2>
+          </div>
+          {/* FIN DE MODIFICACIÓN */}
 
-          {/* --- Productos (Sin cambios) --- */}
-          <fieldset className="border p-4 rounded-md">
-             <legend className="text-lg font-medium text-gray-700 px-2">Productos</legend>
+          {errorMessage && <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4"><p>{errorMessage}</p></div>}
+          {successMessage && <div className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4"><p>{successMessage}</p></div>}
+          
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <fieldset className="border p-4 rounded-md">
+              <legend className="text-lg font-medium text-gray-700 px-2">Datos Cliente/Pedido</legend>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="clienteId">Cliente*</label>
+                  <select id="clienteId" name="clienteId" value={formData.clienteId || ""} onChange={handleClienteSelectChange} required
+                    className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:bg-gray-100"
+                    disabled={loadingClientes}>
+                    <option value="">-- Selecciona Cliente --</option>
+                    {clientes.map((cli: Cliente) => <option key={cli.id} value={String(cli.id)}>{cli.nombre_razon_social || `ID: ${cli.id}`}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="cuit">CUIT</label>
+                  <input type="text" name="cuit" id="cuit" value={formData.cuit} onChange={handleFormChange} placeholder="Del cliente"
+                    className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 bg-gray-100" readOnly disabled={!!formData.clienteId}/>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="direccion">Dirección</label>
+                  <input type="text" name="direccion" id="direccion" value={formData.direccion} onChange={handleFormChange} placeholder="Entrega/Cliente"
+                    className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"/>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="fechaEmision">Fecha Emisión*</label>
+                  <input type="datetime-local" name="fechaEmision" id="fechaEmision" value={formData.fechaEmision} onChange={handleFormChange} required
+                    className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"/>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="fechaEntrega">Fecha Entrega</label>
+                  <input type="datetime-local" name="fechaEntrega" id="fechaEntrega" value={formData.fechaEntrega} onChange={handleFormChange}
+                    className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"/>
+                </div>
+                 <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="observaciones">Observaciones</label>
+                  <textarea id="observaciones" name="observaciones" value={formData.observaciones || ''} onChange={handleFormChange} rows={1}
+                    className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"/>
+                </div>
+              </div>
+            </fieldset>
+
+            <fieldset className="border p-4 rounded-md">
+              <legend className="text-lg font-medium text-gray-700 px-2">Productos</legend>
               <div className="mb-2 hidden md:grid md:grid-cols-[minmax(0,1fr)_90px_100px_100px_32px] items-center gap-2 font-semibold text-sm text-gray-600 px-3">
-                <span>Producto</span>
-                <span className="text-center">Cantidad</span>
-                <span className="text-right">Precio U.</span>
-                <span className="text-right">Total</span>
-                <span />
+                <span>Producto*</span><span className="text-center">Cantidad*</span><span className="text-right">Precio U.</span><span className="text-right">Total</span><span />
               </div>
               <div className="space-y-3">
                 {productos.map((item, index) => (
-                    <div key={index} className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_90px_100px_100px_32px] items-center gap-2 border-b pb-2 last:border-b-0 md:border-none md:pb-0">
+                  <div key={index} className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_90px_100px_100px_32px] items-center gap-2 border-b pb-2 last:border-b-0 md:border-none md:pb-0">
                     <div className="w-full">
-                        <label className="md:hidden text-xs font-medium text-gray-500">Producto</label>
-                        <select
-                            name="producto"
-                            value={item.producto || 0}
-                            onChange={(e) => handleProductoChange(index, e)}
-                            className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                            required
-                        >
+                      <select name="producto" value={item.producto || 0} onChange={(e) => handleProductoChange(index, e)} required
+                        className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500">
                         <option value={0} disabled> -- Seleccionar -- </option>
-                        {//eslint-disable-next-line
-                        productosContext?.productos.map((producto: any) => (
-                            <option value={producto.id} key={producto.id}>
-                            {producto.nombre} {/* Opcional: (ID: {producto.id}) */}
-                            </option>
-                        ))}
-                        </select>
-                    </div>
-                     <div className="w-full">
-                        <label className="md:hidden text-xs font-medium text-gray-500">Cantidad</label>
-                        <input
-                            className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-center focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                            type="number"
-                            name="qx"
-                            placeholder="Cant."
-                            value={item.qx === 0 ? '' : item.qx}
-                            onChange={(e) => handleProductoChange(index, e)}
-                            min="1"
-                            required
-                        />
+                        {productosContext?.productos.map((prod: ProductoContextType) => <option value={prod.id} key={prod.id}>{prod.nombre}</option>)}
+                      </select>
                     </div>
                     <div className="w-full">
-                        <label className="md:hidden text-xs font-medium text-gray-500">Precio Unit.</label>
-                        <input
-                            className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-right bg-gray-100 focus:outline-none"
-                            type="text"
-                            value={`$ ${item.precio.toFixed(2)}`}
-                            readOnly
-                        />
-                     </div>
-                     <div className="w-full">
-                        <label className="md:hidden text-xs font-medium text-gray-500">Total</label>
-                        <input
-                            className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-right bg-gray-100 focus:outline-none"
-                            type="text"
-                            value={`$ ${item.total.toFixed(2)}`}
-                            readOnly
-                        />
-                     </div>
+                      <input type="number" name="qx" placeholder="Cant." value={item.qx === 0 ? '' : item.qx} onChange={(e) => handleProductoChange(index, e)} min="1" required
+                        className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-center focus:outline-none focus:ring-1 focus:ring-indigo-500"/>
+                    </div>
+                    <input type="text" value={`$ ${item.precio.toFixed(2)}`} readOnly className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-right bg-gray-100"/>
+                    <input type="text" value={`$ ${item.total.toFixed(2)}`} readOnly className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-right bg-gray-100"/>
                     <div className="flex justify-end md:justify-center items-center">
-                        {productos.length > 1 && (
-                        <button
-                            type="button"
-                            onClick={() => eliminarProducto(index)}
-                            className="text-red-500 hover:text-red-700 font-bold text-xl leading-none p-1 rounded-full hover:bg-red-100"
-                            title="Eliminar producto"
-                        >
-                            ×
-                        </button>
-                        )}
+                      {productos.length > 1 && <button type="button" onClick={() => eliminarProducto(index)} title="Eliminar producto" className="text-red-500 hover:text-red-700 font-bold text-xl leading-none p-1 rounded-full hover:bg-red-100">×</button>}
                     </div>
-                    </div>
+                  </div>
                 ))}
               </div>
-              <button
-                type="button"
-                onClick={agregarProducto}
+              <button type="button" onClick={agregarProducto}
                 className="mt-4 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 text-sm"
-              >
+                disabled={!productosContext?.productos || productosContext.productos.length === 0}>
                 + Agregar Producto
               </button>
-          </fieldset>
+            </fieldset>
 
-          {/* --- Pago y Totales (Sin cambios) --- */}
-          <fieldset className="border p-4 rounded-md">
-             <legend className="text-lg font-medium text-gray-700 px-2">Pago y Totales</legend>
-             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+            <fieldset className="border p-4 rounded-md">
+              <legend className="text-lg font-medium text-gray-700 px-2">Pago y Totales</legend>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-[1fr_auto_1fr_1fr] gap-4 items-end">
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="formaPago">Forma de Pago</label>
-                    <select
-                        id="formaPago"
-                        name="formaPago"
-                        className="w-full shadow-sm border rounded py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                        value={formData.formaPago}
-                        // Puedes usar handleFormChange aquí también si lo adaptas para select
-                        onChange={(e) => setFormData({ ...formData, formaPago: e.target.value })}
-                    >
-                        <option value="efectivo">Efectivo</option>
-                        <option value="transferencia">Transferencia</option>
-                        <option value="tarjeta">Tarjeta</option>
-                        <option value="cuenta_corriente">Cta. Cte.</option>
-                        <option value="otro">Otro</option>
-                    </select>
+                  <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="formaPago">Forma de Pago</label>
+                  <select id="formaPago" name="formaPago" value={formData.formaPago} onChange={handleFormChange}
+                    className="w-full shadow-sm border rounded py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                    <option value="efectivo">Efectivo</option><option value="transferencia">Transferencia</option>
+                    <option value="factura">Factura</option>
+                  </select>
                 </div>
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="montoPagado">Monto Pagado</label>
-                    <input
-                        id="montoPagado"
-                        type="number"
-                        name="montoPagado"
-                        className="w-full bg-white shadow-sm border rounded py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                        value={formData.montoPagado === 0 ? '' : formData.montoPagado}
-                        onChange={handleMontoPagadoChange}
-                        placeholder="0.00"
-                        step="0.01"
-                        min="0"
+                  <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="montoPagado">Monto Pagado</label>
+                  <input
+                      id="montoPagado"
+                      type="number"
+                      name="montoPagado"
+                      className="w-full bg-white shadow-sm border rounded py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      value={formData.montoPagado === 0 ? '' : formData.montoPagado}
+                      onChange={handleMontoPagadoChange}
+                      placeholder="0.00" 
+                      step="0.01"
+                      min="0"
                     />
                 </div>
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="vuelto">Vuelto</label>
-                    <input
-                        id="vuelto"
-                        type="text"
-                        name="vuelto"
-                        className="w-full bg-gray-100 shadow-sm border rounded py-2 px-3 text-gray-700 focus:outline-none text-right"
-                        value={`$ ${formData.vuelto.toFixed(2)}`}
-                        readOnly
-                    />
+                  <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="vuelto">Vuelto</label>
+                  <input id="vuelto" type="text" name="vuelto" readOnly
+                    className="w-full bg-gray-100 shadow-sm border rounded py-2 px-3 text-gray-700 focus:outline-none text-right"
+                    value={`$ ${formData.vuelto.toFixed(2)}`}/>
                 </div>
-                <div className="text-right">
-                    <label className="block text-sm font-medium text-gray-500 mb-1">Total Pedido</label>
-                     <input
-                      type="text"
-                      value={`$ ${calcularTotal().toFixed(2)}`}
-                      readOnly
-                      className="w-full bg-gray-100 shadow-sm border rounded py-2 px-3 text-gray-900 text-right font-bold text-lg focus:outline-none"
-                    />
-                </div>
-             </div>
-          </fieldset>
+              </div>
+              <div className="mt-4 text-right">
+                {isCalculatingTotal && <p className="text-sm text-blue-600 italic">Calculando total...</p>}
+                {totalCalculadoApi && (
+                    <div className="text-xs text-gray-600 mb-1">
+                        <span>Base: ${totalCalculadoApi.monto_base.toFixed(2)}</span>
+                        {totalCalculadoApi.recargos.transferencia > 0 && <span className="ml-2">Rec. Transf: ${totalCalculadoApi.recargos.transferencia.toFixed(2)}</span>}
+                        {totalCalculadoApi.recargos.factura_iva > 0 && <span className="ml-2">IVA: ${totalCalculadoApi.recargos.factura_iva.toFixed(2)}</span>}
+                    </div>
+                )}
+                <label className="block text-sm font-medium text-gray-500 mb-1">Total Pedido (c/recargos)</label>
+                <input type="text" value={`$ ${displayTotal.toFixed(2)}`} readOnly
+                  className="w-full md:w-auto md:max-w-xs inline-block bg-gray-100 shadow-sm border rounded py-2 px-3 text-gray-900 text-right font-bold text-lg focus:outline-none"/>
+              </div>
+            </fieldset>
 
-          {/* Botones de Acción (Sin cambios) */}
-          <div className="flex flex-col sm:flex-row justify-end gap-4 mt-8">
-            <button
-              type="button"
-              className="bg-gray-500 text-white px-6 py-2 rounded-md hover:bg-gray-600 order-2 sm:order-1"
-              onClick={() => window.print()}
-            >
-              Imprimir Vista
-            </button>
-            <button
-              type="submit"
-              className="bg-green-600 text-white px-6 py-2 rounded-md hover:bg-green-700 font-semibold order-1 sm:order-2"
-              disabled={loadingClientes} // Deshabilitar mientras carga clientes
-            >
-              Registrar Pedido
-            </button>
-          </div>
-        </form>
+            <div className="flex flex-col sm:flex-row justify-end gap-4 mt-8">
+              <button type="submit"
+                className="bg-green-600 text-white px-6 py-2 rounded-md hover:bg-green-700 font-semibold order-1 sm:order-2 disabled:opacity-50"
+                disabled={loadingClientes || isSubmitting || isCalculatingTotal}>
+                {isSubmitting ? 'Registrando...' : 'Registrar Pedido'}
+              </button>
+               <button type="button" onClick={() => handleImprimirPresupuesto()}
+                className="bg-gray-500 text-white px-6 py-2 rounded-md hover:bg-gray-600 font-semibold order-2 sm:order-1 disabled:opacity-50"
+                disabled={isSubmitting || isCalculatingTotal || productos.every(p => p.producto === 0 || p.qx === 0)}>
+                Imprimir Presupuesto
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
-    </div>
+
+      {/* SECCIÓN PARA LA IMPRESIÓN DEL PRESUPUESTO */}
+      <div id="presupuesto-imprimible" className="hidden print:block presupuesto-container">
+        <header className="presupuesto-header">
+          <div className="logo-container"><img src="/logo.png" alt="QuiMex" className="logo" /><p className="sub-logo-text">PRESUPUESTO NO VALIDO COMO FACTURA</p></div>
+          <div className="info-empresa"><p>📱 11 2395 1494</p><p>📞 4261 3605</p><p>📸 quimex_berazategui</p></div>
+        </header>
+        <section className="datos-pedido">
+          <table className="tabla-datos-principales"><tbody>
+            <tr><td>PEDIDO</td><td>NUEVO</td></tr> 
+            <tr><td>FECHA</td><td>{formData.fechaEmision ? new Date(formData.fechaEmision).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'}) : ''}</td></tr>
+            <tr><td>CLIENTE</td><td>{formData.nombre || (formData.clienteId ? `Cliente ID: ${formData.clienteId}` : 'CONSUMIDOR FINAL')}</td></tr>
+            <tr><td>SUBTOTAL (Productos)</td><td className="text-right">$ {montoBaseProductos.toFixed(2)}</td></tr>
+          </tbody></table>
+          <table className="tabla-datos-secundarios"><tbody>
+            <tr><td>DIRECCIÓN</td><td>{formData.direccion || '-'}</td></tr>
+            {totalCalculadoApi && totalCalculadoApi.recargos.transferencia > 0 && <tr><td>RECARGO ({totalCalculadoApi.forma_pago_aplicada})</td><td className="text-right">$ {totalCalculadoApi.recargos.transferencia.toFixed(2)}</td></tr>}
+            {totalCalculadoApi && totalCalculadoApi.recargos.factura_iva > 0 && <tr><td>{formData.requiereFactura ? "IVA (Factura)" : "Recargo (Factura)"}</td><td className="text-right">$ {totalCalculadoApi.recargos.factura_iva.toFixed(2)}</td></tr>}
+            <tr><td>TOTAL FINAL</td><td className="text-right">$ {displayTotal.toFixed(2)}</td></tr>
+          </tbody></table>
+        </section>
+        <section className="detalle-productos">
+          <table className="tabla-items">
+            <thead><tr><th>ITEM</th><th>PRODUCTO</th><th>CANTIDAD</th><th>SUBTOTAL</th></tr></thead>
+            <tbody>
+              {productos.filter(p => p.producto && p.qx > 0).map((item, index) => {
+                const pInfo = productosContext?.productos.find(p => p.id === item.producto);
+                return (<tr key={`print-item-${index}`}><td>{index + 1}</td><td>{pInfo?.nombre || `ID: ${item.producto}`}</td><td className="text-center">{item.qx}</td><td className="text-right">$ {item.total.toFixed(2)}</td></tr>);
+              })}
+              {Array.from({ length: Math.max(0, 12 - productos.filter(p => p.producto && p.qx > 0).length) }).map((_, i) => 
+                <tr key={`empty-row-${i}`} className="empty-row"><td> </td><td> </td><td> </td><td> </td></tr>)}
+            </tbody>
+          </table>
+        </section>
+      </div>
+    </>
   );
 }
