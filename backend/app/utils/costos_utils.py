@@ -46,7 +46,7 @@ def calcular_costo_producto(producto_id: int, visitados: set = None) -> Decimal 
 
     else:
         # Caso Recursivo: Es una receta, calcular basado en ingredientes
-        if not producto.receta_asociada: # Verificamos que la relación existe
+        if not producto.receta: # Verificamos que la relación existe
             print(f"ERROR [calcular_costo_producto]: Producto ID {producto_id} ('{producto.nombre}') marcado como receta pero sin receta asociada.")
             visitados.remove(producto_id) # Quitar antes de retornar error
             return None
@@ -54,7 +54,7 @@ def calcular_costo_producto(producto_id: int, visitados: set = None) -> Decimal 
         costo_calculado_receta = Decimal(0)
         # Acceder a la relación inversa (asumiendo que la tienes definida en Producto)
         # o buscar la receta por producto_final_id
-        receta = producto.receta_asociada # Asumiendo relación uno-a-uno desde Producto a Receta
+        receta = producto.receta # Asumiendo relación uno-a-uno desde Producto a Receta
 
         if not receta.items:
              print(f"WARNING [calcular_costo_producto]: Receta para producto ID {producto_id} ('{producto.nombre}') no tiene items.")

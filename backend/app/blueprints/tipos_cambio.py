@@ -14,7 +14,7 @@ tipos_cambio_bp = Blueprint('tipos_cambio', __name__, url_prefix='/tipos_cambio'
 @tipos_cambio_bp.route('/crear', methods=['POST'])
 @token_required
 @roles_required(ROLES['ADMIN'])
-def crear_tipo_cambio():
+def crear_tipo_cambio(current_user):
     data = request.get_json()
     if not data or not data.get('nombre') or 'valor' not in data:
         return jsonify({"error": "Faltan 'nombre' o 'valor'"}), 400
@@ -57,7 +57,7 @@ def obtener_tipo_cambio_por_nombre(nombre):
 @tipos_cambio_bp.route('/actualizar/<string:nombre>', methods=['PUT'])
 @token_required
 @roles_required(ROLES['ADMIN'])
-def actualizar_tipo_cambio(nombre):
+def actualizar_tipo_cambio(current_user, nombre):
     tc = TipoCambio.query.filter_by(nombre=nombre).first()
     if not tc:
         return jsonify({"error": f"Tipo de cambio '{nombre}' no encontrado"}), 404
@@ -87,7 +87,7 @@ def actualizar_tipo_cambio(nombre):
 @tipos_cambio_bp.route('/eliminar/<string:nombre>', methods=['DELETE'])
 @token_required
 @roles_required(ROLES['ADMIN'])
-def eliminar_tipo_cambio(nombre):
+def eliminar_tipo_cambio(current_user, nombre):
     tc = TipoCambio.query.filter_by(nombre=nombre).first()
     if not tc:
         return jsonify({"error": f"Tipo de cambio '{nombre}' no encontrado"}), 404

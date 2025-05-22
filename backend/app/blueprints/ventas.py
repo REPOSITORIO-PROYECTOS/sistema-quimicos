@@ -193,7 +193,7 @@ def calcular_monto_final_y_vuelto(monto_base, forma_pago=None, requiere_factura=
 @ventas_bp.route('/registrar', methods=['POST'])
 @token_required # Descomenta si lo necesitas
 @roles_required(ROLES['VENTAS_LOCAL'],ROLES['VENTAS_PEDIDOS'],ROLES['ADMIN']) # O el rol apropiado
-def registrar_venta():
+def registrar_venta(current_user):
     """Registra una nueva venta, considerando precios especiales."""
     data = request.get_json()
     if not data: return jsonify({"error": "Payload JSON vacío"}), 400
@@ -399,28 +399,36 @@ def calcular_vuelto():
 # --- Endpoint: Obtener Ventas (Lista) (Añadido cliente a eager load) ---
 @ventas_bp.route('/obtener_todas', methods=['GET'])
 @token_required # Descomenta si lo necesitas
-@roles_required(ROLES['ADMIN', 'VENTAS_PEDIDOS','VENTAS_LOCAL']) # O los roles apropiados
-def obtener_ventas():
+@roles_required(ROLES['ADMIN'], ROLES['VENTAS_PEDIDOS'], ROLES['VENTAS_LOCAL']) # O los roles apropiados
+def obtener_ventas(current_user):
     """Obtiene una lista de ventas, con filtros opcionales y paginación."""
     try:
-        query = Venta.query.options(
-            selectinload(Venta.usuario_interno),
-            selectinload(Venta.cliente) # Cargar datos del cliente para resumen
-        )
+        query = Venta.query  # Sin .options()
 
-        # Filtros (sin cambios)
+        # --- Aplicar Filtros ---
         usuario_id_filtro = request.args.get('usuario_id', type=int)
-        if usuario_id_filtro: query = query.filter(Venta.usuario_interno_id == usuario_id_filtro)
+        if usuario_id_filtro:
+            query = query.filter(Venta.usuario_interno_id == usuario_id_filtro)
+
         cliente_id_filtro = request.args.get('cliente_id', type=int)
-        if cliente_id_filtro: query = query.filter(Venta.cliente_id == cliente_id_filtro)
+        if cliente_id_filtro:
+            query = query.filter(Venta.cliente_id == cliente_id_filtro)
+
         fecha_desde_str = request.args.get('fecha_desde')
         if fecha_desde_str:
-            try: fecha_desde = datetime.date.fromisoformat(fecha_desde_str); query = query.filter(Venta.fecha_registro >= datetime.datetime.combine(fecha_desde, datetime.time.min))
-            except ValueError: return jsonify({"error": "Formato 'fecha_desde' inválido (YYYY-MM-DD)"}), 400
+            try:
+                fecha_desde = datetime.date.fromisoformat(fecha_desde_str)
+                query = query.filter(Venta.fecha_registro >= datetime.datetime.combine(fecha_desde, datetime.time.min))
+            except ValueError:
+                return jsonify({"error": "Formato 'fecha_desde' (YYYY-MM-DD)"}), 400
+
         fecha_hasta_str = request.args.get('fecha_hasta')
         if fecha_hasta_str:
-             try: fecha_hasta = datetime.date.fromisoformat(fecha_hasta_str); query = query.filter(Venta.fecha_registro < datetime.datetime.combine(fecha_hasta + datetime.timedelta(days=1), datetime.time.min))
-             except ValueError: return jsonify({"error": "Formato 'fecha_hasta' inválido (YYYY-MM-DD)"}), 400
+            try:
+                fecha_hasta = datetime.date.fromisoformat(fecha_hasta_str)
+                query = query.filter(Venta.fecha_registro < datetime.datetime.combine(fecha_hasta + datetime.timedelta(days=1), datetime.time.min))
+            except ValueError:
+                return jsonify({"error": "Formato 'fecha_hasta' (YYYY-MM-DD)"}), 400
 
         # Ordenar
         query = query.order_by(Venta.fecha_registro.desc())
@@ -431,39 +439,110 @@ def obtener_ventas():
         paginated_ventas = query.paginate(page=page, per_page=per_page, error_out=False)
         ventas_db = paginated_ventas.items
 
-        # Serializar Resultados (usando el resumen que incluye cliente)
-        ventas_list = [venta_a_dict_resumen(v) for v in ventas_db]
+        # Serializar Resultados
+        ventas_list = []
+        for venta in ventas_db:
+            _ = venta.usuario_interno  # Acceso explícito para asegurar que se cargue si es perezoso
+            _ = venta.cliente  # Para forzar carga si es lazy
+            ventas_list.append(venta_a_dict_resumen(venta))
 
         return jsonify({
             "ventas": ventas_list,
-            "pagination": { "total_items": paginated_ventas.total, "total_pages": paginated_ventas.pages, "current_page": page, "per_page": per_page, "has_next": paginated_ventas.has_next, "has_prev": paginated_ventas.has_prev }
+            "pagination": {
+                "total_items": paginated_ventas.total,
+                "total_pages": paginated_ventas.pages,
+                "current_page": page,
+                "per_page": per_page,
+                "has_next": paginated_ventas.has_next,
+                "has_prev": paginated_ventas.has_prev
+            }
         })
-    except Exception as e: print(f"ERROR [obtener_ventas]: {e}"); traceback.print_exc(); return jsonify({"error":"ISE"}),500
+
+    except Exception as e:
+        print(f"ERROR [obtener_ventas]: Excepción inesperada")
+        traceback.print_exc()
+        return jsonify({"error": "Error interno al obtener las ventas"}), 500
+# def obtener_ventas(current_user):
+#     """Obtiene una lista de ventas, con filtros opcionales y paginación."""
+#     try:
+#         query = Venta.query.options(
+#             selectinload(Venta.usuario_interno),
+#             selectinload(Venta.cliente) # Cargar datos del cliente para resumen
+#         )
+
+#         # Filtros (sin cambios)
+#         usuario_id_filtro = request.args.get('usuario_id', type=int)
+#         if usuario_id_filtro: query = query.filter(Venta.usuario_interno_id == usuario_id_filtro)
+#         cliente_id_filtro = request.args.get('cliente_id', type=int)
+#         if cliente_id_filtro: query = query.filter(Venta.cliente_id == cliente_id_filtro)
+#         fecha_desde_str = request.args.get('fecha_desde')
+#         if fecha_desde_str:
+#             try: fecha_desde = datetime.date.fromisoformat(fecha_desde_str); query = query.filter(Venta.fecha_registro >= datetime.datetime.combine(fecha_desde, datetime.time.min))
+#             except ValueError: return jsonify({"error": "Formato 'fecha_desde' inválido (YYYY-MM-DD)"}), 400
+#         fecha_hasta_str = request.args.get('fecha_hasta')
+#         if fecha_hasta_str:
+#              try: fecha_hasta = datetime.date.fromisoformat(fecha_hasta_str); query = query.filter(Venta.fecha_registro < datetime.datetime.combine(fecha_hasta + datetime.timedelta(days=1), datetime.time.min))
+#              except ValueError: return jsonify({"error": "Formato 'fecha_hasta' inválido (YYYY-MM-DD)"}), 400
+
+#         # Ordenar
+#         query = query.order_by(Venta.fecha_registro.desc())
+
+#         # Paginación
+#         page = request.args.get('page', 1, type=int)
+#         per_page = request.args.get('per_page', 20, type=int)
+#         paginated_ventas = query.paginate(page=page, per_page=per_page, error_out=False)
+#         ventas_db = paginated_ventas.items
+
+#         # Serializar Resultados (usando el resumen que incluye cliente)
+#         ventas_list = [venta_a_dict_resumen(v) for v in ventas_db]
+
+#         return jsonify({
+#             "ventas": ventas_list,
+#             "pagination": { "total_items": paginated_ventas.total, "total_pages": paginated_ventas.pages, "current_page": page, "per_page": per_page, "has_next": paginated_ventas.has_next, "has_prev": paginated_ventas.has_prev }
+#         })
+#     except Exception as e: print(f"ERROR [obtener_ventas]: {e}"); traceback.print_exc(); return jsonify({"error":"ISE"}),500
 
 # --- Endpoint: Obtener Venta Específica (Añadido cliente a eager load) ---
 @ventas_bp.route('/obtener/<int:venta_id>', methods=['GET'])
 @token_required
-@roles_required(ROLES['ADMIN', 'VENTAS_PEDIDOS','VENTAS_LOCAL']) # O los roles apropiados
-def obtener_venta_por_id(venta_id):
+@roles_required(ROLES['ADMIN'], ROLES['VENTAS_PEDIDOS'], ROLES['VENTAS_LOCAL']) # O los roles apropiados
+def obtener_venta_por_id(current_user, venta_id):
     """Obtiene los detalles completos de una venta específica."""
     try:
-        venta_db = db.session.query(Venta).options(
-            selectinload(Venta.detalles).selectinload(DetalleVenta.producto),
-            selectinload(Venta.usuario_interno),
-            selectinload(Venta.cliente) # Asegurar carga del cliente
-        ).get(venta_id)
+        # Cargar la venta sin eager loading (usamos .get() para obtenerla por ID)
+        venta_db = db.session.query(Venta).get(venta_id)
 
         if not venta_db:
             return jsonify({"error": "Venta no encontrada"}), 404
 
-        return jsonify(venta_a_dict_completo(venta_db)) # Usar serializador completo
-    except Exception as e: print(f"ERROR [obtener_venta_por_id]: Venta {venta_id} - {e}"); traceback.print_exc(); return jsonify({"error":"ISE"}),500
+        # Cargar los detalles de la venta dinámicamente (esto evita el eager loading)
+        detalles = venta_db.detalles.all()
+
+        # Cargar productos relacionados manualmente para evitar N+1
+        producto_ids = [d.producto_id for d in detalles if d.producto_id]
+        productos = Producto.query.filter(Producto.id.in_(producto_ids)).all()
+        productos_dict = {p.id: p for p in productos}
+
+        # Asignar manualmente los productos a cada detalle
+        for detalle in detalles:
+            detalle.producto = productos_dict.get(detalle.producto_id)
+
+        # Asegurarse de que el usuario interno se cargue si es perezoso
+        _ = venta_db.usuario_interno
+
+        # Devolver la venta con su serialización completa
+        return jsonify(venta_a_dict_completo(venta_db))
+
+    except Exception as e:
+        print(f"ERROR [obtener_venta_por_id]: Excepción inesperada para venta {venta_id}")
+        traceback.print_exc()
+        return jsonify({"error": "Error interno al obtener la venta"}), 500
 
 # --- Endpoint: Actualizar Venta (Campos básicos) (Sin cambios lógicos aquí) ---
 @ventas_bp.route('/actualizar/<int:venta_id>', methods=['PUT'])
 @token_required
-@roles_required(ROLES['ADMIN', 'VENTAS_PEDIDOS','VENTAS_LOCAL']) # O los roles apropiados
-def actualizar_venta(venta_id):
+@roles_required(ROLES['ADMIN'], ROLES['VENTAS_PEDIDOS'], ROLES['VENTAS_LOCAL']) # O los roles apropiados
+def actualizar_venta(current_user, venta_id):
     """Actualiza campos básicos de una venta (NO recalcula precios de items)."""
     venta_db = db.session.get(Venta, venta_id)
     if not venta_db: return jsonify({"error": "Venta no encontrada"}), 404
@@ -529,7 +608,7 @@ def actualizar_venta(venta_id):
 @ventas_bp.route('/eliminar/<int:venta_id>', methods=['DELETE'])
 @token_required
 @roles_required(ROLES['ADMIN'])
-def eliminar_venta(venta_id):
+def eliminar_venta(current_user, venta_id):
     """Elimina una venta y sus detalles."""
     venta_db = db.session.get(Venta, venta_id)
     if not venta_db: return jsonify({"error": "Venta no encontrada"}), 404
@@ -569,11 +648,12 @@ def venta_a_dict_resumen(venta):
         "venta_id": venta.id,
         "fecha_registro": venta.fecha_registro.isoformat() if venta.fecha_registro else None,
         "fecha_pedido": venta.fecha_pedido.isoformat() if venta.fecha_pedido else None,
+        "direccion_entrega": venta.direccion_entrega,
         "usuario_interno_id": venta.usuario_interno_id,
         "usuario_nombre": venta.usuario_interno.nombre if venta.usuario_interno else None,
         "cliente_id": venta.cliente_id,
         # Asume que el modelo Cliente tiene 'razon_social'
-        "cliente_nombre": venta.cliente.razon_social if venta.cliente else None,
+        "cliente_nombre": venta.cliente.nombre_razon_social if venta.cliente else None,
         "cuit_cliente": venta.cuit_cliente,
         "monto_total_base": float(venta.monto_total) if venta.monto_total is not None else None,
         "forma_pago": venta.forma_pago,
@@ -607,7 +687,7 @@ def detalle_venta_a_dict(detalle):
     return {
         "detalle_id": detalle.id,
         "producto_id": detalle.producto_id,
-        "producto_codigo": detalle.producto.codigo_interno if detalle.producto else None, # Usar codigo_interno
+        "producto_codigo": detalle.producto.id if detalle.producto else None, # Usar codigo_interno
         "producto_nombre": detalle.producto.nombre if detalle.producto else None,
         "cantidad": float(detalle.cantidad) if detalle.cantidad is not None else None,
         "margen_aplicado": float(detalle.margen_aplicado) if detalle.margen_aplicado is not None else None,

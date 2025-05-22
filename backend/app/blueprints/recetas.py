@@ -129,7 +129,7 @@ def validar_items_receta(items_payload: list, producto_final_id: int) -> tuple[l
 @recetas_bp.route('/crear', methods=['POST'])
 @token_required
 @roles_required(ROLES['ADMIN'])
-def crear_receta():
+def crear_receta(current_user):
     data = request.get_json()
     if not data or 'producto_final_id' not in data or 'items' not in data:
         return jsonify({"error": "Faltan datos requeridos: 'producto_final_id' y 'items'"}), 400
@@ -165,34 +165,35 @@ def crear_receta():
     try:
         # Crear receta y asociar items (items_db ya contiene objetos RecetaItem)
         nueva_receta = Receta(producto_final_id=producto_final_id)
-        nueva_receta.items = items_db # SQLAlchemy manejará la asociación
+        nueva_receta.items = items_db  # SQLAlchemy manejará la asociación
 
         # Marcar el producto final como receta
         producto_final.es_receta = True
-        # Anular costo directo, se calculará basado en ingredientes
-        #producto_final.costo_referencia_usd = None
-        producto_final.fecha_actualizacion_costo = datetime.datetime.utcnow() # Forzar actualización fecha
+        producto_final.fecha_actualizacion_costo = datetime.datetime.utcnow()  # Forzar actualización de fecha
 
         db.session.add(nueva_receta)
         # producto_final ya está en la sesión por el query.get, pero add() es idempotente
         db.session.add(producto_final)
-        
+
         # Usar try/finally para asegurar rollback si el cálculo/commit falla
         try:
             # Flush para asegurar que las relaciones existen en sesión antes del cálculo
             print(f"--- INFO [crear_receta]: Haciendo flush de sesión antes de calcular costo para producto {producto_final_id}...")
             db.session.flush()
 
+            # Asignar el ID de la receta a `receta_id` del `producto_final` antes de calcular el costo
+            producto_final.receta = nueva_receta  # Asignar el ID de la receta a producto_final
+
             # Calcular costo inicial
             print(f"--- INFO [crear_receta]: Calculando costo inicial para nueva receta de producto {producto_final_id}...")
-            costo_calculado = calcular_costo_producto(producto_final_id) # Llama a la función importada
+            costo_calculado = calcular_costo_producto(producto_final_id)  # Llama a la función importada
 
             if costo_calculado is not None:
                 print(f"---   Costo inicial calculado para {producto_final_id}: {costo_calculado}")
                 producto_final.costo_referencia_usd = costo_calculado
             else:
                 print(f"---   WARNING [crear_receta]: No se pudo calcular costo inicial para receta {producto_final_id}. Costo se dejará en None.")
-                producto_final.costo_referencia_usd = None # Asegurar que es None
+                producto_final.costo_referencia_usd = None  # Asegurar que es None
 
             # Volver a añadir producto_final por si cambió el costo
             db.session.add(producto_final)
@@ -200,10 +201,14 @@ def crear_receta():
             # Commit final
             print(f"--- INFO [crear_receta]: Haciendo commit final para receta y costo calculado de {producto_final_id}...")
             db.session.commit()
+
+            # Ahora, ya tienes el ID de la receta en `producto_final.receta_id`
+            print(f"--- INFO [crear_receta]: ID de la nueva receta asignado a producto_final: {producto_final.receta}")
+
             print(f"--- INFO [crear_receta]: Commit exitoso.")
 
         except Exception as calculo_commit_err:
-            db.session.rollback() # Falló cálculo o commit final
+            db.session.rollback()  # Falló cálculo o commit final
             print(f"--- ERROR [crear_receta]: Fallo durante flush/cálculo/commit de costo inicial para receta {producto_final_id}: {calculo_commit_err}")
             traceback.print_exc()
             # Informar que la receta pudo no haberse guardado completamente o el costo falló
@@ -219,11 +224,13 @@ def crear_receta():
         return jsonify({"error": "Error interno del servidor al crear la receta"}), 500
 
 
+
+
 @recetas_bp.route('/obtener/<int:receta_id>', methods=['GET'])
 @token_required
 # @roles_required(ROLES['USER']) # Decidir quién puede ver recetas
 @roles_required(ROLES['ADMIN'])
-def obtener_receta(receta_id):
+def obtener_receta(current_user, receta_id):
     # Usar options para cargar relaciones eficientemente si es necesario
     # from sqlalchemy.orm import joinedload
     # receta = Receta.query.options(
@@ -237,7 +244,7 @@ def obtener_receta(receta_id):
 @recetas_bp.route('/actualizar/<int:receta_id>', methods=['PUT'])
 @token_required
 @roles_required(ROLES['ADMIN'])
-def actualizar_receta(receta_id):
+def actualizar_receta(current_user, receta_id):
     receta = Receta.query.get_or_404(receta_id)
     data = request.get_json()
 
@@ -321,7 +328,7 @@ def actualizar_receta(receta_id):
 @recetas_bp.route('/eliminar/<int:receta_id>', methods=['DELETE'])
 @token_required
 @roles_required(ROLES['ADMIN'])
-def eliminar_receta(receta_id):
+def eliminar_receta(current_user, receta_id):
     """Elimina una receta y desmarca el producto asociado como receta."""
     receta = Receta.query.get_or_404(receta_id, description=f"Receta con ID {receta_id} no encontrada.")
     producto_final = receta.producto_final # Guardar referencia

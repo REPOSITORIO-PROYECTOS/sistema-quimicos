@@ -2,7 +2,7 @@
 
 # --- Imports ---
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import event, CheckConstraint, ForeignKey
+from sqlalchemy import event, CheckConstraint, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import validates, relationship
 from datetime import datetime, timezone
 from decimal import Decimal

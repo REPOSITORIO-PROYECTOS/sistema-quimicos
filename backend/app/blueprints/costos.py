@@ -79,7 +79,7 @@ costos_bp = Blueprint('costos', __name__, url_prefix='/costos')
 @costos_bp.route('/producto/<int:producto_id>', methods=['PUT'])
 @token_required
 @roles_required(ROLES['ADMIN']) # O un rol específico 'GESTOR_COMPRAS' o 'GESTOR_COSTOS'
-def actualizar_costo_base_producto(producto_id):
+def actualizar_costo_base_producto(current_user, producto_id):
     """
     Actualiza el costo base (costo_referencia_usd) de un producto
     que NO es una receta (ej. materia prima).
@@ -141,7 +141,7 @@ def actualizar_costo_base_producto(producto_id):
 @costos_bp.route('/producto/<int:producto_id>', methods=['GET'])
 @token_required
 @roles_required(ROLES['ADMIN']) # O mantenerlo restringido
-def obtener_costo_producto(producto_id):
+def obtener_costo_producto(current_user, producto_id):
     """
     Obtiene el costo actual almacenado para un producto.
     Si es receta, devuelve el último costo calculado.
@@ -170,7 +170,7 @@ def obtener_costo_producto(producto_id):
 @costos_bp.route('/recalcular/producto/<int:producto_id>', methods=['POST'])
 @token_required
 @roles_required(ROLES['ADMIN'])
-def recalcular_costo_producto_endpoint(producto_id):
+def recalcular_costo_producto_endpoint(current_user, producto_id):
     """
     Fuerza el recálculo del costo para un producto (útil si es receta).
     Actualiza el costo almacenado en la BD. No propaga hacia arriba por defecto.

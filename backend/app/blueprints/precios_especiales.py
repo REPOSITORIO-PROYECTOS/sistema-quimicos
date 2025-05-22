@@ -34,10 +34,10 @@ def precio_especial_a_dict(precio_esp):
 
 # --- Endpoints CRUD ---
 
-@precios_especiales_bp.route('', methods=['POST'])
+@precios_especiales_bp.route('/crear', methods=['POST'])
 @token_required
 @roles_required(ROLES['ADMIN']) # O un rol 'GESTOR_PRECIOS'
-def crear_precio_especial():
+def crear_precio_especial(current_user):
     """Crea una nueva regla de precio especial."""
     data = request.get_json()
     if not data or 'cliente_id' not in data or 'producto_id' not in data or 'precio_unitario_fijo_ars' not in data:
@@ -98,10 +98,10 @@ def crear_precio_especial():
         return jsonify({"error": "Error interno al crear el precio especial"}), 500
 
 
-@precios_especiales_bp.route('', methods=['GET'])
+@precios_especiales_bp.route('/obtener-todos', methods=['GET'])
 @token_required
 @roles_required(ROLES['ADMIN']) # O 'VENTAS', 'USER'?
-def listar_precios_especiales():
+def listar_precios_especiales(current_user):
     """Lista los precios especiales con filtros opcionales."""
     try:
         query = PrecioEspecialCliente.query.options(
@@ -149,25 +149,25 @@ def listar_precios_especiales():
         return jsonify({"error": "Error interno al listar precios especiales"}), 500
 
 
-@precios_especiales_bp.route('/<int:precio_id>', methods=['GET'])
+@precios_especiales_bp.route('/obtener-por-cliente/<int:client_id>', methods=['GET'])
 @token_required
 @roles_required(ROLES['ADMIN'])
-def obtener_precio_especial(precio_id):
-    """Obtiene un precio especial por su ID."""
-    precio_esp = db.session.query(PrecioEspecialCliente).options(
+def obtener_precio_especial(current_user, client_id):
+    """Obtiene todos los precios especiales para un cliente por su ID."""
+    precios_esp = db.session.query(PrecioEspecialCliente).options(
         joinedload(PrecioEspecialCliente.cliente),
         joinedload(PrecioEspecialCliente.producto)
-    ).get(precio_id)
+    ).filter(PrecioEspecialCliente.cliente_id == client_id).all()
 
-    if not precio_esp:
-        return jsonify({"error": "Precio especial no encontrado"}), 404
-    return jsonify(precio_especial_a_dict(precio_esp))
+    if not precios_esp:
+        return jsonify({"error": "No se encontraron precios especiales para este cliente"}), 404
+    return jsonify([precio_especial_a_dict(p) for p in precios_esp])
 
 
-@precios_especiales_bp.route('/<int:precio_id>', methods=['PUT'])
+@precios_especiales_bp.route('/editar/<int:precio_id>', methods=['PUT'])
 @token_required
 @roles_required(ROLES['ADMIN'])
-def actualizar_precio_especial(precio_id):
+def actualizar_precio_especial(current_user, precio_id):
     """Actualiza un precio especial existente (precio o estado activo)."""
     precio_esp = db.session.get(PrecioEspecialCliente, precio_id)
     if not precio_esp:
@@ -215,10 +215,10 @@ def actualizar_precio_especial(precio_id):
         return jsonify({"error": "Error interno al actualizar el precio especial"}), 500
 
 
-@precios_especiales_bp.route('/<int:precio_id>', methods=['DELETE'])
+@precios_especiales_bp.route('/eliminar/<int:precio_id>', methods=['DELETE'])
 @token_required
 @roles_required(ROLES['ADMIN'])
-def eliminar_precio_especial(precio_id):
+def eliminar_precio_especial(current_user, precio_id):
     """Elimina una regla de precio especial."""
     precio_esp = db.session.get(PrecioEspecialCliente, precio_id)
     if not precio_esp:

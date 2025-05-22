@@ -51,14 +51,14 @@ def formatear_orden_por_rol(orden_db, rol="almacen"):
         "observaciones_solicitud": orden_db.observaciones_solicitud,
         # Campos de aprobación
         "fecha_aprobacion": orden_db.fecha_aprobacion.isoformat() if orden_db.fecha_aprobacion else None,
-        "aprobado_por": orden_db.aprobado_por,
+        "aprobado_por": orden_db.aprobado_por_id,
         # Campos de rechazo
         "fecha_rechazo": orden_db.fecha_rechazo.isoformat() if orden_db.fecha_rechazo else None,
-        "rechazado_por": orden_db.rechazado_por,
+#        "rechazado_por": orden_db.rechazado_por,
         "motivo_rechazo": orden_db.motivo_rechazo,
         # Campos de recepción
         "fecha_recepcion": orden_db.fecha_recepcion.isoformat() if orden_db.fecha_recepcion else None,
-        "recibido_por": orden_db.recibido_por,
+        "recibido_por": orden_db.recibido_por_id,
         "estado_recepcion": orden_db.estado_recepcion,
         "notas_recepcion": orden_db.notas_recepcion,
         # "cantidad_recepcionada_acumulada_calc": float(orden_db.calcular_cantidad_recibida_total()), # Si tienes un método así
@@ -74,13 +74,13 @@ def formatear_orden_por_rol(orden_db, rol="almacen"):
             item_dict = {
                 "id_linea": item_db.id, # ID del detalle
                 "producto_id": item_db.producto_id,
-                "producto_codigo": item_db.producto.codigo_interno if item_db.producto else 'N/A',
+                "producto_codigo": item_db.producto.id if item_db.producto else 'N/A',
                 "producto_nombre": item_db.producto.nombre if item_db.producto else 'N/A',
                 "cantidad_solicitada": float(item_db.cantidad_solicitada) if item_db.cantidad_solicitada is not None else None,
                 "cantidad_recibida": float(item_db.cantidad_recibida) if item_db.cantidad_recibida is not None else None,
                 "notas_item_recepcion": item_db.notas_item_recepcion,
             }
-            if rol == "    ADMIN":
+            if rol == "ADMIN":
                 item_dict.update({
                     "precio_unitario_estimado": float(item_db.precio_unitario_estimado) if item_db.precio_unitario_estimado is not None else None,
                     "importe_linea_estimado": float(item_db.importe_linea_estimado) if item_db.importe_linea_estimado is not None else None,
@@ -110,8 +110,8 @@ def formatear_orden_por_rol(orden_db, rol="almacen"):
 # --- Endpoint: Crear Nueva Orden de Compra (Solicitud) ---
 @compras_bp.route('/crear', methods=['POST'])
 @token_required
-@roles_required(ROLES['ADMIN'], ROLES['ALMACEN'],) 
-def crear_orden_compra():
+@roles_required(ROLES['ADMIN'], ROLES['ALMACEN']) 
+def crear_orden_compra(current_user):
     """Registra una nueva solicitud de orden de compra."""
     print("\n--- INFO: Recibida solicitud POST en /ordenes_compra ---")
     data = request.get_json()
@@ -209,11 +209,11 @@ def crear_orden_compra():
         db.session.commit()
 
         print(f"INFO: Orden de compra creada: ID {nueva_orden.id}, Nro Interno {nro_interno_solicitud}")
-        # Devolver la orden completa (formateada por rol,     ADMIN ve todo al crear)
+        # Devolver la orden completa (formateada por rol, ADMIN ve todo al crear)
         return jsonify({
             "status": "success",
             "message": "Orden de compra solicitada exitosamente.",
-            "orden": formatear_orden_por_rol(nueva_orden, rol="    ADMIN")
+            "orden": formatear_orden_por_rol(nueva_orden, rol="ADMIN")
             }), 201
 
     except (ValueError, TypeError, InvalidOperation) as e:
@@ -231,10 +231,10 @@ def crear_orden_compra():
 @compras_bp.route('/obtener_todas', methods=['GET'])
 @token_required
 @roles_required(ROLES['ADMIN'], ROLES['ALMACEN'], ROLES['CONTABLE']) 
-def obtener_ordenes_compra():
-    """Obtiene lista de órdenes, con filtros opcionales y formateada por rol."""
+def obtener_ordenes_compra(current_user):
+    """Obtiene lista de órdenes de compra, con filtros opcionales y paginación."""
     print("\n--- INFO: Recibida solicitud GET en /ordenes_compra ---")
-    rol_usuario = request.headers.get("X-User-Role", "almacen") # Simular rol
+    rol_usuario = request.headers.get("X-User-Role", "almacen")  # Simular rol
 
     try:
         query = OrdenCompra.query
@@ -242,7 +242,7 @@ def obtener_ordenes_compra():
         # --- Aplicar Filtros ---
         estado_filtro = request.args.get('estado')
         if estado_filtro:
-            if estado_filtro not in ESTADOS_ORDEN: # Validar estado
+            if estado_filtro not in ESTADOS_ORDEN:  # Validar estado
                 return jsonify({"error": f"Estado de filtro inválido: '{estado_filtro}'"}), 400
             query = query.filter(OrdenCompra.estado == estado_filtro)
             print(f"--- DEBUG: Filtrando por estado: {estado_filtro}")
@@ -255,26 +255,79 @@ def obtener_ordenes_compra():
         # Ordenar (ej: por fecha creación descendente)
         query = query.order_by(OrdenCompra.fecha_creacion.desc())
 
-        # Considerar paginación aquí también para listas largas
-        ordenes_db = query.all()
+        # --- Paginación ---
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 20, type=int)
+        paginated_result = query.paginate(page=page, per_page=per_page, error_out=False)
+        ordenes_db = paginated_result.items
 
         # Formatear resultado según rol
         ordenes_formateadas = [formatear_orden_por_rol(orden, rol_usuario) for orden in ordenes_db]
 
         print(f"--- INFO: Devolviendo {len(ordenes_formateadas)} órdenes para rol '{rol_usuario}'")
-        return jsonify(ordenes_formateadas)
+
+        # Devolver los resultados con los datos de paginación
+        return jsonify({
+            "ordenes": ordenes_formateadas,
+            "pagination": {
+                "total_items": paginated_result.total,
+                "total_pages": paginated_result.pages,
+                "current_page": page,
+                "per_page": per_page,
+                "has_next": paginated_result.has_next,
+                "has_prev": paginated_result.has_prev
+            }
+        })
 
     except Exception as e:
         print(f"ERROR: Excepción inesperada al obtener órdenes de compra")
         traceback.print_exc()
         return jsonify({"error": "Error interno del servidor al obtener las órdenes"}), 500
 
+# def obtener_ordenes_compra(current_user):
+#     """Obtiene lista de órdenes, con filtros opcionales y formateada por rol."""
+#     print("\n--- INFO: Recibida solicitud GET en /ordenes_compra ---")
+#     rol_usuario = request.headers.get("X-User-Role", "almacen") # Simular rol
+
+#     try:
+#         query = OrdenCompra.query
+
+#         # --- Aplicar Filtros ---
+#         estado_filtro = request.args.get('estado')
+#         if estado_filtro:
+#             if estado_filtro not in ESTADOS_ORDEN: # Validar estado
+#                 return jsonify({"error": f"Estado de filtro inválido: '{estado_filtro}'"}), 400
+#             query = query.filter(OrdenCompra.estado == estado_filtro)
+#             print(f"--- DEBUG: Filtrando por estado: {estado_filtro}")
+
+#         proveedor_id_filtro = request.args.get('proveedor_id', type=int)
+#         if proveedor_id_filtro:
+#             query = query.filter(OrdenCompra.proveedor_id == proveedor_id_filtro)
+#             print(f"--- DEBUG: Filtrando por proveedor ID: {proveedor_id_filtro}")
+
+#         # Ordenar (ej: por fecha creación descendente)
+#         query = query.order_by(OrdenCompra.fecha_creacion.desc())
+
+#         # Considerar paginación aquí también para listas largas
+#         ordenes_db = query.all()
+
+#         # Formatear resultado según rol
+#         ordenes_formateadas = [formatear_orden_por_rol(orden, rol_usuario) for orden in ordenes_db]
+
+#         print(f"--- INFO: Devolviendo {len(ordenes_formateadas)} órdenes para rol '{rol_usuario}'")
+#         return jsonify(ordenes_formateadas)
+
+#     except Exception as e:
+#         print(f"ERROR: Excepción inesperada al obtener órdenes de compra")
+#         traceback.print_exc()
+#         return jsonify({"error": "Error interno del servidor al obtener las órdenes"}), 500
+
 
 # --- Endpoint: Obtener Orden de Compra Específica ---
 @compras_bp.route('/obtener/<int:orden_id>', methods=['GET']) # Asume ID entero autoincremental
 @token_required
 @roles_required(ROLES['ADMIN'], ROLES['ALMACEN'], ROLES['CONTABLE']) 
-def obtener_orden_compra_por_id(orden_id):
+def obtener_orden_compra_por_id(current_user, orden_id):
     """Obtiene una orden específica, formateada por rol."""
     print(f"\n--- INFO: Recibida solicitud GET en /ordenes_compra/{orden_id} ---")
     rol_usuario = request.headers.get("X-User-Role", "almacen") # Simular rol
@@ -300,7 +353,7 @@ def obtener_orden_compra_por_id(orden_id):
 @compras_bp.route('/aprobar/<int:orden_id>', methods=['PUT'])
 @token_required
 @roles_required(ROLES['ADMIN']) # Solo ADMIN puede aprobar 
-def aprobar_orden_compra(orden_id):
+def aprobar_orden_compra(current_user, orden_id):
     """Cambia el estado de una orden a 'Aprobado' (Rol     ADMIN)."""
     print(f"\n--- INFO: Recibida solicitud PUT en /ordenes_compra/{orden_id}/aprobar ---")
     rol_usuario = request.headers.get("X-User-Role", "almacen") # Simular rol
@@ -345,7 +398,7 @@ def aprobar_orden_compra(orden_id):
 @compras_bp.route('/rechazar/<int:orden_id>', methods=['PUT'])
 @token_required
 @roles_required(ROLES['ADMIN']) # Solo ADMIN puede rechazar 
-def rechazar_orden_compra(orden_id):
+def rechazar_orden_compra(current_user, orden_id):
     """Cambia el estado de una orden a 'Rechazado' (Rol     ADMIN)."""
     print(f"\n--- INFO: Recibida solicitud PUT en /ordenes_compra/{orden_id}/rechazar ---")
     rol_usuario = request.headers.get("X-User-Role", "almacen")
@@ -353,7 +406,7 @@ def rechazar_orden_compra(orden_id):
     data = request.json
 
     # --- Validaciones ---
-    if rol_usuario != "    ADMIN":
+    if rol_usuario != "ADMIN":
         return jsonify({"error": "Acción no permitida para este rol."}), 403
     if not data or not data.get('motivo_rechazo'):
          return jsonify({"error": "Falta el campo 'motivo_rechazo' en el payload JSON."}), 400
@@ -392,7 +445,7 @@ def rechazar_orden_compra(orden_id):
 @compras_bp.route('/recibir/<int:orden_id>', methods=['PUT'])
 @token_required
 @roles_required(ROLES['ADMIN'], ROLES['ALMACEN']) # Permitir a ADMIN y ALMACEN recibir 
-def recibir_orden_compra(orden_id):
+def recibir_orden_compra(current_user, orden_id):
     """
     Registra la recepción de mercadería, actualiza cantidades y llama a actualizar costos.
     Payload esperado (JSON):
