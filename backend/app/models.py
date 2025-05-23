@@ -38,8 +38,22 @@ class Proveedor(db.Model):
      telefono = db.Column(db.String(50), nullable=True)
      email = db.Column(db.String(100), nullable=True)
      contacto = db.Column(db.String(100), nullable=True)
+     activo = db.Column(db.Boolean, default=True, nullable=False)
      condiciones_pago = db.Column(db.String(255), nullable=True)
      ordenes_compra = db.relationship('OrdenCompra', back_populates='proveedor', lazy='dynamic')
+
+     def to_dict(self):
+          return {
+            'id': self.id,
+            'nombre': self.nombre,
+            'cuit': self.cuit,
+            'direccion': self.direccion,
+            'telefono': self.telefono,
+            'email': self.email,
+            'contacto': self.contacto,
+            'condiciones_pago': self.condiciones_pago,
+            'activo': self.activo
+          }
 
 # --- Modelo Producto ---
 class Producto(db.Model):
@@ -48,6 +62,7 @@ class Producto(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     # ... (Pega aquí el resto de columnas y relaciones de Producto) ...
     nombre = db.Column(db.String(200), nullable=False)
+#    receta_id = db.Column(db.Integer, db.ForeignKey('recetas.id', ondelete='SET NULL'), nullable=True)
     unidad_venta = db.Column(db.String(50), nullable=True)
     tipo_calculo = db.Column(db.String(2), nullable=True)
     ref_calculo = db.Column(db.String(50), nullable=True)
@@ -131,6 +146,7 @@ class Venta(db.Model):
     fecha_pedido = db.Column(db.DateTime, nullable=True)
     direccion_entrega = db.Column(db.String(255), nullable=True)
     cuit_cliente = db.Column(db.String(20), nullable=True)
+    nombre_vendedor = db.Column(db.String(50), nullable=False)
     observaciones = db.Column(db.Text, nullable=True)
     monto_total = db.Column(db.Numeric(15, 2), nullable=True) # Monto base
     forma_pago = db.Column(db.String(50), nullable=True)

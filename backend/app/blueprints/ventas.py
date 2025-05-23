@@ -201,6 +201,7 @@ def registrar_venta(current_user):
     # --- Validación de cabecera ---
     usuario_interno_id = data.get('usuario_interno_id')
     cliente_id = data.get('cliente_id') # Obtener ID del cliente (puede ser None)
+    nombre_vendedor = data.get('nombre_vendedor')
     items_payload = data.get('items')
 
     # Validaciones robustas
@@ -302,6 +303,7 @@ def registrar_venta(current_user):
             direccion_entrega=data.get('direccion_entrega'),
             cuit_cliente=data.get('cuit_cliente'),
             observaciones=data.get('observaciones'),
+            nombre_vendedor=nombre_vendedor,
             monto_total=monto_total_base_calc, # Guardar monto base
             # Guardar datos de recargos y vuelto
             forma_pago=forma_pago,
@@ -399,7 +401,7 @@ def calcular_vuelto():
 # --- Endpoint: Obtener Ventas (Lista) (Añadido cliente a eager load) ---
 @ventas_bp.route('/obtener_todas', methods=['GET'])
 @token_required # Descomenta si lo necesitas
-@roles_required(ROLES['ADMIN'], ROLES['VENTAS_PEDIDOS'], ROLES['VENTAS_LOCAL']) # O los roles apropiados
+@roles_required(ROLES['ADMIN'], ROLES['CONTABLE'], ROLES['VENTAS_PEDIDOS'], ROLES['VENTAS_LOCAL']) # O los roles apropiados
 def obtener_ventas(current_user):
     """Obtiene una lista de ventas, con filtros opcionales y paginación."""
     try:
@@ -649,6 +651,7 @@ def venta_a_dict_resumen(venta):
         "fecha_registro": venta.fecha_registro.isoformat() if venta.fecha_registro else None,
         "fecha_pedido": venta.fecha_pedido.isoformat() if venta.fecha_pedido else None,
         "direccion_entrega": venta.direccion_entrega,
+        "nombre_vendedor": venta.nombre_vendedor,
         "usuario_interno_id": venta.usuario_interno_id,
         "usuario_nombre": venta.usuario_interno.nombre if venta.usuario_interno else None,
         "cliente_id": venta.cliente_id,

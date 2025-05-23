@@ -117,7 +117,7 @@ def crear_orden_compra(current_user):
     data = request.get_json()
     # Simular rol y usuario (reemplazar con autenticación real)
     rol_usuario = request.headers.get("X-User-Role", "almacen")
-    usuario_solicitante = request.headers.get("X-User-Name", "Sistema") # Quién solicita
+    usuario_solicitante_id = request.headers.get("X-User-Id", "0") # Quién solicita
 
     if not data: return jsonify({"error": "Payload JSON vacío"}), 400
 
@@ -154,7 +154,7 @@ def crear_orden_compra(current_user):
                 return jsonify({"error": f"Falta 'codigo_interno' en item #{idx+1}"}), 400
 
             # Validar y obtener producto
-            producto = Producto.query.filter_by(codigo_interno=codigo_interno_prod).first()
+            producto = Producto.query.filter_by(id=codigo_interno_prod).first()
             if not producto:
                 return jsonify({"error": f"Producto con código interno '{codigo_interno_prod}' no encontrado (item #{idx+1})"}), 404
 
@@ -198,7 +198,7 @@ def crear_orden_compra(current_user):
             importe_total_estimado=importe_total_estimado_calc,
             observaciones_solicitud=data.get("observaciones_solicitud"),
             estado="Solicitado", # Estado inicial
-            solicitado_por=usuario_solicitante # Guardar quién solicitó
+            solicitado_por_id=usuario_solicitante_id # Guardar quién solicitó
             # Otros campos se inicializan con default/None en el modelo
         )
 
@@ -360,7 +360,7 @@ def aprobar_orden_compra(current_user, orden_id):
     usuario_aprobador = request.headers.get("X-User-Name", "Sistema") # Simular usuario aprobador
 
     # --- Validación de Rol (Simulada - Reemplazar con real) ---
-    if rol_usuario != "    ADMIN":
+    if rol_usuario != "ADMIN":
         return jsonify({"error": "Acción no permitida para este rol."}), 403 # Forbidden
 
     try:
