@@ -163,20 +163,19 @@ export default function ListaBoletasPuerta() {
             {!loading && !error && (
               <>
                 <div className="overflow-x-auto">
-                  <ul className="space-y-3 min-w-[700px]"> {/* Puedes ajustar o quitar min-w si grid-cols-4 se ve bien */}
-                    {/* Encabezado (4 columnas equitativas) */}
+                  <ul className="space-y-3 min-w-[700px]"> 
                     <li className="grid grid-cols-4 gap-x-4 items-center bg-indigo-100 p-3 rounded-md font-semibold text-indigo-700 text-xs uppercase tracking-wider">
                       <span  className="text-center">Nº Boleta</span>
-                      <span className="text-center">Monto</span> {/* Puedes quitar text-right si quieres que se alinee al inicio como las otras */}
+                      <span className="text-center">Monto</span> 
                       <span  className="text-center">Cliente</span>
                       <span className="text-center">Acción</span>
                     </li>
 
-                    {/* Fila de cada boleta (4 columnas equitativas) */}
+     
                     {boletas.length > 0 ? boletas.map((boleta) => (
                       <li key={boleta.venta_id} className="grid grid-cols-4 gap-x-4 items-center bg-gray-50 hover:bg-gray-100 p-3 rounded-md text-sm transition-colors">
                         <span className="text-center">{`Nº ${boleta.venta_id.toString().padStart(4, '0')}`}</span>
-                        <span className="text-center font-medium">${boleta.monto_final_con_recargos.toFixed(2)}</span> {/* Mantener text-right para montos es común */}
+                        <span className="text-center font-medium">${boleta.monto_final_con_recargos.toFixed(2)}</span> 
                         <span className="text-center truncate" title={boleta.cliente_nombre}>{boleta.cliente_nombre}</span>
                         <div className="flex items-center justify-center gap-3">
                           <button

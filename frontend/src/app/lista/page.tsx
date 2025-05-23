@@ -280,18 +280,6 @@ export default function ProductPriceTable() {
      setDeletingProductId(productId); setDeleteError(null);
 
      try {
-        // Primero intenta obtener el producto para saber si es receta
-        const prodResponse = await fetch(`https://quimex.sistemataup.online/productos/obtener/${productId}`, {
-            headers: { "Authorization": `Bearer ${token}` }
-        });
-        let isProductRecipe = false;
-        if (prodResponse.ok) {
-            const prodData = await prodResponse.json();
-            isProductRecipe = prodData.es_receta || false;
-        } else {
-            console.warn(`No se pudo obtener el producto ${productId} antes de eliminar, asumiendo que no es receta o continuando con la eliminación del producto.`);
-        }
-
         // Eliminar el producto
         const deleteProductUrl = `https://quimex.sistemataup.online/productos/eliminar/${productId}`;
         const response = await fetch(deleteProductUrl, {
@@ -301,24 +289,6 @@ export default function ProductPriceTable() {
         if (!response.ok) { const d = await response.json().catch(()=>({error:`Error ${response.status}`})); throw new Error(`Producto: ${d.error || d.detalle || response.statusText}`); }
         const result = await response.json();
         console.log("Delete producto OK:", result);
-
-        // Si era receta, intentar eliminar la receta (la API de receta podría necesitar /producto_id)
-        if (isProductRecipe) {
-            // Ajusta el endpoint si es diferente. Por ejemplo, puede ser /recetas/producto/{producto_id}
-            const deleteRecipeUrl = `https://quimex.sistemataup.online/recetas/eliminar/${productId}`;
-            const recipeResponse = await fetch(deleteRecipeUrl, {
-                method: 'DELETE',
-                headers: { "Authorization": `Bearer ${token}` }
-            });
-            if (!recipeResponse.ok) {
-                // No tratar esto como un error fatal si el producto ya se eliminó. Registrarlo.
-                const dRecipe = await recipeResponse.json().catch(()=>({}));
-                console.warn(`Advertencia al eliminar receta para producto ${productId}: ${dRecipe.error || dRecipe.detalle || recipeResponse.statusText}`);
-            } else {
-                console.log(`Delete receta para producto ${productId} OK`);
-            }
-        }
-
         alert(`"${productName}" eliminado.`);
         fetchDataAndPrices(currentPage); // Refrescar
         // eslint-disable-next-line

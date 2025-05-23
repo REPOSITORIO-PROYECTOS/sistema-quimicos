@@ -27,6 +27,7 @@ interface ProductDataForEdit {
     ref_calculo: number | null;
     margen: number | null;
     tipo_calculo: string | null;
+    receta_id: number;
     // Asegúrate que estos campos coincidan con lo que devuelve tu API /productos/obtener_uno/{id}
 }
 
@@ -63,7 +64,6 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({
     const [unidadReferencia, setUnidadReferencia] = useState('');
     const [margen, setMargen] = useState('');
     const [tipoCalculo, setTipoCalculo] = useState('');
-
     const token = localStorage.getItem("token");
     const [ingredients, setIngredients] = useState<IngredientItem[]>([]);
     const [availableIngredients, setAvailableIngredients] = useState<IngredientOption[]>([]);
@@ -102,11 +102,11 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({
                 setAjustaPorTc(productData.ajusta_por_tc || false);
                 setUnidadReferencia(productData.ref_calculo?.toString() || '');
                 setMargen(productData.margen?.toString() || '');
-                setTipoCalculo(productData.tipo_calculo || '');
-
+            
+                setTipoCalculo((productData.tipo_calculo || '').toUpperCase());
                 // 2. Fetch datos de la receta (si es_receta es true)
                 if (productData.es_receta) {
-                    const recipeRes = await fetch(`https://quimex.sistemataup.online/recetas/obtener/${productIdToEdit}`, {
+                    const recipeRes = await fetch(`https://quimex.sistemataup.online/recetas/obtener/por-producto/${productIdToEdit}`, {
                         headers: { "Authorization": `Bearer ${token}` }
                     });
                     // Puede que no haya receta aún, o que el endpoint devuelva 404 si no existe
@@ -256,6 +256,7 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({
 
         let recetaValida = true;
         if (esReceta) {
+             costoNum = 0;
              if (ingredients.length === 0) {
                 setSaveError("Si es una receta, debe añadir al menos un ingrediente.");
                 recetaValida = false;
@@ -282,7 +283,7 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({
             costo_referencia_usd: costoNum,
             ref_calculo: unidadRefNum,
             margen: margenNum,
-            tipo_calculo: tipoCalculoStr,
+            tipo_calculo: (tipoCalculoStr || '').toUpperCase() || null,
         };
 
         // Si es modo creación y usas el productCode como ID para el endpoint, está bien.
@@ -344,17 +345,14 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({
                 // Esto puede requerir saber si ya existía una receta o si la API maneja esto con un solo endpoint (ej. un PUT que crea si no existe).
                 // Asumiremos un endpoint de "guardar" que crea o actualiza. Ajusta si tienes endpoints separados.
                 // O, si tienes un endpoint específico para actualizar:
-                // const recipeApiUrl = isEditMode ? `https://quimex.sistemataup.online/recetas/actualizar/${effectiveProductId}` : 'https://quimex.sistemataup.online/recetas/crear';
-                // const recipeApiMethod = isEditMode ? 'PUT' : 'POST';
+                 const recipeApiUrl = isEditMode ? `https://quimex.sistemataup.online/recetas/actualizar/por-producto/${productIdToEdit}` : 'https://quimex.sistemataup.online/recetas/crear';
+                 const recipeApiMethod = isEditMode ? 'PUT' : 'POST';
 
                 // Para simplificar, usaremos un endpoint "crear_o_actualizar" o similar.
                 // Si solo tienes "crear", en modo edición podrías necesitar "borrar_existente" y luego "crear".
                 // La opción más robusta es un PUT a `/recetas/{producto_id}` que maneje la lógica.
                 // Por ahora, usaré el de crear, asumiendo que tu backend podría manejarlo o que lo ajustarás.
                 // Lo ideal sería un endpoint tipo `PUT /recetas/producto/{producto_id}`
-                const recipeApiUrl = `https://quimex.sistemataup.online/recetas/crear`; // Endpoint hipotético
-                const recipeApiMethod = 'POST'; // O 'PUT'
-
 
                 console.log(`Enviando Payload Receta (${isEditMode ? 'Actualización' : 'Creación'}):`, JSON.stringify(recipePayload, null, 2));
                 const recipeResponse = await fetch(recipeApiUrl, { // O usa el endpoint de crear si es el único

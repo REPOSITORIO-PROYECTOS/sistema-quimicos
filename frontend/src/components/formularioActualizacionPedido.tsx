@@ -1,6 +1,6 @@
 "use client";
 
-import { useProductsContext } from "@/context/ProductsContext";
+import { useProductsContext } from "@/context/ProductsContext"; // Asumo que no se usa aquí, pero lo dejo si es necesario para otras partes no mostradas
 import React, { useEffect, useState, useCallback, useMemo } from 'react'; 
 
 type ProductoPedido = {
@@ -60,15 +60,17 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
   const [successMensaje, setSuccessMensaje] = useState('');
   const [isLoading, setIsLoading] = useState(true); 
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [, setSuccessMessage] = useState(''); 
-  const productosContext = useProductsContext();
-  const [nombreVendedor, setNombreVendedor] = useState<string | null>(null);
+  // const [, setSuccessMessage] = useState(''); // Esta línea parece ser un duplicado de successMensaje, la comento
+  const productosContext = useProductsContext(); // Asegúrate que esto sea necesario o elimínalo
+  
+  // 1. ESTADO PARA EL INPUT DEL VENDEDOR
+  const [nombreVendedor, setNombreVendedor] = useState<string>(''); // Inicializado como string vacío
 
   const cargarFormulario = useCallback(async (pedidoId: number) => {
     setIsLoading(true);
     setErrorMensaje('');
     setSuccessMensaje('');
-    setNombreVendedor(null); 
+    // setNombreVendedor(''); // No es necesario resetear aquí si se va a cargar desde la API
     const token = localStorage.getItem("token");
     if (!token) {
       setErrorMensaje("Usuario no autenticado."); setIsLoading(false); return;
@@ -82,8 +84,9 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         throw new Error(errData.message || "No se pudieron cargar los datos del pedido.");
       }
       const datosAPI = await response.json();
-      
-      setNombreVendedor(datosAPI.nombre_vendedor || null); 
+      console.log(datosAPI)
+      // 2. CARGAR EL NOMBRE DEL VENDEDOR DESDE LA API
+      setNombreVendedor(datosAPI.nombre_vendedor || ''); // Usar string vacío si es null/undefined
 
       setFormData({
         nombre: datosAPI.cliente_nombre || "N/A",
@@ -106,9 +109,10 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         total: detalle.precio_total_item_ars || 0,
       })) || [];
       setProductos(productosCargados.length > 0 ? productosCargados : [{ producto: 0, qx: 0, precio: 0, total: 0 }]);
-    //eslint-disable-next-line
+      //eslint-disable-next-line
     } catch (error: any) {
       setErrorMensaje(error.message || "Ocurrió un error desconocido al cargar los detalles del pedido.");
+      setNombreVendedor(''); // En caso de error, limpiar el nombre del vendedor
     } finally {
       setIsLoading(false);
     }
@@ -120,21 +124,22 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     } else {
       setErrorMensaje("ID de pedido no proporcionado para cargar los detalles.");
       setIsLoading(false);
-      setNombreVendedor(null); 
+      setNombreVendedor(''); 
     }
   }, [id, cargarFormulario]);
   
   const montoBaseProductos = useMemo(() => {
+    // ... (sin cambios)
     return productos.reduce((sum, item) => sum + (item.total || 0), 0);
   }, [productos]);
 
   useEffect(() => {
+    // ... (lógica de recalcularTotalConAPI sin cambios)
     const recalcularTotalConAPI = async () => {
       if (montoBaseProductos <= 0 && !id) { 
         setTotalCalculadoApi(null); return;
       }
       if (isLoading) return; 
-
       setIsCalculatingTotal(true); setErrorMensaje('');
       const token = localStorage.getItem("token");
       if (!token) { setErrorMensaje("No autenticado."); setIsCalculatingTotal(false); return; }
@@ -159,10 +164,10 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
       } finally { setIsCalculatingTotal(false); }
     };
     recalcularTotalConAPI();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [montoBaseProductos, formData.formaPago, formData.requiereFactura, isLoading, id]); 
 
   useEffect(() => {
+    // ... (lógica de calcularVueltoConAPI sin cambios)
     const calcularVueltoConAPI = async () => {
         const token = localStorage.getItem("token");
         if (!token || (!totalCalculadoApi && montoBaseProductos === 0)) {
@@ -170,9 +175,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
             return;
         }
         if (isLoading) return; 
-        
         const montoFinalParaVuelto = totalCalculadoApi ? totalCalculadoApi.monto_final_con_recargos : montoBaseProductos;
-
         if (formData.montoPagado >= montoFinalParaVuelto && montoFinalParaVuelto >= 0) { 
             try {
                 const resVuelto = await fetch("https://quimex.sistemataup.online/ventas/calcular_vuelto", {
@@ -199,10 +202,10 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         }
     };
     calcularVueltoConAPI();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.montoPagado, totalCalculadoApi, montoBaseProductos, isLoading]); 
 
   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    // ... (sin cambios)
     const { name, value, type } = e.target;
     const val = type === 'checkbox' ? (e.target as HTMLInputElement).checked :
                 type === 'number' ? parseFloat(value) || 0 : value;
@@ -214,11 +217,23 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     return newState;
     });
   };
+
+  // 3. FUNCIÓN PARA MANEJAR CAMBIO EN EL INPUT DEL VENDEDOR
+  const handleVendedorInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setNombreVendedor(e.target.value);
+  };
   
   const handleSubmit = async (e: React.FormEvent ) => {
     e.preventDefault();
     setErrorMensaje(''); setSuccessMensaje('');
     if (!id) { setErrorMensaje("ID de pedido no válido para actualizar."); return; }
+    
+    if (!nombreVendedor.trim()) { // VALIDACIÓN PARA EL NUEVO CAMPO
+        setErrorMensaje("Por favor, ingrese el nombre del vendedor.");
+        setIsSubmitting(false);
+        return;
+    }
+
     setIsSubmitting(true);
     const token = localStorage.getItem("token");
     if (!token) { setErrorMensaje("No autenticado."); setIsSubmitting(false); return; }
@@ -228,8 +243,10 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         setIsSubmitting(false); return;
     }
 
+    // 4. INCLUIR nombre_vendedor EN EL PAYLOAD DE ACTUALIZACIÓN
     const dataToUpdate = {
       cliente_id: formData.cliente_id,
+      nombre_vendedor: nombreVendedor.trim(), // <--- NUEVO CAMPO
       fecha_pedido: formData.fechaEntrega,
       direccion_entrega: formData.direccion,
       monto_pagado_cliente: formData.montoPagado,
@@ -239,6 +256,8 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
       requiere_factura: formData.requiereFactura,
       monto_total_base: montoBaseProductos,
       monto_total_final_con_recargos: totalCalculadoApi ? totalCalculadoApi.monto_final_con_recargos : montoBaseProductos,
+      // NOTA: Los items del pedido no se están enviando aquí. Si la API de actualizar
+      // también permite modificar items, necesitarías incluirlos.
     };
  
     console.log("Enviando datos para actualizar:", dataToUpdate);
@@ -251,27 +270,37 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
       });
       const result = await response.json();
       if(!response.ok){
-        setErrorMensaje(result?.message || result?.detail || 'Error al actualizar el pedido.');
+        setErrorMensaje(result?.message || result?.detail || result?.error || 'Error al actualizar el pedido.');
       } else {
-        cargarFormulario(id); 
+        // No es necesario llamar a cargarFormulario(id) aquí si solo actualizas
+        // y el backend devuelve el objeto actualizado o un mensaje de éxito.
+        // Podrías actualizar el estado local si es necesario, o simplemente mostrar el mensaje.
         setSuccessMensaje("¡Pedido actualizado con éxito!");
+        // Si la API devuelve el objeto actualizado con el nuevo nombre de vendedor,
+        // `nombreVendedor` ya estaría con el valor correcto.
+        // Si no, y quieres asegurarte que el input refleje lo guardado:
+        // cargarFormulario(id); // Descomentar si es estrictamente necesario recargar todo
+
+        // 5. LLAMAR A IMPRIMIR DESPUÉS DEL ÉXITO
+        handleImprimirPresupuesto(); 
       }
       //eslint-disable-next-line
     } catch (err: any) {
       setErrorMensaje(err.message || "Error de red.");
     } finally {
-        const mensajeExito = `¡Pedido actualizado exitosamente!`;
-        setSuccessMessage(mensajeExito); 
+        // setSuccessMessage("¡Pedido actualizado exitosamente!"); // Movido dentro del if(response.ok) para más precisión
         setIsSubmitting(false);
     }
   };
 
   const handleMontoPagadoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // ... (sin cambios)
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: Math.max(0, parseFloat(value) || 0) }));
   };
 
   const handleImprimirPresupuesto = () => {
+    // ... (sin cambios, pero ahora `nombreVendedor` viene del estado del input)
     const nombreCliente = formData.nombre || "Cliente";
     let fechaFormateada = "Fecha";
     if(formData.fechaEmision){try{fechaFormateada=new Date(formData.fechaEmision).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'});}catch(e){console.log(e)}}
@@ -293,24 +322,32 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
       <div className="flex items-center justify-center min-h-screen bg-indigo-900 py-10 px-4 print:hidden">
         <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-3xl">
           
-          {/* MODIFICACIÓN PARA MOSTRAR NOMBRE DE VENDEDOR Y TÍTULO */}
-          <div className="mb-6"> {/* Contenedor general para título y vendedor */}
-            <h2 className="text-2xl font-semibold text-center text-indigo-800">
-              Detalle y Actualización del Pedido #{id}
-            </h2>
-            {/* Nombre del vendedor debajo del título, alineado a la izquierda */}
-            <div className="mt-2 text-left"> 
-              <span className="text-sm sm:text-base font-medium text-gray-700">
-                Vendedor: {nombreVendedor ? nombreVendedor : "No encontrado"}
-              </span>
-            </div>
+          {/* 6. NUEVA ESTRUCTURA ENCABEZADO */}
+          <h2 className="text-3xl font-bold text-center text-indigo-800 mb-4">
+            Detalle y Actualización del Pedido #{id}
+          </h2>
+          <div className="mb-6">
+              <label htmlFor="nombreVendedor" className="block text-sm font-medium text-gray-700 mb-1">
+                  Vendedor*
+              </label>
+              <input
+                  type="text"
+                  id="nombreVendedor"
+                  name="nombreVendedor"
+                  value={nombreVendedor}
+                  onChange={handleVendedorInputChange}
+                  className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  placeholder="Nombre del vendedor asignado"
+                  required
+              />
           </div>
-          {/* FIN DE MODIFICACIÓN */}
+          {/* FIN NUEVA ESTRUCTURA ENCABEZADO */}
 
           {errorMensaje && <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4"><p>{errorMensaje}</p></div>}
           {successMensaje && <div className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4"><p>{successMensaje}</p></div>}
           
           <form onSubmit={handleSubmit} className="space-y-6">
+            {/* ... (Fieldsets de "Datos Cliente/Pedido", "Productos del Pedido", "Pago y Totales" SIN CAMBIOS INTERNOS) ... */}
             <fieldset className="border p-4 rounded-md">
               <legend className="text-lg font-medium text-gray-700 px-2">Datos Cliente/Pedido</legend>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -360,16 +397,23 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
                 <input type="text" value={`$ ${displayTotal.toFixed(2)}`} readOnly className="w-full md:w-auto md:max-w-xs inline-block bg-gray-100 shadow-sm border rounded py-2 px-3 text-gray-900 text-right font-bold text-lg focus:outline-none"/>
               </div>
             </fieldset>
-
-            <div className="flex justify-end gap-4 mt-8">
-              <button type="button" onClick={handleImprimirPresupuesto} className="bg-gray-500 text-white px-6 py-2 rounded-md hover:bg-gray-600 boton-imprimir-oculto" disabled={isLoading || isSubmitting || isCalculatingTotal}>Imprimir</button>
-              <button type="submit" className="bg-green-600 text-white px-6 py-2 rounded-md hover:bg-green-700 font-semibold disabled:opacity-50" disabled={isLoading || isSubmitting || isCalculatingTotal}>{isSubmitting ? 'Actualizando...' : 'Actualizar Pedido'}</button>
+            
+            {/* BOTÓN UNIFICADO */}
+            <div className="flex justify-end mt-8">
+              <button 
+                type="submit" 
+                className="bg-green-600 text-white px-8 py-3 rounded-md hover:bg-green-700 font-semibold text-lg disabled:opacity-50" 
+                disabled={isLoading || isSubmitting || isCalculatingTotal || !nombreVendedor.trim()}>
+                {isSubmitting ? 'Actualizando...' : 'Actualizar Pedido e Imprimir'}
+              </button>
             </div>
           </form>
         </div>
       </div>
 
+      {/* SECCIÓN DE IMPRESIÓN */}
       <div id="presupuesto-imprimible" className="hidden print:block presupuesto-container">
+        {/* ... (sin cambios, pero ahora nombreVendedor vendrá del estado del input) ... */}
         <header className="presupuesto-header">
           <div className="logo-container"><img src="/logo.png" alt="QuiMex" className="logo" /><p className="sub-logo-text">PRESUPUESTO NO VALIDO COMO FACTURA</p></div>
           <div className="info-empresa"><p>📱 11 2395 1494</p><p>📞 4261 3605</p><p>📸 quimex_berazategui</p></div>
@@ -379,6 +423,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
             <tr><td>PEDIDO</td><td>{id || 'N/A'}</td></tr>
             <tr><td>FECHA</td><td>{formData.fechaEmision ? new Date(formData.fechaEmision).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'}) : ''}</td></tr>
             <tr><td>CLIENTE</td><td>{formData.nombre || 'CONSUMIDOR FINAL'}</td></tr>
+            <tr><td>VENDEDOR</td><td>{nombreVendedor || '-'}</td></tr>
             <tr><td>SUBTOTAL (Productos)</td><td className="text-right">$ {montoBaseProductos.toFixed(2)}</td></tr>
           </tbody></table>
           <table className="tabla-datos-secundarios"><tbody>

@@ -57,29 +57,19 @@ export default function RegistrarPedidoPuertaPage() {
   } = useClientesContext();
 
   const [formData, setFormData] = useState<IFormData>(initialFormData);
-
   const [productos, setProductos] = useState<ProductoPedido[]>(initialProductos);
-
   const [totalCalculadoApi, setTotalCalculadoApi] = useState<TotalCalculadoAPI | null>(null);
   const [isCalculatingTotal, setIsCalculatingTotal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
-
   const productosContext = useProductsContext();
-  const [nombreVendedor, setNombreVendedor] = useState<string | null>(null); // NUEVO ESTADO para el nombre del vendedor
+  const [nombreVendedor, setNombreVendedor] = useState<string>(''); 
 
-  // Inicializar fechaEmision y nombreVendedor al montar
   useEffect(() => {
     const now = new Date();
     now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
     setFormData(prev => ({...prev, fechaEmision: now.toISOString().slice(0, 16)}));
-
-    // Obtener nombre del vendedor de localStorage
-    const storedUserName = localStorage.getItem("user_name");
-    if (storedUserName) {
-      setNombreVendedor(storedUserName);
-    }
   }, []);
 
 
@@ -87,7 +77,6 @@ export default function RegistrarPedidoPuertaPage() {
     return productos.reduce((sum, item) => sum + (item.total || 0), 0);
   }, [productos]);
 
-  // useEffect para llamar a /ventas/calcular_total y luego /ventas/calcular_vuelto
   useEffect(() => {
     const recalcularTodo = async () => {
       if (montoBaseProductos <= 0 && formData.montoPagado <= 0) {
@@ -163,8 +152,6 @@ export default function RegistrarPedidoPuertaPage() {
         setIsCalculatingTotal(false);
       }
     };
-
-    // Solo recalcular si hay productos o se ha ingresado un monto
     if (montoBaseProductos > 0 || formData.montoPagado > 0) {
         recalcularTodo();
     } else {
@@ -186,6 +173,10 @@ export default function RegistrarPedidoPuertaPage() {
     }
     return newState;
     });
+  };
+
+  const handleVendedorInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setNombreVendedor(e.target.value);
   };
 
   const handleClienteSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -255,6 +246,11 @@ export default function RegistrarPedidoPuertaPage() {
   const handleSubmit = async (e: React.FormEvent ) => {
     e.preventDefault(); setIsSubmitting(true); setSuccessMessage(''); setErrorMessage('');
 
+    if (!nombreVendedor.trim()) {
+        setErrorMessage("Por favor, ingrese el nombre del vendedor.");
+        setIsSubmitting(false);
+        return;
+    }
     if (!formData.clienteId) {
         setErrorMessage("Seleccione un cliente."); setIsSubmitting(false); return;
     }
@@ -271,11 +267,11 @@ export default function RegistrarPedidoPuertaPage() {
     if (!token) { setErrorMessage("No autenticado."); setIsSubmitting(false); return; }
     if (!usuarioId) { setErrorMessage("ID de usuario no encontrado. Por favor, vuelva a iniciar sesión."); setIsSubmitting(false); return; }
 
-
     const dataPayload = {
       usuario_interno_id: parseInt(usuarioId, 10),
+      nombre_vendedor: nombreVendedor.trim(),
       items: productos.filter(i=>i.producto!==0&&i.qx>0).map(i=>({producto_id:i.producto,cantidad:i.qx})),
-      cliente_id: parseInt(formData.clienteId), // Asegurar que sea número
+      cliente_id: parseInt(formData.clienteId),
       fecha_emision: formData.fechaEmision || new Date().toISOString().slice(0,16),
       fecha_pedido: formData.fechaEmision || new Date().toISOString().slice(0,16),
       direccion_entrega: "", 
@@ -302,14 +298,15 @@ export default function RegistrarPedidoPuertaPage() {
         setSuccessMessage("¡Pedido registrado exitosamente!");
         const now = new Date(); now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
         setFormData({
-            ...initialFormData, // Usar el objeto inicial para resetear
+            ...initialFormData,
             fechaEmision: now.toISOString().slice(0,16),
         });
-        setProductos(initialProductos); // Usar el objeto inicial para resetear
+        setProductos(initialProductos);
         setTotalCalculadoApi(null);
+        setNombreVendedor('');
          if (result.venta_id) handleImprimirPresupuesto(result.venta_id); 
       } else {
-        setErrorMessage(result.message || result.detail || `Error ${response.status}`);
+        setErrorMessage(result.message || result.detail || result.error || `Error ${response.status}`);
       }
       //eslint-disable-next-line
     } catch (err: any) {
@@ -350,20 +347,24 @@ export default function RegistrarPedidoPuertaPage() {
       <div className="flex items-center justify-center min-h-screen bg-indigo-900 py-10 px-4 print:hidden">
         <div className="bg-white p-6 md:p-8 rounded-lg shadow-md w-full max-w-4xl">
           
-          {/* MODIFICACIÓN PARA MOSTRAR NOMBRE DE VENDEDOR Y TÍTULO */}
-          <div className="relative mb-6">
-            {nombreVendedor && (
-              <div className="absolute left-0 top-1/2 transform -translate-y-1/2">
-                <span className="text-sm sm:text-base font-medium text-gray-700 whitespace-nowrap">
-                  Vendedor: {nombreVendedor}
-                </span>
-              </div>
-            )}
-            <h2 className="text-2xl font-semibold text-center text-indigo-800">
-              Registrar Pedido en Puerta
-            </h2>
+          <h2 className="text-3xl font-bold text-center text-indigo-800 mb-4">
+            Registrar Pedido en Puerta
+          </h2>
+          <div className="mb-6">
+              <label htmlFor="nombreVendedor" className="block text-sm font-medium text-gray-700 mb-1">
+                  Vendedor*
+              </label>
+              <input
+                  type="text"
+                  id="nombreVendedor"
+                  name="nombreVendedor"
+                  value={nombreVendedor}
+                  onChange={handleVendedorInputChange}
+                  className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  placeholder="Nombre del vendedor"
+                  required
+              />
           </div>
-          {/* FIN DE MODIFICACIÓN */}
 
           {errorMessage && <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4"><p>{errorMessage}</p></div>}
           {successMessage && <div className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4"><p>{successMessage}</p></div>}
@@ -480,23 +481,17 @@ export default function RegistrarPedidoPuertaPage() {
               </div>
             </fieldset>
 
-            <div className="flex flex-col sm:flex-row justify-end gap-4 mt-8">
+            <div className="flex justify-end mt-8">
               <button type="submit"
-                className="bg-green-600 text-white px-6 py-2 rounded-md hover:bg-green-700 font-semibold order-1 sm:order-2 disabled:opacity-50"
-                disabled={loadingClientes || isSubmitting || isCalculatingTotal}>
-                {isSubmitting ? 'Registrando...' : 'Registrar Pedido'}
-              </button>
-               <button type="button" onClick={() => handleImprimirPresupuesto()}
-                className="bg-gray-500 text-white px-6 py-2 rounded-md hover:bg-gray-600 font-semibold order-2 sm:order-1 disabled:opacity-50"
-                disabled={isSubmitting || isCalculatingTotal || productos.every(p => p.producto === 0 || p.qx === 0)}>
-                Imprimir Presupuesto
+                className="bg-green-600 text-white px-8 py-3 rounded-md hover:bg-green-700 font-semibold text-lg disabled:opacity-50"
+                disabled={loadingClientes || isSubmitting || isCalculatingTotal || !nombreVendedor.trim()}>
+                {isSubmitting ? 'Registrando...' : 'Registrar'}
               </button>
             </div>
           </form>
         </div>
       </div>
 
-      {/* SECCIÓN PARA LA IMPRESIÓN DEL PRESUPUESTO */}
       <div id="presupuesto-imprimible" className="hidden print:block presupuesto-container">
         <header className="presupuesto-header">
           <div className="logo-container"><img src="/logo.png" alt="QuiMex" className="logo" /><p className="sub-logo-text">PRESUPUESTO NO VALIDO COMO FACTURA</p></div>
@@ -507,6 +502,7 @@ export default function RegistrarPedidoPuertaPage() {
             <tr><td>PEDIDO</td><td>NUEVO</td></tr>
             <tr><td>FECHA</td><td>{formData.fechaEmision ? new Date(formData.fechaEmision).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'}) : ''}</td></tr>
             <tr><td>CLIENTE</td><td>{selectedClienteInfo?.nombre_razon_social || (formData.clienteId ? `Cliente ID: ${formData.clienteId}` : 'CONSUMIDOR FINAL')}</td></tr>
+            <tr><td>VENDEDOR</td><td>{nombreVendedor || '-'}</td></tr>
             <tr><td>SUBTOTAL (Productos)</td><td className="text-right">$ {montoBaseProductos.toFixed(2)}</td></tr>
           </tbody></table>
           <table className="tabla-datos-secundarios"><tbody>

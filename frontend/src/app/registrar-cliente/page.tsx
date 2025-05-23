@@ -153,7 +153,7 @@ export default function RegistrarCliente() {
             activo: true, // O como lo manejes
           };
           console.log("Enviando precio especial:", payloadPrecioEspecial);
-          return fetch(`https://quimex.sistemataup.online/precios_especiales`, { // CAMBIAR!!!!!
+          return fetch(`https://quimex.sistemataup.online/precios_especiales/crear`, { 
             method: 'POST',
             headers: {"Content-Type":"application/json","Authorization":`Bearer ${token}`},
             body: JSON.stringify(payloadPrecioEspecial),

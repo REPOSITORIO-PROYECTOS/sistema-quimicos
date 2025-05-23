@@ -26,7 +26,7 @@ export default function ProveedoresPage() {
 
           {/* Botón para Ver Proveedores */}
           <Link
-            href="/proveedores/lista" // Ruta a la que navegará
+            href="/lista-proveedores"
             className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-6 rounded-lg shadow-md hover:shadow-lg transition duration-300 ease-in-out transform hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50"
           >
             Ver Proveedores

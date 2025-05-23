@@ -41,7 +41,7 @@ const initialFormData: IFormData = {
   cuit: "",
   nombre: "",
   direccion: "",
-  fechaEmision: "", // Se establecerá en useEffect
+  fechaEmision: "", 
   fechaEntrega: "",
   formaPago: "efectivo",
   montoPagado: 0,
@@ -69,36 +69,27 @@ export default function RegistrarPedidoPage() {
   const [errorMessage, setErrorMessage] = useState('');
   
   const productosContext = useProductsContext();
-  const [nombreVendedor, setNombreVendedor] = useState<string | null>(null); // NUEVO ESTADO para el nombre del vendedor
+  const [vendedorInput, setVendedorInput] = useState<string>(''); 
 
-  // Establecer fecha de emisión inicial y nombre del vendedor al cargar el componente
   useEffect(() => {
     const now = new Date();
     now.setMinutes(now.getMinutes() - now.getTimezoneOffset()); 
     setFormData(prev => ({...prev, fechaEmision: now.toISOString().slice(0, 16)}));
-
-    // Obtener nombre del vendedor de localStorage
-    const storedUserName = localStorage.getItem("user_name");
-    if (storedUserName) {
-      setNombreVendedor(storedUserName);
-    }
-  }, []); // Se ejecuta solo una vez al montar
+  }, []);
 
   const montoBaseProductos = React.useMemo(() => {
     return productos.reduce((sum, item) => sum + (item.total || 0), 0);
   }, [productos]);
 
-  // useEffect para llamar a /ventas/calcular_total y luego /ventas/calcular_vuelto
   useEffect(() => {
     const recalcularTodo = async () => {
-      if (montoBaseProductos <= 0 && formData.montoPagado <= 0) { // Modificado para no recalcular si solo montoPagado es > 0 y no hay productos
+      if (montoBaseProductos <= 0 && formData.montoPagado <= 0) {
         setTotalCalculadoApi(null);
         setFormData(prev => ({ ...prev, vuelto: 0 }));
         return;
       }
-      if (montoBaseProductos <= 0 && formData.montoPagado > 0) { // Si no hay productos pero se ingresa monto pagado, no calcular recargos
+      if (montoBaseProductos <= 0 && formData.montoPagado > 0) {
         setTotalCalculadoApi(null); 
-        // Calcular vuelto si montoPagado > 0 (y montoBase es 0)
         if(formData.montoPagado > 0) {
           setFormData(prev => ({ ...prev, vuelto: formData.montoPagado }));
         } else {
@@ -192,6 +183,10 @@ export default function RegistrarPedidoPage() {
     });
   };
 
+  const handleVendedorInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setVendedorInput(e.target.value);
+  };
+
   const handleClienteSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const selectedId = e.target.value;
     const selectedCliente = clientes.find(c => String(c.id) === selectedId);
@@ -266,6 +261,11 @@ export default function RegistrarPedidoPage() {
     setSuccessMessage('');
     setErrorMessage('');
 
+    if (!vendedorInput.trim()) {
+        setErrorMessage("Por favor, ingrese el nombre del vendedor.");
+        setIsSubmitting(false);
+        return;
+    }
     if (!formData.clienteId) {
         setErrorMessage("Seleccione un cliente."); setIsSubmitting(false); return;
     }
@@ -287,9 +287,9 @@ export default function RegistrarPedidoPage() {
         setErrorMessage("ID de usuario no encontrado. Por favor, vuelva a iniciar sesión."); setIsSubmitting(false); return;
     }
 
-
     const dataPayload = {
       usuario_interno_id: parseInt(usuarioId, 10), 
+      nombre_vendedor: vendedorInput.trim(),
       items: productos.filter(item => item.producto !== 0 && item.qx > 0).map(item => ({
         producto_id: item.producto,
         cantidad: item.qx,
@@ -328,12 +328,13 @@ export default function RegistrarPedidoPage() {
         setFormData({...initialFormData, fechaEmision: now.toISOString().slice(0, 16)});
         setProductos(initialProductos);
         setTotalCalculadoApi(null);
+        setVendedorInput(''); 
         
         if (result.venta_id) { 
            handleImprimirPresupuesto(result.venta_id);
         }
       } else {
-        setErrorMessage(result.message || result.detail || `Error ${response.status} al registrar el pedido.`);
+        setErrorMessage(result.message || result.detail || result.error || `Error ${response.status} al registrar el pedido.`);
       }
       //eslint-disable-next-line
     } catch (err: any) {
@@ -376,20 +377,24 @@ export default function RegistrarPedidoPage() {
       <div className="flex items-center justify-center min-h-screen bg-indigo-900 py-10 px-4 print:hidden">
         <div className="bg-white p-6 md:p-8 rounded-lg shadow-md w-full max-w-4xl">
           
-          {/* MODIFICACIÓN PARA MOSTRAR NOMBRE DE VENDEDOR Y TÍTULO */}
-          <div className="relative mb-6">
-            {nombreVendedor && (
-              <div className="absolute left-0 top-1/2 transform -translate-y-1/2">
-                <span className="text-sm sm:text-base font-medium text-gray-700 whitespace-nowrap">
-                  Vendedor: {nombreVendedor}
-                </span>
-              </div>
-            )}
-            <h2 className="text-2xl font-semibold text-center text-indigo-800">
-              Registrar Pedido 
-            </h2>
+          <h2 className="text-3xl font-bold text-center text-indigo-800 mb-4">
+            Registrar Pedido 
+          </h2>
+          <div className="mb-6">
+              <label htmlFor="vendedorInput" className="block text-sm font-medium text-gray-700 mb-1">
+                  Vendedor*
+              </label>
+              <input
+                  type="text"
+                  id="vendedorInput"
+                  name="vendedorInput"
+                  value={vendedorInput}
+                  onChange={handleVendedorInputChange}
+                  className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  placeholder="Nombre del vendedor"
+                  required
+              />
           </div>
-          {/* FIN DE MODIFICACIÓN */}
 
           {errorMessage && <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4"><p>{errorMessage}</p></div>}
           {successMessage && <div className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4"><p>{successMessage}</p></div>}
@@ -516,23 +521,17 @@ export default function RegistrarPedidoPage() {
               </div>
             </fieldset>
 
-            <div className="flex flex-col sm:flex-row justify-end gap-4 mt-8">
+            <div className="flex justify-end mt-8">
               <button type="submit"
-                className="bg-green-600 text-white px-6 py-2 rounded-md hover:bg-green-700 font-semibold order-1 sm:order-2 disabled:opacity-50"
-                disabled={loadingClientes || isSubmitting || isCalculatingTotal}>
-                {isSubmitting ? 'Registrando...' : 'Registrar Pedido'}
-              </button>
-               <button type="button" onClick={() => handleImprimirPresupuesto()}
-                className="bg-gray-500 text-white px-6 py-2 rounded-md hover:bg-gray-600 font-semibold order-2 sm:order-1 disabled:opacity-50"
-                disabled={isSubmitting || isCalculatingTotal || productos.every(p => p.producto === 0 || p.qx === 0)}>
-                Imprimir Presupuesto
+                className="bg-green-600 text-white px-8 py-3 rounded-md hover:bg-green-700 font-semibold text-lg disabled:opacity-50"
+                disabled={loadingClientes || isSubmitting || isCalculatingTotal || !vendedorInput.trim()}>
+                {isSubmitting ? 'Registrando...' : 'Registrar'}
               </button>
             </div>
           </form>
         </div>
       </div>
 
-      {/* SECCIÓN PARA LA IMPRESIÓN DEL PRESUPUESTO */}
       <div id="presupuesto-imprimible" className="hidden print:block presupuesto-container">
         <header className="presupuesto-header">
           <div className="logo-container"><img src="/logo.png" alt="QuiMex" className="logo" /><p className="sub-logo-text">PRESUPUESTO NO VALIDO COMO FACTURA</p></div>
@@ -543,6 +542,7 @@ export default function RegistrarPedidoPage() {
             <tr><td>PEDIDO</td><td>NUEVO</td></tr> 
             <tr><td>FECHA</td><td>{formData.fechaEmision ? new Date(formData.fechaEmision).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'}) : ''}</td></tr>
             <tr><td>CLIENTE</td><td>{formData.nombre || (formData.clienteId ? `Cliente ID: ${formData.clienteId}` : 'CONSUMIDOR FINAL')}</td></tr>
+            <tr><td>VENDEDOR</td><td>{vendedorInput || '-'}</td></tr>
             <tr><td>SUBTOTAL (Productos)</td><td className="text-right">$ {montoBaseProductos.toFixed(2)}</td></tr>
           </tbody></table>
           <table className="tabla-datos-secundarios"><tbody>
