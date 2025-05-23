@@ -42,7 +42,7 @@ export default function SolicitudIngresoPage({ id }: any) {
   const [proveedor, setProveedor] = useState('');
   const [producto, setProducto] = useState('0');
   const [codigo, setCodigo] = useState('');
-  const [moneda] = useState('');
+  const [moneda, setMoneda] = useState('');
   const [cantidad, setCantidad] = useState('');
   const [tipo, setTipo] = useState('Litro');
   const [importeTotal, setImporteTotal] = useState('');
@@ -91,6 +91,7 @@ export default function SolicitudIngresoPage({ id }: any) {
       }
       console.log("Datos OC cargados:", data);
       const item = data.items[0];
+      console.log(data.moneda)
       setFecha(formatearFecha(data.fecha_creacion));
       setCantidadRecepcionada(item.cantidad_recibida?.toString() ?? '');
       const cant = item.cantidad_solicitada;
@@ -138,7 +139,7 @@ export default function SolicitudIngresoPage({ id }: any) {
         setImporteTotal('0');
         return;
     }
-    try{
+    try{ //TODO VER SI ESTA BIEN CALCULADO
       const response = await fetch(`https://quimex.sistemataup.online/productos/calcular_precio/${id_producto}`,{
         method: "POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},
         body: JSON.stringify({ producto_id: id_producto, quantity: cantidad_f }),
@@ -193,7 +194,7 @@ export default function SolicitudIngresoPage({ id }: any) {
       console.log("Enviando payload a API:", JSON.stringify(payload, null, 2));
       
       //eslint-disable-next-line
-      const userItem:any = localStorage.getItem("user"); // Deberías considerar usar sessionStorage si el token está allí
+      const userItem:any = sessionStorage.getItem("user"); // Deberías considerar usar sessionStorage si el token está allí
       const user = userItem ? JSON.parse(userItem) : null;
 
       if (!user || !token) {
@@ -337,7 +338,7 @@ export default function SolicitudIngresoPage({ id }: any) {
           </div>
           <div>
             <label htmlFor="moneda" className={labelClass}>Moneda OC</label>
-            <input id="moneda" required value={moneda} readOnly className={`${baseInputClass} ${disabledInputClass}`} />
+            <input id="moneda" required value={moneda} onChange={(e) => setMoneda(e.target.value)}  className={`${baseInputClass} ${disabledInputClass}`} />
           </div>
           <div>
             <label htmlFor="cantidad" className={labelClass}>Cant. Solicitada</label>
