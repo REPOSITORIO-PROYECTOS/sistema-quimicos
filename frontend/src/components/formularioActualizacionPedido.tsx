@@ -84,7 +84,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         throw new Error(errData.message || "No se pudieron cargar los datos del pedido.");
       }
       const datosAPI = await response.json();
-      
+      console.log(datosAPI)
       // 2. CARGAR EL NOMBRE DEL VENDEDOR DESDE LA API
       setNombreVendedor(datosAPI.nombre_vendedor || ''); // Usar string vacío si es null/undefined
 

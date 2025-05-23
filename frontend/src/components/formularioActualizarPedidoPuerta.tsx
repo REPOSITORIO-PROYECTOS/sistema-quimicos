@@ -428,7 +428,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
             <tr><td>PEDIDO</td><td>{id || 'N/A'}</td></tr>
             <tr><td>FECHA</td><td>{formData.fechaEmision ? new Date(formData.fechaEmision).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'}) : ''}</td></tr>
             <tr><td>CLIENTE</td><td>{formData.nombre || 'CONSUMIDOR FINAL'}</td></tr>
-            <tr><td>VENDEDOR</td><td>{nombreVendedor || '-'}</td></tr> {/* Vendedor desde el estado del input */}
+            <tr><td>VENDEDOR</td><td>{nombreVendedor || '-'}</td></tr> 
             <tr><td>SUBTOTAL (Productos)</td><td className="text-right">$ {montoBaseProductos.toFixed(2)}</td></tr>
           </tbody></table>
           <table className="tabla-datos-secundarios"><tbody>
