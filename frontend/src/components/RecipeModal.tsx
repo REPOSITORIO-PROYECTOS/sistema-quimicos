@@ -44,8 +44,6 @@ const RecipeModal: React.FC<RecipeModalProps> = ({ productId, productName, onClo
     // Simular carga o setear directamente
     setAvailableIngredients(staticAvailableIngredients);
 
-    // TODO: Aquí iría el fetch para obtener ingredientes reales de la API
-    // TODO: Aquí también iría el fetch para cargar la receta *existente* de productId si la hay
   }, [productId]); // Dependencia productId si cargas receta existente
 
   // --- Handlers para Ingredientes ---

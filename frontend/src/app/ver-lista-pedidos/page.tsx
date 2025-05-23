@@ -31,7 +31,9 @@ export default function ListaOrdenesCompra() { // Renombrado el componente
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [idOrdenSeleccionada, setIdOrdenSeleccionada] = useState<number | null>(null); // Para ver/procesar
-
+  //eslint-disable-next-line
+  const userItem:any = sessionStorage.getItem("user");
+    const user = userItem ? JSON.parse(userItem) : null; 
   // Estados para acciones de aprobar/rechazar
   const [processingId, setProcessingId] = useState<number | null>(null); // ID de la orden en proceso
   const [actionError, setActionError] = useState<string | null>(null);
@@ -77,10 +79,15 @@ export default function ListaOrdenesCompra() { // Renombrado el componente
     try {
       const token = localStorage.getItem("token");
       if (!token) throw new Error("Usuario no autenticado.");
-
+      
       const response = await fetch(`https://quimex.sistemataup.online/ordenes_compra/aprobar/${ordenId}`, {
         method: 'PUT',
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-User-Role' : user.role, // Usar el rol del usuario o un default
+          'X-User-Name' : user.name,
+          "Authorization": `Bearer ${token}`,
+        },
         // El endpoint de aprobar no necesita body según tu API
       });
 
@@ -121,7 +128,12 @@ export default function ListaOrdenesCompra() { // Renombrado el componente
 
       const response = await fetch(`https://quimex.sistemataup.online/ordenes_compra/rechazar/${ordenId}`, {
         method: 'PUT',
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-User-Role' : user.role, // Usar el rol del usuario o un default
+          'X-User-Name' : user.name,
+          "Authorization": `Bearer ${token}`,
+        },
         body: JSON.stringify({ motivo_rechazo: motivoRechazo }),
       });
 

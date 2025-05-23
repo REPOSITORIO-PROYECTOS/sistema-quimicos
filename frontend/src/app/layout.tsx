@@ -9,6 +9,7 @@ import { ThemeProvider } from "@/components/providers/theme-provider";
 import { ProductsProvider } from "@/context/ProductsContext";
 import { ClientesProvider } from '@/context/ClientesContext';
 import AppShell from "@/components/AppShell"; // <-- 1. IMPORTAMOS AppShell
+import { ProveedoresProvider } from "@/context/ProveedoresContext";
 
 const geistSans = Geist({
     variable: "--font-geist-sans",
@@ -41,10 +42,11 @@ export default function RootLayout({
                     <AuthProvider>
                         <ClientesProvider>
                             <ProductsProvider>
-                                {/* --- 2. Usamos AppShell para envolver children --- */}
+                                <ProveedoresProvider>
                                 <AppShell>
                                     {children}
                                 </AppShell>
+                                </ProveedoresProvider>
                             </ProductsProvider>
                         </ClientesProvider>
                     </AuthProvider>

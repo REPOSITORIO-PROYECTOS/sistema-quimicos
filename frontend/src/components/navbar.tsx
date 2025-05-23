@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpenIcon, PhoneCall, ChevronDown } from "lucide-react";
+import { BookOpenIcon, ChevronDown } from "lucide-react";
 import { useAuth } from "./providers/auth-provider";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -134,10 +134,18 @@ export function Navbar() {
                         Manual del Usuario
                         <BookOpenIcon className="w-5 h-5 ml-2" aria-hidden="true" />
                     </Button>
-                    <Button className="bg-blue-600 hover:bg-blue-800 hidden md:inline-flex">
-                        Soporte
-                        <PhoneCall className="w-5 h-5 ml-2" aria-hidden="true" />
-                    </Button>
+                    <Button
+                        asChild
+                        className="bg-blue-600 hover:bg-blue-800 hidden md:inline-flex"
+                        >
+                        <a
+                            href="https://wa.me/542646281854"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                        >
+                            Soporte
+                        </a>
+                        </Button>
                     <Button
                         variant="ghost"
                         onClick={logout}

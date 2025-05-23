@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { FaRegFileAlt, FaFileInvoice, FaUserPlus } from 'react-icons/fa';
+import { FaRegFileAlt, FaFileInvoice } from 'react-icons/fa';
 
 export default function AccionesPedidos() {
   const router = useRouter();
@@ -29,13 +29,6 @@ export default function AccionesPedidos() {
         >
           <FaFileInvoice className="text-xl" />
           Lista de Pedidos
-        </button>
-
-        <button
-          className="flex items-center justify-center gap-3 px-6 py-4 bg-white text-[#2c239d] rounded-lg shadow hover:scale-105 transition"
-        >
-          <FaUserPlus className="text-xl" />
-          Lista de pedidos Auto.
         </button>
       </div>
     </div>
