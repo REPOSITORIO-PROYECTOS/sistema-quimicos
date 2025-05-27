@@ -130,6 +130,7 @@ def create_app(config_object='config.Config'):
         try:
             from .blueprints.auth import auth_bp
             from .blueprints.productos import productos_bp
+            from .blueprints.combos import combos_bp
             from .blueprints.proveedores import proveedores_bp
             from .blueprints.clientes import clientes_bp
             from .blueprints.recetas import recetas_bp
@@ -142,6 +143,7 @@ def create_app(config_object='config.Config'):
             app.register_blueprint(auth_bp)
             app.register_blueprint(clientes_bp)
             app.register_blueprint(productos_bp)
+            app.register_blueprint(combos_bp)
             app.register_blueprint(proveedores_bp)
             app.register_blueprint(recetas_bp)
             app.register_blueprint(tipos_cambio_bp)
