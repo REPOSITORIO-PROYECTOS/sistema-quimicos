@@ -54,12 +54,12 @@ def create_app(config_object='config.Config'):
         app.config['SQLALCHEMY_DATABASE_URI'] = database_uri
 
         # SECRET KEY (¡MUY IMPORTANTE!)
-        app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', 'dev-secret-key-change-in-prod')
-        if app.config['SECRET_KEY'] == 'dev-secret-key-change-in-prod' and app.env == 'production':
-             print("\n\n--- ¡¡¡ADVERTENCIA!!! ---")
-             print("Estás usando la SECRET_KEY por defecto en PRODUCCIÓN.")
-             print("Genera una clave segura y configúrala mediante la variable de entorno FLASK_SECRET_KEY.")
-             print("---\n\n")
+#        app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', 'dev-secret-key-change-in-prod')
+#       if app.config['SECRET_KEY'] == 'dev-secret-key-change-in-prod' and app.env == 'production':
+#             print("\n\n--- ¡¡¡ADVERTENCIA!!! ---")
+#             print("Estás usando la SECRET_KEY por defecto en PRODUCCIÓN.")
+#             print("Genera una clave segura y configúrala mediante la variable de entorno FLASK_SECRET_KEY.")
+#             print("---\n\n")
 
         # Log seguro de URI
         log_uri = database_uri.replace(f":{DB_PASSWORD}@", ":***@") if DB_PASSWORD else database_uri
@@ -128,7 +128,10 @@ def create_app(config_object='config.Config'):
         # Registrar Blueprints
         print("--- INFO [app/__init__.py]: Registrando Blueprints...")
         try:
+            from .blueprints.auth import auth_bp
             from .blueprints.productos import productos_bp
+            from .blueprints.combos import combos_bp
+            from .blueprints.proveedores import proveedores_bp
             from .blueprints.clientes import clientes_bp
             from .blueprints.recetas import recetas_bp
             from .blueprints.tipos_cambio import tipos_cambio_bp
@@ -137,14 +140,17 @@ def create_app(config_object='config.Config'):
             from .blueprints.costos import costos_bp
             from .blueprints.precios_especiales import precios_especiales_bp # <<<--- NUEVO
 
+            app.register_blueprint(auth_bp)
             app.register_blueprint(clientes_bp)
             app.register_blueprint(productos_bp)
+            app.register_blueprint(combos_bp)
+            app.register_blueprint(proveedores_bp)
             app.register_blueprint(recetas_bp)
             app.register_blueprint(tipos_cambio_bp)
             app.register_blueprint(compras_bp)
             app.register_blueprint(ventas_bp)
             app.register_blueprint(costos_bp)
-            app.register_blueprint(precios_especiales_bp) # <<<--- REGISTRADO
+            app.register_blueprint(precios_especiales_bp)
             print("--- INFO [app/__init__.py]: Todos los blueprints registrados.")
 
         except Exception as bp_err:

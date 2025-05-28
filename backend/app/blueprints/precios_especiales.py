@@ -13,7 +13,7 @@ from ..utils.permissions import ROLES
 # from ..utils.cost_utils import redondear_decimal
 
 # --- Blueprint ---
-precios_especiales_bp = Blueprint('precios_especiales', __name__, url_prefix='/precios-especiales')
+precios_especiales_bp = Blueprint('precios_especiales', __name__, url_prefix='/precios_especiales')
 
 # --- Helpers ---
 def precio_especial_a_dict(precio_esp):
@@ -22,9 +22,9 @@ def precio_especial_a_dict(precio_esp):
     return {
         "id": precio_esp.id,
         "cliente_id": precio_esp.cliente_id,
-        "cliente_nombre": precio_esp.cliente.razon_social if precio_esp.cliente else None, # Asume 'razon_social'
+        "cliente_nombre": precio_esp.cliente.nombre_razon_social if precio_esp.cliente else None, # Asume 'razon_social'
         "producto_id": precio_esp.producto_id,
-        "producto_codigo": precio_esp.producto.codigo_interno if precio_esp.producto else None,
+#        "producto_codigo": precio_esp.producto.codigo_interno if precio_esp.producto else None,
         "producto_nombre": precio_esp.producto.nombre if precio_esp.producto else None,
         "precio_unitario_fijo_ars": float(precio_esp.precio_unitario_fijo_ars) if precio_esp.precio_unitario_fijo_ars is not None else None,
         "activo": precio_esp.activo,

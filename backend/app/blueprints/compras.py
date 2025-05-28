@@ -79,6 +79,8 @@ def formatear_orden_por_rol(orden_db, rol="almacen"):
                 "cantidad_solicitada": float(item_db.cantidad_solicitada) if item_db.cantidad_solicitada is not None else None,
                 "cantidad_recibida": float(item_db.cantidad_recibida) if item_db.cantidad_recibida is not None else None,
                 "notas_item_recepcion": item_db.notas_item_recepcion,
+                "precio_unitario_estimado": float(item_db.precio_unitario_estimado) if item_db.precio_unitario_estimado is not None else None,
+                "importe_linea_estimado": float(item_db.importe_linea_estimado) if item_db.importe_linea_estimado is not None else None
             }
             if rol == "ADMIN":
                 item_dict.update({
@@ -93,12 +95,9 @@ def formatear_orden_por_rol(orden_db, rol="almacen"):
     # Campos solo para ADMIN
     if rol == "ADMIN":
         orden_dict.update({
-            "moneda": orden_db.moneda, # Moneda de los importes estimados
             "importe_total_estimado": float(orden_db.importe_total_estimado) if orden_db.importe_total_estimado is not None else None,
             # "importe_total_recibido_calc": float(orden_db.calcular_importe_recibido_total()), # Si tienes método
             "ajuste_tc": orden_db.ajuste_tc, # SI/NO o True/False? Asegurar consistencia
-            "importe_cc": float(orden_db.importe_cc) if orden_db.importe_cc is not None else None,
-            "dif_ajuste_cambio": float(orden_db.dif_ajuste_cambio) if orden_db.dif_ajuste_cambio is not None else None,
             "importe_abonado": float(orden_db.importe_abonado) if orden_db.importe_abonado is not None else None,
             "forma_pago": orden_db.forma_pago,
             "cheque_perteneciente_a": orden_db.cheque_perteneciente_a,
@@ -117,20 +116,16 @@ def crear_orden_compra(current_user):
     data = request.get_json()
     # Simular rol y usuario (reemplazar con autenticación real)
     rol_usuario = request.headers.get("X-User-Role", "almacen")
-    usuario_solicitante = request.headers.get("X-User-Name", "Sistema") # Quién solicita
+    usuario_solicitante_id = request.headers.get("X-User-Id", "0") # Quién solicita
 
     if not data: return jsonify({"error": "Payload JSON vacío"}), 400
 
     # --- Validación de Entrada ---
     proveedor_id = data.get('proveedor_id')
-    moneda = data.get('moneda') # Moneda de los precios estimados
     items_payload = data.get('items')
 
     if not proveedor_id or not isinstance(proveedor_id, int):
         return jsonify({"error": "Falta o es inválido 'proveedor_id' (int)"}), 400
-    # Validar moneda si tienes una lista específica, ej: ["USD", "ARS"]
-    if not moneda or not isinstance(moneda, str):
-        return jsonify({"error": "Falta o es inválido 'moneda' (string)"}), 400
     if not items_payload or not isinstance(items_payload, list) or not items_payload:
         return jsonify({"error": "Falta o está vacía la lista 'items'"}), 400
 
@@ -154,7 +149,7 @@ def crear_orden_compra(current_user):
                 return jsonify({"error": f"Falta 'codigo_interno' en item #{idx+1}"}), 400
 
             # Validar y obtener producto
-            producto = Producto.query.filter_by(codigo_interno=codigo_interno_prod).first()
+            producto = Producto.query.filter_by(id=codigo_interno_prod).first()
             if not producto:
                 return jsonify({"error": f"Producto con código interno '{codigo_interno_prod}' no encontrado (item #{idx+1})"}), 404
 
@@ -194,11 +189,10 @@ def crear_orden_compra(current_user):
             # id=nuevo_id_orden, # Si usas UUID string PK
             nro_solicitud_interno=nro_interno_solicitud,
             proveedor_id=proveedor_id,
-            moneda=moneda,
             importe_total_estimado=importe_total_estimado_calc,
             observaciones_solicitud=data.get("observaciones_solicitud"),
             estado="Solicitado", # Estado inicial
-            solicitado_por=usuario_solicitante # Guardar quién solicitó
+            solicitado_por_id=usuario_solicitante_id # Guardar quién solicitó
             # Otros campos se inicializan con default/None en el modelo
         )
 
@@ -360,7 +354,7 @@ def aprobar_orden_compra(current_user, orden_id):
     usuario_aprobador = request.headers.get("X-User-Name", "Sistema") # Simular usuario aprobador
 
     # --- Validación de Rol (Simulada - Reemplazar con real) ---
-    if rol_usuario != "    ADMIN":
+    if rol_usuario != "ADMIN":
         return jsonify({"error": "Acción no permitida para este rol."}), 403 # Forbidden
 
     try:

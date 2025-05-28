@@ -38,8 +38,22 @@ class Proveedor(db.Model):
      telefono = db.Column(db.String(50), nullable=True)
      email = db.Column(db.String(100), nullable=True)
      contacto = db.Column(db.String(100), nullable=True)
+     activo = db.Column(db.Boolean, default=True, nullable=False)
      condiciones_pago = db.Column(db.String(255), nullable=True)
      ordenes_compra = db.relationship('OrdenCompra', back_populates='proveedor', lazy='dynamic')
+
+     def to_dict(self):
+          return {
+            'id': self.id,
+            'nombre': self.nombre,
+            'cuit': self.cuit,
+            'direccion': self.direccion,
+            'telefono': self.telefono,
+            'email': self.email,
+            'contacto': self.contacto,
+            'condiciones_pago': self.condiciones_pago,
+            'activo': self.activo
+          }
 
 # --- Modelo Producto ---
 class Producto(db.Model):
@@ -48,6 +62,7 @@ class Producto(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     # ... (Pega aquí el resto de columnas y relaciones de Producto) ...
     nombre = db.Column(db.String(200), nullable=False)
+#    receta_id = db.Column(db.Integer, db.ForeignKey('recetas.id', ondelete='SET NULL'), nullable=True)
     unidad_venta = db.Column(db.String(50), nullable=True)
     tipo_calculo = db.Column(db.String(2), nullable=True)
     ref_calculo = db.Column(db.String(50), nullable=True)
@@ -131,6 +146,7 @@ class Venta(db.Model):
     fecha_pedido = db.Column(db.DateTime, nullable=True)
     direccion_entrega = db.Column(db.String(255), nullable=True)
     cuit_cliente = db.Column(db.String(20), nullable=True)
+    nombre_vendedor = db.Column(db.String(50), nullable=False)
     observaciones = db.Column(db.Text, nullable=True)
     monto_total = db.Column(db.Numeric(15, 2), nullable=True) # Monto base
     forma_pago = db.Column(db.String(50), nullable=True)
@@ -171,8 +187,8 @@ class OrdenCompra(db.Model):
     nro_solicitud_interno = db.Column(db.String(50), unique=True, nullable=True)
     nro_remito_proveedor = db.Column(db.String(100), index=True, nullable=True)
     proveedor_id = db.Column(db.Integer, db.ForeignKey('proveedores.id'), nullable=False)
-    moneda = db.Column(db.String(3), nullable=True)
     importe_total_estimado = db.Column(db.Numeric(15,2), nullable=True)
+    precio_unitario = db.Column(db.Numeric(15,2), nullable=True)
     observaciones_solicitud = db.Column(db.Text, nullable=True)
     estado = db.Column(db.String(50), default='Solicitado', nullable=False, index=True)
     solicitado_por_id = db.Column(db.Integer, db.ForeignKey('usuarios_internos.id'), nullable=True)
@@ -187,8 +203,6 @@ class OrdenCompra(db.Model):
     estado_recepcion = db.Column(db.String(50), nullable=True)
     notas_recepcion = db.Column(db.Text, nullable=True)
     ajuste_tc = db.Column(db.Boolean, nullable=True)
-    importe_cc = db.Column(db.Numeric(15,2), nullable=True)
-    dif_ajuste_cambio = db.Column(db.Numeric(15,2), nullable=True)
     importe_abonado = db.Column(db.Numeric(15,2), nullable=True)
     forma_pago = db.Column(db.String(50), nullable=True)
     cheque_perteneciente_a = db.Column(db.String(200), nullable=True)
@@ -265,3 +279,76 @@ class PrecioEspecialCliente(db.Model):
         cliente_info = f"Cliente ID {self.cliente_id}" if not self.cliente else f"'{self.cliente.razon_social}'" # Asume 'razon_social' en Cliente
         producto_info = f"Producto ID {self.producto_id}" if not self.producto else f"'{self.producto.nombre}'"
         return f"<PrecioEspecial {cliente_info} - {producto_info}: ARS {self.precio_unitario_fijo_ars:.2f} ({estado})>"
+
+# --- Modelo Combo ---
+class Combo(db.Model):
+    __tablename__ = 'combos'
+    id = db.Column(db.Integer, primary_key=True)
+    nombre = db.Column(db.String(255), nullable=False, unique=True, index=True)
+    sku_combo = db.Column(db.String(100), unique=True, nullable=True, index=True) # SKU del combo si lo vendes así
+    descripcion = db.Column(db.Text, nullable=True)
+    activo = db.Column(db.Boolean, default=True, nullable=False, index=True)
+    fecha_creacion = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    fecha_modificacion = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    # Relación con sus componentes
+    componentes = db.relationship('ComboComponente', back_populates='combo', lazy='select', cascade="all, delete-orphan") # 'select' para cargar componentes al acceder
+
+    def __repr__(self):
+        return f'<Combo {self.nombre}>'
+
+    def to_dict(self, incluir_componentes=False, info_calculada=None):
+        data = {
+            'id': self.id,
+            'nombre': self.nombre,
+            'sku_combo': self.sku_combo,
+            'descripcion': self.descripcion,
+            'activo': self.activo,
+            'fecha_creacion': self.fecha_creacion.isoformat() if self.fecha_creacion else None,
+            'fecha_modificacion': self.fecha_modificacion.isoformat() if self.fecha_modificacion else None,
+            # 'precio_fijo_combo_ars': float(self.precio_fijo_combo_ars) if self.precio_fijo_combo_ars else None
+        }
+        if incluir_componentes and self.componentes: # Verificar que self.componentes no es None
+            data['componentes'] = [comp.to_dict() for comp in self.componentes]
+        
+        if info_calculada: # Para añadir info de costos/precios calculados
+            data.update(info_calculada)
+        return data
+
+class ComboComponente(db.Model):
+    __tablename__ = 'combo_componentes'
+    id = db.Column(db.Integer, primary_key=True)
+    combo_id = db.Column(db.Integer, db.ForeignKey('combos.id', ondelete='CASCADE'), nullable=False)
+    producto_id = db.Column(db.Integer, db.ForeignKey('productos.id', ondelete='RESTRICT'), nullable=False)
+    cantidad = db.Column(db.Numeric(15, 4), nullable=False)
+    combo = db.relationship('Combo', back_populates='componentes')
+    producto = db.relationship('Producto')
+
+    @validates('cantidad')
+    def validate_cantidad(self, key, cantidad_value):
+        if not isinstance(cantidad_value, Decimal):
+             cantidad_value = Decimal(str(cantidad_value))
+        if cantidad_value <= 0:
+             raise ValueError("La cantidad del componente debe ser mayor que cero.")
+        return cantidad_value
+    
+    def to_dict(self):
+        componente_info = {}
+        unidad_venta_componente = "N/A"
+        costo_unitario_usd_componente = "N/A" # Lo obtendremos al calcular
+
+        if self.producto:
+            componente_info = {
+                'producto_id': self.producto_id, 
+                'nombre': self.producto.nombre,
+                'es_receta': self.producto.es_receta
+            }
+            unidad_venta_componente = self.producto.unidad_venta
+            # El costo individual lo calcularemos en la función de cálculo del combo
+
+        return {
+            'id': self.id, # ID del registro ComboComponente
+            'componente': componente_info,
+            'cantidad': float(self.cantidad),
+            'unidad_venta_componente': unidad_venta_componente,
+        }

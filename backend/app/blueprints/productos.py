@@ -40,14 +40,15 @@ def calcular_costo_producto_referencia(producto_id, visited=None):
         costo_calculado_ref = Decimal(producto.costo_referencia_usd) if producto.costo_referencia_usd is not None else Decimal(0)
     else:
         # Es una receta: calcular sumando costos de referencia de ingredientes ponderados
-        if not producto.receta:
+        if False:
             # Caso borde: Marcado como receta pero sin relación/items definidos
             print(f"WARN: Producto {producto_id} ({producto.id}) está marcado como receta pero no tiene items asociados.")
             costo_calculado_ref = Decimal(0) # O podrías lanzar un error si esto no debería pasar
         else:
             # Si la relación es lazy='dynamic', necesitamos .all() para iterar
             # Si no es lazy='dynamic' (por defecto 'select'), podemos iterar directamente
-            items_receta = producto.receta.items # Asumiendo que no es lazy='dynamic' por defecto
+            receta = Receta.query.filter_by(producto_final_id=producto.id).first()
+            items_receta = receta.items # Asumiendo que no es lazy='dynamic' por defecto
             if not items_receta:
                  print(f"WARN: Receta para producto {producto_id} no tiene items.")
                  costo_calculado_ref = Decimal(0)
@@ -95,7 +96,6 @@ def producto_a_dict(producto):
         "es_receta": producto.es_receta,
         "ajusta_por_tc": producto.ajusta_por_tc,
         "fecha_actualizacion_costo": producto.fecha_actualizacion_costo.isoformat() if producto.fecha_actualizacion_costo else None,
-        "receta_id": producto.receta.id if producto.receta else None # Solo si la relación 'receta' existe
     }
 
 

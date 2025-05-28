@@ -1,7 +1,8 @@
 # app/blueprints/proveedores.py
 
 from flask import Blueprint, request, jsonify
-from models import db, Proveedor  # Importamos desde el models.py raíz
+from .. import db
+from ..models import Proveedor  # Importamos desde el models.py raíz
 from sqlalchemy.exc import IntegrityError
 import traceback # Para logs de errores más detallados
 
@@ -55,7 +56,8 @@ def crear_proveedor():
             telefono=data.get('telefono'),
             email=data.get('email'),
             contacto=data.get('contacto'),
-            condiciones_pago=data.get('condiciones_pago')
+            condiciones_pago=data.get('condiciones_pago'),
+            activo=True
         )
         db.session.add(nuevo_proveedor)
         db.session.commit()
