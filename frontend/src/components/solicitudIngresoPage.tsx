@@ -25,7 +25,6 @@ interface ISolicitudes {
      },
   ]
   ajusteTC: string,
-  importeCC: string,
   cantidadAcumulada: string,
   ajusteXTC: string,
   diferenciaCambio: string,
@@ -42,18 +41,17 @@ export default function SolicitudIngresoPage({ id }: any) {
   const [proveedor, setProveedor] = useState('');
   const [producto, setProducto] = useState('0');
   const [codigo, setCodigo] = useState('');
-  const [moneda, setMoneda] = useState('');
+  const [moneda] = useState('');
   const [cantidad, setCantidad] = useState('');
   const [tipo, setTipo] = useState('Litro');
   const [importeTotal, setImporteTotal] = useState('');
   const [estado_recepcion, setEstadoRecepcion] = useState('Completa');
   const [cantidad_recepcionada, setCantidadRecepcionada] = useState('');
-  
+  let importe_abonado_actual = 0.0;
   // 1. AÑADIR ESTADO PARA NRO_REMITO_PROVEEDOR
   const [nro_remito_proveedor, setNroRemitoProveedor] = useState('');
 
-  const [ajusteTC] = useState(''); // Estos parecen no usarse o ser solo para la interfaz local
-  const [importeCC, setImporteCC] = useState('');
+  const [ajusteTC, setAjusteTC] = useState('No'); 
   const [cantidadAcumulada] = useState('');
   const [ajusteXTC] = useState('');
   const [diferenciaCambio] = useState('');
@@ -89,18 +87,24 @@ export default function SolicitudIngresoPage({ id }: any) {
         setErrorMensaje("No se encontraron items en la orden de compra.");
         return;
       }
+      importe_abonado_actual = data.importe_abonado;
       console.log("Datos OC cargados:", data);
       const item = data.items[0];
-      console.log(data.moneda)
       setFecha(formatearFecha(data.fecha_creacion));
       setCantidadRecepcionada(item.cantidad_recibida?.toString() ?? '');
-      const cant = item.cantidad_solicitada;
       setCantidad(item.cantidad_solicitada?.toString() ?? '');
       setProveedor(data.proveedor_nombre || 'N/A');
       setEstadoOC(data.estado || '');
+      setNroRemitoProveedor(data.nro_remito_proveedor?.toString() ?? '');
+      setCantidadRecepcionada(data.items[0].cantidad_recibida?.toString() ?? '');
+      setAjusteTC(data.ajuste_tc?.toString() ?? '');
+      setImporteAbonado(data.importe_abonado?.toString() ?? '');
+      setFormaPago(data.forma_pago?.toString() ?? '');
+      setChequePerteneceA(data.chequePerteneceA?.toString() ?? '');
+      setImporteTotal(data.items[0].importe_linea_estimado);
       console.log("Estado OC seteado a:", data.estado);
       if (item.producto_id && !isNaN(parseFloat(item.cantidad_solicitada))) {
-          await cargarCamposProducto(item.producto_id, parseFloat(cant));
+          await cargarCamposProducto(item.producto_id);
       } else {
           setProducto(item.producto_id?.toString() ?? '0');
           setCodigo(item.producto_id?.toString() ?? '');
@@ -113,19 +117,17 @@ export default function SolicitudIngresoPage({ id }: any) {
       setEstadoOC('');
     }
   }
-  async function cargarCamposProducto(id_producto:number,cantidad_f : number){
+  async function cargarCamposProducto(id_producto:number){
     try{
       const response = await fetch(`https://quimex.sistemataup.online/productos/obtener/${id_producto}`,{headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }});
       if (!response.ok) throw new Error(`Error al traer producto ${id_producto}: ${response.statusText}`);
       const data = await response.json();
-      console.log("Datos producto:", data);
       setCodigo(id_producto.toString());
       setProducto(data.id?.toString() ?? '0');
       const unidad = data.unidad_venta;
       if (unidad == 'LT') setTipo('Litro');
       else if (unidad == 'KG') setTipo('Kilo');
       else setTipo('Unidad');
-      await calcular_precio(id_producto,cantidad_f);
     }
     //eslint-disable-next-line
      catch (err: any) {
@@ -133,31 +135,7 @@ export default function SolicitudIngresoPage({ id }: any) {
       setErrorMensaje(`Error cargando detalles del producto: ${err.message}`);
     }
   }
-  async function calcular_precio(id_producto:number,cantidad_f:number){
-    if (isNaN(cantidad_f) || cantidad_f <= 0) {
-        console.warn("Cantidad inválida para calcular precio:", cantidad_f);
-        setImporteTotal('0');
-        return;
-    }
-    try{ //TODO VER SI ESTA BIEN CALCULADO
-      const response = await fetch(`https://quimex.sistemataup.online/productos/calcular_precio/${id_producto}`,{
-        method: "POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},
-        body: JSON.stringify({ producto_id: id_producto, quantity: cantidad_f }),
-      });
-      if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(`Error al calcular precio: ${response.statusText} - ${errorData.mensaje || 'Sin detalles'}`);
-      }
-      const precioData = await response.json();
-      console.log("Respuesta cálculo precio:", precioData);
-      setImporteTotal(precioData.precio_total_calculado_ars?.toString() ?? '0');
-      //eslint-disable-next-line
-    } catch (err: any) {
-      console.error("Error calculando precio:", err);
-      setErrorMensaje(`Error calculando el importe: ${err.message}`);
-      setImporteTotal('');
-    }
-  }
+  
   const formatearFecha = (fechaOriginal: string | Date | undefined): string => {
     if (!fechaOriginal) return '';
      try {
@@ -187,8 +165,10 @@ export default function SolicitudIngresoPage({ id }: any) {
             costo_unitario_ars: item.costo_unitario_ars,
             notas_item: item.notas_item,
         })),
+        importe_abonado:parseFloat(importeAbonado)+ parseFloat(importe_abonado_actual.toString()),
         estado_recepcion: solicitud.estado_recepcion, // Usar el estado de la solicitud
         nro_remito_proveedor: solicitud.nro_remito_proveedor, // <--- AÑADIDO AQUÍ
+        ajuste_tc: ajusteTC
       };
 
       console.log("Enviando payload a API:", JSON.stringify(payload, null, 2));
@@ -237,12 +217,6 @@ export default function SolicitudIngresoPage({ id }: any) {
   const handleAgregar = async () => {
     setErrorMensaje('');
 
-    if (estadoOC !== 'Aprobado') {
-        setErrorMensaje('Solo se pueden registrar ingresos de solicitudes aprobadas.');
-        console.warn(`Intento de registrar ingreso fallido. Estado OC: ${estadoOC}`);
-        return;
-    }
-    
     // Validaciones adicionales
     if (!cantidad_recepcionada || isNaN(parseFloat(cantidad_recepcionada)) || parseFloat(cantidad_recepcionada) <= 0) { // <=0 para no permitir cero
         setErrorMensaje("La cantidad recepcionada debe ser un número mayor a cero.");
@@ -272,7 +246,7 @@ export default function SolicitudIngresoPage({ id }: any) {
          "notas_item": "",      // Este valor debe ser dinámico o venir de algún lado
          },
       ],
-      ajusteTC, importeCC, cantidadAcumulada, ajusteXTC, diferenciaCambio,
+      ajusteTC, cantidadAcumulada, ajusteXTC, diferenciaCambio,
       importeAbonado, formaPago, chequePerteneceA,
       nro_remito_proveedor: nro_remito_proveedor.trim(), // Guardar el valor del estado
     };
@@ -284,7 +258,7 @@ export default function SolicitudIngresoPage({ id }: any) {
       console.log("Recepción procesada, limpiando campos y/o redirigiendo...");
       alert("Ingreso registrado correctamente.");
       setCantidadRecepcionada('');
-      setImporteCC(''); setImporteAbonado(''); setFormaPago(''); setChequePerteneceA('');
+      setImporteAbonado(''); setFormaPago(''); setChequePerteneceA('');
       setEstadoRecepcion('Completa');
       setNroRemitoProveedor(''); // Limpiar el campo de remito
       router.push('/compras'); // O a donde quieras redirigir
@@ -337,8 +311,16 @@ export default function SolicitudIngresoPage({ id }: any) {
             <input id="codigo" value={codigo} className={`${baseInputClass} ${disabledInputClass}`} disabled />
           </div>
           <div>
-            <label htmlFor="moneda" className={labelClass}>Moneda OC</label>
-            <input id="moneda" required value={moneda} onChange={(e) => setMoneda(e.target.value)}  className={`${baseInputClass} ${disabledInputClass}`} />
+            <label htmlFor="ajusteTC" className={labelClass}>Ajuste x TC</label>
+            <select
+              id="ajusteTC"
+              value={ajusteTC}
+              className={`${baseInputClass} ${disabledInputClass}`}
+              onChange={(e) => setAjusteTC(e.target.value)}
+            >
+              <option value="true">Si</option>
+              <option value="false">No</option>
+            </select>
           </div>
           <div>
             <label htmlFor="cantidad" className={labelClass}>Cant. Solicitada</label>
@@ -381,15 +363,17 @@ export default function SolicitudIngresoPage({ id }: any) {
               required // Hacerlo obligatorio
             />
           </div>
-           <div>
-            <label htmlFor="importeCC" className={labelClass}>Importe a CC</label>
-            <input id="importeCC" value={importeCC} onChange={(e) => setImporteCC(e.target.value)} className={`${baseInputClass}`} />
-          </div>
           
           {/* --- Fila 5 (Campos financieros) --- */}
           <div>
             <label htmlFor="importeAbonado" className={labelClass}>Importe Abonado</label>
-            <input id="importeAbonado" value={importeAbonado} onChange={(e) => setImporteAbonado(e.target.value)} className={`${baseInputClass}`} />
+           <input
+            id="importeAbonado"
+            placeholder={(Number(importeTotal) - Number(importeAbonado)).toString()}
+            value={importeAbonado}
+            onChange={(e) => setImporteAbonado(e.target.value)}
+            className={`${baseInputClass}`}
+            />
           </div>
           <div>
             <label htmlFor="formaPago" className={labelClass}>Forma de Pago</label>
@@ -405,7 +389,7 @@ export default function SolicitudIngresoPage({ id }: any) {
         <div className="flex gap-4 justify-center mt-8">
           <button
             onClick={handleAgregar}
-            disabled={estadoOC !== 'Aprobado' || !cantidad_recepcionada || !nro_remito_proveedor.trim()} // Añadir validación de remito al disabled
+            disabled={(estadoOC !== 'Aprobado' && estadoOC !== 'Con Deuda') || !cantidad_recepcionada || !nro_remito_proveedor.trim()} // Añadir validación de remito al disabled
             className="bg-green-500 text-white px-6 py-3 rounded-lg font-semibold hover:bg-green-600 transition duration-150 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed"
           >
              Registrar ingreso
