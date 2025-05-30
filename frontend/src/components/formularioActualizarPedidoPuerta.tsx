@@ -97,15 +97,15 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
       if (var_vuelto == null) var_vuelto = 0;
 
       setFormData({
-        nombre: datosAPI.cliente_nombre || "N/A",
-        cuit: datosAPI.cuit_cliente || "",
+        nombre: "Cliente puerta",
         direccion: datosAPI.direccion_entrega || "", 
         fechaEmision: datosAPI.fecha_registro || "",
         fechaEntrega: datosAPI.fecha_pedido || "",   
         formaPago: datosAPI.forma_pago || "efectivo",
         montoPagado: datosAPI.monto_pagado_cliente || 0,
         vuelto: var_vuelto,
-        cliente_id: datosAPI.cliente_id || null,
+        cliente_id:0,
+        cuit:"",
         requiereFactura: datosAPI.requiere_factura || false, 
         observaciones: datosAPI.observaciones || "",
       });
@@ -308,7 +308,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
 
   const handleImprimirPresupuesto = () => {
     // ... (sin cambios)
-    const nombreCliente = formData.nombre || "Cliente";
+    const nombreCliente = "Cliente puerta";
     let fechaFormateada = "Fecha";
     if(formData.fechaEmision){try{fechaFormateada=new Date(formData.fechaEmision).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'});}catch(e){console.error(e)}}
     const numPedido = id || "Desconocido";
@@ -358,8 +358,8 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
             <fieldset className="border p-4 rounded-md">
               <legend className="text-lg font-medium text-gray-700 px-2">Datos Cliente/Pedido</legend>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div><label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="nombre">Nombre Cliente</label><input type="text" name="nombre" id="nombre" value={formData.nombre} readOnly disabled className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 bg-gray-100 cursor-not-allowed focus:outline-none"/></div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="cuit">CUIT</label><input type="text" name="cuit" id="cuit" value={formData.cuit} readOnly disabled className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 bg-gray-100 cursor-not-allowed focus:outline-none"/></div>
+                <div><label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="nombre">Nombre Cliente</label><input type="text" name="nombre" id="nombre" value="Cliente puerta" readOnly disabled className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 bg-gray-100 cursor-not-allowed focus:outline-none"/></div>
+
                 <div><label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="fechaEmision">Fecha de Emisión</label><input type="datetime-local" name="fechaEmision" id="fechaEmision" value={formData.fechaEmision ? formData.fechaEmision.substring(0,16) : ''} readOnly disabled className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 bg-gray-100 cursor-not-allowed focus:outline-none"/></div>
                 {/* Campos Fecha Entrega y Dirección no se muestran en el form pero se envían */}
                 <div className="md:col-span-2"><label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="observaciones">Observaciones</label><textarea id="observaciones" name="observaciones" value={formData.observaciones || ''} onChange={handleFormChange} rows={2} className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"/></div>

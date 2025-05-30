@@ -14,7 +14,6 @@ interface IPedido {
   iibb: string;
   importeTotal: string;
   importeAbonado: string;
-  formaPago: string;
   chequePerteneciente: string;
 }
 
@@ -31,7 +30,6 @@ export default function RegistrarIngreso() {
   const [iibb, setIibb] = useState('');
   const [importeTotal, setImporteTotal] = useState('');
   const [importeAbonado, setImporteAbonado] = useState('');
-  const [formaPago, setFormaPago] = useState('');
   const [chequePerteneciente, setChequePerteneciente] = useState('');
   
   const { productos, loading: productsLoading, error: productsError } = useProductsContext(); // Renombrar loading/error para evitar colisiones
@@ -58,7 +56,7 @@ export default function RegistrarIngreso() {
 
     const nuevoPedido: IPedido = {
       fecha, producto, proveedor_id, cantidad, precioSinIva,
-      cuenta, iibb, importeTotal, importeAbonado, formaPago, chequePerteneciente,
+      cuenta, iibb, importeTotal, importeAbonado, chequePerteneciente,
     };
     
     //eslint-disable-next-line
@@ -77,7 +75,6 @@ export default function RegistrarIngreso() {
       fecha_pedido: fecha,
       proveedor_id: parseInt(proveedor_id), 
       iibb: iibb,
-      forma_pago:formaPago,
     };
     console.log("Payload:", ventaPayload);
 
@@ -115,7 +112,7 @@ export default function RegistrarIngreso() {
 
       setFecha(''); setProducto(''); setProveedorId(''); setCantidad('');
       setPrecioSinIva(''); setCuenta(''); setIibb('');
-      setImporteTotal(''); setImporteAbonado(''); setFormaPago(''); setChequePerteneciente('');
+      setImporteTotal(''); setImporteAbonado(''); ; setChequePerteneciente('');
       //eslint-disable-next-line
     } catch (error: any) {
       console.error('Error al registrar compra:', error);
@@ -246,14 +243,7 @@ export default function RegistrarIngreso() {
           />
         </div>
 
-        {/* Campo Forma de Pago */}
-        <div className="mb-4">
-          <label htmlFor="formaPago" className={labelClass}>Forma de Pago</label>
-          <input
-            id="formaPago" value={formaPago} onChange={(e) => setFormaPago(e.target.value)}
-            type="text" placeholder="Ej: Transferencia, Cheque" className={baseInputClass}
-          />
-        </div>
+    
 
         {/* Botones */}
         <div className="flex flex-col sm:flex-row gap-4 justify-center mt-6">

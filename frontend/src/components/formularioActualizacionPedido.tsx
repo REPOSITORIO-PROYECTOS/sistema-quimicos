@@ -62,15 +62,11 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
   const [isSubmitting, setIsSubmitting] = useState(false);
   // const [, setSuccessMessage] = useState(''); // Esta línea parece ser un duplicado de successMensaje, la comento
   const productosContext = useProductsContext(); // Asegúrate que esto sea necesario o elimínalo
-  
-  // 1. ESTADO PARA EL INPUT DEL VENDEDOR
-  const [nombreVendedor, setNombreVendedor] = useState<string>(''); // Inicializado como string vacío
 
   const cargarFormulario = useCallback(async (pedidoId: number) => {
     setIsLoading(true);
     setErrorMensaje('');
     setSuccessMensaje('');
-    // setNombreVendedor(''); // No es necesario resetear aquí si se va a cargar desde la API
     const token = localStorage.getItem("token");
     if (!token) {
       setErrorMensaje("Usuario no autenticado."); setIsLoading(false); return;
@@ -85,8 +81,6 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
       }
       const datosAPI = await response.json();
       console.log(datosAPI)
-      // 2. CARGAR EL NOMBRE DEL VENDEDOR DESDE LA API
-      setNombreVendedor(datosAPI.nombre_vendedor || ''); // Usar string vacío si es null/undefined
 
       setFormData({
         nombre: datosAPI.cliente_nombre || "N/A",
@@ -112,7 +106,6 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
       //eslint-disable-next-line
     } catch (error: any) {
       setErrorMensaje(error.message || "Ocurrió un error desconocido al cargar los detalles del pedido.");
-      setNombreVendedor(''); // En caso de error, limpiar el nombre del vendedor
     } finally {
       setIsLoading(false);
     }
@@ -124,7 +117,6 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     } else {
       setErrorMensaje("ID de pedido no proporcionado para cargar los detalles.");
       setIsLoading(false);
-      setNombreVendedor(''); 
     }
   }, [id, cargarFormulario]);
   
@@ -218,22 +210,12 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     });
   };
 
-  // 3. FUNCIÓN PARA MANEJAR CAMBIO EN EL INPUT DEL VENDEDOR
-  const handleVendedorInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setNombreVendedor(e.target.value);
-  };
+
   
   const handleSubmit = async (e: React.FormEvent ) => {
     e.preventDefault();
     setErrorMensaje(''); setSuccessMensaje('');
     if (!id) { setErrorMensaje("ID de pedido no válido para actualizar."); return; }
-    
-    if (!nombreVendedor.trim()) { // VALIDACIÓN PARA EL NUEVO CAMPO
-        setErrorMensaje("Por favor, ingrese el nombre del vendedor.");
-        setIsSubmitting(false);
-        return;
-    }
-
     setIsSubmitting(true);
     const token = localStorage.getItem("token");
     if (!token) { setErrorMensaje("No autenticado."); setIsSubmitting(false); return; }
@@ -243,10 +225,8 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         setIsSubmitting(false); return;
     }
 
-    // 4. INCLUIR nombre_vendedor EN EL PAYLOAD DE ACTUALIZACIÓN
     const dataToUpdate = {
       cliente_id: formData.cliente_id,
-      nombre_vendedor: nombreVendedor.trim(), // <--- NUEVO CAMPO
       fecha_pedido: formData.fechaEntrega,
       direccion_entrega: formData.direccion,
       monto_pagado_cliente: formData.montoPagado,
@@ -272,16 +252,9 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
       if(!response.ok){
         setErrorMensaje(result?.message || result?.detail || result?.error || 'Error al actualizar el pedido.');
       } else {
-        // No es necesario llamar a cargarFormulario(id) aquí si solo actualizas
-        // y el backend devuelve el objeto actualizado o un mensaje de éxito.
-        // Podrías actualizar el estado local si es necesario, o simplemente mostrar el mensaje.
-        setSuccessMensaje("¡Pedido actualizado con éxito!");
-        // Si la API devuelve el objeto actualizado con el nuevo nombre de vendedor,
-        // `nombreVendedor` ya estaría con el valor correcto.
-        // Si no, y quieres asegurarte que el input refleje lo guardado:
-        // cargarFormulario(id); // Descomentar si es estrictamente necesario recargar todo
 
-        // 5. LLAMAR A IMPRIMIR DESPUÉS DEL ÉXITO
+        setSuccessMensaje("¡Pedido actualizado con éxito!");
+
         handleImprimirPresupuesto(); 
       }
       //eslint-disable-next-line
@@ -300,7 +273,6 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
   };
 
   const handleImprimirPresupuesto = () => {
-    // ... (sin cambios, pero ahora `nombreVendedor` viene del estado del input)
     const nombreCliente = formData.nombre || "Cliente";
     let fechaFormateada = "Fecha";
     if(formData.fechaEmision){try{fechaFormateada=new Date(formData.fechaEmision).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'});}catch(e){console.log(e)}}
@@ -326,22 +298,6 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
           <h2 className="text-3xl font-bold text-center text-indigo-800 mb-4">
             Detalle y Actualización del Pedido #{id}
           </h2>
-          <div className="mb-6">
-              <label htmlFor="nombreVendedor" className="block text-sm font-medium text-gray-700 mb-1">
-                  Vendedor*
-              </label>
-              <input
-                  type="text"
-                  id="nombreVendedor"
-                  name="nombreVendedor"
-                  value={nombreVendedor}
-                  onChange={handleVendedorInputChange}
-                  className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                  placeholder="Nombre del vendedor asignado"
-                  required
-              />
-          </div>
-          {/* FIN NUEVA ESTRUCTURA ENCABEZADO */}
 
           {errorMensaje && <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4"><p>{errorMensaje}</p></div>}
           {successMensaje && <div className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4"><p>{successMensaje}</p></div>}
@@ -403,7 +359,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
               <button 
                 type="submit" 
                 className="bg-green-600 text-white px-8 py-3 rounded-md hover:bg-green-700 font-semibold text-lg disabled:opacity-50" 
-                disabled={isLoading || isSubmitting || isCalculatingTotal || !nombreVendedor.trim()}>
+                disabled={isLoading || isSubmitting || isCalculatingTotal }>
                 {isSubmitting ? 'Actualizando...' : 'Actualizar Pedido e Imprimir'}
               </button>
             </div>
@@ -413,7 +369,6 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
 
       {/* SECCIÓN DE IMPRESIÓN */}
       <div id="presupuesto-imprimible" className="hidden print:block presupuesto-container">
-        {/* ... (sin cambios, pero ahora nombreVendedor vendrá del estado del input) ... */}
         <header className="presupuesto-header">
           <div className="logo-container"><img src="/logo.png" alt="QuiMex" className="logo" /><p className="sub-logo-text">PRESUPUESTO NO VALIDO COMO FACTURA</p></div>
           <div className="info-empresa"><p>📱 11 2395 1494</p><p>📞 4261 3605</p><p>📸 quimex_berazategui</p></div>
@@ -423,7 +378,6 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
             <tr><td>PEDIDO</td><td>{id || 'N/A'}</td></tr>
             <tr><td>FECHA</td><td>{formData.fechaEmision ? new Date(formData.fechaEmision).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'}) : ''}</td></tr>
             <tr><td>CLIENTE</td><td>{formData.nombre || 'CONSUMIDOR FINAL'}</td></tr>
-            <tr><td>VENDEDOR</td><td>{nombreVendedor || '-'}</td></tr>
             <tr><td>SUBTOTAL (Productos)</td><td className="text-right">$ {montoBaseProductos.toFixed(2)}</td></tr>
           </tbody></table>
           <table className="tabla-datos-secundarios"><tbody>

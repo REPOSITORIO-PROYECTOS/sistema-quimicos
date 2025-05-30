@@ -1,11 +1,9 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, ChangeEvent } from 'react';
-// Ya no necesitamos RecipeModal aquí directamente si CreateProductModal lo maneja todo
-// import RecipeModal from '@/components/RecipeModal';
 import CreateProductModal from '@/components/CreateProductModal'; // Asegúrate que la ruta sea correcta
 
-// --- Tipos de Datos ---
+// --- Tipos de Datos (ACTUALIZADOS) ---
 type ProductDataRaw = {
   ajusta_por_tc: boolean;
   costo_referencia_usd: number;
@@ -20,7 +18,11 @@ type ProductDataRaw = {
   unidad_venta: string;
   // Añade 'codigo' si es diferente de 'id' y lo usas para la UI o API
   codigo?: string;
+  // NUEVO: Campos para Combo
+  es_combo?: boolean;      // Indica si el producto está asociado a una definición de combo
+  combo_id?: number | null; // El ID de la entidad Combo si es_combo es true
 };
+
 type ProductDisplay = {
   id: number; // ID numérico
   nombre: string;
@@ -34,7 +36,11 @@ type ProductDisplay = {
   priceError: boolean;
   // Si tienes un código de producto separado del ID numérico
   codigo?: string;
+  // NUEVO: Campos para Combo
+  es_combo?: boolean;
+  combo_id?: number | null;
 };
+
 type PaginationInfo = {
   page: number;
   per_page: number;
@@ -68,8 +74,7 @@ export default function ProductPriceTable() {
 
   // --- ESTADOS MODALES ACTUALIZADOS ---
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
-  const [editingProductId, setEditingProductId] = useState<number | string | null>(null); // Puede ser string si tu API usa IDs alfanuméricos, pero en tu tipo es number.
-  // editingRecipeName y editingRecipeId ya no son necesarios si CreateProductModal maneja todo.
+  const [editingProductId, setEditingProductId] = useState<number | string | null>(null);
 
   // --- Estados Eliminación ---
   const [deletingProductId, setDeletingProductId] = useState<number | null>(null);
@@ -137,7 +142,6 @@ export default function ProductPriceTable() {
     setErrorInitial(null); setDeleteError(null);
 
     try {
-      // Modificar URL si hay término de búsqueda
       let apiUrl = `https://quimex.sistemataup.online/productos/obtener_todos_paginado?page=${pageToFetch}`;
       if (searchTerm) {
         apiUrl = `https://quimex.sistemataup.online/productos/buscar_paginado?term=${encodeURIComponent(searchTerm)}&page=${pageToFetch}`;
@@ -163,6 +167,9 @@ export default function ProductPriceTable() {
         margen: p.margen,
         ref_calculo: p.ref_calculo,
         costo_referencia_usd: p.costo_referencia_usd,
+        // NUEVO: Mapear datos del combo
+        es_combo: p.es_combo || false,
+        combo_id: p.combo_id || null,
         precio: undefined,
         isLoadingPrice: true,
         priceError: false,
@@ -175,13 +182,10 @@ export default function ProductPriceTable() {
       const priceResults = await Promise.allSettled(pricePromises);
 
       setProducts(currentProducts => {
-           // Crear una nueva copia para asegurar la inmutabilidad y el re-renderizado
            const updatedProducts = currentProducts.map(p => ({...p}));
            priceResults.forEach((result, index) => {
-               const targetProductId = productsToDisplay[index]?.id; // ID del producto para el cual se calculó el precio
+               const targetProductId = productsToDisplay[index]?.id;
                if (targetProductId === undefined) return;
-
-               // Encontrar el producto en el estado actual `updatedProducts` por su ID
                const productIndexInState = updatedProducts.findIndex(p => p.id === targetProductId);
                if (productIndexInState !== -1) {
                    if (result.status === 'fulfilled') {
@@ -205,21 +209,26 @@ export default function ProductPriceTable() {
         setProducts([]); setPaginationInfo(null);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, searchTerm]); // currentPage se maneja en el useEffect de abajo
+  }, [token, searchTerm, products.length]); // products.length añadido para que re-fetch si se borra el último item de una página y la lista queda vacía
 
   // useEffect para búsqueda y carga inicial/paginación
   useEffect(() => {
-    // Resetear a página 1 cuando el término de búsqueda cambia
     if (searchTerm) {
-        setCurrentPage(1); // Esto disparará el fetchDataAndPrices a través del otro useEffect
+        setCurrentPage(1); // Esto disparará el fetchDataAndPrices a través del otro useEffect si currentPage cambia
+        // Si currentPage ya es 1, necesitamos llamar explícitamente
+        if (currentPage === 1) {
+            fetchDataAndPrices(1);
+        }
     } else {
         fetchDataAndPrices(currentPage); // Carga normal si no hay término de búsqueda
     }
-  }, [searchTerm, fetchDataAndPrices]); // fetchDataAndPrices como dependencia
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm]); // No incluir fetchDataAndPrices aquí para evitar bucles con currentPage
 
   useEffect(() => {
     fetchDataAndPrices(currentPage);
-  }, [currentPage, fetchDataAndPrices]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage]); // No incluir fetchDataAndPrices aquí para evitar bucles con searchTerm
 
 
   const calculatePrice = async (productoId: number): Promise<number> => {
@@ -227,7 +236,7 @@ export default function ProductPriceTable() {
       const response = await fetch(`https://quimex.sistemataup.online/productos/calcular_precio/${productoId}`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-          body: JSON.stringify({ producto_id: productoId, quantity: 1 }), // El body podría no ser necesario si el ID está en la URL
+          body: JSON.stringify({ producto_id: productoId, quantity: 1 }),
       });
       if (!response.ok) { const errorData = await response.json().catch(() => ({})); throw new Error(errorData.mensaje || `Error ${response.status}`); }
       const data = await response.json();
@@ -243,57 +252,76 @@ export default function ProductPriceTable() {
     catch (e) { return 'Error fecha'+ e; }
   };
 
-  // NO FILTRAMOS AQUÍ SI LA API YA FILTRA POR PAGINACIÓN Y BÚSQUEDA
-  // const filteredProducts = products.filter(...);
-
   const goToPreviousPage = () => { if (currentPage > 1) setCurrentPage(prev => prev - 1); };
   const goToNextPage = () => { if (paginationInfo && currentPage < paginationInfo.total_pages) setCurrentPage(prev => prev + 1); };
 
   // --- HANDLERS MODAL PRODUCTO (Crear/Editar) ---
   const handleOpenCreateProductModal = () => {
-    setEditingProductId(null); // Asegura modo creación
+    setEditingProductId(null);
     setIsProductModalOpen(true);
   };
 
   const handleOpenEditProductModal = (productId: number | string) => {
-    setEditingProductId(productId); // Establece el ID para modo edición
+    setEditingProductId(productId);
     setIsProductModalOpen(true);
   };
 
   const handleCloseProductModal = () => {
     setIsProductModalOpen(false);
-    setEditingProductId(null); // Limpia el ID al cerrar
+    setEditingProductId(null);
   };
 
   const handleProductCreatedOrUpdated = () => {
     console.log("Refrescando lista post-creación/actualización...");
-    // Refrescar la página actual para ver los cambios.
-    // Si se creó un nuevo producto y estás en una página > 1, podrías querer ir a la pág 1,
-    // o a la última página si tu API ordena por fecha de creación desc.
-    // Por simplicidad, refrescamos la página actual.
     fetchDataAndPrices(currentPage);
-    handleCloseProductModal(); // Cierra el modal
+    handleCloseProductModal();
   };
 
-  const handleDeleteProduct = async (productId: number, productName: string) => {
-     if (!window.confirm(`¿Seguro de eliminar "${productName}" (ID: ${productId})?`)) return;
-     setDeletingProductId(productId); setDeleteError(null);
+  const handleDeleteProduct = async (productToDelete: ProductDisplay) => {
+     if (!window.confirm(`¿Seguro de eliminar "${productToDelete.nombre}" (ID: ${productToDelete.id})? Esta acción no se puede deshacer.`)) return;
+     setDeletingProductId(productToDelete.id);
+     setDeleteError(null);
 
      try {
-        // Eliminar el producto
-        const deleteProductUrl = `https://quimex.sistemataup.online/productos/eliminar/${productId}`;
-        const response = await fetch(deleteProductUrl, {
+        // Paso 1: Si el producto es un combo y tiene un combo_id, intentar eliminar el combo primero
+        if (productToDelete.es_combo && productToDelete.combo_id) {
+            console.log(`El producto ${productToDelete.id} es un combo (ID Combo: ${productToDelete.combo_id}). Intentando eliminar el combo...`);
+            const deleteComboUrl = `https://quimex.sistemataup.online/combos/eliminar/${productToDelete.combo_id}`;
+            const comboResponse = await fetch(deleteComboUrl, {
+                method: 'DELETE',
+                headers: { "Authorization": `Bearer ${token}` }
+            });
+
+            if (!comboResponse.ok && comboResponse.status !== 404) { // 404 significa que el combo ya no existía, lo cual está bien
+                const comboErrorData = await comboResponse.json().catch(() => ({ error: `Error ${comboResponse.status} eliminando combo` }));
+                throw new Error(`Combo: ${comboErrorData.error || comboErrorData.detalle || comboResponse.statusText}`);
+            }
+            console.log(`Combo ID ${productToDelete.combo_id} eliminado o no encontrado (status: ${comboResponse.status}). Procediendo a eliminar producto.`);
+        }
+
+        // Paso 2: Eliminar el producto principal
+        const deleteProductUrl = `https://quimex.sistemataup.online/productos/eliminar/${productToDelete.id}`;
+        const productResponse = await fetch(deleteProductUrl, {
             method: 'DELETE',
             headers: { "Authorization": `Bearer ${token}` }
         });
-        if (!response.ok) { const d = await response.json().catch(()=>({error:`Error ${response.status}`})); throw new Error(`Producto: ${d.error || d.detalle || response.statusText}`); }
-        const result = await response.json();
-        console.log("Delete producto OK:", result);
-        alert(`"${productName}" eliminado.`);
-        fetchDataAndPrices(currentPage); // Refrescar
-        // eslint-disable-next-line
+
+        if (!productResponse.ok) {
+            const productErrorData = await productResponse.json().catch(() => ({ error: `Error ${productResponse.status} eliminando producto` }));
+            throw new Error(`Producto: ${productErrorData.error || productErrorData.detalle || productResponse.statusText}`);
+        }
+        
+        console.log(`Producto ID ${productToDelete.id} eliminado exitosamente.`);
+        alert(`"${productToDelete.nombre}" y su combo asociado (si existía) han sido eliminados.`);
+        // Si la página actual queda vacía después de eliminar, ir a la página anterior si es posible
+        if (products.length === 1 && currentPage > 1) {
+            setCurrentPage(currentPage - 1);
+        } else {
+            fetchDataAndPrices(currentPage); // Refrescar la lista en la página actual
+        }
+      // eslint-disable-next-line  
      } catch (err: any) {
-        console.error(`Error deleting ${productId}:`, err);
+        console.error(`Error durante la eliminación del producto ID ${productToDelete.id}:`, err);
         setDeleteError(err.message);
         alert(`Error: ${err.message}`);
      } finally {
@@ -320,14 +348,14 @@ export default function ProductPriceTable() {
                 <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-left"> {product.isLoadingPrice ? ( <span className="text-xs text-gray-400 italic">Calculando...</span> ) : product.priceError ? ( <span className="text-xs text-red-500 font-medium">Error</span> ) : typeof product.precio === 'number' ? ( `$${product.precio.toFixed(2)}` ) : ( <span className="text-xs text-gray-400">N/A</span> )} </td>
                 <td className="px-4 py-3 whitespace-nowrap text-center text-sm space-x-2">
                     <button
-                        onClick={() => handleOpenEditProductModal(product.id)} // Abre el modal de producto en modo edición
+                        onClick={() => handleOpenEditProductModal(product.id)}
                         disabled={isDeleting}
                         className="text-indigo-600 hover:text-indigo-900 disabled:text-gray-400 hover:bg-indigo-100 px-2 py-1 rounded text-xs font-medium"
                     >
                         Editar
                     </button>
                     <button
-                        onClick={() => handleDeleteProduct(product.id, product.nombre)}
+                        onClick={() => handleDeleteProduct(product)}
                         disabled={isDeleting}
                         className={`text-red-600 hover:text-red-900 disabled:text-gray-400 hover:bg-red-100 px-2 py-1 rounded text-xs font-medium ${isDeleting ? 'animate-pulse' : ''}`}
                     >
@@ -338,7 +366,7 @@ export default function ProductPriceTable() {
         );
     });
   } else if (!loadingInitial && !errorInitial && products.length === 0 && searchTerm) {
-      tableBodyContent = ( <tr> <td colSpan={numberOfColumns} className="text-center text-gray-500 py-4 px-4">No se encontraron productos con {searchTerm}</td> </tr> );
+      tableBodyContent = ( <tr> <td colSpan={numberOfColumns} className="text-center text-gray-500 py-4 px-4">No se encontraron productos con {searchTerm}</td> </tr>);
   } else if (!loadingInitial && !errorInitial && products.length === 0 && !searchTerm) {
        tableBodyContent = ( <tr> <td colSpan={numberOfColumns} className="text-center text-gray-500 py-4 px-4">No hay productos para mostrar.</td> </tr> );
    } else { tableBodyContent = null; }
@@ -350,20 +378,19 @@ export default function ProductPriceTable() {
         <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
           <input
              type="text"
-             placeholder="Buscar productos..." // Cambiado placeholder
+             placeholder="Buscar productos..."
              value={searchTerm}
              onChange={(e) => setSearchTerm(e.target.value)}
              className="px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 w-full md:w-1/3 lg:w-1/4"
            />
           <div className="flex flex-col sm:flex-row items-center gap-x-4 gap-y-2 w-full md:w-auto justify-end flex-wrap flex-grow">
-            {/* ... (sección del dólar sin cambios) ... */}
             <div className="text-sm flex items-center gap-1"> <label htmlFor="dolarOficialInput" className="font-medium">Dólar Oficial:</label> {loadingDolar ? (<span className="text-xs italic">Cargando...</span>) : isEditingDolar ? (<input id="dolarOficialInput" type="text" name="dolarOficial" value={editDolarOficial} onChange={handleDolarInputChange} className="px-2 py-1 border rounded text-sm w-24" disabled={loadingDolarSave} inputMode="decimal" />) : typeof dolarOficial === 'number' ? (<span className="font-semibold">${dolarOficial.toFixed(2)}</span>) : (<span className="text-red-500 text-xs">Error</span>)} </div>
             <div className="text-sm flex items-center gap-1"> <label htmlFor="dolarQuimexInput" className="font-medium">Dólar Empresa:</label> {loadingDolar ? (<span className="text-xs italic">Cargando...</span>) : isEditingDolar ? (<input id="dolarQuimexInput" type="text" name="dolarQuimex" value={editDolarQuimex} onChange={handleDolarInputChange} className="px-2 py-1 border rounded text-sm w-24" disabled={loadingDolarSave} inputMode="decimal" />) : typeof dolarQuimex === 'number' ? (<span className="font-semibold">${dolarQuimex.toFixed(2)}</span>) : (<span className="text-red-500 text-xs">Error</span>)} </div>
             <div className="flex items-center gap-2"> {isEditingDolar ? (<> <button onClick={handleSaveDolarValues} disabled={loadingDolarSave || loadingDolar} className={`px-3 py-1 text-xs rounded flex items-center gap-1 ${ loadingDolarSave || loadingDolar ? 'bg-gray-300' : 'bg-green-100 text-green-700 hover:bg-green-200' }`}> <svg className={`h-3 w-3 ${loadingDolarSave ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg> {loadingDolarSave ? '...' : 'Guardar'} </button> <button onClick={handleCancelDolarEdit} disabled={loadingDolarSave} className="px-3 py-1 text-xs bg-gray-100 rounded hover:bg-gray-200"> Cancelar </button> </>) : (<button onClick={handleEditDolarClick} disabled={loadingDolar || dolarOficial === null || dolarQuimex === null} className={`px-3 py-1 text-xs rounded flex items-center gap-1 ${ loadingDolar || dolarOficial === null || dolarQuimex === null ? 'bg-gray-300' : 'bg-blue-100 text-blue-700 hover:bg-blue-200' }`}> <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg> Editar Dólar </button> )} </div>
             {errorDolarSave && ( <p className="text-xs text-red-600 mt-1 w-full text-right sm:text-left sm:w-auto">{errorDolarSave}</p> )}
 
              <button
-                onClick={handleOpenCreateProductModal} // Abre el modal de producto en modo creación
+                onClick={handleOpenCreateProductModal}
                 className="w-full sm:w-auto bg-indigo-600 text-white px-4 py-2 rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 flex items-center justify-center gap-1 mt-2 sm:mt-0"
              >
                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"> <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" /> </svg>
@@ -372,7 +399,6 @@ export default function ProductPriceTable() {
           </div>
         </div>
 
-        {/* ... (resto de la tabla y paginación sin cambios significativos, solo los textos de error y carga) ... */}
         {loadingInitial && <p className="text-center text-gray-600 my-6">Cargando lista de productos inicial...</p>}
         {errorInitial && <p className="text-center text-red-600 my-6">Error al cargar productos: {errorInitial}</p>}
         {deleteError && <p className="text-center text-red-600 my-2 mx-auto max-w-xl bg-red-50 p-2 rounded border border-red-200 text-sm">Error al eliminar: {deleteError}</p>}
@@ -411,12 +437,11 @@ export default function ProductPriceTable() {
         )}
       </div>
 
-      {/* Modal Unificado para Crear y Editar Productos/Recetas */}
       {isProductModalOpen && (
         <CreateProductModal
           onClose={handleCloseProductModal}
           onProductCreatedOrUpdated={handleProductCreatedOrUpdated}
-          productIdToEdit={editingProductId} // Pasa el ID del producto a editar (o null para crear)
+          productIdToEdit={editingProductId}
         />
       )}
     </div>

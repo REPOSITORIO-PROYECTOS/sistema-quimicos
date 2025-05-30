@@ -3,7 +3,7 @@
 
 @custom-variant dark (&:is(.dark *));
 
- @theme  inline {
+ @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
@@ -43,73 +43,87 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
+/* --- TEMA CLARO (LIGHT MODE) --- */
 :root {
   --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+
+  /* --- REEMPLAZA LOS VALORES OKLCH CON HEX O RGB --- */
+  /* Necesitarás convertir cada valor oklch a su equivalente HEX o RGB */
+  /* Ejemplo: oklch(1 0 0) es blanco puro, oklch(0 0 0) es negro puro */
+
+  --background: #FFFFFF; /* Placeholder para oklch(1 0 0) */
+  --foreground: #252525; /* Placeholder para oklch(0.145 0 0) */
+  --card: #FFFFFF;       /* Placeholder para oklch(1 0 0) */
+  --card-foreground: #252525; /* Placeholder para oklch(0.145 0 0) */
+  --popover: #FFFFFF;    /* Placeholder para oklch(1 0 0) */
+  --popover-foreground: #252525; /* Placeholder para oklch(0.145 0 0) */
+  --primary: #333333;   /* Placeholder para oklch(0.205 0 0) */
+  --primary-foreground: #FAFAFA; /* Placeholder para oklch(0.985 0 0) */
+  --secondary: #F7F7F7; /* Placeholder para oklch(0.97 0 0) */
+  --secondary-foreground: #333333; /* Placeholder para oklch(0.205 0 0) */
+  --muted: #F7F7F7;     /* Placeholder para oklch(0.97 0 0) */
+  --muted-foreground: #8E8E8E; /* Placeholder para oklch(0.556 0 0) */
+  --accent: #F7F7F7;    /* Placeholder para oklch(0.97 0 0) */
+  --accent-foreground: #333333; /* Placeholder para oklch(0.205 0 0) */
+  --destructive: #E53E3E; /* Placeholder para oklch(0.577 0.245 27.325) */
+  --border: #EBEBEB;    /* Placeholder para oklch(0.922 0 0) */
+  --input: #EBEBEB;     /* Placeholder para oklch(0.922 0 0) */
+  --ring: #B3B3B3;      /* Placeholder para oklch(0.708 0 0) */
+  
+  --chart-1: #D87C3D;   /* Placeholder para oklch(0.646 0.222 41.116) */
+  --chart-2: #53A8B6;   /* Placeholder para oklch(0.6 0.118 184.704) */
+  --chart-3: #3B3E7A;   /* Placeholder para oklch(0.398 0.07 227.392) */
+  --chart-4: #A8D55F;   /* Placeholder para oklch(0.828 0.189 84.429) */
+  --chart-5: #E6C24F;   /* Placeholder para oklch(0.769 0.188 70.08) */
+
+  --sidebar: #FAFAFA;   /* Placeholder para oklch(0.985 0 0) */
+  --sidebar-foreground: #252525; /* Placeholder para oklch(0.145 0 0) */
+  --sidebar-primary: #333333; /* Placeholder para oklch(0.205 0 0) */
+  --sidebar-primary-foreground: #FAFAFA; /* Placeholder para oklch(0.985 0 0) */
+  --sidebar-accent: #F7F7F7; /* Placeholder para oklch(0.97 0 0) */
+  --sidebar-accent-foreground: #333333; /* Placeholder para oklch(0.205 0 0) */
+  --sidebar-border: #EBEBEB; /* Placeholder para oklch(0.922 0 0) */
+  --sidebar-ring: #B3B3B3;   /* Placeholder para oklch(0.708 0 0) */
 }
 
+/* --- TEMA OSCURO (DARK MODE) --- */
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  /* --- REEMPLAZA LOS VALORES OKLCH CON HEX O RGB --- */
+  --background: #252525; /* Placeholder para oklch(0.145 0 0) */
+  --foreground: #FAFAFA; /* Placeholder para oklch(0.985 0 0) */
+  --card: #333333;       /* Placeholder para oklch(0.205 0 0) */
+  --card-foreground: #FAFAFA; /* Placeholder para oklch(0.985 0 0) */
+  --popover: #333333;    /* Placeholder para oklch(0.205 0 0) */
+  --popover-foreground: #FAFAFA; /* Placeholder para oklch(0.985 0 0) */
+  --primary: #EBEBEB;   /* Placeholder para oklch(0.922 0 0) */
+  --primary-foreground: #333333; /* Placeholder para oklch(0.205 0 0) */
+  --secondary: #444444; /* Placeholder para oklch(0.269 0 0) */
+  --secondary-foreground: #FAFAFA; /* Placeholder para oklch(0.985 0 0) */
+  --muted: #444444;     /* Placeholder para oklch(0.269 0 0) */
+  --muted-foreground: #B3B3B3; /* Placeholder para oklch(0.708 0 0) */
+  --accent: #444444;    /* Placeholder para oklch(0.269 0 0) */
+  --accent-foreground: #FAFAFA; /* Placeholder para oklch(0.985 0 0) */
+  --destructive: #D9635C; /* Placeholder para oklch(0.704 0.191 22.216) */
+  
+  /* Para valores con transparencia, usa rgba() o HEX con canal alfa #RRGGBBAA */
+  --border: rgba(255, 255, 255, 0.1);  /* Placeholder para oklch(1 0 0 / 10%) */
+  --input: rgba(255, 255, 255, 0.15); /* Placeholder para oklch(1 0 0 / 15%) */
+  --ring: #8E8E8E;      /* Placeholder para oklch(0.556 0 0) */
+
+  --chart-1: #8C6ED9;   /* Placeholder para oklch(0.488 0.243 264.376) */
+  --chart-2: #66C2A5;   /* Placeholder para oklch(0.696 0.17 162.48) */
+  --chart-3: #E6C24F;   /* Placeholder para oklch(0.769 0.188 70.08) */
+  --chart-4: #D46EC8;   /* Placeholder para oklch(0.627 0.265 303.9) */
+  --chart-5: #DA835E;   /* Placeholder para oklch(0.645 0.246 16.439) */
+
+  --sidebar: #333333;   /* Placeholder para oklch(0.205 0 0) */
+  --sidebar-foreground: #FAFAFA; /* Placeholder para oklch(0.985 0 0) */
+  --sidebar-primary: #8C6ED9; /* Placeholder para oklch(0.488 0.243 264.376) */
+  --sidebar-primary-foreground: #FAFAFA; /* Placeholder para oklch(0.985 0 0) */
+  --sidebar-accent: #444444; /* Placeholder para oklch(0.269 0 0) */
+  --sidebar-accent-foreground: #FAFAFA; /* Placeholder para oklch(0.985 0 0) */
+  --sidebar-border: rgba(255, 255, 255, 0.1); /* Placeholder para oklch(1 0 0 / 10%) */
+  --sidebar-ring: #8E8E8E;   /* Placeholder para oklch(0.556 0 0) */
 }
 
 @layer base {
@@ -124,56 +138,41 @@
 /* --- ESTILOS PARA LA IMPRESIÓN DEL PRESUPUESTO --- */
 @media print {
   /* Configuración base para la impresión */
-  body, html { /* Aplicar a html también por robustez */
-    visibility: hidden !important; /* Oculta todo por defecto */
+  body, html { 
+    visibility: hidden !important;
     margin: 0 !important;
     padding: 0 !important;
-    background-color: white !important; /* Asegura fondo blanco */
-    font-family: Arial, sans-serif !important; /* Fuente base para impresión */
-    font-size: 10pt !important; /* Tamaño de fuente base */
-    color: black !important; /* Color de texto base */
-    -webkit-print-color-adjust: exact !important; /* Para Chrome/Safari: imprimir colores de fondo */
-    color-adjust: exact !important; /* Estándar */
+    background-color: white !important;
+    font-family: Arial, sans-serif !important;
+    font-size: 14pt !important;
+    color: black !important;
+    -webkit-print-color-adjust: exact !important;
+    color-adjust: exact !important;
   }
 
-  /* Muestra SOLO el contenedor del presupuesto y TODO su contenido */
   #presupuesto-imprimible,
-  #presupuesto-imprimible * { /* El selector '*' es crucial aquí */
+  #presupuesto-imprimible * { 
     visibility: visible !important;
   }
 
-  /* Posiciona y dimensiona el contenedor del presupuesto para que ocupe la página */
   #presupuesto-imprimible {
-    /* Descomenta estas líneas para la prueba de borde/fondo si aún no ves nada: */
-    /*
-    border: 5px dashed red !important;
-    background-color: lightyellow !important;
-    padding: 10px !important;
-    */
-
-    position: absolute !important; /* Saca del flujo normal */
+    position: absolute !important;
     left: 0 !important;
     top: 0 !important;
-    width: 100% !important; /* Ocupa el ancho disponible */
-    min-height: 100vh !important; /* Intenta ocupar al menos la altura de la vista de impresión */
-    margin: 0 !important; /* Quita los márgenes del contenedor mismo si usas márgenes de @page */
-    padding: 0 !important; /* Quita padding del contenedor mismo */
+    width: 100% !important;
+    min-height: 100vh !important;
+    margin: 0 !important;
+    padding: 0 !important;
     box-sizing: border-box !important;
   }
 
-  /* Define los márgenes de la página impresa (más estándar que margin en #presupuesto-imprimible) */
   @page {
-    size: A4 portrait; /* O el tamaño que necesites */
-    margin: 15mm; /* Márgenes para todas las caras de la página */
+    size: A4 portrait;
+    margin: 15mm;
   }
 
-
-  /* --- ESTILOS DETALLADOS PARA EL CONTENIDO DEL PRESUPUESTO --- */
-  /* Estos estilos solo se aplican a los elementos DENTRO de #presupuesto-imprimible */
-  /* ya que todo lo demás está oculto por 'visibility: hidden' en body/html */
-
   .presupuesto-header {
-    display: flex !important; /* Asegurar display flex */
+    display: flex !important;
     justify-content: space-between !important;
     align-items: flex-start !important;
     margin-bottom: 15px !important;
@@ -188,7 +187,7 @@
   .logo-container .logo {
     max-width: 150px !important;
     margin-bottom: 5px !important;
-    display: block !important; /* Asegurar que la imagen se muestre */
+    display: block !important;
   }
   .sub-logo-text {
     font-size: 0.8em !important;
@@ -221,11 +220,21 @@
   .tabla-datos-secundarios td {
     padding: 3px 5px !important;
     border: 1px solid black !important;
+    vertical-align: middle !important;
   }
   .tabla-datos-principales td:first-child,
   .tabla-datos-secundarios td:first-child {
     font-weight: bold !important;
-    width: 100px !important; /* Ajusta según necesites */
+    width: 100px !important;
+  }
+
+  .tabla-datos-secundarios tr:last-child td {
+    font-size: 1.1em !important;
+    font-weight: bold !important;
+  }
+
+  .tabla-datos-principales tr:nth-child(4) td {
+    font-size: 1.05em !important;
   }
 
   .detalle-productos {
@@ -235,7 +244,7 @@
   .tabla-items {
     width: 100% !important;
     border-collapse: collapse !important;
-    font-size: 0.9em !important;
+    font-size: 1.05em !important;
   }
 
   .tabla-items th,
@@ -243,6 +252,7 @@
     border: 1px solid black !important;
     padding: 4px 6px !important;
     text-align: left !important;
+    vertical-align: middle !important;
   }
 
   .tabla-items th {
@@ -250,24 +260,32 @@
     font-weight: bold !important;
     text-align: center !important;
   }
-  .tabla-items th:nth-child(1), .tabla-items td:nth-child(1) { width: 15% !important; text-align: center !important; }
-  .tabla-items th:nth-child(2), .tabla-items td:nth-child(2) { width: 45% !important; }
+
+  .tabla-items th:nth-child(1), .tabla-items td:nth-child(1) { width: 10% !important; text-align: center !important; } 
+  .tabla-items th:nth-child(2), .tabla-items td:nth-child(2) { width: 40% !important; }
   .tabla-items th:nth-child(3), .tabla-items td:nth-child(3) { width: 15% !important; text-align: center !important; }
-  .tabla-items th:nth-child(4), .tabla-items td:nth-child(4) { width: 25% !important; text-align: right !important; }
+  .tabla-items th:nth-child(4), .tabla-items td:nth-child(4) { width: 15% !important; text-align: center !important; }
+  .tabla-items th:nth-child(5), .tabla-items td:nth-child(5) { width: 20% !important; text-align: right !important; }
 
   .tabla-items .empty-row td {
-    height: 1.5em !important; /* Ajusta según necesites */
-    /* border: 1px solid black !important; Ya heredado */
+    height: 1.5em !important;
   }
 
   .text-right { text-align: right !important; }
   .text-center { text-align: center !important; }
 
-  /* Clases para ocultar elementos específicos en la impresión */
-  .print\:hidden, /* Esta es la clase de Tailwind */
+  .print\:hidden,
   .no-imprimir,
   .boton-imprimir-oculto {
     display: none !important;
-    visibility: hidden !important; /* Doble seguro, aunque display:none suele ser suficiente */
+    visibility: hidden !important;
+  }
+  
+  .presupuesto-footer {
+    margin-top: 20px !important;
+    padding-top: 10px !important;
+    border-top: 1px solid #ccc !important;
+    font-size: 0.8em !important;
+    text-align: center !important;
   }
 }
