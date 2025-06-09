@@ -132,7 +132,152 @@
 }
 
 /* --- IMPRESIÓN --- */
+/* --- IMPRESIÓN PARA TICKET TÉRMICO --- */
 @media print {
+  /* --- Reseteo y configuración base del documento --- */
+  body, html {
+    visibility: hidden !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background-color: white !important;
+    /* Usamos una fuente monoespaciada para que los números y caracteres se alineen bien */
+    font-family: 'Courier New', Courier, monospace !important; 
+    /* Tamaño de fuente base más pequeño para tickets */
+    font-size: 9pt !important;
+    color: black !important;
+    -webkit-print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  /* --- Configuración del tamaño de la página de impresión --- */
+  @page {
+    /* Ancho estándar de ticket (80mm o 58mm son comunes). Ajusta a tu impresora.
+       La altura 'auto' permite que el ticket sea tan largo como sea necesario. */
+    size: 80mm auto; 
+    /* Márgenes mínimos para aprovechar el espacio */
+    margin: 3mm;
+  }
+
+  /* --- Contenedor principal del ticket --- */
+  #presupuesto-imprimible,
+  #presupuesto-imprimible * {
+    visibility: visible !important;
+  }
+
+  #presupuesto-imprimible {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    /* El ancho debe ser del 100% del área de impresión (definida por @page) */
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+  }
+
+  /* --- Estilos de los elementos del Ticket --- */
+  .presupuesto-header, .info-empresa, .logo-container {
+    text-align: center !important; /* Centrar todo en el header es común en tickets */
+    display: block !important; /* Evitamos flexbox complejo, apilamos los elementos */
+  }
+
+  .logo-container .logo {
+    max-width: 150px !important; /* Ajusta el tamaño de tu logo */
+    margin: 0 auto 5px auto !important; /* Centrar logo */
+    display: block !important;
+  }
+  
+  .sub-logo-text {
+      font-size: 0.8em !important;
+      margin-bottom: 5px !important;
+  }
+
+  .info-empresa {
+      font-size: 0.9em !important;
+      margin-bottom: 8px !important;
+      border-top: 1px dashed black !important;
+      border-bottom: 1px dashed black !important;
+      padding: 5px 0 !important;
+  }
+
+  .info-empresa p {
+    margin: 1px 0 !important;
+  }
+
+  /* --- Tablas de datos principales (Cliente, Fecha, etc.) --- */
+  .tabla-datos-principales,
+  .tabla-datos-secundarios {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    margin-bottom: 8px !important;
+    font-size: 0.9em !important;
+  }
+
+  /* Quitamos los bordes complejos y usamos un layout más simple de dos columnas */
+  .tabla-datos-principales td,
+  .tabla-datos-secundarios td {
+    padding: 2px 1px !important;
+    border: none !important; /* Sin bordes para un look más limpio */
+    vertical-align: top !important;
+  }
+
+  .tabla-datos-principales td:first-child,
+  .tabla-datos-secundarios td:first-child {
+    font-weight: bold !important;
+    width: auto !important; /* El ancho se ajusta al contenido */
+    padding-right: 5px !important;
+    background-color: transparent !important;
+  }
+  
+  .tabla-datos-secundarios tr.total-row td { /* Asigna una clase 'total-row' a la fila del total para darle estilo */
+      font-size: 1.2em !important;
+      font-weight: bold !important;
+      border-top: 1px solid black !important;
+      border-bottom: 1px solid black !important;
+      padding-top: 4px !important;
+      padding-bottom: 4px !important;
+  }
+
+  /* --- Tabla de productos --- */
+  .detalle-productos {
+    margin-top: 10px !important;
+  }
+
+  .tabla-items {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    font-size: 0.95em !important;
+  }
+  
+  /* Encabezados de la tabla de items */
+  .tabla-items th {
+    border-bottom: 1.5px solid black !important;
+    border-top: 1.5px solid black !important;
+    padding: 4px 2px !important;
+    text-align: left !important;
+    font-weight: bold !important;
+    background-color: transparent !important;
+  }
+  
+  /* Celdas de la tabla de items */
+  .tabla-items td {
+    padding: 3px 2px !important;
+    text-align: left !important;
+    vertical-align: top !important;
+    border: none !important; /* Quitamos bordes en cada celda */
+  }
+  
+  /* Línea divisoria entre productos para mayor claridad */
+  .tabla-items tr:not(:last-child) td {
+      border-bottom: 1px dashed #666 !important;
+  }
+
+  /* Ajustes de alineación para columnas específicas */
+  .tabla-items .col-cantidad,
+  .tabla-items .col-subtotal {
+      text-align: right !important; /* Alinear números a la derecha */
+  }
+}@media print {
   body, html {
     visibility: hidden !important;
     margin: 0 !important;
