@@ -212,10 +212,16 @@ export function Navbar() {
                 {/* Botones de la derecha, podrías condicionarlos también si es necesario */}
                 {user && ( // Mostrar estos botones solo si hay un usuario logueado
                     <div className="space-x-4 flex items-center">
-                        <Button className="bg-blue-600 hover:bg-blue-800 hidden md:inline-flex">
+                        <Button asChild>
+                        <a
+                            href="https://docs.google.com/document/d/12KQzz4cuZpppyin51XasedYbP6R_ZhFHPSDcyoU2UHY/edit?usp=sharing"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                        >
                             Manual del Usuario
                             <BookOpenIcon className="w-5 h-5 ml-2" aria-hidden="true" />
-                        </Button>
+                        </a>
+                    </Button>
                         <Button
                             asChild
                             className="bg-blue-600 hover:bg-blue-800 hidden md:inline-flex"
