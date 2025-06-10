@@ -1,13 +1,15 @@
 "use client";
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useProductsContext, Producto as ProductoContextType } from "@/context/ProductsContext";
 import { useClientesContext } from "@/context/ClientesContext";
+import Select from 'react-select';
 
 type ProductoPedido = {
   producto: number;
   qx: number;
   precio: number;
   total: number;
+  observacion?: string;
 };
 
 interface IFormData {
@@ -44,10 +46,9 @@ const initialFormData: IFormData = {
 };
 
 const initialProductos: ProductoPedido[] = [
-  { producto: 0, qx: 0, precio: 0, total: 0 },
+  { producto: 0, qx: 0, precio: 0, total: 0, observacion: "" },
 ];
 
-// Opciones para el select de vendedor
 const VENDEDORES = ["martin", "moises", "sergio", "gabriel", "mauricio", "elias", "ardiles", "redonedo"];
 
 
@@ -65,7 +66,14 @@ export default function RegistrarPedidoPuertaPage() {
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const productosContext = useProductsContext();
-  const [nombreVendedor, setNombreVendedor] = useState<string>(''); // El valor inicial es string vacío para el select
+  const [nombreVendedor, setNombreVendedor] = useState<string>(''); 
+
+  const opcionesDeProductoParaSelect = useMemo(() => 
+    productosContext?.productos.map((prod: ProductoContextType) => ({
+      value: prod.id,
+      label: prod.nombre,
+    })) || [],
+  [productosContext?.productos]);
 
   useEffect(() => {
     const now = new Date();
@@ -140,9 +148,8 @@ export default function RegistrarPedidoPuertaPage() {
         } else {
             setFormData(prev => ({ ...prev, vuelto: 0 }));
         }
-      }
-      //eslint-disable-next-line
-       catch (error: any) {
+        //eslint-disable-next-line
+      } catch (error: any) {
         console.error("Error en recalcularTodo:", error);
         setErrorMessage(error.message || "Error al recalcular totales/vuelto.");
         setTotalCalculadoApi(null);
@@ -157,8 +164,80 @@ export default function RegistrarPedidoPuertaPage() {
         setTotalCalculadoApi(null);
         setFormData(prev => ({ ...prev, vuelto: 0 }));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [montoBaseProductos, formData.formaPago, formData.requiereFactura, formData.montoPagado]);
+
+  // CAMBIO: Se introduce la función orquestadora para manejar los precios.
+  const recalculatePricesForProducts = useCallback(async (currentProducts: ProductoPedido[]) => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+        setErrorMessage("No autenticado. No se pueden calcular precios.");
+        return;
+    }
+
+    const productQuantities = new Map<number, { totalQuantity: number; indices: number[] }>();
+    currentProducts.forEach((p, index) => {
+        if (p.producto > 0 && p.qx > 0) {
+            const existing = productQuantities.get(p.producto);
+            if (existing) {
+                existing.totalQuantity += p.qx;
+                existing.indices.push(index);
+            } else {
+                productQuantities.set(p.producto, {
+                    totalQuantity: p.qx,
+                    indices: [index],
+                });
+            }
+        }
+    });
+
+    const pricePromises = Array.from(productQuantities.entries()).map(
+        async ([productoId, { totalQuantity, indices }]) => {
+            try {
+                const precioRes = await fetch(`https://quimex.sistemataup.online/productos/calcular_precio/${productoId}`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+                    body: JSON.stringify({ producto_id: productoId, quantity: totalQuantity }),
+                });
+                if (!precioRes.ok) {
+                    const errData = await precioRes.json().catch(() => ({ message: "Error al calcular precio." }));
+                    throw new Error(errData.message || "Error al calcular precio.");
+                }
+                const precioData = await precioRes.json();
+                return {
+                    precio: precioData.precio_venta_unitario_ars || 0,
+                    indices,
+                };
+              //eslint-disable-next-line
+            } catch (error: any) {
+                console.error(`Error al obtener precio para producto ID ${productoId}:`, error);
+                setErrorMessage(error.message || `Error al obtener precio del producto ID ${productoId}.`);
+                return { precio: 0, indices };
+            }
+        }
+    );
+
+    const priceResults = await Promise.all(pricePromises);
+    
+    const updatedProducts = [...currentProducts];
+
+    priceResults.forEach(result => {
+        const { precio, indices } = result;
+        indices.forEach(index => {
+            const item = updatedProducts[index];
+            item.precio = precio;
+            item.total = item.precio * item.qx;
+        });
+    });
+
+    updatedProducts.forEach(item => {
+        if (item.producto === 0 || item.qx === 0) {
+            item.precio = 0;
+            item.total = 0;
+        }
+    });
+    
+    setProductos(updatedProducts);
+  }, [setErrorMessage]);
 
   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
@@ -173,57 +252,56 @@ export default function RegistrarPedidoPuertaPage() {
     });
   };
 
-  // Cambiado el tipo de evento a HTMLSelectElement
   const handleVendedorInputChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setNombreVendedor(e.target.value);
   };
-
-  const handleProductoChange = async (
+  
+  const handleProductSelectChange = async (
     index: number,
-    e: React.ChangeEvent<HTMLInputElement> | React.ChangeEvent<HTMLSelectElement>
+    selectedOption: { value: number; label: string } | null
+  ) => {
+    const nuevosProductos = [...productos];
+    const currentProductItem = nuevosProductos[index];
+
+    if (selectedOption) {
+        currentProductItem.producto = selectedOption.value;
+        currentProductItem.qx = currentProductItem.qx > 0 ? currentProductItem.qx : 1;
+    } else {
+        nuevosProductos[index] = { ...initialProductos[0] };
+    }
+    
+    setProductos(nuevosProductos);
+    await recalculatePricesForProducts(nuevosProductos);
+  };
+
+  const handleProductRowInputChange = async (
+    index: number,
+    e: React.ChangeEvent<HTMLInputElement>
   ) => {
     const { name, value } = e.target;
     const nuevosProductos = [...productos];
     const currentProductItem = nuevosProductos[index];
-    if (name === "qx") currentProductItem.qx = parseInt(value) || 0;
-    else if (name === "producto") currentProductItem.producto = parseInt(value) || 0;
 
-    const productoId = currentProductItem.producto;
-    const cantidad = currentProductItem.qx;
-
-    if (productoId && cantidad > 0) {
-      try {
-        const token = localStorage.getItem("token");
-        const precioRes = await fetch(`https://quimex.sistemataup.online/productos/calcular_precio/${productoId}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-          body: JSON.stringify({ producto_id: productoId, quantity: cantidad }),
-        });
-        if (!precioRes.ok) {
-          const errData = await precioRes.json().catch(()=>({message:"Error calculando precio."}));
-          throw new Error(errData.message || "Error calculando precio.");
-        }
-        const precioData = await precioRes.json();
-        currentProductItem.precio = precioData.precio_venta_unitario_ars || 0;
-        currentProductItem.total = precioData.precio_total_calculado_ars || 0;
-        //eslint-disable-next-line
-      } catch (error: any) {
-        console.error("Error en carga de precio:", error);
-        setErrorMessage(error.message || "Error al obtener precio de producto.")
-        currentProductItem.precio = 0; currentProductItem.total = 0;
-      }
-    } else {
-      currentProductItem.precio = 0; currentProductItem.total = 0;
+    if (name === "qx") {
+        currentProductItem.qx = parseInt(value) || 0;
+    } else if (name === "observacion") {
+        currentProductItem.observacion = value;
     }
+    
     setProductos(nuevosProductos);
+    await recalculatePricesForProducts(nuevosProductos);
   };
 
-  const agregarProducto = () => setProductos([...productos, { producto: 0, qx: 0, precio: 0, total: 0 }]);
-  const eliminarProducto = (index: number) => {
+  const agregarProducto = () => setProductos([...productos, { producto: 0, qx: 0, precio: 0, total: 0, observacion: "" }]);
+  
+  const eliminarProducto = async (index: number) => {
     const nuevosProductos = [...productos];
     nuevosProductos.splice(index, 1);
-    if (nuevosProductos.length === 0) nuevosProductos.push({ producto: 0, qx: 0, precio: 0, total: 0 });
+    if (nuevosProductos.length === 0) {
+        nuevosProductos.push({ producto: 0, qx: 0, precio: 0, total: 0, observacion: "" });
+    }
     setProductos(nuevosProductos);
+    await recalculatePricesForProducts(nuevosProductos);
   };
 
   const handleMontoPagadoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -233,7 +311,7 @@ export default function RegistrarPedidoPuertaPage() {
 
   const handleSubmit = async (e: React.FormEvent ) => {
     e.preventDefault(); setIsSubmitting(true); setSuccessMessage(''); setErrorMessage('');
-    if (!nombreVendedor.trim()) { // Se mantiene el .trim() por si acaso, aunque con select es menos probable
+    if (!nombreVendedor.trim()) { 
         setErrorMessage("Por favor, seleccione un vendedor.");
         setIsSubmitting(false);
         return;
@@ -254,8 +332,12 @@ export default function RegistrarPedidoPuertaPage() {
     const dataPayload = {
       usuario_interno_id: parseInt(usuarioId, 10),
       nombre_vendedor: nombreVendedor.trim(),
-      items: productos.filter(i=>i.producto!==0&&i.qx>0).map(i=>({producto_id:i.producto,cantidad:i.qx})),
-      cliente_id:0,  //estatico para que el back no de error
+      items: productos.filter(i=>i.producto!==0&&i.qx>0).map(i=>({
+        producto_id: i.producto,
+        cantidad: i.qx,
+        observacion_item: i.observacion || ""
+      })),
+      cliente_id:0, 
       fecha_emision: formData.fechaEmision || new Date().toISOString().slice(0,16),
       fecha_pedido: formData.fechaEmision || new Date().toISOString().slice(0,16),
       direccion_entrega: "", 
@@ -287,7 +369,7 @@ export default function RegistrarPedidoPuertaPage() {
         });
         setProductos(initialProductos);
         setTotalCalculadoApi(null);
-        setNombreVendedor(''); // Resetear vendedor
+        setNombreVendedor('');
          if (result.venta_id) handleImprimirPresupuesto(result.venta_id); 
       } else {
         setErrorMessage(result.message || result.detail || result.error || `Error ${response.status}`);
@@ -327,11 +409,10 @@ export default function RegistrarPedidoPuertaPage() {
   return (
     <>
       <div className="flex items-center justify-center min-h-screen bg-indigo-900 py-10 px-4 print:hidden">
-        <div className="bg-white p-6 md:p-8 rounded-lg shadow-md w-full max-w-4xl">
+        <div className="bg-white p-6 md:p-8 rounded-lg shadow-md w-full max-w-5xl">
           <h2 className="text-3xl font-bold text-center text-indigo-800 mb-4">
             Registrar Pedido en Puerta
           </h2>
-          {/* CAMBIO: Input de vendedor a Select */}
           <div className="mb-6">
               <label htmlFor="nombreVendedor" className="block text-sm font-medium text-gray-700 mb-1">
                   Vendedor*
@@ -381,24 +462,45 @@ export default function RegistrarPedidoPuertaPage() {
 
             <fieldset className="border p-4 rounded-md">
               <legend className="text-lg font-medium text-gray-700 px-2">Productos</legend>
-              <div className="mb-2 hidden md:grid md:grid-cols-[minmax(0,1fr)_90px_100px_100px_32px] items-center gap-2 font-semibold text-sm text-gray-600 px-3">
-                <span>Producto*</span><span className="text-center">Cantidad*</span><span className="text-right">Precio U.</span><span className="text-right">Total</span><span />
+              <div className="mb-2 hidden md:grid md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_90px_100px_100px_32px] items-center gap-2 font-semibold text-sm text-gray-600 px-3">
+                <span>Producto*</span>
+                <span>Observ. Prod.</span>
+                <span className="text-center">Cantidad*</span>
+                <span className="text-right">Precio U.</span>
+                <span className="text-right">Total</span>
+                <span />
               </div>
               <div className="space-y-3">
                 {productos.map((item, index) => (
-                  <div key={index} className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_90px_100px_100px_32px] items-center gap-2 border-b pb-2 last:border-b-0 md:border-none md:pb-0">
-                    <div className="w-full">
-                      <select name="producto" value={item.producto || 0} onChange={(e) => handleProductoChange(index, e)} required
-                        className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500">
-                        <option value={0} disabled> -- Seleccionar -- </option>
-                        {productosContext?.productos.map((prod: ProductoContextType) => <option value={prod.id} key={prod.id}>{prod.nombre}</option>)}
-                      </select>
-                    </div>
-                    <div className="w-full">
-                      {/* CAMBIO: Añadida clase no-spinners */}
-                      <input type="number" name="qx" placeholder="Cant." value={item.qx === 0 ? '' : item.qx} onChange={(e) => handleProductoChange(index, e)} min="1" required
-                        className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-center focus:outline-none focus:ring-1 focus:ring-indigo-500 no-spinners"/>
-                    </div>
+                  <div key={index} className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_90px_100px_100px_32px] items-center gap-2 border-b pb-2 last:border-b-0 md:border-none md:pb-0">
+                    
+                    <Select
+                      name={`producto-${index}`}
+                      options={opcionesDeProductoParaSelect}
+                      value={opcionesDeProductoParaSelect.find(opt => opt.value === item.producto) || null}
+                      onChange={(selectedOption) => handleProductSelectChange(index, selectedOption)}
+                      placeholder="Buscar producto..."
+                      isClearable
+                      isSearchable
+                      isLoading={productosContext.loading}
+                      noOptionsMessage={() => "No se encontraron productos"}
+                      loadingMessage={() => "Cargando productos..."}
+                      className="text-sm react-select-container"
+                      classNamePrefix="react-select"
+                    />
+
+                    <input
+                      type="text"
+                      name="observacion"
+                      placeholder="Obs. ítem"
+                      value={item.observacion || ''}
+                      onChange={(e) => handleProductRowInputChange(index, e)}
+                      className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                    
+                    <input type="number" name="qx" placeholder="Cant." value={item.qx === 0 ? '' : item.qx} onChange={(e) => handleProductRowInputChange(index, e)} min="1" required
+                      className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-center focus:outline-none focus:ring-1 focus:ring-indigo-500 no-spinners"/>
+                    
                     <input type="text" value={`$ ${item.precio.toFixed(2)}`} readOnly className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-right bg-gray-100"/>
                     <input type="text" value={`$ ${item.total.toFixed(2)}`} readOnly className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-right bg-gray-100"/>
                     <div className="flex justify-end md:justify-center items-center">
@@ -429,7 +531,7 @@ export default function RegistrarPedidoPuertaPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="montoPagado">Monto Pagado</label>
                   <input
                     id="montoPagado"
-                    type="number" /* También podrías añadir no-spinners aquí si quieres */
+                    type="number"
                     name="montoPagado"
                     className="w-full bg-white shadow-sm border rounded py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 no-spinners"
                     value={formData.montoPagado === 0 ? '' : formData.montoPagado}
@@ -472,7 +574,6 @@ export default function RegistrarPedidoPuertaPage() {
         </div>
       </div>
 
-      {/* Sección imprimible */}
       <div id="presupuesto-imprimible" className="hidden print:block presupuesto-container">
         <header className="presupuesto-header">
           <div className="logo-container"><img src="/logo.png" alt="QuiMex" className="logo" /><p className="sub-logo-text">PRESUPUESTO NO VALIDO COMO FACTURA</p></div>
@@ -495,18 +596,48 @@ export default function RegistrarPedidoPuertaPage() {
         </section>
         <section className="detalle-productos">
           <table className="tabla-items">
-            <thead><tr><th>ITEM</th><th>PRODUCTO</th><th>CANTIDAD</th><th>SUBTOTAL</th></tr></thead>
+            <thead><tr><th>ITEM</th><th>PRODUCTO</th><th>OBSERV.</th><th>CANTIDAD</th><th>SUBTOTAL</th></tr></thead>
             <tbody>
               {productos.filter(p => p.producto && p.qx > 0).map((item, index) => {
                 const pInfo = productosContext?.productos.find(p => p.id === item.producto);
-                return (<tr key={`print-item-${index}`}><td>{index + 1}</td><td>{pInfo?.nombre || `ID: ${item.producto}`}</td><td className="text-center">{item.qx}</td><td className="text-right">$ {item.total.toFixed(2)}</td></tr>);
+                return (
+                <tr key={`print-item-${index}`}>
+                    <td>{index + 1}</td>
+                    <td>{pInfo?.nombre || `ID: ${item.producto}`}</td>
+                    <td>{item.observacion || '-'}</td>
+                    <td className="text-center">{item.qx}</td>
+                    <td className="text-right">$ {item.total.toFixed(2)}</td>
+                </tr>);
               })}
               {Array.from({ length: Math.max(0, 12 - productos.filter(p => p.producto && p.qx > 0).length) }).map((_, i) => 
-                <tr key={`empty-row-${i}`} className="empty-row"><td> </td><td> </td><td> </td><td> </td></tr>)}
+                <tr key={`empty-row-${i}`} className="empty-row"><td> </td><td> </td><td> </td><td> </td><td> </td></tr>)}
             </tbody>
           </table>
         </section>
       </div>
+      <style jsx global>{`
+        .no-spinners::-webkit-outer-spin-button,
+        .no-spinners::-webkit-inner-spin-button {
+          -webkit-appearance: none;
+          margin: 0;
+        }
+        .no-spinners {
+          -moz-appearance: textfield; /* Firefox */
+        }
+        .react-select__control {
+            border-color: rgb(209 213 219) !important;
+            box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05) !important;
+            min-height: 42px !important;
+        }
+        .react-select__control--is-focused {
+            border-color: rgb(99 102 241) !important;
+            box-shadow: 0 0 0 1px rgb(99 102 241) !important;
+        }
+        .react-select__value-container {
+            padding-left: 0.75rem !important;
+            padding-right: 0.75rem !important;
+        }
+      `}</style>
     </>
   );
 }

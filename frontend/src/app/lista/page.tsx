@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect, useCallback, ChangeEvent } from 'react';
 import CreateProductModal from '@/components/CreateProductModal';
+import * as XLSX from 'xlsx';
 
 // --- Tipos de Datos ---
 type ProductDataRaw = {
@@ -28,23 +29,16 @@ type ComboDataRaw = {
   nombre: string;
   costo_referencia_usd: number | null;
   sku_combo?: string | null;
-  margen_combo: number; // Este es el margen que se aplica al costo para obtener el precio
+  margen_combo: number;
   activo: boolean;
   descripcion?: string | null;
   info_calculada?: {
     costo_total_usd?: number | null;
-    // Este es el precio de VENTA del combo, no el costo.
-    // Si tu API realmente devuelve el precio de VENTA como 'costo_referencia_ars', lo usamos.
-    // Si 'costo_referencia_ars' es el costo y necesitas aplicar margen_combo, la lógica cambia.
-    // ASUMIENDO que 'costo_referencia_ars' es el PRECIO DE VENTA FINAL del combo.
-    costo_referencia_ars?: number | null; // <--- CAMBIO AQUÍ (si este es el PRECIO DE VENTA)
-    // Si el campo es realmente `precio_venta_sugerido_ars` como antes, mantenemos ese.
-    // Voy a usar `costo_referencia_ars` como dijiste.
+    costo_referencia_ars?: number | null;
   } | null;
   componentes?: ApiComboComponente[];
 };
 
-// Interfaz para el componente de combo de la API (usado en CreateProductModal)
 interface ApiComboComponente {
     cantidad: number;
     componente: {
@@ -67,15 +61,13 @@ export type DisplayItem = {
   margen?: number | null;
   ref_calculo?: string | null;
   costo_referencia_ars?: string | null;
-  costo_referencia_usd?: number | null; // Para productos, o costo USD del combo
-  precio?: number | null; // Precio ARS final
+  costo_referencia_usd?: number | null;
+  precio?: number | null;
   isLoadingPrice: boolean;
   priceError: boolean;
   es_combo_proxy?: boolean;
   combo_id_original?: number | null;
 };
-
-
 
 const ITEMS_PER_PAGE = 15;
 
@@ -114,14 +106,140 @@ export default function ProductPriceTable() {
   const [uploadErrorMsg, setUploadErrorMsg] = useState<string | null>(null);
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
 
+  const [isPreparingDownload, setIsPreparingDownload] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+
+
+  const generateAndDownloadExcel = (itemsToExport: DisplayItem[]) => {
+    const dataForExcel = itemsToExport.map((item) => {
+      let tipoDeItem = 'Producto';
+      if (item.type === 'combo') tipoDeItem = 'Combo';
+      else if (item.es_combo_proxy) tipoDeItem = 'Producto-Combo';
+
+      let precioFinal: number | string;
+      if (item.priceError) precioFinal = "Error de cálculo";
+      else if (typeof item.precio === 'number') precioFinal = item.precio;
+      else precioFinal = 'N/A';
+
+      return {
+        'ID/Código': item.codigo || item.id,
+        'Nombre': item.nombre,
+        'Tipo de Item': tipoDeItem,
+        'Fecha Actualización': item.fecha_actualizacion,
+        'Tipo Cálculo': item.tipo_calculo || 'N/A',
+        'Margen (%)': typeof item.margen === 'number' ? item.margen : 'N/A',
+        'Ref. Cálculo': item.ref_calculo || 'N/A',
+        'Costo USD': typeof item.costo_referencia_usd === 'number' ? item.costo_referencia_usd : 'N/A',
+        'Precio Venta ARS': precioFinal,
+      };
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(dataForExcel);
+    worksheet['!cols'] = [
+      { wch: 15 }, { wch: 45 }, { wch: 20 }, { wch: 20 }, { wch: 15 },
+      { wch: 12 }, { wch: 15 }, { wch: 15 }, { wch: 20 },
+    ];
+    const range = XLSX.utils.decode_range(worksheet['!ref']!);
+    for (let R = range.s.r + 1; R <= range.e.r; ++R) {
+      for (const C of [5, 7, 8]) { 
+        const cell_address = { c: C, r: R };
+        const cell_ref = XLSX.utils.encode_cell(cell_address);
+        if (worksheet[cell_ref] && typeof worksheet[cell_ref].v === 'number') {
+          worksheet[cell_ref].t = 'n';
+          if (C === 7 || C === 8) {
+            worksheet[cell_ref].z = '$#,##0.00';
+          } else if (C === 5) {
+            worksheet[cell_ref].z = '0.00"%"';
+          }
+        }
+      }
+    }
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Lista de Precios");
+    XLSX.writeFile(workbook, "Lista_De_Precios_Quimex.xlsx");
+  };
+
+  const handleDownloadExcel = async () => {
+    if (!window.confirm("Se calcularán todos los precios antes de descargar. Esto puede tardar unos segundos. ¿Deseas continuar?")) {
+      return;
+    }
+    setIsPreparingDownload(true);
+    setDownloadError(null);
+
+    try {
+      const itemsToCalculate = allItems.filter(item => item.precio === undefined);
+      let finalItems = [...allItems];
+
+      if (itemsToCalculate.length > 0) {
+        const pricePromises = itemsToCalculate.map(item =>
+          calculatePrice(item.id, item.type, item.combo_id_original)
+            .then(price => ({ id: item.displayId, price, status: 'fulfilled' as const }))
+            .catch(error => ({ id: item.displayId, error, status: 'rejected' as const }))
+        );
+
+        const results = await Promise.all(pricePromises);
+        
+        const updatedItemsMap = new Map(finalItems.map(item => [item.displayId, {...item}]));
+        
+        results.forEach(result => {
+          const item = updatedItemsMap.get(result.id);
+          if (item) {
+            if (result.status === 'fulfilled') {
+              item.precio = result.price;
+              item.priceError = false;
+            } else {
+              item.priceError = true;
+            }
+            item.isLoadingPrice = false;
+          }
+        });
+
+        finalItems = Array.from(updatedItemsMap.values());
+        setAllItems(finalItems);
+      }
+      generateAndDownloadExcel(finalItems);
+      //eslint-disable-next-line
+    } catch (err: any) {
+      console.error("Error durante la preparación de la descarga:", err);
+      setDownloadError("Ocurrió un error al calcular los precios. Inténtalo de nuevo.");
+    } finally {
+      setIsPreparingDownload(false);
+    }
+  };
+  
+  const calculatePrice = useCallback(async (originalId: number, type: 'product' | 'combo', comboIdForLookup?: number | null): Promise<number> => {
+    if (!token) throw new Error("Token no disponible.");
+    try {
+      //eslint-disable-next-line
+      const body: any = { quantity: 1 };
+      const calculateUrl = `https://quimex.sistemataup.online/productos/calcular_precio/${originalId}`;
+      body.producto_id = originalId;
+      const response = await fetch(calculateUrl, { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }, body: JSON.stringify(body) });
+      if (!response.ok) { 
+        const errorData = await response.json().catch(() => ({ detail: `Error ${response.status}` })); 
+        throw new Error(errorData.mensaje || errorData.detail || `Error ${response.status}`); 
+      }
+      const data = await response.json();
+      const precioCalculado = data.precio_total_calculado_ars;
+      if (typeof precioCalculado !== 'number') { 
+        throw new Error('Formato de precio inválido desde la API'); 
+      }
+      return precioCalculado;
+    } catch (error) {
+       console.log(comboIdForLookup);
+       console.error(`Error calculando precio para ${type} ID ${originalId}:`, error); 
+       throw error; 
+    }
+  }, [token]);
+
   const fetchDolarValues = useCallback(async () => {
     if (!token) { setErrorDolar("Token no disponible."); setLoadingDolar(false); return; }
-    setLoadingDolar(true); setErrorDolar(null); setErrorDolarSave(null);
+    setLoadingDolar(true); setErrorDolar(null);
     try {
       const res = await fetch('https://quimex.sistemataup.online/tipos_cambio/obtener_todos', { headers: { "Authorization": `Bearer ${token}` } });
       if (!res.ok) throw new Error(`Error ${res.status}`);
       const data = await res.json();
-      if (!Array.isArray(data) || data.length < 2) throw new Error("Formato inesperado TC");
       //eslint-disable-next-line
       const quimexValor = data.find((d: any) => d.nombre === "Empresa")?.valor;
       //eslint-disable-next-line
@@ -132,67 +250,13 @@ export default function ProductPriceTable() {
     finally { setLoadingDolar(false); }
   }, [token]);
 
-  const handleSaveDolarValues = async () => {
-     if (!token) { setErrorDolarSave("Token no disponible."); return; }
-     const oficialNum = parseFloat(editDolarOficial);
-     const quimexNum = parseFloat(editDolarQuimex);
-     if (isNaN(oficialNum) || oficialNum < 0 || isNaN(quimexNum) || quimexNum < 0) { setErrorDolarSave("Valores inválidos."); return; }
-     setLoadingDolarSave(true); setErrorDolarSave(null);
-     const nombreOficial = "Oficial"; const nombreEmpresa = "Empresa";
-     const baseUrl = 'https://quimex.sistemataup.online/tipos_cambio/actualizar';
-     try {
-         const responses = await Promise.allSettled([
-             fetch(`${baseUrl}/${nombreOficial}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', "Authorization": `Bearer ${token}` }, body: JSON.stringify({ valor: oficialNum }), }),
-             fetch(`${baseUrl}/${nombreEmpresa}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', "Authorization": `Bearer ${token}` }, body: JSON.stringify({ valor: quimexNum }), })
-         ]);
-         const errors: string[] = []; let success = true;
-         responses.forEach((response, index) => {
-            const name = index === 0 ? nombreOficial : nombreEmpresa;
-            if (response.status === 'rejected' || (response.status === 'fulfilled' && !response.value.ok)) {
-                success = false;
-                let errorMsg = `${name}: Error Desconocido`;
-                if(response.status === 'fulfilled' && response.value){
-                    errorMsg = `${name}: Error ${response.value.status} - ${response.value.statusText}`;
-                } else if(response.status === 'rejected'){
-                    errorMsg = `${name}: Error Red ${response.reason}`;
-                }
-                errors.push(errorMsg);
-                console.error(errorMsg);
-            } else {
-                console.log(`${name} OK`);
-            }
-         });
-         if (success) {
-             setDolarOficial(oficialNum); setDolarQuimex(quimexNum); setIsEditingDolar(false); alert("Valores Dólar actualizados.");
-         } else {
-             setErrorDolarSave(`Errores: ${errors.join('; ')}`);
-         }
-     }
-     //eslint-disable-next-line
-     catch (err: any) { console.error("Error al guardar Dólar:", err); setErrorDolarSave(err.message || "Error de red."); }
-     finally { setLoadingDolarSave(false); }
-  };
-
-  const handleEditDolarClick = () => { setEditDolarOficial(dolarOficial?.toString() ?? ''); setEditDolarQuimex(dolarQuimex?.toString() ?? ''); setIsEditingDolar(true); setErrorDolarSave(null); };
-  const handleCancelDolarEdit = () => { setIsEditingDolar(false); setErrorDolarSave(null); };
-  const handleDolarInputChange = (e: ChangeEvent<HTMLInputElement>) => { const { name, value } = e.target; const s = value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1'); if (name === 'dolarOficial') setEditDolarOficial(s); else if (name === 'dolarQuimex') setEditDolarQuimex(s); };
-  useEffect(() => { if (token) fetchDolarValues(); }, [fetchDolarValues, token]);
-
   const fetchAndCombineData = useCallback(async () => {
-    if (!token) {
-      setErrorInitial("Token no disponible."); setLoadingInitial(false); setAllItems([]); setDisplayedItems([]); return;
-    }
-    setLoadingInitial(true); setErrorInitial(null); setDeleteError(null);
-
+    if (!token) { setErrorInitial("Token no disponible."); setLoadingInitial(false); return; }
+    setLoadingInitial(true); setErrorInitial(null);
     try {
       const [productsResponse, combosResponse] = await Promise.all([
-        fetch(`https://quimex.sistemataup.online/productos/obtener_todos_paginado?page=1&per_page=10000`, {
-            headers: { "Authorization": `Bearer ${token}` }
-        }),
-        // Asegúrate de que `incluir_info_usd=true` también traiga `costo_referencia_ars` si ese es el campo
-        fetch('https://quimex.sistemataup.online/combos/obtener-todos?incluir_info_usd=true&incluir_componentes=false', { // No necesitamos componentes aquí si el precio ya viene
-            headers: { "Authorization": `Bearer ${token}` }
-        })
+        fetch(`https://quimex.sistemataup.online/productos/obtener_todos_paginado?page=1&per_page=10000`, { headers: { "Authorization": `Bearer ${token}` } }),
+        fetch('https://quimex.sistemataup.online/combos/obtener-todos?incluir_info_usd=true&incluir_componentes=false', { headers: { "Authorization": `Bearer ${token}` } })
       ]);
 
       if (!productsResponse.ok) throw new Error(`Productos: Error ${productsResponse.status}`);
@@ -201,51 +265,25 @@ export default function ProductPriceTable() {
 
       if (!combosResponse.ok) throw new Error(`Combos: Error ${combosResponse.status}`);
       const rawCombos: ComboDataRaw[] = await combosResponse.json();
-
+      
       const displayProducts: DisplayItem[] = rawProducts.map(p => ({
-        id: p.id,
-        displayId: `product-${p.id}`,
-        type: 'product',
-        nombre: p.nombre,
-        codigo: p.codigo || p.id.toString(),
-        fecha_actualizacion: formatDate(p.fecha_actualizacion_costo),
-        tipo_calculo: p.tipo_calculo || undefined,
-        margen: p.margen === null ? undefined : p.margen,
-        ref_calculo: p.ref_calculo || undefined,
-        costo_referencia_usd: p.costo_referencia_usd === null ? undefined : p.costo_referencia_usd,
-        es_combo_proxy: p.es_combo || false,
-        combo_id_original: p.combo_id || null,
-        precio: undefined,
-        isLoadingPrice: true, // Productos siempre necesitan calcular precio (o combos proxy si no viene de API combo)
-        priceError: false,
+        id: p.id, displayId: `product-${p.id}`, type: 'product', nombre: p.nombre,
+        codigo: p.codigo || p.id.toString(), fecha_actualizacion: formatDate(p.fecha_actualizacion_costo),
+        tipo_calculo: p.tipo_calculo || undefined, margen: p.margen === null ? undefined : p.margen,
+        ref_calculo: p.ref_calculo || undefined, costo_referencia_usd: p.costo_referencia_usd === null ? undefined : p.costo_referencia_usd,
+        es_combo_proxy: p.es_combo || false, combo_id_original: p.combo_id || null,
+        precio: undefined, isLoadingPrice: true, priceError: false,
       }));
 
       const productProxyComboIds = new Set(displayProducts.filter(p => p.es_combo_proxy && p.combo_id_original).map(p => p.combo_id_original));
 
-      const displayCombos: DisplayItem[] = rawCombos
-        .filter(c => !productProxyComboIds.has(c.id))
-        .map(c => {
-            // Usar 'costo_referencia_ars' de info_calculada como el precio del combo
-            const precioComboArs = c.costo_referencia_ars;
-            return {
-                id: c.id,
-                displayId: `combo-${c.id}`,
-                type: 'combo',
-                nombre: c.nombre,
-                
-                codigo: c.sku_combo || `CMB-${c.id}`,
-                fecha_actualizacion: 'N/A',
-                tipo_calculo: "COMBO",
-                margen: c.margen_combo ? c.margen_combo * 100 : undefined,
-                ref_calculo: "-",
-                costo_referencia_usd: c.costo_referencia_usd,
-                es_combo_proxy: false,
-                combo_id_original: c.id,
-                precio: c.costo_referencia_ars,  //VER SI ANDA
-                isLoadingPrice: precioComboArs === undefined, // Si no vino 'costo_referencia_ars', necesita calcular
-                priceError: false,
-            };
-      });
+      const displayCombos: DisplayItem[] = rawCombos.filter(c => !productProxyComboIds.has(c.id)).map(c => ({
+        id: c.id, displayId: `combo-${c.id}`, type: 'combo', nombre: c.nombre,
+        codigo: c.sku_combo || `CMB-${c.id}`, fecha_actualizacion: 'N/A', tipo_calculo: "COMBO",
+        margen: c.margen_combo ? c.margen_combo * 100 : undefined, ref_calculo: "-",
+        costo_referencia_usd: c.costo_referencia_usd, es_combo_proxy: false, combo_id_original: c.id,
+        precio: c.costo_referencia_ars, isLoadingPrice: c.costo_referencia_ars === undefined, priceError: false,
+      }));
 
       const combined = [...displayProducts, ...displayCombos].sort((a, b) => a.nombre.localeCompare(b.nombre));
       setAllItems(combined);
@@ -253,17 +291,17 @@ export default function ProductPriceTable() {
     } catch (err: any) {
       console.error("Error fetchAndCombineData:", err);
       setErrorInitial(err.message || 'Error cargando datos combinados.');
-      setAllItems([]);
     } finally {
-        setLoadingInitial(false);
+      setLoadingInitial(false);
     }
   }, [token]);
 
   useEffect(() => {
     if (token) {
       fetchAndCombineData();
+      fetchDolarValues();
     }
-  }, [token, fetchAndCombineData]);
+  }, [token, fetchAndCombineData, fetchDolarValues]);
 
   useEffect(() => {
     let filtered = allItems;
@@ -278,86 +316,81 @@ export default function ProductPriceTable() {
     setTotalPages(Math.ceil(filtered.length / ITEMS_PER_PAGE));
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
     const paginated = filtered.slice(startIndex, startIndex + ITEMS_PER_PAGE);
-    setDisplayedItems(paginated);
-
+    
     const itemsNeedingPrice = paginated.filter(item => item.isLoadingPrice && item.precio === undefined);
     if (itemsNeedingPrice.length > 0) {
       const pricePromises = itemsNeedingPrice.map(item =>
-        // Si el item es combo y su precio no vino de info_calculada.costo_referencia_ars, calculatePrice intentará obtenerlo.
-        // Para productos, siempre se llamará a calculatePrice si isLoadingPrice es true.
         calculatePrice(item.id, item.type, item.combo_id_original)
+          .then(price => ({...item, precio: price, isLoadingPrice: false, priceError: false}))
+          .catch(() => ({...item, isLoadingPrice: false, priceError: true}))
       );
-      Promise.allSettled(pricePromises).then(priceResults => {
-        setDisplayedItems(currentDisplayed => {
-          const updatedDisplayed = currentDisplayed.map(dispItem => ({...dispItem}));
-          priceResults.forEach((result, index) => {
-            const sourceItemForThisResult = itemsNeedingPrice[index];
-            if (!sourceItemForThisResult) return;
-            const itemIndexInDisplayed = updatedDisplayed.findIndex(it => it.displayId === sourceItemForThisResult.displayId);
-            if (itemIndexInDisplayed !== -1) {
-              if (result.status === 'fulfilled') {
-                updatedDisplayed[itemIndexInDisplayed].precio = result.value;
-                updatedDisplayed[itemIndexInDisplayed].priceError = false;
-              } else {
-                updatedDisplayed[itemIndexInDisplayed].priceError = true;
-              }
-              updatedDisplayed[itemIndexInDisplayed].isLoadingPrice = false;
-            }
-          });
-          return updatedDisplayed;
+      Promise.all(pricePromises).then(resolvedItems => {
+        setAllItems(currentAllItems => {
+            const itemsMap = new Map(currentAllItems.map(i => [i.displayId, i]));
+            resolvedItems.forEach(resolved => itemsMap.set(resolved.displayId, resolved));
+            return Array.from(itemsMap.values());
         });
       });
     }
-  }, [allItems, searchTerm, currentPage]);
+    setDisplayedItems(paginated);
+
+  }, [allItems, searchTerm, currentPage, calculatePrice]);
 
   useEffect(() => { setCurrentPage(1); }, [searchTerm]);
-
-  const calculatePrice = async (originalId: number, type: 'product' | 'combo', comboIdForLookup?: number | null): Promise<number> => {
-    if (!token) throw new Error("Token no disponible.");
-    try {
-      // Para combos, ya esperamos que el precio venga de `info_calculada.costo_referencia_ars`.
-      // Esta función solo se llamará para combos si `isLoadingPrice` era true (es decir, el precio no vino).
-      // En ese caso, es un fallback o un error en la data, así que intentamos calcularlo como producto proxy.
-      // Si el item es un 'combo' puro y el precio no vino, esta llamada podría no ser la ideal.
-      // Idealmente, si es 'combo' y isLoadingPrice es true, deberías tener un endpoint específico /combos/calcular_precio/{comboId}
-      // o marcarlo como error si el precio es mandatorio del GET.
-
-      //eslint-disable-next-line
-      const body: any = { quantity: 1 };
-
-      // Si es un combo (puro o proxy) y necesitamos calcular su precio (porque no vino de la API de combos)
-      // Usamos el ID del producto (que sería el ID del proxy si es un producto-combo, o el ID del combo si es combo puro y originalId es el combo_id)
-      // La API de productos/calcular_precio debe ser capaz de manejar esto.
-      const calculateUrl = `https://quimex.sistemataup.online/productos/calcular_precio/${originalId}`;
-      body.producto_id = originalId;
-      // Si la API necesita una pista de que está calculando para un combo (aunque use el ID del producto proxy):
-      // if (type === 'combo' || (type === 'product' && comboIdForLookup)) {
-      //    body.for_combo_context = true; // Ejemplo de señal a la API
-      // }
-
-      const response = await fetch(calculateUrl, { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }, body: JSON.stringify(body) });
-      if (!response.ok) { const errorData = await response.json().catch(() => ({ detail: `Error ${response.status}` })); throw new Error(errorData.mensaje || errorData.detail || `Error ${response.status}`); }
-      const data = await response.json();
-      const precioCalculado = data.precio_total_calculado_ars;
-      if (typeof precioCalculado !== 'number') { throw new Error('Formato de precio inválido API'); }
-      return precioCalculado;
-    } catch (error) {
-        console.log(comboIdForLookup)
-       console.error(`Error calculando precio para ${type} ID ${originalId}:`, error); throw error; }
-  };
 
   const formatDate = (isoDateString: string | null | undefined): string => {
     if (!isoDateString) return 'N/A';
     try { const date = new Date(isoDateString); if (isNaN(date.getTime())) return 'Inválida'; return date.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }); }
-    catch (e) { console.log(e);
-        return 'Error fecha'; }
+    catch (e) { console.log(e); return 'Error fecha'; }
   };
+  
+  const handleSaveDolarValues = async () => {
+    if (!token) { setErrorDolarSave("Token no disponible."); return; }
+    const oficialNum = parseFloat(editDolarOficial);
+    const quimexNum = parseFloat(editDolarQuimex);
+    if (isNaN(oficialNum) || oficialNum < 0 || isNaN(quimexNum) || quimexNum < 0) { setErrorDolarSave("Valores inválidos."); return; }
+    setLoadingDolarSave(true); setErrorDolarSave(null);
+    const nombreOficial = "Oficial"; const nombreEmpresa = "Empresa";
+    const baseUrl = 'https://quimex.sistemataup.online/tipos_cambio/actualizar';
+    try {
+        const responses = await Promise.allSettled([
+            fetch(`${baseUrl}/${nombreOficial}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', "Authorization": `Bearer ${token}` }, body: JSON.stringify({ valor: oficialNum }), }),
+            fetch(`${baseUrl}/${nombreEmpresa}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', "Authorization": `Bearer ${token}` }, body: JSON.stringify({ valor: quimexNum }), })
+        ]);
+        const errors: string[] = []; let success = true;
+        responses.forEach((response, index) => {
+           const name = index === 0 ? nombreOficial : nombreEmpresa;
+           if (response.status === 'rejected' || (response.status === 'fulfilled' && !response.value.ok)) {
+               success = false;
+               let errorMsg = `${name}: Error Desconocido`;
+               if(response.status === 'fulfilled' && response.value){
+                   errorMsg = `${name}: Error ${response.value.status} - ${response.value.statusText}`;
+               } else if(response.status === 'rejected'){
+                   errorMsg = `${name}: Error Red ${response.reason}`;
+               }
+               errors.push(errorMsg);
+           }
+        });
+        if (success) {
+            setDolarOficial(oficialNum); setDolarQuimex(quimexNum); setIsEditingDolar(false); alert("Valores Dólar actualizados.");
+        } else {
+            setErrorDolarSave(`Errores: ${errors.join('; ')}`);
+        }
+    }
+    //eslint-disable-next-line
+    catch (err: any) { setErrorDolarSave(err.message || "Error de red."); }
+    finally { setLoadingDolarSave(false); }
+ };
+  
   const goToPreviousPage = () => { if (currentPage > 1) setCurrentPage(prev => prev - 1); };
   const goToNextPage = () => { if (totalPages > 0 && currentPage < totalPages) setCurrentPage(prev => prev + 1); };
   const handleOpenCreateProductModal = () => { setEditingItemId(null); setEditingItemType(null); setIsProductModalOpen(true); };
   const handleOpenEditProductModal = (item: DisplayItem) => { setEditingItemId(item.id); setEditingItemType(item.type); setIsProductModalOpen(true); };
   const handleCloseProductModal = () => { setIsProductModalOpen(false); setEditingItemId(null); setEditingItemType(null); };
   const handleProductCreatedOrUpdated = () => { if (token) fetchAndCombineData(); handleCloseProductModal(); };
+  const handleEditDolarClick = () => { setEditDolarOficial(dolarOficial?.toString() ?? ''); setEditDolarQuimex(dolarQuimex?.toString() ?? ''); setIsEditingDolar(true); setErrorDolarSave(null); };
+  const handleCancelDolarEdit = () => { setIsEditingDolar(false); setErrorDolarSave(null); };
+  const handleDolarInputChange = (e: ChangeEvent<HTMLInputElement>) => { const { name, value } = e.target; const s = value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1'); if (name === 'dolarOficial') setEditDolarOficial(s); else if (name === 'dolarQuimex') setEditDolarQuimex(s); };
 
   const handleDeleteProduct = async (itemToDelete: DisplayItem) => {
      if (!token) { setDeleteError("Token no disponible."); return; }
@@ -369,18 +402,16 @@ export default function ProductPriceTable() {
             const deleteComboUrl = `https://quimex.sistemataup.online/combos/eliminar/${comboIdParaBorrar}`;
             const comboResponse = await fetch(deleteComboUrl, { method: 'DELETE', headers: { "Authorization": `Bearer ${token}` }});
             if (!comboResponse.ok && comboResponse.status !== 404) { const err = await comboResponse.json().catch(()=>{}); throw new Error(`Combo: ${err?.error || err?.detalle || comboResponse.statusText || 'Error eliminando combo'}`);}
-            console.log(`Combo ID ${comboIdParaBorrar} procesado (status ${comboResponse.status})`);
         }
         if (itemToDelete.type === 'product') {
             const deleteProductUrl = `https://quimex.sistemataup.online/productos/eliminar/${itemToDelete.id}`;
             const productResponse = await fetch(deleteProductUrl, { method: 'DELETE', headers: { "Authorization": `Bearer ${token}` }});
             if (!productResponse.ok) { const err = await productResponse.json().catch(()=>{}); throw new Error(`Producto: ${err?.error || err?.detalle || productResponse.statusText || 'Error eliminando producto'}`);}
-            console.log(`Producto ID ${itemToDelete.id} eliminado.`);
         }
         alert(`"${itemToDelete.nombre}" eliminado.`);
         fetchAndCombineData();
         //eslint-disable-next-line
-     } catch (err: any) { console.error("Error eliminando:", err); setDeleteError(err.message); alert(`Error: ${err.message}`); }
+     } catch (err: any) { setDeleteError(err.message); alert(`Error: ${err.message}`); }
      finally { setDeletingItem(null); }
   };
 
@@ -409,7 +440,7 @@ export default function ProductPriceTable() {
       alert(result.message + (result.details?.message ? `\nDetalles: ${result.details.message}` : ''));
       fetchAndCombineData();
       //eslint-disable-next-line
-    } catch (error: any) { console.error("Error al subir CSV:", error); setUploadErrorMsg(error.message || "Error al subir."); }
+    } catch (error: any) { setUploadErrorMsg(error.message || "Error al subir."); }
     finally { setIsUploading(false); }
   };
 
@@ -435,7 +466,7 @@ export default function ProductPriceTable() {
                 <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{item.tipo_calculo}</td>
                 <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-left">{typeof item.margen === 'number' ? `${item.margen.toFixed(2)}%` : 'N/A'}</td>
                 <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{item.ref_calculo}</td>
-                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-left">{item.costo_referencia_usd}</td>
+                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-left">{typeof item.costo_referencia_usd === 'number' ? item.costo_referencia_usd.toFixed(2) : 'N/A'}</td>
                 <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-left"> {item.isLoadingPrice ? ( <span className="text-xs text-gray-400 italic">Calculando...</span> ) : item.priceError ? ( <span className="text-xs text-red-500 font-medium">Error Precio</span> ) : typeof item.precio === 'number' ? ( `$${item.precio.toFixed(2)}` ) : ( <span className="text-xs text-gray-400">N/A</span> )} </td>
                 <td className="px-4 py-3 whitespace-nowrap text-center text-sm space-x-2">
                     <button onClick={() => handleOpenEditProductModal(item)} disabled={isDeletingCurrent} className="text-indigo-600 hover:text-indigo-900 disabled:text-gray-400 hover:bg-indigo-100 px-2 py-1 rounded text-xs font-medium">Editar</button>
@@ -454,14 +485,38 @@ export default function ProductPriceTable() {
     <div className="p-4 md:p-6 bg-gray-100 min-h-screen">
       <div className="max-w-7xl mx-auto bg-white shadow-md rounded-lg p-4 md:p-6">
         <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
-          <input type="text" placeholder="Buscar por nombre o código..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="px-4 py-2 border rounded-md w-full md:w-1/3 lg:w-1/4"/>
-          <div className="flex flex-col sm:flex-row items-center gap-x-4 gap-y-2 w-full md:w-auto justify-end flex-wrap flex-grow">
-            <div className="text-sm flex items-center gap-1"> <label htmlFor="dolarOficialInput" className="font-medium">Dólar Oficial:</label> {loadingDolar ? "..." : isEditingDolar ? <input id="dolarOficialInput" type="text" name="dolarOficial" value={editDolarOficial} onChange={handleDolarInputChange} className="px-2 py-1 border rounded text-sm w-24" disabled={loadingDolarSave} inputMode="decimal" /> : dolarOficial !== null ? <span className="font-semibold">${dolarOficial.toFixed(2)}</span> : <span className="text-red-500 text-xs">{errorDolar || 'Error'}</span>} </div>
-            <div className="text-sm flex items-center gap-1"> <label htmlFor="dolarQuimexInput" className="font-medium">Dólar Empresa:</label> {loadingDolar ? "..." : isEditingDolar ? <input id="dolarQuimexInput" type="text" name="dolarQuimex" value={editDolarQuimex} onChange={handleDolarInputChange} className="px-2 py-1 border rounded text-sm w-24" disabled={loadingDolarSave} inputMode="decimal" /> : dolarQuimex !== null ? <span className="font-semibold">${dolarQuimex.toFixed(2)}</span> : <span className="text-red-500 text-xs">{errorDolar || 'Error'}</span>} </div>
-            <div className="flex items-center gap-2"> {isEditingDolar ? (<> <button onClick={handleSaveDolarValues} disabled={loadingDolarSave || loadingDolar} className={`px-3 py-1 text-xs rounded flex items-center gap-1 ${ loadingDolarSave || loadingDolar ? 'bg-gray-300 cursor-not-allowed' : 'bg-green-100 text-green-700 hover:bg-green-200' }`}> <svg className={`h-3 w-3 ${loadingDolarSave ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg> {loadingDolarSave ? '...' : 'Guardar'} </button> <button onClick={handleCancelDolarEdit} disabled={loadingDolarSave} className="px-3 py-1 text-xs bg-gray-100 rounded hover:bg-gray-200"> Cancelar </button> </>) : (<button onClick={handleEditDolarClick} disabled={loadingDolar || dolarOficial === null || dolarQuimex === null} className={`px-3 py-1 text-xs rounded flex items-center gap-1 ${ loadingDolar || dolarOficial === null || dolarQuimex === null ? 'bg-gray-300 cursor-not-allowed' : 'bg-blue-100 text-blue-700 hover:bg-blue-200' }`}> <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg> Editar Dólar </button> )} </div>
-            {errorDolarSave && ( <p className="text-xs text-red-600 mt-1 w-full text-right sm:text-left sm:w-auto">{errorDolarSave}</p> )}
-            <button onClick={handleOpenUploadModal} disabled={!token} className="w-full sm:w-auto bg-teal-500 text-white px-4 py-2 rounded-md shadow-sm hover:bg-teal-600 disabled:bg-gray-400 flex items-center justify-center gap-1 mt-2 sm:mt-0"> <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg> Actualizar Costos </button>
-            <button onClick={handleOpenCreateProductModal} disabled={!token} className="w-full sm:w-auto bg-indigo-600 text-white px-4 py-2 rounded-md shadow-sm hover:bg-indigo-700 disabled:bg-gray-400 flex items-center justify-center gap-1 mt-2 sm:mt-0"> <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"> <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" /> </svg> Crear Item </button>
+          <input type="text" placeholder="Buscar por nombre o código..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="px-4 py-2 border rounded-md w-full md:w-auto"/>
+          
+          <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto flex-wrap justify-end">
+            
+            <div className="flex items-center gap-x-4 gap-y-2 flex-wrap border p-2 rounded-md">
+                <div className="text-sm flex items-center gap-1"> <label htmlFor="dolarOficialInput" className="font-medium">Dólar Oficial:</label> {loadingDolar ? "..." : isEditingDolar ? <input id="dolarOficialInput" type="text" name="dolarOficial" value={editDolarOficial} onChange={handleDolarInputChange} className="px-2 py-1 border rounded text-sm w-24" disabled={loadingDolarSave} inputMode="decimal" /> : dolarOficial !== null ? <span className="font-semibold">${dolarOficial.toFixed(2)}</span> : <span className="text-red-500 text-xs">{errorDolar || 'Error'}</span>} </div>
+                <div className="text-sm flex items-center gap-1"> <label htmlFor="dolarQuimexInput" className="font-medium">Dólar Empresa:</label> {loadingDolar ? "..." : isEditingDolar ? <input id="dolarQuimexInput" type="text" name="dolarQuimex" value={editDolarQuimex} onChange={handleDolarInputChange} className="px-2 py-1 border rounded text-sm w-24" disabled={loadingDolarSave} inputMode="decimal" /> : dolarQuimex !== null ? <span className="font-semibold">${dolarQuimex.toFixed(2)}</span> : <span className="text-red-500 text-xs">{errorDolar || 'Error'}</span>} </div>
+                <div className="flex items-center gap-2"> {isEditingDolar ? (<> <button onClick={handleSaveDolarValues} disabled={loadingDolarSave || loadingDolar} className={`px-3 py-1 text-xs rounded flex items-center gap-1 ${ loadingDolarSave || loadingDolar ? 'bg-gray-300 cursor-not-allowed' : 'bg-green-100 text-green-700 hover:bg-green-200' }`}> <svg className={`h-3 w-3 ${loadingDolarSave ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg> {loadingDolarSave ? '...' : 'Guardar'} </button> <button onClick={handleCancelDolarEdit} disabled={loadingDolarSave} className="px-3 py-1 text-xs bg-gray-100 rounded hover:bg-gray-200"> Cancelar </button> </>) : (<button onClick={handleEditDolarClick} disabled={loadingDolar || dolarOficial === null || dolarQuimex === null} className={`px-3 py-1 text-xs rounded flex items-center gap-1 ${ loadingDolar || dolarOficial === null || dolarQuimex === null ? 'bg-gray-300 cursor-not-allowed' : 'bg-blue-100 text-blue-700 hover:bg-blue-200' }`}> <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg> Editar Dólar </button> )} </div>
+                {errorDolarSave && ( <p className="text-xs text-red-600 mt-1 w-full text-right sm:text-left sm:w-auto">{errorDolarSave}</p> )}
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+                <button
+                    onClick={handleDownloadExcel}
+                    disabled={!token || allItems.length === 0 || isPreparingDownload}
+                    className="w-full sm:w-auto bg-green-600 text-white px-4 py-2 rounded-md shadow-sm hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-wait flex items-center justify-center gap-2"
+                >
+                    {isPreparingDownload ? (
+                        <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
+                            <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25"></circle>
+                            <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" className="opacity-75" fill="currentColor"></path>
+                        </svg>
+                    ) : (
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                           <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 9.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 7.414V13a1 1 0 11-2 0V7.414L7.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                        </svg>
+                    )}
+                    {isPreparingDownload ? 'Preparando...' : 'Descargar Lista'}
+                </button>
+                <button onClick={handleOpenUploadModal} disabled={!token} className="w-full sm:w-auto bg-teal-500 text-white px-4 py-2 rounded-md shadow-sm hover:bg-teal-600 disabled:bg-gray-400 flex items-center justify-center gap-1"> <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg> Actualizar Costos </button>
+                <button onClick={handleOpenCreateProductModal} disabled={!token} className="w-full sm:w-auto bg-indigo-600 text-white px-4 py-2 rounded-md shadow-sm hover:bg-indigo-700 disabled:bg-gray-400 flex items-center justify-center gap-1"> <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"> <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" /> </svg> Crear Item </button>
+            </div>
           </div>
         </div>
 
@@ -469,6 +524,8 @@ export default function ProductPriceTable() {
         {loadingInitial && token && <p className="text-center text-gray-600 my-6">Cargando...</p>}
         {errorInitial && token && <p className="text-center text-red-600 my-6">Error: {errorInitial}</p>}
         {deleteError && token && <p className="text-center text-red-600 my-2 bg-red-50 p-2 rounded border text-sm">Error al eliminar: {deleteError}</p>}
+        {downloadError && <p className="text-center text-red-600 my-2 bg-red-50 p-2 rounded border text-sm">{downloadError}</p>}
+
 
         {!loadingInitial && !errorInitial && token && (
           <>

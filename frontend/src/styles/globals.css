@@ -130,7 +130,16 @@
     font-family: var(--font-sans, system-ui);
   }
 }
+/* Oculta las flechas en los inputs de tipo number */
+.no-spinners::-webkit-outer-spin-button,
+.no-spinners::-webkit-inner-spin-button {
+  -webkit-appearance: none !important;
+  margin: 0;
+}
 
+.no-spinners {
+  -moz-appearance: textfield; /* Para Firefox */
+}
 /* --- IMPRESIÓN --- */
 /* --- IMPRESIÓN PARA TICKET TÉRMICO --- */
 @media print {

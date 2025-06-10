@@ -3,12 +3,13 @@
 import { useProductsContext } from "@/context/ProductsContext"; 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 
-// ... (interfaces y constante VENDEDORES sin cambios) ...
+// CAMBIO: Añadido campo 'observacion'
 type ProductoPedido = {
   producto: number;
   qx: number;
   precio: number;
   total: number;
+  observacion?: string;
 };
 
 interface IFormData {
@@ -54,8 +55,9 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     observaciones: "",
   });
 
+  // CAMBIO: Estado inicial con 'observacion'
   const [productos, setProductos] = useState<ProductoPedido[]>([
-    { producto: 0, qx: 0, precio: 0, total: 0 },
+    { producto: 0, qx: 0, precio: 0, total: 0, observacion: "" },
   ]);
   const [totalCalculadoApi, setTotalCalculadoApi] = useState<TotalCalculadoAPI | null>(null);
   const [isCalculatingTotal, setIsCalculatingTotal] = useState(false);
@@ -68,7 +70,6 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
 
   const productosContext = useProductsContext();
 
-  // ... (cargarFormulario sin cambios) ...
   const cargarFormulario = useCallback(async (pedidoId: number) => {
     setIsLoading(true);
     setErrorMensaje('');
@@ -108,15 +109,19 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         requiereFactura: datosAPI.requiere_factura || false, 
         observaciones: datosAPI.observaciones || "",
       });
+      
+      // CAMBIO: Mapear 'observacion_item' de la API a 'observacion' en el estado
       //eslint-disable-next-line
       const productosCargados: ProductoPedido[] = datosAPI.detalles?.map((detalle: any) => ({
         producto: detalle.producto_id,
         qx: detalle.cantidad,
         precio: detalle.precio_unitario_venta_ars || 0,
         total: detalle.precio_total_item_ars || 0,
+        observacion: detalle.observacion_item || "", // NUEVA LÍNEA
       })) || [];
       
-      setProductos(productosCargados.length > 0 ? productosCargados : [{ producto: 0, qx: 0, precio: 0, total: 0 }]);
+      // CAMBIO: Estado inicial si no hay productos, debe incluir 'observacion'
+      setProductos(productosCargados.length > 0 ? productosCargados : [{ producto: 0, qx: 0, precio: 0, total: 0, observacion: "" }]);
     } //eslint-disable-next-line
      catch (error: any) {
       console.error("Error detallado en cargarFormulario:", error);
@@ -148,8 +153,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
       }
 
       if (montoBaseProductos <= 0) {
-        // Si la base es 0, el total calculado por API debería ser null.
-        if (totalCalculadoApi !== null) { // Solo actualiza si es necesario para evitar re-renders.
+        if (totalCalculadoApi !== null) { 
           setTotalCalculadoApi(null);
         }
         return;
@@ -179,12 +183,11 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         }
         const data: TotalCalculadoAPI = await response.json();
         
-        // Comprobar si los datos realmente cambiaron antes de setear el estado
         if (
-          !totalCalculadoApi || // Si antes era null
+          !totalCalculadoApi ||
           totalCalculadoApi.monto_final_con_recargos !== data.monto_final_con_recargos ||
           totalCalculadoApi.monto_base !== data.monto_base ||
-          totalCalculadoApi.forma_pago_aplicada !== data.forma_pago_aplicada || // Añadir más campos si es relevante
+          totalCalculadoApi.forma_pago_aplicada !== data.forma_pago_aplicada || 
           totalCalculadoApi.recargos?.transferencia !== data.recargos?.transferencia ||
           totalCalculadoApi.recargos?.factura_iva !== data.recargos?.factura_iva
         ) {
@@ -193,7 +196,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         //eslint-disable-next-line
       } catch (e:any) { 
         setErrorMensaje(e.message || "Error al calcular el total final."); 
-        if (totalCalculadoApi !== null) { // Solo actualiza si es necesario
+        if (totalCalculadoApi !== null) {
             setTotalCalculadoApi(null);
         }
       } finally { 
@@ -202,14 +205,14 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     };
     recalcularTotalConAPI();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [montoBaseProductos, formData.formaPago, formData.requiereFactura, isLoading, id /* NO incluir totalCalculadoApi aquí */]);
+  }, [montoBaseProductos, formData.formaPago, formData.requiereFactura, isLoading, id]);
 
   useEffect(() => {
     const calcularVueltoConAPI = async () => {
         const token = localStorage.getItem("token");
 
         if (!token || isLoading) {
-            let nuevoVueltoDeterminado = formData.vuelto; // Por defecto, no cambiar
+            let nuevoVueltoDeterminado = formData.vuelto; 
             if (!isLoading && montoBaseProductos === 0 && formData.montoPagado === 0) {
                 nuevoVueltoDeterminado = 0;
             } else if (!isLoading && montoBaseProductos === 0 && formData.montoPagado > 0) {
@@ -253,7 +256,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
                     setFormData(p => ({ ...p, vuelto: 0 }));
                 }
             }
-        } else { // montoPagado < montoFinalParaVuelto O montoFinalParaVuelto < 0 (este último caso no debería dar vuelto positivo)
+        } else {
             if (formData.vuelto !== 0) {
                 setFormData(p => ({ ...p, vuelto: 0 }));
             }
@@ -264,10 +267,8 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         calcularVueltoConAPI();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formData.montoPagado, totalCalculadoApi, montoBaseProductos, isLoading, isCalculatingTotal /* NO incluir formData.vuelto aquí */]);
+  }, [formData.montoPagado, totalCalculadoApi, montoBaseProductos, isLoading, isCalculatingTotal]);
 
-
-  // ... (handleFormChange, handleVendedorInputChange, handleSubmit, handleMontoPagadoChange, handleImprimirPresupuesto sin cambios) ...
   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
     const val = type === 'checkbox' ? (e.target as HTMLInputElement).checked :
@@ -366,9 +367,9 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
 
   return (
     <>
-      {/* ... (JSX sin cambios significativos, excepto que el input de cantidad de producto no tiene no-spinners) ... */}
       <div className="flex items-center justify-center min-h-screen bg-indigo-900 py-10 px-4 print:hidden">
-        <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-3xl">
+        {/* CAMBIO: Aumentado el ancho para dar espacio a la nueva columna */}
+        <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-5xl">
           
           <h2 className="text-3xl font-bold text-center text-indigo-800 mb-4">
             Detalle y Actualización del Pedido #{id}
@@ -409,13 +410,21 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
 
             <fieldset className="border p-4 rounded-md">
               <legend className="text-lg font-medium text-gray-700 px-2">Productos del Pedido</legend>
-              <div className="mb-2 hidden md:grid md:grid-cols-[1fr_90px_100px_100px] items-center gap-2 font-semibold text-sm text-gray-600 px-3">
-                <span>Producto</span><span className="text-center">Cant.</span><span className="text-right">P.Unit</span><span className="text-right">Total</span>
+              {/* CAMBIO: Añadida la cabecera de la columna de observación */}
+              <div className="mb-2 hidden md:grid md:grid-cols-[1fr_1fr_90px_100px_100px] items-center gap-2 font-semibold text-sm text-gray-600 px-3">
+                <span>Producto</span>
+                <span>Observ. Prod.</span> {/* NUEVA CABECERA */}
+                <span className="text-center">Cant.</span>
+                <span className="text-right">P.Unit</span>
+                <span className="text-right">Total</span>
               </div>
               <div className="space-y-2">
                 {productos.map((item, index) => (
-                  <div key={index} className="grid grid-cols-[1fr_90px_100px_100px] items-center gap-2 border-b pb-1 last:border-b-0">
+                  // CAMBIO: Añadido el campo de observación a la fila del producto
+                  <div key={index} className="grid grid-cols-1 md:grid-cols-[1fr_1fr_90px_100px_100px] items-center gap-2 border-b pb-1 last:border-b-0">
                     <input type="text" readOnly disabled value={productosContext.productos.find(p=>p.id===item.producto)?.nombre||`ID:${item.producto}`} className="shadow-sm border rounded w-full py-1 px-3 text-gray-700 bg-gray-100"/>
+                    {/* NUEVO CAMPO */}
+                    <input type="text" readOnly disabled value={item.observacion || ''} className="shadow-sm border rounded w-full py-1 px-3 text-gray-700 bg-gray-100 text-sm"/>
                     <input type="number" readOnly disabled value={item.qx===0?'':item.qx} className="shadow-sm border rounded w-full py-1 px-2 text-gray-700 text-center bg-gray-100"/>
                     <input type="text" readOnly disabled value={`$ ${item.precio.toFixed(2)}`} className="shadow-sm border rounded w-full py-1 px-2 text-gray-700 text-right bg-gray-100"/>
                     <input type="text" readOnly disabled value={`$ ${item.total.toFixed(2)}`} className="shadow-sm border rounded w-full py-1 px-2 text-gray-700 text-right bg-gray-100"/>
@@ -457,8 +466,8 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
           </form>
         </div>
       </div>
-
-      {/* ... (Sección de impresión sin cambios) ... */}
+      
+      {/* CAMBIO: Actualizada la sección de impresión */}
       <div id="presupuesto-imprimible" className="hidden print:block presupuesto-container">
         <header className="presupuesto-header">
           <div className="logo-container"><img src="/logo.png" alt="QuiMex" className="logo" /><p className="sub-logo-text">PRESUPUESTO NO VALIDO COMO FACTURA</p></div>
@@ -481,14 +490,25 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         </section>
         <section className="detalle-productos">
           <table className="tabla-items">
-            <thead><tr><th>ITEM</th><th>PRODUCTO</th><th>CANTIDAD</th><th>SUBTOTAL</th></tr></thead>
+            {/* CAMBIO: Cabecera con la nueva columna */}
+            <thead><tr><th>ITEM</th><th>PRODUCTO</th><th>OBSERV.</th><th>CANTIDAD</th><th>SUBTOTAL</th></tr></thead>
             <tbody>
               {productos.filter(p => p.producto && p.qx > 0).map((item, index) => {
                 const pInfo = productosContext.productos.find(p => p.id === item.producto);
-                return (<tr key={`print-item-${index}`}><td>{index + 1}</td><td>{pInfo?.nombre || `ID: ${item.producto}`}</td><td className="text-center">{item.qx}</td><td className="text-right">$ {item.total.toFixed(2)}</td></tr>);
+                return (
+                  <tr key={`print-item-${index}`}>
+                    <td>{index + 1}</td>
+                    <td>{pInfo?.nombre || `ID: ${item.producto}`}</td>
+                    {/* NUEVA CELDA */}
+                    <td>{item.observacion || '-'}</td>
+                    <td className="text-center">{item.qx}</td>
+                    <td className="text-right">$ {item.total.toFixed(2)}</td>
+                  </tr>
+                );
               })}
+              {/* CAMBIO: Ajuste de celdas vacías */}
               {Array.from({ length: Math.max(0, 12 - productos.filter(p => p.producto && p.qx > 0).length) }).map((_, i) => 
-                <tr key={`empty-row-${i}`} className="empty-row"><td> </td><td> </td><td> </td><td> </td></tr>)}
+                <tr key={`empty-row-${i}`} className="empty-row"><td> </td><td> </td><td> </td><td> </td><td> </td></tr>)}
             </tbody>
           </table>
         </section>
