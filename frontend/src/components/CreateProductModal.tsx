@@ -1,25 +1,16 @@
 // components/CreateProductModal.tsx
 import React, { useState, useEffect, ChangeEvent, useCallback } from 'react';
-import { useProductsContext, Producto as ContextProducto } from '@/context/ProductsContext';
+import { useProductsContext } from '@/context/ProductsContext';
 
-// --- Interfaces (pueden necesitar ajustes para datos de la API) ---
-interface IngredientItem {
-    id: string;
-    ingrediente_id: string | number;
-    porcentaje: number;
-    // Podrías añadir campos que vengan de la receta guardada, si los hay
-    // como 'nombre_ingrediente' para mostrarlo si el ID ya no está en availableIngredients
-}
+// --- Interfaces ---
+interface IngredientItem { id: string; ingrediente_id: string | number; porcentaje: number; }
+interface ComboComponentItem { id: string; producto_id: string | number; cantidad: number | string; }
+interface ProductOption { id: string | number; nombre: string; }
 
-interface IngredientOption {
+interface ProductDataForEditAPI {
     id: string | number;
     nombre: string;
-}
-
-// Interfaz para los datos del producto que se obtienen para editar
-interface ProductDataForEdit {
-    id: string; // El ID del producto que se está editando
-    nombre: string;
+    sku?: string | null;
     unidad_venta: string | null;
     costo_referencia_usd: number | null;
     es_receta: boolean;
@@ -27,22 +18,37 @@ interface ProductDataForEdit {
     ref_calculo: number | null;
     margen: number | null;
     tipo_calculo: string | null;
-    receta_id: number;
-    // Asegúrate que estos campos coincidan con lo que devuelve tu API /productos/obtener_uno/{id}
+    descripcion?: string | null;
+    es_combo?: boolean;
+    combo_id?: number | null;
+}
+interface RecipeItemForEditAPI { ingrediente_id: number | string; porcentaje: number; }
+
+interface ApiComboComponente { // Definición que coincide con tu API
+    cantidad: number;
+    componente: {
+        es_receta: boolean;
+        nombre: string;
+        producto_id: number | string;
+    };
+    id: number;
+}
+interface ComboDataAPI {
+    id: number;
+    nombre: string;
+    sku_combo: string | null;
+    descripcion: string | null;
+    margen_combo: number;
+    activo: boolean;
+    componentes: ApiComboComponente[];
 }
 
-// Interfaz para los items de la receta que se obtienen para editar
-interface RecipeItemForEdit {
-    ingrediente_id: number; // O string, según tu API
-    porcentaje: number;
-    // nombre_ingrediente?: string; // Opcional, si tu API lo devuelve
-}
-
-
-interface CreateProductModalProps {
+export interface CreateProductModalProps {
     onClose: () => void;
-    onProductCreatedOrUpdated: () => void; // Cambiado para reflejar ambos modos
-    productIdToEdit?: string | number | null; // ID del producto a editar (opcional)
+    onProductCreatedOrUpdated: () => void;
+    productIdToEdit?: string | number | null;
+    comboIdToEdit?: string | number | null;
+    isInitiallyCombo?: boolean;
 }
 
 const unidadesDeVenta = ["LT", "KG", "UNIDAD"];
@@ -50,479 +56,345 @@ const unidadesDeVenta = ["LT", "KG", "UNIDAD"];
 const CreateProductModal: React.FC<CreateProductModalProps> = ({
     onClose,
     onProductCreatedOrUpdated,
-    productIdToEdit
+    productIdToEdit,
+    comboIdToEdit,
+    isInitiallyCombo
 }) => {
-    const isEditMode = !!productIdToEdit;
+    const isEditMode = !!(productIdToEdit || comboIdToEdit);
+    const token = localStorage.getItem("token");
 
-    // --- Estados del Formulario ---
-    const [productCode, setProductCode] = useState(''); // ID/Código interno del producto
+    const [productCode, setProductCode] = useState('');
     const [nombre, setNombre] = useState('');
+    const [descripcionProducto, setDescripcionProducto] = useState('');
     const [unidadVenta, setUnidadVenta] = useState('');
     const [costoReferenciaUsd, setCostoReferenciaUsd] = useState('');
-    const [esReceta, setEsReceta] = useState(false);
     const [ajustaPorTc, setAjustaPorTc] = useState(false);
     const [unidadReferencia, setUnidadReferencia] = useState('');
-    const [margen, setMargen] = useState('');
+    const [margenProducto, setMargenProducto] = useState('');
     const [tipoCalculo, setTipoCalculo] = useState('');
-    const token = localStorage.getItem("token");
+    const [esReceta, setEsReceta] = useState(false);
     const [ingredients, setIngredients] = useState<IngredientItem[]>([]);
-    const [availableIngredients, setAvailableIngredients] = useState<IngredientOption[]>([]);
-
+    const [recetaIdOriginal, setRecetaIdOriginal] = useState<number | null>(null);
+    const [esCombo, setEsCombo] = useState(isInitiallyCombo || false);
+    const [skuCombo, setSkuCombo] = useState('');
+    const [descripcionCombo, setDescripcionCombo] = useState('');
+    const [margenCombo, setMargenCombo] = useState('');
+    const [comboComponents, setComboComponents] = useState<ComboComponentItem[]>([]);
+    const [comboIdOriginal, setComboIdOriginal] = useState<number | null>(comboIdToEdit ? Number(comboIdToEdit) : null);
+    const [availableProducts, setAvailableProducts] = useState<ProductOption[]>([]);
     const [isSaving, setIsSaving] = useState(false);
     const [saveError, setSaveError] = useState<string | null>(null);
-    const [isLoadingData, setIsLoadingData] = useState(false); // Para cargar datos en modo edición
+    const [isLoadingData, setIsLoadingData] = useState(false);
 
-    const {
-        productos: productosDelContexto,
-        loading: loadingProductosContext,
-        error: errorProductosContext
-    } = useProductsContext();
-
-    // --- Lógica para cargar datos en modo edición ---
-    useEffect(() => {
-        const fetchProductAndRecipeData = async () => {
-            if (!isEditMode || !productIdToEdit) return;
-
-            setIsLoadingData(true);
-            setSaveError(null);
-            try {
-                // 1. Fetch datos del producto
-                const productRes = await fetch(`https://quimex.sistemataup.online/productos/obtener/${productIdToEdit}`, {
-                    headers: { "Authorization": `Bearer ${token}` }
-                });
-                if (!productRes.ok) throw new Error(`Error ${productRes.status} obteniendo datos del producto.`);
-                const productData: ProductDataForEdit = await productRes.json();
-
-                // Poblar campos del producto
-                setProductCode(productData.id); // Asumiendo que el 'id' devuelto es el código que quieres mostrar y no se edita
-                setNombre(productData.nombre || '');
-                setUnidadVenta(productData.unidad_venta || '');
-                setCostoReferenciaUsd(productData.costo_referencia_usd?.toString() || '');
-                setEsReceta(productData.es_receta || false);
-                setAjustaPorTc(productData.ajusta_por_tc || false);
-                setUnidadReferencia(productData.ref_calculo?.toString() || '');
-                setMargen(productData.margen?.toString() || '');
-            
-                setTipoCalculo((productData.tipo_calculo || '').toUpperCase());
-                // 2. Fetch datos de la receta (si es_receta es true)
-                if (productData.es_receta) {
-                    const recipeRes = await fetch(`https://quimex.sistemataup.online/recetas/obtener/por-producto/${productIdToEdit}`, {
-                        headers: { "Authorization": `Bearer ${token}` }
-                    });
-                    // Puede que no haya receta aún, o que el endpoint devuelva 404 si no existe
-                    if (recipeRes.ok) {
-                        const recipeData: { items: RecipeItemForEdit[] } = await recipeRes.json();
-                        if (recipeData && recipeData.items) {
-                            const fetchedIngredients = recipeData.items.map(item => ({
-                                id: crypto.randomUUID(), // ID temporal para React
-                                ingrediente_id: item.ingrediente_id.toString(), // Asegurar que sea string para el select
-                                porcentaje: item.porcentaje,
-                            }));
-                            setIngredients(fetchedIngredients.length > 0 ? fetchedIngredients : [{ id: crypto.randomUUID(), ingrediente_id: '', porcentaje: 0 }]);
-                        } else {
-                             setIngredients([{ id: crypto.randomUUID(), ingrediente_id: '', porcentaje: 0 }]);
-                        }
-                    } else if (recipeRes.status === 404) {
-                        // No hay receta para este producto, iniciar con una vacía
-                        setIngredients([{ id: crypto.randomUUID(), ingrediente_id: '', porcentaje: 0 }]);
-                    } else {
-                        throw new Error(`Error ${recipeRes.status} obteniendo la receta.`);
-                    }
-                } else {
-                    setIngredients([]); // No es receta, vaciar ingredientes
-                }
-                // eslint-disable-next-line 
-            } catch (err: any) {
-                console.error("Error cargando datos para edición:", err);
-                setSaveError(err.message || "Error al cargar datos para editar.");
-            } finally {
-                setIsLoadingData(false);
-            }
-        };
-
-        fetchProductAndRecipeData();
-    }, [isEditMode, productIdToEdit, token]);
-
+    const { productos: productosDelContexto } = useProductsContext();
 
     useEffect(() => {
         if (productosDelContexto && productosDelContexto.length > 0) {
-            const transformedIngredients = productosDelContexto.map((p: ContextProducto) => ({
-                id: p.id.toString(), // Asegurar que el ID sea string para el value del select
-                nombre: p.nombre,
-            }));
-            setAvailableIngredients(transformedIngredients);
-        } else {
-            setAvailableIngredients([]);
-        }
-    }, [productosDelContexto]);
+            const currentEditingIdStr = (isInitiallyCombo ? comboIdToEdit : productIdToEdit)?.toString();
+            setAvailableProducts(
+                productosDelContexto
+                    .filter(p => p.id.toString() !== currentEditingIdStr)
+                    .map(p => ({ id: p.id.toString(), nombre: p.nombre }))
+            );
+        } else { setAvailableProducts([]); }
+    }, [productosDelContexto, productIdToEdit, comboIdToEdit, isInitiallyCombo]);
 
-    const addIngredientRow = useCallback(() => {
-        setIngredients(prevIngredients => [
-            ...prevIngredients,
-            { id: crypto.randomUUID(), ingrediente_id: '', porcentaje: 0 }
-        ]);
-    }, []);
+    const getComboIdFromProductId = useCallback(async (pId: string | number): Promise<number | null> => {
+        if (!token) return null;
+        try {
+            const productRes = await fetch(`https://quimex.sistemataup.online/productos/obtener/${pId}`, { headers: { "Authorization": `Bearer ${token}` } });
+            if (productRes.ok) {
+                const productData = await productRes.json();
+                if (productData.es_combo && productData.combo_id) return productData.combo_id;
+            }
+        } catch (e) { console.error("Error en getComboIdFromProductId", e); }
+        return null;
+    }, [token]);
 
-    const removeIngredientRow = (index: number) => {
-        const list = [...ingredients];
-        list.splice(index, 1);
-        // Si se eliminan todos, y es receta, añadir uno vacío
-        if (list.length === 0 && esReceta) {
-            setIngredients([{ id: crypto.randomUUID(), ingrediente_id: '', porcentaje: 0 }]);
-        } else {
-            setIngredients(list);
-        }
-    };
-    // Efecto para ingredientes al cambiar esReceta (ajustado para modo edición)
     useEffect(() => {
-        if (isEditMode && isLoadingData) return; // No modificar mientras se cargan datos
+        const fetchDetails = async () => {
+            if (!isEditMode) return;
+            setIsLoadingData(true); setSaveError(null);
+            let currentComboIdToLoad = comboIdToEdit ? Number(comboIdToEdit) : null;
+            let localEsCombo = isInitiallyCombo || false;
 
-        if (esReceta && ingredients.length === 0) {
-            addIngredientRow();
-        } else if (!esReceta) {
-            setIngredients([]);
-        }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [esReceta, isLoadingData, isEditMode]); // ingredients.length removido para evitar bucles con addIngredientRow
+            try {
+                if (isInitiallyCombo && productIdToEdit && !comboIdToEdit) {
+                    const actualComboId = await getComboIdFromProductId(productIdToEdit);
+                    if (actualComboId) {
+                        currentComboIdToLoad = actualComboId;
+                        setComboIdOriginal(actualComboId);
+                        localEsCombo = true;
+                    } else {
+                        console.warn(`Producto ${productIdToEdit} marcado como combo pero no se encontró combo_id.`);
+                        localEsCombo = true;
+                    }
+                }
+                setEsCombo(localEsCombo);
 
-    const handleInputChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-        // ... (sin cambios respecto a la versión anterior)
+                if (localEsCombo && currentComboIdToLoad) {
+                    const comboRes = await fetch(`https://quimex.sistemataup.online/combos/obtener/${currentComboIdToLoad}`, { headers: { "Authorization": `Bearer ${token}` } });
+                    if (comboRes.ok) {
+                        const comboData: ComboDataAPI = await comboRes.json();
+                        setNombre(comboData.nombre || '');
+                        setSkuCombo(comboData.sku_combo || '');
+                        setDescripcionCombo(comboData.descripcion || '');
+                        setMargenCombo(comboData.margen_combo?.toString() || '');
+                        setComboIdOriginal(currentComboIdToLoad);
+                        if (comboData.componentes) {
+                            setComboComponents(comboData.componentes.map(compApi => ({
+                                id: crypto.randomUUID(),
+                                producto_id: compApi.componente.producto_id.toString(),
+                                cantidad: compApi.cantidad,
+                            })));
+                        } else {
+                            setComboComponents([]);
+                        }
+                        if (productIdToEdit) {
+                             const productProxyRes = await fetch(`https://quimex.sistemataup.online/productos/obtener/${productIdToEdit}`, { headers: { "Authorization": `Bearer ${token}` } });
+                             if (productProxyRes.ok) { const proxyData = await productProxyRes.json(); setProductCode(proxyData.sku || proxyData.id.toString()); }
+                        }
+                    } else if (comboRes.status !== 404) { console.warn(`Error obteniendo combo ${currentComboIdToLoad}`); setEsCombo(false); }
+                      else { setEsCombo(false); }
+                }
+
+                if (productIdToEdit && !localEsCombo) {
+                    const productRes = await fetch(`https://quimex.sistemataup.online/productos/obtener/${productIdToEdit}`, { headers: { "Authorization": `Bearer ${token}` } });
+                    if (!productRes.ok) throw new Error(`Error obteniendo producto ${productIdToEdit}.`);
+                    const productData: ProductDataForEditAPI = await productRes.json();
+                    setNombre(productData.nombre || '');
+                    setProductCode(productData.sku || productData.id.toString());
+                    setDescripcionProducto(productData.descripcion || '');
+                    setUnidadVenta(productData.unidad_venta || '');
+                    setCostoReferenciaUsd(productData.costo_referencia_usd?.toString() || '');
+                    setAjustaPorTc(productData.ajusta_por_tc || false);
+                    setUnidadReferencia(productData.ref_calculo?.toString() || '');
+                    setMargenProducto(productData.margen?.toString() || '');
+                    setTipoCalculo((productData.tipo_calculo || '').toUpperCase());
+                    setEsReceta(productData.es_receta || false);
+                    if (productData.es_receta) {
+                        const recipeRes = await fetch(`https://quimex.sistemataup.online/recetas/obtener/por-producto/${productIdToEdit}`, { headers: { "Authorization": `Bearer ${token}` } });
+                        if (recipeRes.ok) {
+                            const recipeData: { id?: number, items: RecipeItemForEditAPI[] } = await recipeRes.json();
+                            setRecetaIdOriginal(recipeData.id || null);
+                            setIngredients(recipeData.items?.map(item => ({ id: crypto.randomUUID(), ingrediente_id: item.ingrediente_id.toString(), porcentaje: item.porcentaje })) || []);
+                        }
+                    }
+                }
+                //eslint-disable-next-line
+            } catch (err: any) { console.error("Error cargando detalles:", err); setSaveError(err.message || "Error al cargar."); }
+            finally { setIsLoadingData(false); }
+        };
+        if (isEditMode) fetchDetails();
+    }, [isEditMode, productIdToEdit, comboIdToEdit, isInitiallyCombo, token, getComboIdFromProductId]);
+
+    const addIngredientRow = useCallback(() => setIngredients(prev => [...prev, { id: crypto.randomUUID(), ingrediente_id: '', porcentaje: 0 }]), []);
+    const removeIngredientRow = (index: number) => setIngredients(prev => prev.filter((_, i) => i !== index));
+    const handleIngredientChange = (index: number, e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+        const { name, value } = e.target; setSaveError(null);
+        setIngredients(prev => prev.map((item, i) => i === index ? { ...item, [name]: name === 'porcentaje' ? (parseFloat(value.replace(/[^0-9.]/g, '')) || 0) : value } : item));
+    };
+    const addComboComponentRow = useCallback(() => setComboComponents(prev => [...prev, { id: crypto.randomUUID(), producto_id: '', cantidad: 1 }]), []);
+    const removeComboComponentRow = (index: number) => setComboComponents(prev => prev.filter((_, i) => i !== index));
+    const handleComboComponentChange = (index: number, e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+        const { name, value } = e.target; setSaveError(null);
+        setComboComponents(prev => prev.map((item, i) => i === index ? { ...item, [name]: name === 'cantidad' ? (parseInt(value.replace(/[^0-9]/g, ''), 10) || 1) : value } : item));
+    };
+    const handleInputChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value, type } = e.target;
         setSaveError(null);
-
         if (type === 'checkbox') {
             const { checked } = e.target as HTMLInputElement;
-            if (name === 'esReceta') setEsReceta(checked);
+            if (name === 'esReceta') {
+                setEsReceta(checked);
+                if (checked) { setEsCombo(false); if (ingredients.length === 0 && !isLoadingData) addIngredientRow(); }
+                else setIngredients([]);
+            }
+            if (name === 'esCombo') {
+                setEsCombo(checked);
+                if (checked) { setEsReceta(false); if (comboComponents.length === 0 && !isLoadingData) addComboComponentRow(); }
+                else { setComboComponents([]); setSkuCombo(''); setDescripcionCombo(''); setMargenCombo(''); }
+            }
             if (name === 'ajustaPorTc') setAjustaPorTc(checked);
         } else {
             let sanitizedValue = value;
-            if (name === 'costoReferenciaUsd' || name === 'margen' || name === 'unidadReferencia') {
+            if (['costoReferenciaUsd', 'margenProducto', 'unidadReferencia', 'margenCombo'].includes(name)) {
                 sanitizedValue = value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1');
             }
-
-            if (name === 'productCode') setProductCode(value); // Antes productId
+            if (name === 'productCode') setProductCode(sanitizedValue.toUpperCase());
             else if (name === 'nombre') setNombre(value);
+            else if (name === 'descripcionProducto') setDescripcionProducto(value);
             else if (name === 'unidadVenta') setUnidadVenta(value);
             else if (name === 'costoReferenciaUsd') setCostoReferenciaUsd(sanitizedValue);
             else if (name === 'unidadReferencia') setUnidadReferencia(sanitizedValue);
-            else if (name === 'margen') setMargen(sanitizedValue);
+            else if (name === 'margenProducto') setMargenProducto(sanitizedValue);
             else if (name === 'tipoCalculo') setTipoCalculo(value);
+            else if (name === 'skuCombo') setSkuCombo(sanitizedValue.toUpperCase());
+            else if (name === 'descripcionCombo') setDescripcionCombo(value);
+            else if (name === 'margenCombo') setMargenCombo(sanitizedValue);
         }
     };
-
-    const handleIngredientChange = (index: number, e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-        // ... (sin cambios)
-        const { name, value } = e.target;
-        const list = [...ingredients];
-        setSaveError(null);
-        if (name === 'ingrediente_id') { list[index].ingrediente_id = value; }
-        else if (name === 'porcentaje') {
-            const sanitizedValue = value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1');
-            const numValue = parseFloat(sanitizedValue);
-            list[index].porcentaje = isNaN(numValue) || numValue < 0 ? 0 : numValue;
+    useEffect(() => {
+        if (!isEditMode && !isLoadingData) {
+            if (esReceta && ingredients.length === 0) addIngredientRow();
+            if (esCombo && comboComponents.length === 0) addComboComponentRow();
         }
-        setIngredients(list);
-    };
+    }, [esReceta, esCombo, isLoadingData, isEditMode, addIngredientRow, addComboComponentRow]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        setSaveError(null);
-
-        if (!productCode || !nombre) { setSaveError("El Código Interno y el Nombre son obligatorios."); return; }
-
-        const parseAndValidateNumeric = (valStr: string, fieldName: string): number | null => {
-            if (!valStr) return null;
-            const num = parseFloat(valStr);
-            if (isNaN(num)) {
-                throw new Error(`${fieldName} debe ser un número válido.`);
-            }
-            return num;
-        };
-
-        let costoNum: number | null = null;
-        let margenNum: number | null = null;
-        let unidadRefNum: number | null = null;
-        const tipoCalculoStr: string | null = tipoCalculo.trim() || null;
+        setSaveError(null); setIsSaving(true);
+        if (!nombre.trim()) { setSaveError("El Nombre es obligatorio."); setIsSaving(false); return; }
 
         try {
-            costoNum = parseAndValidateNumeric(costoReferenciaUsd, "Costo Referencia USD");
-            margenNum = parseAndValidateNumeric(margen, "Margen");
-            unidadRefNum = parseAndValidateNumeric(unidadReferencia, "Unidad Referencia");
-        } // eslint-disable-next-line
-        catch (validationError: any) {
-            setSaveError(validationError.message);
-            return;
-        }
+            if (esCombo) {
+                const margenComboNum = parseFloat(margenCombo);
+                if (isNaN(margenComboNum) || margenComboNum < 0 || margenComboNum >= 1) throw new Error("Margen Combo: 0 a <1.");
+                if (comboComponents.length === 0 || comboComponents.some(c => !c.producto_id || parseInt(c.cantidad.toString()) <= 0)) throw new Error("Componentes Combo incompletos.");
 
-        let recetaValida = true;
-        if (esReceta) {
-             costoNum = 0;
-             if (ingredients.length === 0) {
-                setSaveError("Si es una receta, debe añadir al menos un ingrediente.");
-                recetaValida = false;
-            } else if (ingredients.some(item => !item.ingrediente_id || parseFloat(item.porcentaje.toString()) <= 0)) { // Asegurar que porcentaje sea > 0
-                 setSaveError("Todos los ingredientes deben tener producto y porcentaje > 0.");
-                 recetaValida = false;
-            }
-        }
-        if (!recetaValida) return;
-
-        setIsSaving(true);
-
-        // --- DATOS PARA LA API ---
-        // El 'id' del producto que se envía es 'productCode'
-        // En modo edición, el productCode no debería cambiar y ser el ID del producto existente.
-        const productApiId = isEditMode ? productIdToEdit : productCode;
-        // eslint-disable-next-line
-        const productPayload: any = {
-            id: productApiId, // En creación, es el nuevo código. En edición, es el ID existente.
-            nombre,
-            unidad_venta: unidadVenta || null,
-            es_receta: false,
-            ajusta_por_tc: ajustaPorTc,
-            costo_referencia_usd: costoNum,
-            ref_calculo: unidadRefNum,
-            margen: margenNum,
-            tipo_calculo: (tipoCalculoStr || '').toUpperCase() || null,
-        };
-
-        // Si es modo creación y usas el productCode como ID para el endpoint, está bien.
-        // Si es modo edición, el productCode que envías como 'id' en el payload DEBERÍA SER el ID del producto
-        // que tu API usa para identificarlo (productIdToEdit).
-        // Y si el campo 'id' en la base de datos es autoincremental y no lo establece el usuario,
-        // en modo CREACIÓN, NO DEBERÍAS enviar el campo 'id' o enviarlo como null si la API lo permite.
-        // Vamos a asumir que en modo creación, `productCode` es el `id` que se envía.
-        // En modo edición, `productPayload.id` ya es `productIdToEdit`.
-
-        // Si el campo 'id' del producto NO es editable por el usuario y es generado por el backend,
-        // en modo creación, el payload no debería incluir 'id'.
-        // Revisa cómo tu API maneja la creación de 'id'. Por ahora, lo mantenemos como estaba.
-        // Si el código/ID del producto no es editable, el input `productCode` debería ser `disabled` en modo edición.
-
-        console.log(`Enviando Payload Producto (${isEditMode ? 'Actualización' : 'Creación'}):`, JSON.stringify(productPayload, null, 2));
-
-        try {
-            const productApiUrl = isEditMode
-                ? `https://quimex.sistemataup.online/productos/actualizar/${productIdToEdit}`
-                : 'https://quimex.sistemataup.online/productos/crear';
-            const productApiMethod = isEditMode ? 'PUT' : 'POST';
-
-            const productResponse = await fetch(productApiUrl, {
-                method: productApiMethod,
-                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-                body: JSON.stringify(productPayload),
-            });
-            // ... (manejo de respuesta del producto, similar a antes) ...
-            const productResultText = await productResponse.text(); // Leer siempre como texto primero
-            console.log(`Respuesta Producto (${isEditMode ? 'Actualización' : 'Creación'}):`, productResultText);
-
-            if (!productResponse.ok) {
-                let errorMsg = `Error ${productResponse.status} ${isEditMode ? 'actualizando' : 'creando'} producto`;
-                try { const errorJson = JSON.parse(productResultText); errorMsg += `: ${errorJson.detalle || errorJson.error || 'Detalle desconocido'}`; }
-                catch (parseError) { errorMsg += `: ${productResultText}`+ parseError; }
-                throw new Error(errorMsg);
-           }
-
-            const processedProduct = JSON.parse(productResultText);
-            // En modo edición, el ID ya lo conocemos (productIdToEdit).
-            // En modo creación, usamos el ID devuelto o el productCode si la API no devuelve un ID explícito.
-            const effectiveProductId = isEditMode ? productIdToEdit : (processedProduct.id || productCode);
-
-            console.log(`Producto ${isEditMode ? 'actualizado' : 'creado'} con ID efectivo:`, effectiveProductId);
-
-
-            // --- MANEJO DE RECETA (Crear o Actualizar) ---
-            if (esReceta && ingredients.length > 0) {
-                const recipePayload = {
-                    producto_final_id: effectiveProductId,
-                    items: ingredients.map(item => ({
-                        ingrediente_id: Number(item.ingrediente_id), // Asegurar que es número
-                        porcentaje: parseFloat(item.porcentaje.toString()) // Asegurar que es número
-                    }))
+                const comboPayload = {
+                    nombre: nombre.trim(), sku_combo: skuCombo.trim() || null, descripcion: descripcionCombo.trim() || null,
+                    margen_combo: margenComboNum, activo: true,
+                    componentes: comboComponents.map(c => ({ producto_id: Number(c.producto_id), cantidad: parseInt(c.cantidad.toString(), 10) })),
                 };
-
-                // Decidir si crear o actualizar receta.
-                // Esto puede requerir saber si ya existía una receta o si la API maneja esto con un solo endpoint (ej. un PUT que crea si no existe).
-                // Asumiremos un endpoint de "guardar" que crea o actualiza. Ajusta si tienes endpoints separados.
-                // O, si tienes un endpoint específico para actualizar:
-                 const recipeApiUrl = isEditMode ? `https://quimex.sistemataup.online/recetas/actualizar/por-producto/${productIdToEdit}` : 'https://quimex.sistemataup.online/recetas/crear';
-                 const recipeApiMethod = isEditMode ? 'PUT' : 'POST';
-
-                // Para simplificar, usaremos un endpoint "crear_o_actualizar" o similar.
-                // Si solo tienes "crear", en modo edición podrías necesitar "borrar_existente" y luego "crear".
-                // La opción más robusta es un PUT a `/recetas/{producto_id}` que maneje la lógica.
-                // Por ahora, usaré el de crear, asumiendo que tu backend podría manejarlo o que lo ajustarás.
-                // Lo ideal sería un endpoint tipo `PUT /recetas/producto/{producto_id}`
-
-                console.log(`Enviando Payload Receta (${isEditMode ? 'Actualización' : 'Creación'}):`, JSON.stringify(recipePayload, null, 2));
-                const recipeResponse = await fetch(recipeApiUrl, { // O usa el endpoint de crear si es el único
-                    method: recipeApiMethod,
-                    headers: { 'Content-Type': 'application/json', "Authorization": `Bearer ${token}` },
-                    body: JSON.stringify(recipePayload),
-                });
-                // ... (manejo de respuesta de la receta, similar a antes) ...
-                const recipeResultText = await recipeResponse.text();
-                console.log(`Respuesta Receta (${isEditMode ? 'Actualización' : 'Creación'}):`, recipeResultText);
-                if (!recipeResponse.ok) {
-                    let errorMsg = `Producto ${isEditMode ? 'actualizado' : 'creado'}, pero Error ${recipeResponse.status} ${isEditMode ? 'actualizando' : 'creando'} receta`;
-                    try { const errorJson = JSON.parse(recipeResultText); errorMsg += `: ${errorJson.detalle || errorJson.error || 'Detalle desconocido'}`; }
-                    catch (parseError) { errorMsg += `: ${recipeResultText}`+ parseError; }
-                    throw new Error(errorMsg);
+                let effectiveComboIdForEdit = comboIdOriginal; // ID original del combo que se está editando
+                if(isEditMode && productIdToEdit && !comboIdOriginal && !comboIdToEdit){ // Si estábamos editando un producto que AHORA es combo
+                    const existingComboIdFromProduct = await getComboIdFromProductId(productIdToEdit);
+                    if(existingComboIdFromProduct) effectiveComboIdForEdit = existingComboIdFromProduct;
                 }
-                console.log(`Receta ${isEditMode ? 'actualizada' : 'creada'} para producto ID:`, effectiveProductId);
 
-            } else if (isEditMode && !esReceta) {
-                // Si estamos en modo edición, el producto ya no es una receta,
-                // podríamos querer borrar la receta existente si la API lo requiere.
-                // Ejemplo: await fetch(`/api/recetas/producto/${productIdToEdit}`, { method: 'DELETE', headers: { "Authorization": `Bearer ${token}` } });
-                console.log("Producto ya no es receta, considerar borrar receta existente si es necesario.");
+
+                const comboApiUrl = (isEditMode && effectiveComboIdForEdit) ? `https://quimex.sistemataup.online/combos/editar/${effectiveComboIdForEdit}` : 'https://quimex.sistemataup.online/combos/crear';
+                const comboApiMethod = (isEditMode && effectiveComboIdForEdit) ? 'PUT' : 'POST';
+                const comboResponse = await fetch(comboApiUrl, { method: comboApiMethod, headers: { 'Content-Type': 'application/json', "Authorization": `Bearer ${token}` }, body: JSON.stringify(comboPayload) });
+                const comboResult = await comboResponse.json();
+                if (!comboResponse.ok) throw new Error(comboResult.error || `Error ${isEditMode ? 'actualizando' : 'creando'} combo`);
+
+                const comboIdGuardado = comboResult.id || effectiveComboIdForEdit;
+
+                if (comboIdGuardado) {
+                    //eslint-disable-next-line
+                    const productoProxyPayload: any = {
+                        nombre: nombre.trim(), es_combo: true, combo_id: comboIdGuardado,
+                        sku: productCode.trim() || skuCombo.trim() || null, es_receta: false, descripcion: null, unidad_venta: null,
+                        costo_referencia_usd: null, ajusta_por_tc: false, ref_calculo: null, margen: null, tipo_calculo: null,
+                    };
+                    if (comboApiMethod === 'POST' && productCode.trim()) productoProxyPayload.id = productCode.trim();
+                    else if (comboApiMethod === 'POST') delete productoProxyPayload.id;
+
+                    const productoProxyUrl = (isEditMode && productIdToEdit)
+                        ? `https://quimex.sistemataup.online/productos/actualizar/${productIdToEdit}`
+                        : 'https://quimex.sistemataup.online/productos/crear';
+                    const productoProxyMethod = (isEditMode && productIdToEdit) ? 'PUT' : 'POST';
+                    const productoProxyResponse = await fetch(productoProxyUrl, { method: productoProxyMethod, headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }, body: JSON.stringify(productoProxyPayload) });
+                    if (!productoProxyResponse.ok) { const proxyError = await productoProxyResponse.json(); console.warn("Advertencia: Combo guardado, error al actualizar/crear producto asociado:", proxyError.detalle || proxyError.error); }
+                }
+                alert(`Combo "${nombre}" ${isEditMode && effectiveComboIdForEdit ? 'actualizado' : 'creado'}.`);
+
+            } else { // No es combo
+                //eslint-disable-next-line
+                const productPayload: any = {
+                    id: productCode.trim() || null, nombre: nombre.trim(), descripcion: descripcionProducto.trim() || null,
+                    unidad_venta: unidadVenta || null, costo_referencia_usd: parseFloat(costoReferenciaUsd) || null,
+                    ajusta_por_tc: ajustaPorTc, ref_calculo: parseFloat(unidadReferencia) || null,
+                    margen: parseFloat(margenProducto) || null, tipo_calculo: (tipoCalculo.trim() || '').toUpperCase() || null,
+                    es_receta: esReceta, es_combo: false, combo_id: null,
+                };
+                const productApiUrl = isEditMode && productIdToEdit ? `https://quimex.sistemataup.online/productos/actualizar/${productIdToEdit}` : 'https://quimex.sistemataup.online/productos/crear';
+                const productApiMethod = isEditMode && productIdToEdit ? 'PUT' : 'POST';
+                const productResponse = await fetch(productApiUrl, { method: productApiMethod, headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }, body: JSON.stringify(productPayload) });
+                const productResult = await productResponse.json();
+                if (!productResponse.ok) throw new Error(productResult.detalle || productResult.error || `Error producto`);
+                const effectiveProductId = productResult.id || productIdToEdit;
+
+                if (esReceta && effectiveProductId) {
+                    if (ingredients.some(item => !item.ingrediente_id || parseFloat(item.porcentaje.toString()) <= 0)) throw new Error("Ingredientes de receta incompletos.");
+                    const recipePayload = { producto_final_id: effectiveProductId, items: ingredients.map(item => ({ ingrediente_id: Number(item.ingrediente_id), porcentaje: parseFloat(item.porcentaje.toString()) })) };
+                    const recipeApiUrl = (isEditMode && recetaIdOriginal) ? `https://quimex.sistemataup.online/recetas/actualizar/por-producto/${effectiveProductId}` : 'https://quimex.sistemataup.online/recetas/crear';
+                    const recipeApiMethod = (isEditMode && recetaIdOriginal) ? 'PUT' : 'POST';
+                    const recipeResponse = await fetch(recipeApiUrl, { method: recipeApiMethod, headers: { 'Content-Type': 'application/json', "Authorization": `Bearer ${token}` }, body: JSON.stringify(recipePayload) });
+                    if (!recipeResponse.ok) { const recipeError = await recipeResponse.json(); throw new Error(recipeError.detalle || recipeError.error || `Error receta`);}
+                } else if (!esReceta && isEditMode && recetaIdOriginal) {
+                    // console.log("Receta a eliminar/desactivar:", recetaIdOriginal);
+                }
+                if (isEditMode && comboIdOriginal) { // Si antes era combo (y ahora no lo es porque esCombo es false)
+                    await fetch(`https://quimex.sistemataup.online/combos/editar/${comboIdOriginal}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', "Authorization": `Bearer ${token}` }, body: JSON.stringify({ activo: false }) });
+                }
+                alert(`Producto "${nombre}" ${isEditMode ? 'actualizado' : 'creado'}.`);
             }
-
-
-            alert(`Producto "${nombre}" ${isEditMode ? 'actualizado' : 'creado'} ${esReceta ? 'con receta ' : ''}exitosamente.`);
             onProductCreatedOrUpdated();
             onClose();
-            // eslint-disable-next-line
-        } catch (err: any) {
-            console.error("Error en handleSubmit:", err);
-            setSaveError(err.message || "Error inesperado.");
-        } finally {
-            setIsSaving(false);
-        }
+            //eslint-disable-next-line
+        } catch (err: any) { console.error("Error handleSubmit:", err); setSaveError(err.message || "Error."); }
+        finally { setIsSaving(false); }
     };
 
-
-    // --- Renderizado del Modal ---
-    if (isEditMode && isLoadingData) {
-        return (
-            <div className="fixed inset-0 bg-black bg-opacity-50 z-40 flex justify-center items-center">
-                <div className="bg-white p-6 rounded-lg shadow-xl">
-                    <p className="text-lg">Cargando datos del producto...</p>
-                    {/* Puedes añadir un spinner aquí */}
-                </div>
-            </div>
-        );
-    }
+    const isProductFieldsDisabled = esCombo;
+    if (isEditMode && isLoadingData) { return (<div className="fixed inset-0 bg-black bg-opacity-50 z-40 flex justify-center items-center"><div className="bg-white p-6 rounded-lg shadow-xl">Cargando...</div></div>); }
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-40 flex justify-center items-start pt-10 md:pt-16 p-4 transition-opacity duration-300 ease-in-out overflow-y-auto">
-            <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[calc(100vh-6rem)] md:max-h-[calc(100vh-8rem)] flex flex-col animate-fade-in-scale mb-10">
+            <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[calc(100vh-6rem)] md:max-h-[calc(100vh-8rem)] flex flex-col animate-fade-in-scale mb-10">
                 <div className="flex-shrink-0 flex justify-between items-center p-4 border-b border-gray-200">
-                    <h2 className="text-lg font-semibold text-gray-800">
-                        {isEditMode ? `Editar Producto: ${nombre || 'Cargando...'}` : 'Crear Nuevo Producto'}
-                    </h2>
-                    <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}> <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /> </svg>
-                    </button>
+                    <h2 className="text-lg font-semibold text-gray-800">{isEditMode ? `Editar: ${nombre || '...'}` : (esCombo ? 'Crear Nuevo Combo' : 'Crear Nuevo Producto')}</h2>
+                    <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
                 </div>
-
-                <div className="p-5 overflow-y-auto flex-grow grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="p-5 overflow-y-auto flex-grow grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
                     <div className="space-y-4">
-                        <div>
-                            <label htmlFor="productCode" className="block text-sm font-medium mb-1">Código Interno <span className="text-red-500">*</span></label>
-                            <input
-                                type="text"
-                                id="productCode"
-                                name="productCode"
-                                value={productCode}
-                                onChange={handleInputChange}
-                                required
-                                // El código del producto usualmente no es editable una vez creado.
-                                // Si tu 'id' en el backend es el código y no es autoincremental, entonces SÍ es editable en creación.
-                                // Si es autoincremental y el código es un campo aparte, el código es editable.
-                                // Asumiré que el código es el ID principal que se puede establecer en la creación.
-                                disabled={isEditMode} // Deshabilitar si el código no se puede cambiar después de crear
-                                className={`w-full p-2 border rounded ${isEditMode ? 'bg-gray-100 cursor-not-allowed' : ''}`}
-                            />
-                        </div>
-                        {/* ... (resto de los campos del producto, igual que antes, solo asegúrate que usen los estados correctos) ... */}
-                        <div>
-                            <label htmlFor="nombre" className="block text-sm font-medium mb-1">Nombre <span className="text-red-500">*</span></label>
-                            <input type="text" id="nombre" name="nombre" value={nombre} onChange={handleInputChange} required className="w-full p-2 border rounded" />
-                        </div>
-                        <div>
-                            <label htmlFor="unidadVenta" className="block text-sm font-medium mb-1">Unidad Venta</label>
-                             <select id="unidadVenta" name="unidadVenta" value={unidadVenta} onChange={handleInputChange} className="w-full p-2 border rounded bg-white">
-                                <option value="">-- Seleccionar --</option>
-                                {unidadesDeVenta.map(unidad => ( <option key={unidad} value={unidad}>{unidad}</option> ))}
-                            </select>
-                        </div>
-                        <div>
-                            <label htmlFor="costoReferenciaUsd" className="block text-sm font-medium mb-1">Costo Referencia USD</label>
-                            <input type="text" inputMode='decimal' id="costoReferenciaUsd" name="costoReferenciaUsd" value={costoReferenciaUsd} onChange={handleInputChange} className="w-full p-2 border rounded" />
-                        </div>
-
-                        <div>
-                            <label htmlFor="unidadReferencia" className="block text-sm font-medium mb-1">Unidad Referencia (Cálculo)</label>
-                            <input type="text" inputMode="decimal" id="unidadReferencia" name="unidadReferencia" value={unidadReferencia} onChange={handleInputChange} className="w-full p-2 border rounded" />
-                        </div>
-                        <div>
-                            <label htmlFor="margen" className="block text-sm font-medium mb-1">Margen</label>
-                            <input type="text" inputMode="decimal" id="margen" name="margen" value={margen} onChange={handleInputChange} className="w-full p-2 border rounded" />
-                        </div>
-                        <div>
-                            <label htmlFor="tipoCalculo" className="block text-sm font-medium mb-1">Tipo Cálculo</label>
-                            <input type="text" id="tipoCalculo" name="tipoCalculo" value={tipoCalculo} onChange={handleInputChange} className="w-full p-2 border rounded" />
-                        </div>
-
-                         <div className="flex items-center gap-6 pt-3">
-                            <div className="flex items-center"> <input id="esReceta" name="esReceta" type="checkbox" checked={esReceta} onChange={handleInputChange} className="h-4 w-4 text-indigo-600 rounded" /> <label htmlFor="esReceta" className="ml-2 text-sm">Es Receta</label> </div>
-                             <div className="flex items-center"> <input id="ajustaPorTc" name="ajustaPorTc" type="checkbox" checked={ajustaPorTc} onChange={handleInputChange} className="h-4 w-4 text-indigo-600 rounded" /> <label htmlFor="ajustaPorTc" className="ml-2 text-sm">Ajusta por TC</label> </div>
+                        <div><label htmlFor="nombre" className="block text-sm font-medium mb-1">Nombre <span className="text-red-500">*</span></label><input type="text" id="nombre" name="nombre" value={nombre} onChange={handleInputChange} required className="w-full p-2 border rounded" /></div>
+                        <div><label htmlFor="productCode" className="block text-sm font-medium mb-1">SKU / Código Interno</label><input type="text" id="productCode" name="productCode" value={productCode} onChange={handleInputChange} className={`w-full p-2 border rounded ${isEditMode || isProductFieldsDisabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} disabled={isEditMode || isProductFieldsDisabled} /></div>
+                        <div><label htmlFor="descripcionProducto" className="block text-sm font-medium mb-1">Descripción General</label><textarea id="descripcionProducto" name="descripcionProducto" value={descripcionProducto} onChange={handleInputChange} rows={2} className={`w-full p-2 border rounded ${isProductFieldsDisabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} disabled={isProductFieldsDisabled} /></div>
+                        <div><label htmlFor="unidadVenta" className="block text-sm font-medium mb-1">Unidad Venta</label><select id="unidadVenta" name="unidadVenta" value={unidadVenta} onChange={handleInputChange} className={`w-full p-2 border rounded bg-white ${isProductFieldsDisabled ? 'bg-gray-100 cursor-not-allowed appearance-none' : ''}`} disabled={isProductFieldsDisabled}><option value="">-- Seleccionar --</option> {unidadesDeVenta.map(u => <option key={u} value={u}>{u}</option>)}</select></div>
+                        <div><label htmlFor="costoReferenciaUsd" className="block text-sm font-medium mb-1">Costo Ref. USD</label><input type="text" inputMode='decimal' id="costoReferenciaUsd" name="costoReferenciaUsd" value={costoReferenciaUsd} onChange={handleInputChange} className={`w-full p-2 border rounded ${isProductFieldsDisabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} disabled={isProductFieldsDisabled} /></div>
+                        <div><label htmlFor="margenProducto" className="block text-sm font-medium mb-1">Margen Producto (ej: 0.3)</label><input type="text" inputMode="decimal" id="margenProducto" name="margenProducto" value={margenProducto} onChange={handleInputChange} className={`w-full p-2 border rounded ${isProductFieldsDisabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} disabled={isProductFieldsDisabled} /></div>
+                        <div><label htmlFor="tipoCalculo" className="block text-sm font-medium mb-1">Tipo Cálculo</label><input type="text" id="tipoCalculo" name="tipoCalculo" value={tipoCalculo} onChange={handleInputChange} className={`w-full p-2 border rounded ${isProductFieldsDisabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} disabled={isProductFieldsDisabled} /></div>
+                        <div><label htmlFor="unidadReferencia" className="block text-sm font-medium mb-1">Unidad Ref. (Cálculo)</label><input type="text" inputMode="decimal" id="unidadReferencia" name="unidadReferencia" value={unidadReferencia} onChange={handleInputChange} className={`w-full p-2 border rounded ${isProductFieldsDisabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} disabled={isProductFieldsDisabled} /></div>
+                        <div className="flex items-center gap-6 pt-3">
+                            <div className="flex items-center"><input id="esReceta" name="esReceta" type="checkbox" checked={esReceta} onChange={handleInputChange} className={`h-4 w-4 text-indigo-600 rounded ${isProductFieldsDisabled ? 'cursor-not-allowed opacity-50' : ''}`} disabled={isProductFieldsDisabled} /><label htmlFor="esReceta" className={`ml-2 text-sm ${isProductFieldsDisabled ? 'text-gray-400' : ''}`}>Es Receta</label></div>
+                            <div className="flex items-center"><input id="esCombo" name="esCombo" type="checkbox" checked={esCombo} onChange={handleInputChange} className="h-4 w-4 text-indigo-600 rounded" /><label htmlFor="esCombo" className="ml-2 text-sm">Es Combo</label></div>
+                            <div className="flex items-center"><input id="ajustaPorTc" name="ajustaPorTc" type="checkbox" checked={ajustaPorTc} onChange={handleInputChange} className={`h-4 w-4 text-indigo-600 rounded ${isProductFieldsDisabled ? 'cursor-not-allowed opacity-50' : ''}`} disabled={isProductFieldsDisabled} /><label htmlFor="ajustaPorTc" className={`ml-2 text-sm ${isProductFieldsDisabled ? 'text-gray-400' : ''}`}>Ajusta por TC</label></div>
                         </div>
                     </div>
-
-                    {/* Columna 2: Receta (Condicional) */}
-                    <div className={`space-y-3 transition-opacity duration-300 ${!esReceta ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
-                        <h3 className="text-md font-medium border-b pb-1 mb-3">Ingredientes de la Receta</h3>
-                        {loadingProductosContext && <p className="text-xs text-gray-500">Cargando lista de ingredientes...</p>}
-                        {errorProductosContext && <p className="text-xs text-red-500">Error cargando ingredientes: {errorProductosContext}</p>}
-
-                         <div className={`hidden md:grid md:grid-cols-[minmax(0,1fr)_100px_50px] gap-2 items-center px-1 text-xs font-medium ${!esReceta ? 'text-gray-400' : 'text-gray-500'}`}> <span>Ingrediente</span> <span className="text-right">Porcentaje (%)</span> <span></span> </div>
-                        <div className="space-y-2 max-h-60 overflow-y-auto pr-2">
-                             {ingredients.map((item, index) => (
-                                <div key={item.id} className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_100px_50px] gap-2 items-center border rounded p-2 md:p-1 md:border-none">
-                                    <div>
-                                        <label className="md:hidden text-xs">Ingrediente</label>
-                                        <select
-                                            name="ingrediente_id"
-                                            value={item.ingrediente_id} // Debe ser string
-                                            onChange={(e) => handleIngredientChange(index, e)}
-                                            required={esReceta}
-                                            disabled={!esReceta || loadingProductosContext || availableIngredients.length === 0}
-                                            className={`w-full p-2 border rounded text-sm ${!esReceta ? 'bg-gray-100' : 'border-gray-300 bg-white'}`}
-                                        >
-                                            <option value="" disabled>-- Seleccionar --</option>
-                                            {availableIngredients.map(ing => (
-                                                <option key={ing.id} value={ing.id.toString()}>{ing.nombre}</option> // Asegurar value es string
-                                            ))}
-                                        </select>
-                                    </div>
-                                    <div> <label className="md:hidden text-xs">Porcentaje (%)</label> <input type="text" inputMode='decimal' name="porcentaje" value={item.porcentaje === 0 && !isEditMode ? '' : item.porcentaje.toString()} onChange={(e) => handleIngredientChange(index, e)} required={esReceta} disabled={!esReceta} min="0.01" step="0.01" className={`w-full p-2 border rounded text-sm text-right ${!esReceta ? 'bg-gray-100' : 'border-gray-300'}`} /> </div>
-                                     <div className="flex justify-end md:justify-center items-center pt-2 md:pt-0">
-                                        {(ingredients.length > 1 || (ingredients.length === 1 && !esReceta)) && ( // Permitir eliminar si no es receta o hay más de uno
-                                            <button type="button" onClick={() => removeIngredientRow(index)} disabled={!esReceta && ingredients.length === 1} className={`text-xl p-1 ${(!esReceta && ingredients.length ===1) ? 'text-gray-400' : 'text-red-500 hover:text-red-700'}`} title="Eliminar"> × </button>
-                                        )}
-                                     </div>
-                                </div> ))}
-                        </div>
-                        <button type="button" onClick={addIngredientRow} disabled={!esReceta} className={`mt-2 text-sm px-3 py-1.5 rounded font-medium ${!esReceta ? 'bg-gray-200 text-gray-500' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'}`}> + Agregar Ingrediente </button>
+                    <div className="space-y-6">
+                        {esReceta && !esCombo && (
+                            <section className="space-y-3 p-3 border rounded-md bg-gray-50">
+                                <h3 className="text-md font-semibold text-gray-700 border-b pb-2">Ingredientes de la Receta</h3>
+                                <div className={`hidden md:grid md:grid-cols-[minmax(0,1fr)_100px_50px] gap-2 items-center px-1 text-xs font-medium text-gray-500`}><span>Ingrediente</span><span className="text-right">Porcentaje (%)</span><span/></div>
+                                <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
+                                    {ingredients.map((item, index) => (<div key={item.id} className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_100px_50px] gap-2 items-center border-b pb-1"><div><select name="ingrediente_id" value={item.ingrediente_id} onChange={(e) => handleIngredientChange(index, e)} required className={`w-full p-2 border rounded text-sm bg-white`}>{availableProducts.length === 0 ? <option value="" disabled>Cargando productos...</option> : <option value="" disabled>-- Seleccionar --</option>}{availableProducts.map(p => (<option key={p.id} value={p.id.toString()}>{p.nombre}</option>))}</select></div><div><input type="text" inputMode='decimal' name="porcentaje" value={item.porcentaje === 0 && !isEditMode ? '' : item.porcentaje.toString()} onChange={(e) => handleIngredientChange(index, e)} required min="0.01" step="0.01" className={`w-full p-2 border rounded text-sm text-right`} /></div><div className="flex justify-end md:justify-center">{(<button type="button" onClick={() => removeIngredientRow(index)} className={`text-xl p-1 text-red-500 hover:text-red-700`} title="Eliminar">×</button>)}</div></div>))}
+                                    {ingredients.length === 0 && <p className="text-xs text-gray-500 text-center py-2">Añada ingredientes.</p>}
+                                </div>
+                                <button type="button" onClick={addIngredientRow} className={`mt-2 text-sm px-3 py-1.5 rounded font-medium bg-blue-50 text-blue-600 hover:bg-blue-100`}>+ Agregar Ingrediente</button>
+                            </section>
+                        )}
+                        {esCombo && (
+                            <section className="space-y-3 p-3 border rounded-md bg-lime-50">
+                                <h3 className="text-md font-semibold text-gray-700 border-b pb-2">Definición del Combo</h3>
+                                <div><label htmlFor="skuCombo" className="block text-sm font-medium mb-1">SKU Específico Combo (Opcional)</label><input type="text" id="skuCombo" name="skuCombo" value={skuCombo} onChange={handleInputChange} className="w-full p-2 border rounded" /></div>
+                                <div><label htmlFor="descripcionCombo" className="block text-sm font-medium mb-1">Descripción Específica Combo (Opcional)</label><textarea id="descripcionCombo" name="descripcionCombo" value={descripcionCombo} onChange={handleInputChange} rows={2} className="w-full p-2 border rounded" /></div>
+                                <div><label htmlFor="margenCombo" className="block text-sm font-medium mb-1">Margen Específico Combo (ej: 0.25) <span className="text-red-500">*</span></label><input type="text" inputMode='decimal' id="margenCombo" name="margenCombo" value={margenCombo} onChange={handleInputChange} required placeholder="0.00 - 0.99" className="w-full p-2 border rounded" /></div>
+                                <h4 className="text-sm font-medium pt-2">Componentes del Combo</h4>
+                                <div className={`hidden md:grid md:grid-cols-[minmax(0,1fr)_100px_50px] gap-2 items-center px-1 text-xs font-medium text-gray-500`}><span>Producto Componente</span><span className="text-right">Cantidad</span><span /></div>
+                                <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
+                                    {comboComponents.map((item, index) => (<div key={item.id} className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_100px_50px] gap-2 items-center border-b pb-1"><div><select name="producto_id" value={item.producto_id} onChange={(e) => handleComboComponentChange(index, e)} required className={`w-full p-2 border rounded text-sm bg-white`}>{availableProducts.length === 0 ? <option value="" disabled>Cargando productos...</option> :<option value="" disabled>-- Seleccionar --</option>}{availableProducts.map(p => (<option key={p.id} value={p.id.toString()}>{p.nombre}</option>))}</select></div><div><input type="number" inputMode='numeric' name="cantidad" value={item.cantidad.toString()} onChange={(e) => handleComboComponentChange(index, e)} required min="1" step="1" className={`w-full p-2 border rounded text-sm text-right`} /></div><div className="flex justify-end md:justify-center">{(<button type="button" onClick={() => removeComboComponentRow(index)} className={`text-xl p-1 text-red-500 hover:text-red-700`} title="Eliminar">×</button>)}</div></div>))}
+                                    {comboComponents.length === 0 && <p className="text-xs text-gray-500 text-center py-2">Añada componentes.</p>}
+                                </div>
+                                <button type="button" onClick={addComboComponentRow} className={`mt-2 text-sm px-3 py-1.5 rounded font-medium bg-green-50 text-green-600 hover:bg-green-100`}>+ Agregar Componente</button>
+                            </section>
+                        )}
+                        {!esReceta && !esCombo && (<p className="text-sm text-gray-500 text-center py-4">Marque Es Receta o Es Combo para definir.</p>)}
                     </div>
                 </div>
-
                 <div className="flex-shrink-0 flex justify-between items-center p-4 border-t border-gray-200 bg-gray-50 rounded-b-lg">
-                    {saveError && ( <p className="text-sm text-red-600 flex-grow mr-2">{saveError}</p> )}
+                    {saveError && (<p className="text-sm text-red-600 flex-grow mr-2">{saveError}</p>)}
                     {!saveError && <span className="flex-grow" />}
                     <div className="flex gap-2">
-                        <button type="button" onClick={onClose} className="px-4 py-2 text-sm bg-white border rounded hover:bg-gray-50"> Cancelar </button>
-                        <button type="submit" disabled={isSaving || isLoadingData} className={`px-4 py-2 text-sm text-white rounded flex items-center ${ (isSaving || isLoadingData) ? 'bg-indigo-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700' }`}>
-                            {(isSaving || isLoadingData) && <svg className="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"> <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25"></circle> <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" className="opacity-75"></path> </svg>}
-                            {isSaving ? 'Guardando...' : (isLoadingData ? 'Cargando...' : (isEditMode ? 'Guardar Cambios' : 'Crear Producto'))}
-                        </button>
+                        <button type="button" onClick={onClose} className="px-4 py-2 text-sm bg-white border rounded hover:bg-gray-50">Cancelar</button>
+                        <button type="submit" disabled={isSaving || isLoadingData} className={`px-4 py-2 text-sm text-white rounded flex items-center ${(isSaving || isLoadingData) ? 'bg-indigo-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'}`}>{isSaving ? 'Guardando...' : (isLoadingData ? 'Cargando...' : (isEditMode ? 'Guardar Cambios' : (esCombo ? 'Crear Combo' : 'Crear Producto')))}</button>
                     </div>
                 </div>
             </form>
         </div>
     );
 };
-
 export default CreateProductModal;

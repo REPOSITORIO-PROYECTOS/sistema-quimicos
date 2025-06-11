@@ -1,17 +1,17 @@
 "use client";
 
-import { useProductsContext } from "@/context/ProductsContext"; // Asumo que esto es para la sección de impresión
+import { useProductsContext } from "@/context/ProductsContext"; 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 
-// Interfaz para los items de producto en el estado del pedido
+// CAMBIO: Añadido campo 'observacion'
 type ProductoPedido = {
   producto: number;
   qx: number;
   precio: number;
   total: number;
+  observacion?: string;
 };
 
-// Interfaz para los datos del formulario principal
 interface IFormData {
   nombre: string;          
   cuit: string;
@@ -26,7 +26,6 @@ interface IFormData {
   observaciones?: string;    
 }
 
-// Interfaz para la respuesta de la API de cálculo de total
 interface TotalCalculadoAPI {
   monto_base: number;
   forma_pago_aplicada: string;
@@ -37,6 +36,9 @@ interface TotalCalculadoAPI {
   };
   monto_final_con_recargos: number;
 }
+
+const VENDEDORES = ["martin", "moises", "sergio", "gabriel", "mauricio", "elias", "ardiles", "redonedo"];
+
 
 export default function DetalleActualizarPedidoPage({ id }: { id: number | undefined }) {
   const [formData, setFormData] = useState<IFormData>({
@@ -53,8 +55,9 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     observaciones: "",
   });
 
+  // CAMBIO: Estado inicial con 'observacion'
   const [productos, setProductos] = useState<ProductoPedido[]>([
-    { producto: 0, qx: 0, precio: 0, total: 0 },
+    { producto: 0, qx: 0, precio: 0, total: 0, observacion: "" },
   ]);
   const [totalCalculadoApi, setTotalCalculadoApi] = useState<TotalCalculadoAPI | null>(null);
   const [isCalculatingTotal, setIsCalculatingTotal] = useState(false);
@@ -63,8 +66,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
   const [isLoading, setIsLoading] = useState(true); 
   const [isSubmitting, setIsSubmitting] = useState(false);
   
-  // 1. ESTADO PARA EL INPUT DEL VENDEDOR (ya existía, ahora se usará para un input)
-  const [nombreVendedor, setNombreVendedor] = useState<string>(''); // Inicializado como string vacío
+  const [nombreVendedor, setNombreVendedor] = useState<string>(''); 
 
   const productosContext = useProductsContext();
 
@@ -72,7 +74,6 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     setIsLoading(true);
     setErrorMensaje('');
     setSuccessMensaje('');
-    // setNombreVendedor(''); // No es necesario resetear aquí si se va a cargar desde la API
     const token = localStorage.getItem("token");
     if (!token) {
       setErrorMensaje("Usuario no autenticado. Por favor, inicie sesión.");
@@ -89,40 +90,43 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         throw new Error(errData.message || "No se pudieron cargar los datos del pedido.");
       }
       const datosAPI = await response.json();
-      console.log("Datos del pedido cargados desde API:", datosAPI);
       
-      setNombreVendedor(datosAPI.nombre_vendedor || ''); // Cargar el nombre del vendedor
+      setNombreVendedor(datosAPI.nombre_vendedor || ''); 
 
       let var_vuelto = datosAPI.vuelto_calculado;
       if (var_vuelto == null) var_vuelto = 0;
 
       setFormData({
-        nombre: datosAPI.cliente_nombre || "N/A",
-        cuit: datosAPI.cuit_cliente || "",
+        nombre: "Cliente puerta",
         direccion: datosAPI.direccion_entrega || "", 
         fechaEmision: datosAPI.fecha_registro || "",
         fechaEntrega: datosAPI.fecha_pedido || "",   
         formaPago: datosAPI.forma_pago || "efectivo",
         montoPagado: datosAPI.monto_pagado_cliente || 0,
         vuelto: var_vuelto,
-        cliente_id: datosAPI.cliente_id || null,
+        cliente_id:0,
+        cuit:"",
         requiereFactura: datosAPI.requiere_factura || false, 
         observaciones: datosAPI.observaciones || "",
       });
+      
+      // CAMBIO: Mapear 'observacion_item' de la API a 'observacion' en el estado
       //eslint-disable-next-line
       const productosCargados: ProductoPedido[] = datosAPI.detalles?.map((detalle: any) => ({
         producto: detalle.producto_id,
         qx: detalle.cantidad,
         precio: detalle.precio_unitario_venta_ars || 0,
         total: detalle.precio_total_item_ars || 0,
+        observacion: detalle.observacion_item || "", // NUEVA LÍNEA
       })) || [];
       
-      setProductos(productosCargados.length > 0 ? productosCargados : [{ producto: 0, qx: 0, precio: 0, total: 0 }]);
-      //eslint-disable-next-line
-    } catch (error: any) {
+      // CAMBIO: Estado inicial si no hay productos, debe incluir 'observacion'
+      setProductos(productosCargados.length > 0 ? productosCargados : [{ producto: 0, qx: 0, precio: 0, total: 0, observacion: "" }]);
+    } //eslint-disable-next-line
+     catch (error: any) {
       console.error("Error detallado en cargarFormulario:", error);
       setErrorMensaje(error.message || "Ocurrió un error desconocido al cargar los detalles del pedido.");
-      setNombreVendedor(''); // Limpiar en caso de error
+      setNombreVendedor(''); 
     } finally {
       setIsLoading(false);
     }
@@ -134,25 +138,35 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     } else {
       setErrorMensaje("ID de pedido no proporcionado para cargar los detalles.");
       setIsLoading(false);
-      setNombreVendedor(''); // Limpiar si no hay ID
+      setNombreVendedor(''); 
     }
   }, [id, cargarFormulario]);
   
   const montoBaseProductos = useMemo(() => {
-    // ... (sin cambios)
     return productos.reduce((sum, item) => sum + (item.total || 0), 0);
   }, [productos]);
 
   useEffect(() => {
-    // ... (recalcularTotalConAPI sin cambios)
     const recalcularTotalConAPI = async () => {
-      if (isLoading || (montoBaseProductos <= 0 && !id && !totalCalculadoApi)) {
-         if (!totalCalculadoApi && montoBaseProductos === 0 && !isLoading) setTotalCalculadoApi(null);
-         return;
+      if (isLoading) {
+        return;
       }
-      setIsCalculatingTotal(true); setErrorMensaje('');
+
+      if (montoBaseProductos <= 0) {
+        if (totalCalculadoApi !== null) { 
+          setTotalCalculadoApi(null);
+        }
+        return;
+      }
+
+      setIsCalculatingTotal(true); 
+      setErrorMensaje('');
       const token = localStorage.getItem("token");
-      if (!token) { setErrorMensaje("No autenticado."); setIsCalculatingTotal(false); return; }
+      if (!token) { 
+        setErrorMensaje("No autenticado."); 
+        setIsCalculatingTotal(false); 
+        return; 
+      }
       try {
         const response = await fetch("https://quimex.sistemataup.online/ventas/calcular_total", {
           method: "POST",
@@ -168,27 +182,58 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
           throw new Error(errData.error || `Error ${response.status} calculando total.`);
         }
         const data: TotalCalculadoAPI = await response.json();
-        setTotalCalculadoApi(data);
+        
+        if (
+          !totalCalculadoApi ||
+          totalCalculadoApi.monto_final_con_recargos !== data.monto_final_con_recargos ||
+          totalCalculadoApi.monto_base !== data.monto_base ||
+          totalCalculadoApi.forma_pago_aplicada !== data.forma_pago_aplicada || 
+          totalCalculadoApi.recargos?.transferencia !== data.recargos?.transferencia ||
+          totalCalculadoApi.recargos?.factura_iva !== data.recargos?.factura_iva
+        ) {
+          setTotalCalculadoApi(data);
+        }
         //eslint-disable-next-line
       } catch (e:any) { 
         setErrorMensaje(e.message || "Error al calcular el total final."); 
-        setTotalCalculadoApi(null);
+        if (totalCalculadoApi !== null) {
+            setTotalCalculadoApi(null);
+        }
       } finally { 
         setIsCalculatingTotal(false); 
       }
     };
     recalcularTotalConAPI();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [montoBaseProductos, formData.formaPago, formData.requiereFactura, isLoading, id]);
 
   useEffect(() => {
-    // ... (calcularVueltoConAPI sin cambios)
     const calcularVueltoConAPI = async () => {
         const token = localStorage.getItem("token");
+
         if (!token || isLoading) {
-            if (!isLoading && montoBaseProductos === 0) setFormData(prev => ({ ...prev, vuelto: 0 }));
+            let nuevoVueltoDeterminado = formData.vuelto; 
+            if (!isLoading && montoBaseProductos === 0 && formData.montoPagado === 0) {
+                nuevoVueltoDeterminado = 0;
+            } else if (!isLoading && montoBaseProductos === 0 && formData.montoPagado > 0) {
+                nuevoVueltoDeterminado = formData.montoPagado;
+            }
+            
+            if (formData.vuelto !== nuevoVueltoDeterminado) {
+                setFormData(prev => ({ ...prev, vuelto: nuevoVueltoDeterminado }));
+            }
             return;
         }
+
         const montoFinalParaVuelto = totalCalculadoApi ? totalCalculadoApi.monto_final_con_recargos : montoBaseProductos;
+        
+        if (formData.montoPagado <= 0 && montoFinalParaVuelto <= 0) {
+            if (formData.vuelto !== 0) {
+                setFormData(p => ({ ...p, vuelto: 0 }));
+            }
+            return;
+        }
+        
         if (formData.montoPagado >= montoFinalParaVuelto && montoFinalParaVuelto >= 0) {
             try {
                 const resVuelto = await fetch("https://quimex.sistemataup.online/ventas/calcular_vuelto", {
@@ -200,24 +245,31 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
                     throw new Error(errData.error || `Error ${resVuelto.status} calculando vuelto.`);
                 }
                 const dataVuelto = await resVuelto.json();
-                setFormData(p => ({...p, vuelto:parseFloat((dataVuelto.vuelto||0).toFixed(2))}));
+                const nuevoVueltoApi = parseFloat((dataVuelto.vuelto||0).toFixed(2));
+                if (formData.vuelto !== nuevoVueltoApi) {
+                    setFormData(p => ({ ...p, vuelto: nuevoVueltoApi }));
+                }
                 //eslint-disable-next-line
             } catch (error: any) {
                 setErrorMensaje(error.message || "Error al calcular el vuelto.");
-                setFormData(p => ({...p, vuelto:0}));
+                if (formData.vuelto !== 0) {
+                    setFormData(p => ({ ...p, vuelto: 0 }));
+                }
             }
         } else {
-            setFormData(p => ({...p, vuelto:0}));
+            if (formData.vuelto !== 0) {
+                setFormData(p => ({ ...p, vuelto: 0 }));
+            }
         }
     };
+
     if (!isCalculatingTotal) { 
         calcularVueltoConAPI();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.montoPagado, totalCalculadoApi, montoBaseProductos, isLoading, isCalculatingTotal]);
 
-
   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-    // ... (sin cambios)
     const { name, value, type } = e.target;
     const val = type === 'checkbox' ? (e.target as HTMLInputElement).checked :
                 type === 'number' ? parseFloat(value) || 0 : value;
@@ -230,19 +282,17 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     });
   };
 
-  // 2. FUNCIÓN PARA MANEJAR CAMBIO EN EL INPUT DEL VENDEDOR
-  const handleVendedorInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleVendedorInputChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setNombreVendedor(e.target.value);
   };
   
-
   const handleSubmit = async (e: React.FormEvent ) => {
     e.preventDefault();
     setErrorMensaje(''); setSuccessMensaje('');
     if (!id) { setErrorMensaje("ID de pedido no válido para actualizar."); return; }
     
-    if (!nombreVendedor.trim()) { // VALIDACIÓN DEL VENDEDOR
-        setErrorMensaje("Por favor, ingrese o confirme el nombre del vendedor.");
+    if (!nombreVendedor.trim()) { 
+        setErrorMensaje("Por favor, seleccione o confirme el nombre del vendedor.");
         setIsSubmitting(false);
         return;
     }
@@ -257,9 +307,8 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         return;
     }
 
-    // 3. INCLUIR nombre_vendedor EN EL PAYLOAD DE ACTUALIZACIÓN
     const dataToUpdate = {
-      nombre_vendedor: nombreVendedor.trim(), // <--- NUEVO CAMPO
+      nombre_vendedor: nombreVendedor.trim(), 
       fecha_pedido: formData.fechaEntrega,    
       direccion_entrega: formData.direccion, 
       monto_pagado_cliente: formData.montoPagado,
@@ -269,8 +318,6 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
       requiere_factura: formData.requiereFactura,
       monto_total_base: montoBaseProductos,
       monto_total_final_con_recargos: totalCalculadoApi ? totalCalculadoApi.monto_final_con_recargos : montoBaseProductos,
-      // El cliente_id no se actualiza generalmente desde aquí, se asume que es parte del pedido original.
-      // Si necesitas actualizarlo, añádelo: cliente_id: formData.cliente_id,
     };
  
     console.log("Enviando datos para actualizar:", dataToUpdate);
@@ -286,10 +333,6 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         setErrorMensaje(result?.message || result?.detail || result?.error || 'Error al actualizar el pedido.');
       } else {
         setSuccessMensaje("¡Pedido actualizado con éxito!");
-        // Opcional: Volver a cargar los datos si el backend no devuelve todo lo actualizado
-        // cargarFormulario(id); 
-        
-        // 4. LLAMAR A IMPRIMIR DESPUÉS DEL ÉXITO
         handleImprimirPresupuesto();
       }
       //eslint-disable-next-line
@@ -301,14 +344,12 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
   };
 
   const handleMontoPagadoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // ... (sin cambios)
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: Math.max(0, parseFloat(value) || 0) }));
   };
 
   const handleImprimirPresupuesto = () => {
-    // ... (sin cambios)
-    const nombreCliente = formData.nombre || "Cliente";
+    const nombreCliente = "Cliente puerta";
     let fechaFormateada = "Fecha";
     if(formData.fechaEmision){try{fechaFormateada=new Date(formData.fechaEmision).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'});}catch(e){console.error(e)}}
     const numPedido = id || "Desconocido";
@@ -327,9 +368,9 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
   return (
     <>
       <div className="flex items-center justify-center min-h-screen bg-indigo-900 py-10 px-4 print:hidden">
-        <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-3xl">
+        {/* CAMBIO: Aumentado el ancho para dar espacio a la nueva columna */}
+        <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-5xl">
           
-          {/* 5. NUEVA ESTRUCTURA ENCABEZADO */}
           <h2 className="text-3xl font-bold text-center text-indigo-800 mb-4">
             Detalle y Actualización del Pedido #{id}
           </h2>
@@ -337,44 +378,53 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
               <label htmlFor="nombreVendedor" className="block text-sm font-medium text-gray-700 mb-1">
                   Vendedor*
               </label>
-              <input
-                  type="text"
+              <select
                   id="nombreVendedor"
                   name="nombreVendedor"
                   value={nombreVendedor}
                   onChange={handleVendedorInputChange}
                   className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                  placeholder="Nombre del vendedor asignado"
                   required
-              />
+              >
+                  <option value="" disabled>-- Seleccione un vendedor --</option>
+                  {VENDEDORES.map(vendedor => (
+                      <option key={vendedor} value={vendedor}>
+                          {vendedor.charAt(0).toUpperCase() + vendedor.slice(1)}
+                      </option>
+                  ))}
+              </select>
           </div>
-          {/* FIN NUEVA ESTRUCTURA ENCABEZADO */}
 
           {errorMensaje && <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4" role="alert"><p><strong>Error:</strong> {errorMensaje}</p></div>}
           {successMensaje && <div className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4" role="alert"><p><strong>Éxito:</strong> {successMensaje}</p></div>}
           
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* ... (Fieldsets de "Datos Cliente/Pedido", "Productos del Pedido", "Pago y Totales" SIN CAMBIOS INTERNOS) ... */}
             <fieldset className="border p-4 rounded-md">
               <legend className="text-lg font-medium text-gray-700 px-2">Datos Cliente/Pedido</legend>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div><label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="nombre">Nombre Cliente</label><input type="text" name="nombre" id="nombre" value={formData.nombre} readOnly disabled className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 bg-gray-100 cursor-not-allowed focus:outline-none"/></div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="cuit">CUIT</label><input type="text" name="cuit" id="cuit" value={formData.cuit} readOnly disabled className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 bg-gray-100 cursor-not-allowed focus:outline-none"/></div>
+                <div><label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="nombre">Nombre Cliente</label><input type="text" name="nombre" id="nombre" value="Cliente puerta" readOnly disabled className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 bg-gray-100 cursor-not-allowed focus:outline-none"/></div>
                 <div><label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="fechaEmision">Fecha de Emisión</label><input type="datetime-local" name="fechaEmision" id="fechaEmision" value={formData.fechaEmision ? formData.fechaEmision.substring(0,16) : ''} readOnly disabled className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 bg-gray-100 cursor-not-allowed focus:outline-none"/></div>
-                {/* Campos Fecha Entrega y Dirección no se muestran en el form pero se envían */}
                 <div className="md:col-span-2"><label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="observaciones">Observaciones</label><textarea id="observaciones" name="observaciones" value={formData.observaciones || ''} onChange={handleFormChange} rows={2} className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"/></div>
               </div>
             </fieldset>
 
             <fieldset className="border p-4 rounded-md">
               <legend className="text-lg font-medium text-gray-700 px-2">Productos del Pedido</legend>
-              <div className="mb-2 hidden md:grid md:grid-cols-[1fr_90px_100px_100px] items-center gap-2 font-semibold text-sm text-gray-600 px-3">
-                <span>Producto</span><span className="text-center">Cant.</span><span className="text-right">P.Unit</span><span className="text-right">Total</span>
+              {/* CAMBIO: Añadida la cabecera de la columna de observación */}
+              <div className="mb-2 hidden md:grid md:grid-cols-[1fr_1fr_90px_100px_100px] items-center gap-2 font-semibold text-sm text-gray-600 px-3">
+                <span>Producto</span>
+                <span>Observ. Prod.</span> {/* NUEVA CABECERA */}
+                <span className="text-center">Cant.</span>
+                <span className="text-right">P.Unit</span>
+                <span className="text-right">Total</span>
               </div>
               <div className="space-y-2">
                 {productos.map((item, index) => (
-                  <div key={index} className="grid grid-cols-[1fr_90px_100px_100px] items-center gap-2 border-b pb-1 last:border-b-0">
+                  // CAMBIO: Añadido el campo de observación a la fila del producto
+                  <div key={index} className="grid grid-cols-1 md:grid-cols-[1fr_1fr_90px_100px_100px] items-center gap-2 border-b pb-1 last:border-b-0">
                     <input type="text" readOnly disabled value={productosContext.productos.find(p=>p.id===item.producto)?.nombre||`ID:${item.producto}`} className="shadow-sm border rounded w-full py-1 px-3 text-gray-700 bg-gray-100"/>
+                    {/* NUEVO CAMPO */}
+                    <input type="text" readOnly disabled value={item.observacion || ''} className="shadow-sm border rounded w-full py-1 px-3 text-gray-700 bg-gray-100 text-sm"/>
                     <input type="number" readOnly disabled value={item.qx===0?'':item.qx} className="shadow-sm border rounded w-full py-1 px-2 text-gray-700 text-center bg-gray-100"/>
                     <input type="text" readOnly disabled value={`$ ${item.precio.toFixed(2)}`} className="shadow-sm border rounded w-full py-1 px-2 text-gray-700 text-right bg-gray-100"/>
                     <input type="text" readOnly disabled value={`$ ${item.total.toFixed(2)}`} className="shadow-sm border rounded w-full py-1 px-2 text-gray-700 text-right bg-gray-100"/>
@@ -393,7 +443,8 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
                     <option value="factura">Factura</option>
                   </select>
                 </div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="montoPagado">Monto Pagado</label><input id="montoPagado" type="number" name="montoPagado" value={formData.montoPagado === 0 ? '' : formData.montoPagado} onChange={handleMontoPagadoChange} placeholder="0.00" step="0.01" min="0" className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"/></div>
+                <div><label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="montoPagado">Monto Pagado</label>
+                <input id="montoPagado" type="number" name="montoPagado" value={formData.montoPagado === 0 ? '' : formData.montoPagado} onChange={handleMontoPagadoChange} placeholder="0.00" step="0.01" min="0" className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 no-spinners"/></div>
                 <div><label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="vuelto">Vuelto</label><input id="vuelto" type="text" name="vuelto" readOnly value={`$ ${formData.vuelto.toFixed(2)}`} className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 bg-gray-100 text-right focus:outline-none"/></div>
               </div>
               <div className="mt-4 text-right">
@@ -404,7 +455,6 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
               </div>
             </fieldset>
             
-            {/* BOTÓN UNIFICADO */}
             <div className="flex justify-end mt-8">
               <button 
                 type="submit" 
@@ -416,8 +466,8 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
           </form>
         </div>
       </div>
-
-      {/* SECCIÓN DE IMPRESIÓN */}
+      
+      {/* CAMBIO: Actualizada la sección de impresión */}
       <div id="presupuesto-imprimible" className="hidden print:block presupuesto-container">
         <header className="presupuesto-header">
           <div className="logo-container"><img src="/logo.png" alt="QuiMex" className="logo" /><p className="sub-logo-text">PRESUPUESTO NO VALIDO COMO FACTURA</p></div>
@@ -428,7 +478,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
             <tr><td>PEDIDO</td><td>{id || 'N/A'}</td></tr>
             <tr><td>FECHA</td><td>{formData.fechaEmision ? new Date(formData.fechaEmision).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'}) : ''}</td></tr>
             <tr><td>CLIENTE</td><td>{formData.nombre || 'CONSUMIDOR FINAL'}</td></tr>
-            <tr><td>VENDEDOR</td><td>{nombreVendedor || '-'}</td></tr> 
+            <tr><td>VENDEDOR</td><td>{nombreVendedor ? nombreVendedor.charAt(0).toUpperCase() + nombreVendedor.slice(1) : '-'}</td></tr> 
             <tr><td>SUBTOTAL (Productos)</td><td className="text-right">$ {montoBaseProductos.toFixed(2)}</td></tr>
           </tbody></table>
           <table className="tabla-datos-secundarios"><tbody>
@@ -440,14 +490,25 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         </section>
         <section className="detalle-productos">
           <table className="tabla-items">
-            <thead><tr><th>ITEM</th><th>PRODUCTO</th><th>CANTIDAD</th><th>SUBTOTAL</th></tr></thead>
+            {/* CAMBIO: Cabecera con la nueva columna */}
+            <thead><tr><th>ITEM</th><th>PRODUCTO</th><th>OBSERV.</th><th>CANTIDAD</th><th>SUBTOTAL</th></tr></thead>
             <tbody>
               {productos.filter(p => p.producto && p.qx > 0).map((item, index) => {
                 const pInfo = productosContext.productos.find(p => p.id === item.producto);
-                return (<tr key={`print-item-${index}`}><td>{index + 1}</td><td>{pInfo?.nombre || `ID: ${item.producto}`}</td><td className="text-center">{item.qx}</td><td className="text-right">$ {item.total.toFixed(2)}</td></tr>);
+                return (
+                  <tr key={`print-item-${index}`}>
+                    <td>{index + 1}</td>
+                    <td>{pInfo?.nombre || `ID: ${item.producto}`}</td>
+                    {/* NUEVA CELDA */}
+                    <td>{item.observacion || '-'}</td>
+                    <td className="text-center">{item.qx}</td>
+                    <td className="text-right">$ {item.total.toFixed(2)}</td>
+                  </tr>
+                );
               })}
+              {/* CAMBIO: Ajuste de celdas vacías */}
               {Array.from({ length: Math.max(0, 12 - productos.filter(p => p.producto && p.qx > 0).length) }).map((_, i) => 
-                <tr key={`empty-row-${i}`} className="empty-row"><td> </td><td> </td><td> </td><td> </td></tr>)}
+                <tr key={`empty-row-${i}`} className="empty-row"><td> </td><td> </td><td> </td><td> </td><td> </td></tr>)}
             </tbody>
           </table>
         </section>
@@ -456,6 +517,15 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         .inputD { @apply shadow-sm border rounded w-full py-2 px-3 text-gray-700 bg-gray-100 cursor-not-allowed focus:outline-none; }
         .inputE { @apply shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500; }
         .blockT { @apply block text-sm font-medium text-gray-700 mb-1; }
+
+        .no-spinners::-webkit-outer-spin-button,
+        .no-spinners::-webkit-inner-spin-button {
+          -webkit-appearance: none;
+          margin: 0;
+        }
+        .no-spinners {
+          -moz-appearance: textfield; 
+        }
       `}</style>
     </>
   );

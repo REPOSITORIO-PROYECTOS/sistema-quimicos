@@ -1,14 +1,17 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useProductsContext, Producto as ProductoContextType } from "@/context/ProductsContext";
 import { useClientesContext, Cliente } from "@/context/ClientesContext"; 
+import Select from 'react-select';
 
 type ProductoPedido = {
   producto: number;
   qx: number;
-  precio: number;
-  total: number;
+  precio: number; 
+  descuento: number; 
+  total: number; 
+  observacion?: string;
 };
 
 interface IFormData {
@@ -20,20 +23,21 @@ interface IFormData {
   fechaEntrega: string;
   formaPago: string;
   montoPagado: number;
+  descuentoTotal: number; 
   vuelto: number;
   requiereFactura: boolean;
   observaciones?: string;
 }
 
 interface TotalCalculadoAPI {
-  monto_base: number;
+  monto_base: number; 
   forma_pago_aplicada: string;
   requiere_factura_aplicada: boolean;
   recargos: {
     transferencia: number;
     factura_iva: number;
   };
-  monto_final_con_recargos: number;
+  monto_final_con_recargos: number; 
 }
 
 const initialFormData: IFormData = {
@@ -45,12 +49,13 @@ const initialFormData: IFormData = {
   fechaEntrega: "",
   formaPago: "efectivo",
   montoPagado: 0,
+  descuentoTotal: 0,
   vuelto: 0,
   requiereFactura: false,
   observaciones: "",
 };
 
-const initialProductos: ProductoPedido[] = [{ producto: 0, qx: 0, precio: 0, total: 0 }];
+const initialProductos: ProductoPedido[] = [{ producto: 0, qx: 0, precio: 0, descuento: 0, total: 0, observacion: "" }];
 
 export default function RegistrarPedidoPage() { 
   const {
@@ -69,7 +74,13 @@ export default function RegistrarPedidoPage() {
   const [errorMessage, setErrorMessage] = useState('');
   
   const productosContext = useProductsContext();
-  const [vendedorInput, setVendedorInput] = useState<string>(''); 
+
+  const opcionesDeProductoParaSelect = useMemo(() => 
+    productosContext?.productos.map((prod: ProductoContextType) => ({
+      value: prod.id,
+      label: prod.nombre,
+    })) || [],
+  [productosContext?.productos]);
 
   useEffect(() => {
     const now = new Date();
@@ -107,14 +118,14 @@ export default function RegistrarPedidoPage() {
         return;
       }
 
-      let montoFinalParaVuelto = montoBaseProductos;
+      let montoFinalParaVueltoNeto = montoBaseProductos; 
 
       try {
         const resTotal = await fetch("https://quimex.sistemataup.online/ventas/calcular_total", {
           method: "POST",
           headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
           body: JSON.stringify({
-            monto_base: montoBaseProductos,
+            monto_base: montoBaseProductos, 
             forma_pago: formData.formaPago,
             requiere_factura: formData.requiereFactura,
           }),
@@ -124,16 +135,23 @@ export default function RegistrarPedidoPage() {
           throw new Error(errDataTotal.error || `Error ${resTotal.status} al calcular total.`);
         }
         const dataTotal: TotalCalculadoAPI = await resTotal.json();
-        setTotalCalculadoApi(dataTotal);
-        montoFinalParaVuelto = dataTotal.monto_final_con_recargos;
+        
+        if (JSON.stringify(totalCalculadoApi) !== JSON.stringify(dataTotal)) {
+            setTotalCalculadoApi(dataTotal);
+        }
+        
+        const montoConRecargosBruto = dataTotal.monto_final_con_recargos;
+        const descuentoTotalPorcentaje = formData.descuentoTotal || 0;
+        montoFinalParaVueltoNeto = montoConRecargosBruto * (1 - (descuentoTotalPorcentaje / 100));
+        montoFinalParaVueltoNeto = Math.max(0, montoFinalParaVueltoNeto); 
 
-        if (formData.montoPagado >= montoFinalParaVuelto && montoFinalParaVuelto > 0) {
+        if (formData.montoPagado >= montoFinalParaVueltoNeto && montoFinalParaVueltoNeto > 0) {
             const resVuelto = await fetch("https://quimex.sistemataup.online/ventas/calcular_vuelto", {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
                 body: JSON.stringify({
                     monto_pagado: formData.montoPagado,
-                    monto_total_final: montoFinalParaVuelto,
+                    monto_total_final: montoFinalParaVueltoNeto, 
                 }),
             });
             if(!resVuelto.ok){
@@ -141,38 +159,183 @@ export default function RegistrarPedidoPage() {
                 throw new Error(errDataVuelto.error || `Error ${resVuelto.status} al calcular vuelto.`);
             }
             const dataVuelto = await resVuelto.json();
-            setFormData(prev => ({ ...prev, vuelto: parseFloat((dataVuelto.vuelto || 0).toFixed(2)) }));
+            const nuevoVuelto = parseFloat((dataVuelto.vuelto || 0).toFixed(2));
+            if (formData.vuelto !== nuevoVuelto) {
+                setFormData(prev => ({ ...prev, vuelto: nuevoVuelto }));
+            }
         } else {
-            setFormData(prev => ({ ...prev, vuelto: 0 }));
+            if (formData.vuelto !== 0) {
+                setFormData(prev => ({ ...prev, vuelto: 0 }));
+            }
         }
         //eslint-disable-next-line
       } catch (error: any) {
         console.error("Error en recalcularTodo:", error);
         setErrorMessage(error.message || "Error al recalcular totales/vuelto.");
-        setTotalCalculadoApi(null); 
-        setFormData(prev => ({ ...prev, vuelto: 0 }));
+        if (totalCalculadoApi !== null) {
+            setTotalCalculadoApi(null); 
+        }
+        const descuentoTotalPorcentaje = formData.descuentoTotal || 0;
+        const montoBaseNeto = montoBaseProductos * (1 - (descuentoTotalPorcentaje / 100));
+        const vueltoCalculadoLocal = formData.montoPagado > montoBaseNeto ? formData.montoPagado - montoBaseNeto : 0;
+        const nuevoVueltoLocal = parseFloat(vueltoCalculadoLocal.toFixed(2));
+        if (formData.vuelto !== nuevoVueltoLocal) {
+            setFormData(prev => ({ ...prev, vuelto: nuevoVueltoLocal }));
+        }
       } finally {
         setIsCalculatingTotal(false);
       }
     };
     
-    if (montoBaseProductos > 0 || formData.montoPagado > 0) {
+    if (montoBaseProductos > 0 || formData.montoPagado > 0 || formData.descuentoTotal > 0 || (totalCalculadoApi && (formData.formaPago !== totalCalculadoApi.forma_pago_aplicada || formData.requiereFactura !== totalCalculadoApi.requiere_factura_aplicada ))) {
         recalcularTodo();
-    } else {
-        setTotalCalculadoApi(null);
-        setFormData(prev => ({ ...prev, vuelto: 0 }));
+    } else if (montoBaseProductos === 0 && formData.montoPagado === 0 && formData.descuentoTotal === 0) { 
+        if (totalCalculadoApi !== null) setTotalCalculadoApi(null);
+        if (formData.vuelto !== 0) setFormData(prev => ({ ...prev, vuelto: 0 }));
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [montoBaseProductos, formData.formaPago, formData.requiereFactura, formData.montoPagado]);
+  }, [montoBaseProductos, formData.formaPago, formData.requiereFactura, formData.montoPagado, formData.descuentoTotal]);
 
 
+  const recalculatePricesForProducts = useCallback(async (currentProducts: ProductoPedido[]) => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+        setErrorMessage("No autenticado. No se pueden calcular precios.");
+        return;
+    }
+
+    const productQuantities = new Map<number, { totalQuantity: number; indices: number[] }>();
+    currentProducts.forEach((p, index) => {
+        if (p.producto > 0 && p.qx > 0) {
+            const existing = productQuantities.get(p.producto);
+            if (existing) {
+                existing.totalQuantity += p.qx;
+                existing.indices.push(index);
+            } else {
+                productQuantities.set(p.producto, {
+                    totalQuantity: p.qx,
+                    indices: [index],
+                });
+            }
+        }
+    });
+
+    const pricePromises = Array.from(productQuantities.entries()).map(
+        async ([productoId, { totalQuantity, indices }]) => {
+            try {
+                const precioRes = await fetch(`https://quimex.sistemataup.online/productos/calcular_precio/${productoId}`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+                    body: JSON.stringify({ producto_id: productoId, quantity: totalQuantity }),
+                });
+                if (!precioRes.ok) {
+                    const errData = await precioRes.json().catch(() => ({ message: "Error al calcular precio." }));
+                    throw new Error(errData.message || "Error al calcular precio.");
+                }
+                const precioData = await precioRes.json();
+                return {
+                    precio: precioData.precio_venta_unitario_ars || 0,
+                    indices,
+                };
+              //eslint-disable-next-line
+            } catch (error: any) {
+                console.error(`Error al obtener precio para producto ID ${productoId}:`, error);
+                setErrorMessage(error.message);
+                return { precio: 0, indices };
+            }
+        }
+    );
+
+    const priceResults = await Promise.all(pricePromises);
+    
+    const updatedProducts = [...currentProducts];
+
+    priceResults.forEach(result => {
+        const { precio, indices } = result;
+        indices.forEach(index => {
+            const item = updatedProducts[index];
+            item.precio = precio;
+            const totalBruto = item.precio * item.qx;
+            item.total = totalBruto * (1 - (item.descuento / 100));
+        });
+    });
+
+    updatedProducts.forEach(item => {
+        if (item.producto === 0 || item.qx === 0) {
+            item.precio = 0;
+            item.total = 0;
+        }
+    });
+    
+    setProductos(updatedProducts);
+  }, [setErrorMessage]);
+
+  const handleProductSelectChange = async (
+    index: number,
+    selectedOption: { value: number; label: string } | null
+  ) => {
+    const nuevosProductos = [...productos];
+    const currentProductItem = nuevosProductos[index];
+    
+    if (selectedOption) {
+        currentProductItem.producto = selectedOption.value;
+        currentProductItem.qx = currentProductItem.qx > 0 ? currentProductItem.qx : 1;
+    } else {
+        nuevosProductos[index] = { ...initialProductos[0] };
+    }
+    
+    setProductos(nuevosProductos); 
+    await recalculatePricesForProducts(nuevosProductos);
+  };
+  
+  const handleProductRowInputChange = async (
+    index: number,
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const { name, value } = e.target;
+    const nuevosProductos = [...productos];
+    const currentProductItem = nuevosProductos[index];
+
+    if (name === "qx") {
+        currentProductItem.qx = parseInt(value) || 0;
+    } else if (name === "descuento") {
+        const descVal = parseFloat(value) || 0;
+        currentProductItem.descuento = Math.max(0, Math.min(100, descVal));
+    } else if (name === "observacion") { 
+        currentProductItem.observacion = value;
+    }
+    
+    setProductos(nuevosProductos);
+    await recalculatePricesForProducts(nuevosProductos);
+  };
+
+  const agregarProducto = () => setProductos([...productos, { producto: 0, qx: 0, precio: 0, descuento: 0, total: 0, observacion: "" }]);
+  
+  const eliminarProducto = async (index: number) => {
+    const nuevosProductos = [...productos];
+    nuevosProductos.splice(index, 1);
+    if (nuevosProductos.length === 0) {
+        nuevosProductos.push({ producto: 0, qx: 0, precio: 0, descuento: 0, total: 0, observacion: "" });
+    }
+    setProductos(nuevosProductos);
+    await recalculatePricesForProducts(nuevosProductos);
+  };
+  
   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
-    const val = type === 'checkbox' 
-      ? (e.target as HTMLInputElement).checked 
-      : type === 'number' 
-      ? parseFloat(value) || 0 
-      : value;
+    let val: string | number | boolean = value;
+
+    if (type === 'checkbox') {
+      val = (e.target as HTMLInputElement).checked;
+    } else if (type === 'number') {
+      val = parseFloat(value);
+      if (isNaN(val)) { 
+        val = (name === 'montoPagado' || name === 'descuentoTotal') ? 0 : value; 
+      }
+      if (name === 'descuentoTotal') {
+        val = Math.max(0, Math.min(100, Number(val)));
+      }
+    }
   
     setFormData((prev) => {
       const newState = { ...prev, [name]: val };
@@ -181,10 +344,6 @@ export default function RegistrarPedidoPage() {
       }
       return newState;
     });
-  };
-
-  const handleVendedorInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setVendedorInput(e.target.value);
   };
 
   const handleClienteSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -199,73 +358,18 @@ export default function RegistrarPedidoPage() {
     }));
   };
 
-  const handleProductoChange = async (
-    index: number,
-    e: React.ChangeEvent<HTMLInputElement> | React.ChangeEvent<HTMLSelectElement>
-  ) => {
-    const { name, value } = e.target;
-    const nuevosProductos = [...productos];
-    const currentProductItem = nuevosProductos[index];
-
-    if (name === "qx") currentProductItem.qx = parseInt(value) || 0;
-    else if (name === "producto") currentProductItem.producto = parseInt(value) || 0;
-    
-    const productoId = currentProductItem.producto;
-    const cantidad = currentProductItem.qx;
-
-    if (productoId && cantidad > 0) {
-      try {
-        const token = localStorage.getItem("token");
-        const precioRes = await fetch(`https://quimex.sistemataup.online/productos/calcular_precio/${productoId}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-          body: JSON.stringify({ producto_id: productoId, quantity: cantidad }),
-        });
-        if (!precioRes.ok) {
-          const errData = await precioRes.json().catch(()=>({message:"Error al calcular precio."}));
-          throw new Error(errData.message || "Error al calcular precio.");
-        }
-        const precioData = await precioRes.json();
-        currentProductItem.precio = precioData.precio_venta_unitario_ars || 0;
-        currentProductItem.total = precioData.precio_total_calculado_ars || 0;
-        //eslint-disable-next-line
-      } catch (error: any) {
-        console.error("Error en carga de precio:", error);
-        setErrorMessage(error.message || "Error al obtener precio de producto.")
-        currentProductItem.precio = 0; currentProductItem.total = 0;
-      }
-    } else {
-      currentProductItem.precio = 0; currentProductItem.total = 0;
-    }
-    setProductos(nuevosProductos);
-  };
-
-  const agregarProducto = () => setProductos([...productos, { producto: 0, qx: 0, precio: 0, total: 0 }]);
-  const eliminarProducto = (index: number) => {
-    const nuevosProductos = [...productos];
-    nuevosProductos.splice(index, 1);
-    if (nuevosProductos.length === 0) nuevosProductos.push({ producto: 0, qx: 0, precio: 0, total: 0 });
-    setProductos(nuevosProductos);
-  };
-  
   const handleMontoPagadoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     const montoIngresado = Math.max(0, parseFloat(value) || 0);
     setFormData((prev) => ({ ...prev, [name]: montoIngresado }));
   };
 
-
   const handleSubmit = async (e: React.FormEvent ) => {
     e.preventDefault();
     setIsSubmitting(true);
     setSuccessMessage('');
     setErrorMessage('');
-
-    if (!vendedorInput.trim()) {
-        setErrorMessage("Por favor, ingrese el nombre del vendedor.");
-        setIsSubmitting(false);
-        return;
-    }
+   
     if (!formData.clienteId) {
         setErrorMessage("Seleccione un cliente."); setIsSubmitting(false); return;
     }
@@ -287,24 +391,31 @@ export default function RegistrarPedidoPage() {
         setErrorMessage("ID de usuario no encontrado. Por favor, vuelva a iniciar sesión."); setIsSubmitting(false); return;
     }
 
+    const montoConRecargosBruto = totalCalculadoApi ? totalCalculadoApi.monto_final_con_recargos : montoBaseProductos;
+    const descuentoTotalAplicar = formData.descuentoTotal || 0;
+    const montoTotalFinalNeto = Math.max(0, montoConRecargosBruto * (1 - (descuentoTotalAplicar / 100)));
+
     const dataPayload = {
       usuario_interno_id: parseInt(usuarioId, 10), 
-      nombre_vendedor: vendedorInput.trim(),
       items: productos.filter(item => item.producto !== 0 && item.qx > 0).map(item => ({
         producto_id: item.producto,
         cantidad: item.qx,
+        observacion_item: item.observacion || "",
+        descuento_item_porcentaje: item.descuento,
       })),
       cliente_id: clienteIdParaApi,
       fecha_emision: formData.fechaEmision || new Date().toISOString().slice(0,16),
       fecha_pedido: formData.fechaEntrega || formData.fechaEmision || new Date().toISOString().slice(0,16),
       direccion_entrega: formData.direccion,
       cuit_cliente: formData.cuit,
+      nombre_vendedor:"vendedor", 
       monto_pagado_cliente: formData.montoPagado,
       forma_pago: formData.formaPago,
       vuelto: formData.vuelto,
       requiere_factura: formData.requiereFactura,
-      monto_total_base: montoBaseProductos,
-      monto_total_final_con_recargos: totalCalculadoApi ? totalCalculadoApi.monto_final_con_recargos : montoBaseProductos,
+      monto_total_base: montoBaseProductos, 
+      descuento_total_global_porcentaje: descuentoTotalAplicar,
+      monto_final_con_recargos: parseFloat(montoTotalFinalNeto.toFixed(2)), 
       observaciones: formData.observaciones || "",
     };
     
@@ -328,7 +439,6 @@ export default function RegistrarPedidoPage() {
         setFormData({...initialFormData, fechaEmision: now.toISOString().slice(0, 16)});
         setProductos(initialProductos);
         setTotalCalculadoApi(null);
-        setVendedorInput(''); 
         
         if (result.venta_id) { 
            handleImprimirPresupuesto(result.venta_id);
@@ -369,33 +479,19 @@ export default function RegistrarPedidoPage() {
              <button onClick={() => window.location.reload()} className="bg-white text-red-900 px-4 py-2 rounded hover:bg-gray-200">Reintentar</button>
          </div>;
   }
-
-  const displayTotal = totalCalculadoApi ? totalCalculadoApi.monto_final_con_recargos : montoBaseProductos;
+  
+  const baseTotalConRecargos = totalCalculadoApi ? totalCalculadoApi.monto_final_con_recargos : montoBaseProductos;
+  const displayTotal = Math.max(0, baseTotalConRecargos * (1 - (formData.descuentoTotal || 0) / 100));
 
   return (
     <>
       <div className="flex items-center justify-center min-h-screen bg-indigo-900 py-10 px-4 print:hidden">
-        <div className="bg-white p-6 md:p-8 rounded-lg shadow-md w-full max-w-4xl">
+        <div className="bg-white p-6 md:p-8 rounded-lg shadow-md w-full max-w-5xl">
           
           <h2 className="text-3xl font-bold text-center text-indigo-800 mb-4">
             Registrar Pedido 
           </h2>
-          <div className="mb-6">
-              <label htmlFor="vendedorInput" className="block text-sm font-medium text-gray-700 mb-1">
-                  Vendedor*
-              </label>
-              <input
-                  type="text"
-                  id="vendedorInput"
-                  name="vendedorInput"
-                  value={vendedorInput}
-                  onChange={handleVendedorInputChange}
-                  className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                  placeholder="Nombre del vendedor"
-                  required
-              />
-          </div>
-
+         
           {errorMessage && <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4"><p>{errorMessage}</p></div>}
           {successMessage && <div className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4"><p>{successMessage}</p></div>}
           
@@ -424,7 +520,7 @@ export default function RegistrarPedidoPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="fechaEmision">Fecha Emisión*</label>
-                  <input type="datetime-local" name="fechaEmision" id="fechaEmision" value={formData.fechaEmision} onChange={handleFormChange} required
+                  <input type="datetime-local" name="fechaEmision" id="fechaEmision" disabled value={formData.fechaEmision} onChange={handleFormChange} required
                     className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"/>
                 </div>
                 <div>
@@ -442,25 +538,60 @@ export default function RegistrarPedidoPage() {
 
             <fieldset className="border p-4 rounded-md">
               <legend className="text-lg font-medium text-gray-700 px-2">Productos</legend>
-              <div className="mb-2 hidden md:grid md:grid-cols-[minmax(0,1fr)_90px_100px_100px_32px] items-center gap-2 font-semibold text-sm text-gray-600 px-3">
-                <span>Producto*</span><span className="text-center">Cantidad*</span><span className="text-right">Precio U.</span><span className="text-right">Total</span><span />
+              <div className="mb-2 hidden md:grid md:grid-cols-[minmax(0,0.7fr)_minmax(0,0.5fr)_70px_70px_90px_90px_32px] items-center gap-x-2 font-semibold text-sm text-gray-600 px-1 md:px-3">
+                <span>Producto*</span>
+                <span>Observ. Prod.</span>
+                <span className="text-center">Cant*</span>
+                <span className="text-center">Desc%</span> 
+                <span className="text-right">P.Unit</span>
+                <span className="text-right">Total</span>
+                <span />
               </div>
               <div className="space-y-3">
                 {productos.map((item, index) => (
-                  <div key={index} className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_90px_100px_100px_32px] items-center gap-2 border-b pb-2 last:border-b-0 md:border-none md:pb-0">
+                  <div key={index} className="grid grid-cols-1 md:grid-cols-[minmax(0,0.7fr)_minmax(0,0.5fr)_70px_70px_90px_90px_32px] items-center gap-x-2 gap-y-1 border-b pb-2 last:border-b-0 md:border-none md:pb-0">
                     <div className="w-full">
-                      <select name="producto" value={item.producto || 0} onChange={(e) => handleProductoChange(index, e)} required
-                        className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500">
-                        <option value={0} disabled> -- Seleccionar -- </option>
-                        {productosContext?.productos.map((prod: ProductoContextType) => <option value={prod.id} key={prod.id}>{prod.nombre}</option>)}
-                      </select>
+                      <Select
+                        name={`producto-${index}`}
+                        options={opcionesDeProductoParaSelect}
+                        value={opcionesDeProductoParaSelect.find(opt => opt.value === item.producto) || null}
+                        onChange={(selectedOption) => handleProductSelectChange(index, selectedOption)}
+                        placeholder="Buscar producto..."
+                        isClearable
+                        isSearchable
+                        isLoading={productosContext.loading}
+                        noOptionsMessage={() => "No se encontraron productos"}
+                        loadingMessage={() => "Cargando productos..."}
+                        className="text-sm react-select-container"
+                        classNamePrefix="react-select"
+                      />
                     </div>
                     <div className="w-full">
-                      <input type="number" name="qx" placeholder="Cant." value={item.qx === 0 ? '' : item.qx} onChange={(e) => handleProductoChange(index, e)} min="1" required
-                        className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-center focus:outline-none focus:ring-1 focus:ring-indigo-500"/>
+                        <input
+                        type="text"
+                        name="observacion"
+                        placeholder="Obs. ítem"
+                        value={item.observacion || ''}
+                        onChange={(e) => handleProductRowInputChange(index, e)}
+                        className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
                     </div>
-                    <input type="text" value={`$ ${item.precio.toFixed(2)}`} readOnly className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-right bg-gray-100"/>
-                    <input type="text" value={`$ ${item.total.toFixed(2)}`} readOnly className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-right bg-gray-100"/>
+                    <div className="w-full">
+                      <input type="number" name="qx" placeholder="Cant." value={item.qx === 0 ? '' : item.qx} onChange={(e) => handleProductRowInputChange(index, e)} min="1" required
+                        className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-sm text-center focus:outline-none focus:ring-1 focus:ring-indigo-500 no-spinners"/>
+                    </div>
+                    <div className="w-full">
+                      <input 
+                        type="number" 
+                        name="descuento" 
+                        placeholder="0%" 
+                        value={item.descuento === 0 ? '' : item.descuento} 
+                        onChange={(e) => handleProductRowInputChange(index, e)} 
+                        min="0" max="100"
+                        className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-sm text-center focus:outline-none focus:ring-1 focus:ring-indigo-500 no-spinners"/>
+                    </div>
+                    <input type="text" value={`$ ${item.precio.toFixed(2)}`} readOnly title="Precio unitario con descuento por volumen" className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-sm text-right bg-gray-100"/>
+                    <input type="text" value={`$ ${item.total.toFixed(2)}`} readOnly title="Total con descuento de producto" className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-sm text-right bg-gray-100"/>
                     <div className="flex justify-end md:justify-center items-center">
                       {productos.length > 1 && <button type="button" onClick={() => eliminarProducto(index)} title="Eliminar producto" className="text-red-500 hover:text-red-700 font-bold text-xl leading-none p-1 rounded-full hover:bg-red-100">×</button>}
                     </div>
@@ -474,9 +605,9 @@ export default function RegistrarPedidoPage() {
               </button>
             </fieldset>
 
-            <fieldset className="border p-4 rounded-md">
+             <fieldset className="border p-4 rounded-md">
               <legend className="text-lg font-medium text-gray-700 px-2">Pago y Totales</legend>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-[1fr_auto_1fr_1fr] gap-4 items-end">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="formaPago">Forma de Pago</label>
                   <select id="formaPago" name="formaPago" value={formData.formaPago} onChange={handleFormChange}
@@ -491,12 +622,27 @@ export default function RegistrarPedidoPage() {
                       id="montoPagado"
                       type="number"
                       name="montoPagado"
-                      className="w-full bg-white shadow-sm border rounded py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      className="w-full bg-white shadow-sm border rounded py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 no-spinners"
                       value={formData.montoPagado === 0 ? '' : formData.montoPagado}
                       onChange={handleMontoPagadoChange}
                       placeholder="0.00" 
                       step="0.01"
                       min="0"
+                    />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="descuentoTotal">Descuento Total (%)</label>
+                  <input
+                      id="descuentoTotal"
+                      type="number"
+                      name="descuentoTotal"
+                      className="w-full bg-white shadow-sm border rounded py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 no-spinners"
+                      value={formData.descuentoTotal === 0 ? '' : formData.descuentoTotal}
+                      onChange={handleFormChange}
+                      placeholder="0" 
+                      step="1"
+                      min="0"
+                      max="100"
                     />
                 </div>
                 <div>
@@ -510,12 +656,17 @@ export default function RegistrarPedidoPage() {
                 {isCalculatingTotal && <p className="text-sm text-blue-600 italic">Calculando total...</p>}
                 {totalCalculadoApi && (
                     <div className="text-xs text-gray-600 mb-1">
-                        <span>Base: ${totalCalculadoApi.monto_base.toFixed(2)}</span>
+                        <span>Base (Prod. c/desc): ${totalCalculadoApi.monto_base.toFixed(2)}</span>
                         {totalCalculadoApi.recargos.transferencia > 0 && <span className="ml-2">Rec. Transf: ${totalCalculadoApi.recargos.transferencia.toFixed(2)}</span>}
                         {totalCalculadoApi.recargos.factura_iva > 0 && <span className="ml-2">IVA: ${totalCalculadoApi.recargos.factura_iva.toFixed(2)}</span>}
+                        {formData.descuentoTotal > 0 && (
+                            <span className="ml-2 text-red-600">
+                                Desc. Total ({formData.descuentoTotal}%): -$ {(baseTotalConRecargos * (formData.descuentoTotal / 100)).toFixed(2)}
+                            </span>
+                        )}
                     </div>
                 )}
-                <label className="block text-sm font-medium text-gray-500 mb-1">Total Pedido (c/recargos)</label>
+                <label className="block text-sm font-medium text-gray-500 mb-1">Total Pedido (c/recargos y desc. total)</label>
                 <input type="text" value={`$ ${displayTotal.toFixed(2)}`} readOnly
                   className="w-full md:w-auto md:max-w-xs inline-block bg-gray-100 shadow-sm border rounded py-2 px-3 text-gray-900 text-right font-bold text-lg focus:outline-none"/>
               </div>
@@ -524,7 +675,7 @@ export default function RegistrarPedidoPage() {
             <div className="flex justify-end mt-8">
               <button type="submit"
                 className="bg-green-600 text-white px-8 py-3 rounded-md hover:bg-green-700 font-semibold text-lg disabled:opacity-50"
-                disabled={loadingClientes || isSubmitting || isCalculatingTotal || !vendedorInput.trim()}>
+                disabled={loadingClientes || isSubmitting || isCalculatingTotal}>
                 {isSubmitting ? 'Registrando...' : 'Registrar'}
               </button>
             </div>
@@ -542,30 +693,65 @@ export default function RegistrarPedidoPage() {
             <tr><td>PEDIDO</td><td>NUEVO</td></tr> 
             <tr><td>FECHA</td><td>{formData.fechaEmision ? new Date(formData.fechaEmision).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'}) : ''}</td></tr>
             <tr><td>CLIENTE</td><td>{formData.nombre || (formData.clienteId ? `Cliente ID: ${formData.clienteId}` : 'CONSUMIDOR FINAL')}</td></tr>
-            <tr><td>VENDEDOR</td><td>{vendedorInput || '-'}</td></tr>
             <tr><td>SUBTOTAL (Productos)</td><td className="text-right">$ {montoBaseProductos.toFixed(2)}</td></tr>
           </tbody></table>
           <table className="tabla-datos-secundarios"><tbody>
             <tr><td>DIRECCIÓN</td><td>{formData.direccion || '-'}</td></tr>
             {totalCalculadoApi && totalCalculadoApi.recargos.transferencia > 0 && <tr><td>RECARGO ({totalCalculadoApi.forma_pago_aplicada})</td><td className="text-right">$ {totalCalculadoApi.recargos.transferencia.toFixed(2)}</td></tr>}
             {totalCalculadoApi && totalCalculadoApi.recargos.factura_iva > 0 && <tr><td>{formData.requiereFactura ? "IVA (Factura)" : "Recargo (Factura)"}</td><td className="text-right">$ {totalCalculadoApi.recargos.factura_iva.toFixed(2)}</td></tr>}
-            <tr><td>TOTAL FINAL</td><td className="text-right">$ {displayTotal.toFixed(2)}</td></tr>
+            {formData.descuentoTotal > 0 && <tr><td>DESCUENTO TOTAL ({formData.descuentoTotal}%)</td><td className="text-right text-red-600 print:text-red-600">- $ {(baseTotalConRecargos * (formData.descuentoTotal / 100)).toFixed(2)}</td></tr>}
+            <tr><td>TOTAL FINAL</td><td className="text-right font-bold">$ {displayTotal.toFixed(2)}</td></tr>
           </tbody></table>
         </section>
         <section className="detalle-productos">
           <table className="tabla-items">
-            <thead><tr><th>ITEM</th><th>PRODUCTO</th><th>CANTIDAD</th><th>SUBTOTAL</th></tr></thead>
+            <thead><tr><th>ITEM</th><th>PRODUCTO</th><th>OBSERV.</th><th>CANT.</th><th>DESC.%</th><th>SUBTOTAL</th></tr></thead>
             <tbody>
               {productos.filter(p => p.producto && p.qx > 0).map((item, index) => {
                 const pInfo = productosContext?.productos.find(p => p.id === item.producto);
-                return (<tr key={`print-item-${index}`}><td>{index + 1}</td><td>{pInfo?.nombre || `ID: ${item.producto}`}</td><td className="text-center">{item.qx}</td><td className="text-right">$ {item.total.toFixed(2)}</td></tr>);
+                return (
+                <tr key={`print-item-${index}`}>
+                    <td>{index + 1}</td>
+                    <td>{pInfo?.nombre || `ID: ${item.producto}`}</td>
+                    <td>{item.observacion || '-'}</td>
+                    <td className="text-center">{item.qx}</td>
+                    <td className="text-center">{item.descuento > 0 ? `${item.descuento}%` : '-'}</td>
+                    <td className="text-right">$ {item.total.toFixed(2)}</td>
+                </tr>);
               })}
               {Array.from({ length: Math.max(0, 12 - productos.filter(p => p.producto && p.qx > 0).length) }).map((_, i) => 
-                <tr key={`empty-row-${i}`} className="empty-row"><td> </td><td> </td><td> </td><td> </td></tr>)}
+                <tr key={`empty-row-${i}`} className="empty-row"><td> </td><td> </td><td> </td><td> </td><td> </td><td> </td></tr>)}
             </tbody>
           </table>
         </section>
+         <footer className="presupuesto-footer">
+            <p>Precios sujetos a modificaciones sin previo aviso. Presupuesto válido por 7 días.</p>
+        </footer>
       </div>
+      <style jsx global>{`
+        .no-spinners::-webkit-outer-spin-button,
+        .no-spinners::-webkit-inner-spin-button {
+          -webkit-appearance: none;
+          margin: 0;
+        }
+        .no-spinners {
+          -moz-appearance: textfield; /* Firefox */
+        }
+         /* Estilos opcionales para react-select para que coincida con Tailwind */
+         .react-select__control {
+            border-color: rgb(209 213 219) !important;
+            box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05) !important;
+            min-height: 42px !important;
+        }
+        .react-select__control--is-focused {
+            border-color: rgb(99 102 241) !important;
+            box-shadow: 0 0 0 1px rgb(99 102 241) !important;
+        }
+        .react-select__value-container {
+            padding-left: 0.75rem !important;
+            padding-right: 0.75rem !important;
+        }
+      `}</style>
     </>
   );
 }

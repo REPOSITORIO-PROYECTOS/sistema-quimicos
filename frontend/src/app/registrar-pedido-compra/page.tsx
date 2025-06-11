@@ -9,13 +9,11 @@ interface IPedido {
   producto: string; // ID del producto
   proveedor_id: string; // ID del proveedor
   cantidad: string;
-  moneda: string;
   precioSinIva: string;
   cuenta: string;
   iibb: string;
   importeTotal: string;
   importeAbonado: string;
-  formaPago: string;
   chequePerteneciente: string;
 }
 
@@ -27,13 +25,11 @@ export default function RegistrarIngreso() {
   const [producto, setProducto] = useState('');
   const [proveedor_id, setProveedorId] = useState(''); // Cambiado el nombre del setter para claridad
   const [cantidad, setCantidad] = useState('');
-  const [moneda, setMoneda] = useState(''); // Cambiado el nombre del setter para claridad
   const [precioSinIva, setPrecioSinIva] = useState('');
   const [cuenta, setCuenta] = useState('');
   const [iibb, setIibb] = useState('');
   const [importeTotal, setImporteTotal] = useState('');
   const [importeAbonado, setImporteAbonado] = useState('');
-  const [formaPago, setFormaPago] = useState('');
   const [chequePerteneciente, setChequePerteneciente] = useState('');
   
   const { productos, loading: productsLoading, error: productsError } = useProductsContext(); // Renombrar loading/error para evitar colisiones
@@ -49,8 +45,8 @@ export default function RegistrarIngreso() {
   const token = typeof window !== 'undefined' ? localStorage.getItem("token") : null; // Mover dentro del componente si no se usa en el scope global
 
   const handleAgregar = async () => {
-    if (!fecha || !producto || !proveedor_id || !cantidad || !moneda) {
-        setErrorApi("Por favor, completa los campos obligatorios: Fecha, Producto, Proveedor, Cantidad, Moneda.");
+    if (!fecha || !producto || !proveedor_id || !cantidad) {
+        setErrorApi("Por favor, completa los campos obligatorios: Fecha, Producto, Proveedor, Cantidad.");
         return;
     }
 
@@ -59,8 +55,8 @@ export default function RegistrarIngreso() {
     console.log("Agregando pedido...");
 
     const nuevoPedido: IPedido = {
-      fecha, producto, proveedor_id, cantidad, moneda, precioSinIva,
-      cuenta, iibb, importeTotal, importeAbonado, formaPago, chequePerteneciente,
+      fecha, producto, proveedor_id, cantidad, precioSinIva,
+      cuenta, iibb, importeTotal, importeAbonado, chequePerteneciente,
     };
     
     //eslint-disable-next-line
@@ -75,11 +71,10 @@ export default function RegistrarIngreso() {
 
     const ventaPayload = {
       usuario_interno_id: user.id, 
-      items: [ { codigo_interno: parseInt(producto), cantidad: parseInt(cantidad) } ], // Asegurar que cantidad sea número
-      cliente_id: 1, 
+      items: [ { codigo_interno: parseInt(producto), cantidad: parseInt(cantidad),precio_unitario_estimado: parseFloat(precioSinIva) } ], // Asegurar que cantidad sea número
       fecha_pedido: fecha,
       proveedor_id: parseInt(proveedor_id), 
-      moneda
+      iibb: iibb,
     };
     console.log("Payload:", ventaPayload);
 
@@ -116,8 +111,8 @@ export default function RegistrarIngreso() {
       setPedidos((prev) => [...prev, nuevoPedido]);
 
       setFecha(''); setProducto(''); setProveedorId(''); setCantidad('');
-      setMoneda(''); setPrecioSinIva(''); setCuenta(''); setIibb('');
-      setImporteTotal(''); setImporteAbonado(''); setFormaPago(''); setChequePerteneciente('');
+      setPrecioSinIva(''); setCuenta(''); setIibb('');
+      setImporteTotal(''); setImporteAbonado(''); ; setChequePerteneciente('');
       //eslint-disable-next-line
     } catch (error: any) {
       console.error('Error al registrar compra:', error);
@@ -127,14 +122,7 @@ export default function RegistrarIngreso() {
     }
   };
 
-  const handleComprar = () => {
-    if (pedidos.length === 0) {
-        alert("No hay pedidos agregados para comprar.");
-        return;
-    }
-    alert(`Procesando ${pedidos.length} pedido(s)... (Lógica de 'Comprar' pendiente)`);
-    console.log('Comprar');
-  };
+
 
   const baseInputClass = "w-full px-3 py-2 rounded bg-white text-black border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent placeholder-gray-500 transition duration-150 ease-in-out";
   const labelClass = "block text-sm font-medium mb-1 text-gray-200";
@@ -228,16 +216,6 @@ export default function RegistrarIngreso() {
             type="number" required min="0" placeholder="Ej: 10" className={baseInputClass}
           />
         </div>
-
-        {/* Campo Moneda */}
-        <div className="mb-4">
-          <label htmlFor="moneda" className={labelClass}>Moneda *</label>
-          <input
-            id="moneda" value={moneda} onChange={(e) => setMoneda(e.target.value)}
-            type="text" required placeholder="Ej: ARS, USD" className={baseInputClass}
-          />
-        </div>
-
         {/* Campo Precio Sin IVA */}
         <div className="mb-4">
           <label htmlFor="precioSinIva" className={labelClass}>Precio Unitario (Sin IVA)</label>
@@ -265,14 +243,7 @@ export default function RegistrarIngreso() {
           />
         </div>
 
-        {/* Campo Forma de Pago */}
-        <div className="mb-4">
-          <label htmlFor="formaPago" className={labelClass}>Forma de Pago</label>
-          <input
-            id="formaPago" value={formaPago} onChange={(e) => setFormaPago(e.target.value)}
-            type="text" placeholder="Ej: Transferencia, Cheque" className={baseInputClass}
-          />
-        </div>
+    
 
         {/* Botones */}
         <div className="flex flex-col sm:flex-row gap-4 justify-center mt-6">
@@ -283,13 +254,7 @@ export default function RegistrarIngreso() {
           >
             {isLoading ? 'Agregando...' : 'Agregar Pedido'}
           </button>
-          <button
-            onClick={handleComprar}
-            disabled={isLoading || pedidos.length === 0}
-            className="bg-green-500 text-white font-semibold px-6 py-2 rounded-md hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-opacity-75 transition duration-150 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Comprar
-          </button>
+
         </div>
       </div>
 

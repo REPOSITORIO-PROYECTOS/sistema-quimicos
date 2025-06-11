@@ -8,24 +8,24 @@ interface Venta {
     venta_id: number | string;
     monto_final_con_recargos: number;
     fecha_registro?: string;
-    nombre_razon_social?: string; // Asumiendo que este es el nombre del cliente
+    nombre_razon_social?: string; 
 }
 
-interface CompraInfo { // De la lista inicial /ordenes_compra/obtener_todas
+interface CompraInfo { 
     id: number | string;
     proveedor_nombre?: string;
     fecha_actualizacion?: string;
-    // ... otros campos que pueda tener la lista de resumen de compras
 }
 
-interface CompraDetalleConItems { // Del detalle individual /ordenes_compra/obtener/:id
+interface CompraDetalleConItems { 
     id: number | string;
-    estado?: string; // ESTE ES EL CAMPO CLAVE PARA FILTRAR
+    estado?: string; 
     fecha_actualizacion?: string;
     fecha_creacion?: string;
-    items: CompraItem[];
-    // Campos que pediste ignorar con eslint-disable-next-line pero deben estar en el tipo si existen
-    //eslint-disable-next-line
+    items: CompraItem[]; // Aunque el total venga aparte, los items pueden ser útiles para la descripción
+    // El total de la OC
+    importe_abonado?: number;      
+    //eslint-disable-next-line 
     aprobado_por?: any;
     //eslint-disable-next-line
     estado_recepcion?: any; 
@@ -35,23 +35,19 @@ interface CompraDetalleConItems { // Del detalle individual /ordenes_compra/obte
     fecha_recepcion?: any;
     //eslint-disable-next-line
     fecha_rechazo?: any;
-    // ... otros campos del detalle de la compra
 }
 
-interface CompraItem { // Item dentro de CompraDetalleConItems
+interface CompraItem { 
+    // importe_linea_estimado ya no es necesario aquí si el total viene en la OC
     id_linea: number;
+    importe_linea_estimado?: number; 
     producto_id: number | string;
-    cantidad_solicitada: number; // Usaremos esta para el body de calcular_precio
+    cantidad_solicitada: number; 
     producto_codigo?: number | string;
     producto_nombre?: string;
     cantidad_recibida?: number;
     //eslint-disable-next-line
     notas_item_recepcion?: any;
-    // ... otros campos del item de compra
-}
-
-interface PrecioCalculadoResponse {
-    precio_total_calculado_ars: number;
 }
 
 interface RegistroContable {
@@ -62,19 +58,24 @@ interface RegistroContable {
     haber: number | null;
     fecha_actualizacion?: Date;
 }
+
+interface OrdenProcesada {
+    compraInfo: CompraInfo;
+    totalCalculado: number; // Para estado "Recibido", será el total de la OC
+    montoDeuda?: number;     // Para estado "En Deuda"
+    montoAbonado?: number;   // Para estado "En Deuda"
+    fecha?: Date; 
+    estado?: string; 
+}
 // --- FIN Interfaces de Datos ---
 
 
-// --- Función Auxiliar ParseDate ---
 const parseDate = (dateString: string | undefined): Date | undefined => {
     if (!dateString) return undefined;
     const date = new Date(dateString);
     return isNaN(date.getTime()) ? undefined : date;
 };
-// --- FIN Función Auxiliar ParseDate ---
 
-
-// --- Componente Principal ---
 export default function ContabilidadTable() {
     const [registros, setRegistros] = useState<RegistroContable[]>([]);
     const [totalDebe, setTotalDebe] = useState<number>(0);
@@ -99,8 +100,6 @@ export default function ContabilidadTable() {
 
     const fetchRegistrosContables = useCallback(async () => {
         if (!token) {
-            // Ya se maneja en el useEffect de montaje, pero una guarda adicional no hace daño.
-            // O se podría eliminar esta guarda si el useEffect principal ya lo controla.
             console.warn("Intento de fetch sin token.");
             setIsLoading(false);
             if (!error) setError("Token de autenticación no disponible para realizar la solicitud.");
@@ -110,19 +109,17 @@ export default function ContabilidadTable() {
         setIsLoading(true);
         setError(null);
         setRegistros([]);
-        setTotalDebe(0);
-        setTotalHaber(0);
+        setTotalDebe(0); // Se recalculará
+        setTotalHaber(0); // Se recalculará
         setBalance(0);
         setLoadingStage("Cargando listas iniciales (ventas y compras)...");
 
         const ventasApiUrl = 'https://quimex.sistemataup.online/ventas/obtener_todas';
         const comprasListApiUrl = 'https://quimex.sistemataup.online/ordenes_compra/obtener_todas';
         const compraDetailApiUrlBase = 'https://quimex.sistemataup.online/ordenes_compra/obtener/';
-        const calcularPrecioApiUrlBase = 'https://quimex.sistemataup.online/productos/calcular_precio/';
 
         try {
             const commonHeaders = { "Content-Type": "application/json", "Authorization": `Bearer ${token}` };
-            // console.log("Fetching listas iniciales...");
             const [ventasResult, comprasListResult] = await Promise.allSettled([
                 fetch(ventasApiUrl, { headers: commonHeaders }),
                 fetch(comprasListApiUrl, { headers: commonHeaders })
@@ -148,150 +145,133 @@ export default function ContabilidadTable() {
 
             if (fetchErrors.length > 0) console.warn("Errores al cargar listas iniciales:", fetchErrors);
 
-            let registrosCompras: RegistroContable[] = [];
-            let newTotalHaber = 0;
+            const registrosTemporales: RegistroContable[] = []; // Usaremos este para construir y luego setear el estado
 
             if (comprasInfoData.length > 0) {
                 setLoadingStage(`Cargando detalles de ${comprasInfoData.length} órdenes de compra...`);
                 const compraDetailPromises = comprasInfoData.map(info => {
-                    if (info.id == null) return Promise.reject(new Error(`ID de Compra nulo encontrado en la lista.`));
-                    return fetch(`${compraDetailApiUrlBase}${info.id}`, { headers: commonHeaders });
-                });
-                const compraDetailResults = await Promise.allSettled(compraDetailPromises);
-
-                // console.log("Procesando detalles de compras y calculando precios...");
-                let calculoPromisesPending = 0; // Para el mensaje de carga de precios
-
-                const ordenTotalPromises = compraDetailResults.map(async (detailResult, index): Promise<{ compraInfo: CompraInfo, totalCalculado: number, fecha?: Date, estado?: string } | null> => {
-                    const compraInfo = comprasInfoData[index]; // Siempre existirá por el mapeo
-                    let fechaCompra = parseDate(compraInfo.fecha_actualizacion);
-
-                    if (detailResult.status === 'rejected' || !detailResult.value.ok) {
-                        const errorMsg = detailResult.status === 'rejected' 
-                            ? (detailResult.reason instanceof Error ? detailResult.reason.message : String(detailResult.reason)) 
-                            : `HTTP ${detailResult.value?.status || '?'}`;
-                        console.error(`Error al obtener detalle de compra ID ${compraInfo?.id}: ${errorMsg}`);
-                        fetchErrors.push(`Compra ID ${compraInfo?.id}: Falló obtención de detalle (${errorMsg})`);
-                        return null; 
-                    }
-
-                    try {
-                        const detalleCompra: CompraDetalleConItems = await detailResult.value.json();
-                        if (!fechaCompra) fechaCompra = parseDate(detalleCompra.fecha_actualizacion);
-
-                        // --- FILTRADO POR ESTADO "Recibido" ---
-                        // !!! AJUSTA "Recibido" AL STRING EXACTO QUE USA TU API !!!
-                        const estadoRequerido = "Recibido"; 
-                        if (detalleCompra.estado !== estadoRequerido) {
-                            // console.log(`Compra ID ${compraInfo.id} omitida. Estado: '${detalleCompra.estado}' (se esperaba '${estadoRequerido}')`);
-                            return null; 
-                        }
-                        // --- FIN FILTRADO ---
-
-                        if (!Array.isArray(detalleCompra.items) || detalleCompra.items.length === 0) {
-                            // console.warn(`Compra ID ${compraInfo.id} (Estado: ${detalleCompra.estado}) no tiene items válidos.`);
-                            fetchErrors.push(`Compra ID ${compraInfo.id} (Estado: ${detalleCompra.estado}): Sin items.`);
-                            return { compraInfo, totalCalculado: 0, fecha: fechaCompra, estado: detalleCompra.estado };
-                        }
-                        
-                        const itemPricePromises = detalleCompra.items.map(item => {
-                            if (item.producto_id == null || typeof item.cantidad_solicitada !== 'number') {
-                                // console.warn(`Item inválido en Compra ID ${compraInfo.id}:`, item);
-                                fetchErrors.push(`Compra ID ${compraInfo.id}: Item ID ${item.id_linea || 'desconocido'} inválido.`);
-                                return Promise.resolve(0);
+                    if (info.id == null) return Promise.resolve<OrdenProcesada | null>(null);
+                    return fetch(`${compraDetailApiUrlBase}${info.id}`, { headers: commonHeaders })
+                        .then(response => {
+                            if (!response.ok) {
+                                return response.json().catch(() => null).then(errorBody => {
+                                    const errorMsg = errorBody?.message || `HTTP ${response.status}`;
+                                    console.error(`Error al obtener detalle de compra ID ${info.id}: ${errorMsg}`);
+                                    fetchErrors.push(`Compra ID ${info.id}: Falló obtención de detalle (${errorMsg})`);
+                                    return null;
+                                });
                             }
-                            calculoPromisesPending++;
-                            if (calculoPromisesPending > 0) setLoadingStage(`Calculando precios (${calculoPromisesPending} restantes)...`);
+                            return response.json();
+                        })
+                        .then((detalleCompra: CompraDetalleConItems | null): OrdenProcesada | null => {
+                            if (!detalleCompra) return null;
                             
-                            const body = JSON.stringify({
-                                producto_id: item.producto_id,
-                                quantity: item.cantidad_solicitada 
-                            });
-                            return fetch(`${calcularPrecioApiUrlBase}${item.producto_id}`, {
-                                method: "POST",
-                                headers: commonHeaders,
-                                body: body,
-                            })
-                            .then(async response => {
-                                calculoPromisesPending--;
-                                if (calculoPromisesPending === 0) setLoadingStage("Finalizando cálculos...");
-                                if (!response.ok) {
-                                     const errorData = await response.json().catch(() => ({}));
-                                     throw new Error(`Precio Item ${item.producto_id}: HTTP ${response.status} - ${errorData.mensaje || response.statusText}`);
-                                }
-                                const precioData: PrecioCalculadoResponse = await response.json();
-                                if (typeof precioData.precio_total_calculado_ars === 'number' && !isNaN(precioData.precio_total_calculado_ars)) {
-                                    return precioData.precio_total_calculado_ars;
-                                } else {
-                                    // console.warn(`Precio calculado inválido para Item ${item.producto_id} en Compra ${compraInfo.id}`);
-                                    fetchErrors.push(`Compra ID ${compraInfo.id}, Item ${item.producto_id}: Precio calculado no es número.`);
-                                    return 0;
-                                }
-                            })
-                            .catch(err => {
-                                calculoPromisesPending--;
-                                if (calculoPromisesPending === 0) setLoadingStage("Finalizando cálculos...");
-                                console.error(`Error calculando precio Item ${item.producto_id} en Compra ${compraInfo.id}:`, err);
-                                fetchErrors.push(`Compra ID ${compraInfo.id}, Item ${item.producto_id}: ${err.message}`);
-                                return 0;
-                            });
+                            const compraOriginalInfo = comprasInfoData.find(ci => ci.id === detalleCompra.id);
+                            if (!compraOriginalInfo) return null; // No debería pasar si el mapeo es correcto
+
+                            let fechaCompra = parseDate(compraOriginalInfo.fecha_actualizacion);
+                            if (!fechaCompra) fechaCompra = parseDate(detalleCompra.fecha_actualizacion);
+
+                            const estadoRecibido = "Recibido"; 
+                            const estadoEnDeuda = "Con Deuda"; // <-- NUEVO ESTADO A CONSIDERAR
+
+                            if (detalleCompra.estado !== estadoRecibido && detalleCompra.estado !== estadoEnDeuda) {
+                                return null; 
+                            }
+                            
+                            const importeTotalOC = typeof detalleCompra.items[0].importe_linea_estimado === 'number' 
+                                                ? detalleCompra.items[0].importe_linea_estimado 
+                                                : 0;
+                            
+                          
+
+                            if (detalleCompra.estado === estadoEnDeuda) {
+                                const montoAbonado = typeof detalleCompra.importe_abonado === 'number' 
+                                                        ? detalleCompra.importe_abonado 
+                                                        : 0;
+                                const deuda = importeTotalOC - montoAbonado;
+
+                          
+                                
+                                return { 
+                                    compraInfo: compraOriginalInfo, 
+                                    totalCalculado: importeTotalOC, // Mantenemos el total para referencia si es necesario
+                                    montoDeuda: deuda > 0 ? deuda : 0, // La deuda no puede ser negativa
+                                    montoAbonado: montoAbonado,
+                                    fecha: fechaCompra, 
+                                    estado: detalleCompra.estado 
+                                };
+                            } else { // Es "Recibido"
+                                return { 
+                                    compraInfo: compraOriginalInfo, 
+                                    totalCalculado: importeTotalOC, 
+                                    fecha: fechaCompra, 
+                                    estado: detalleCompra.estado 
+                                };
+                            }
+                        })
+                        .catch(err => {
+                            console.error(`Error procesando detalle compra ID ${info.id}:`, err);
+                            fetchErrors.push(`Compra ID ${info.id}: Error en procesamiento de detalle.`);
+                            return null;
                         });
-
-                        const itemPrices = await Promise.all(itemPricePromises);
-                        const totalOrden = itemPrices.reduce((sum, price) => sum + price, 0);
-                        // console.log(`Compra ID ${compraInfo.id} (Estado: ${detalleCompra.estado}) - Total Calculado: ${totalOrden.toFixed(2)}`);
-                        return { compraInfo, totalCalculado: totalOrden, fecha: fechaCompra, estado: detalleCompra.estado };
-
-                    } catch (jsonError) {
-                        console.error(`Error parseando JSON detalle compra ID ${compraInfo.id}:`, jsonError);
-                        fetchErrors.push(`Compra ID ${compraInfo.id}: Error parseo JSON de detalle.`);
-                        return null; 
-                    }
                 });
-
-                setLoadingStage("Esperando todos los cálculos de totales de órdenes...");
-                const ordenesConTotalResultados = await Promise.all(ordenTotalPromises);
                 
-                const ordenesConTotalValidas = ordenesConTotalResultados.filter(
-                    (resultado): resultado is { compraInfo: CompraInfo, totalCalculado: number, fecha?: Date, estado?: string } => resultado !== null
+                setLoadingStage("Procesando totales de órdenes de compra...");
+                const ordenesProcesadasResultados = await Promise.all(compraDetailPromises);
+                
+                const ordenesValidas = ordenesProcesadasResultados.filter(
+                    (resultado): resultado is OrdenProcesada => resultado !== null
                 );
 
-                registrosCompras = ordenesConTotalValidas.map(orden => {
-                    const { compraInfo, totalCalculado, fecha } = orden;
-                    newTotalHaber += totalCalculado;
+                ordenesValidas.forEach(orden => {
+                    const { compraInfo, totalCalculado, fecha, estado, montoDeuda, montoAbonado } = orden;
                     const idDisplay = compraInfo?.id?.toString() ?? 'ERROR_ID';
                     const proveedorInfo = compraInfo?.proveedor_nombre ? ` (${compraInfo.proveedor_nombre})` : '';
-                    const descripcion = `Compra OC-${idDisplay}${proveedorInfo}`;
-                    return {
-                        key: `compra-${idDisplay}-${Date.now()}-${Math.random()}`, // Key más única
+                    let descripcion = `Compra OC-${idDisplay}${proveedorInfo}`;
+                    let debe: number | null = null;
+                    let haber: number | null = null;
+
+                    if (estado === "Con Deuda") {
+                        descripcion += ` (Con Deuda)`;
+                        debe = montoDeuda !== undefined && montoDeuda > 0 ? montoDeuda : null; // Solo si hay deuda > 0
+                        haber = montoAbonado !== undefined && montoAbonado > 0 ? montoAbonado : null; // Solo si hay algo abonado
+                    } else if (estado === "Recibido") {
+                        haber = totalCalculado;
+                    }
+                    
+                    registrosTemporales.push({
+                        key: `compra-${idDisplay}-${estado}-${Date.now()}-${Math.random()}`,
                         id_display: idDisplay,
                         descripcion: descripcion,
-                        debe: null,
-                        haber: totalCalculado,
+                        debe: debe,
+                        haber: haber,
                         fecha_actualizacion: fecha,
-                    };
+                    });
                 });
-
-            } else {
-                // console.log("No hay compras en la lista inicial para procesar.");
             }
 
-            let newTotalDebe = 0;
-            const registrosVentas = ventasData.map((venta): RegistroContable => {
+            ventasData.forEach((venta) => {
                  const ventaTotal = typeof venta.monto_final_con_recargos === 'number' && !isNaN(venta.monto_final_con_recargos) ? venta.monto_final_con_recargos : 0;
-                 newTotalDebe += ventaTotal;
                  const idDisplay = venta.venta_id?.toString() ?? 'N/A';
                  const clienteInfo = venta.nombre_razon_social ? ` (${venta.nombre_razon_social})` : '';
                  const descripcion = `Venta F-${idDisplay}${clienteInfo}`;
                  const fechaParaRegistroVenta = parseDate(venta.fecha_registro);
-                 return { key: `venta-${idDisplay}-${Date.now()}-${Math.random()}`, id_display: idDisplay, descripcion: descripcion, debe: ventaTotal, haber: null, fecha_actualizacion: fechaParaRegistroVenta };
+                 registrosTemporales.push({ key: `venta-${idDisplay}-${Date.now()}-${Math.random()}`, id_display: idDisplay, descripcion: descripcion, debe: ventaTotal, haber: null, fecha_actualizacion: fechaParaRegistroVenta });
              });
 
-            const registrosCombinados: RegistroContable[] = [...registrosVentas, ...registrosCompras];
-            registrosCombinados.sort((a, b) => { 
+            registrosTemporales.sort((a, b) => { 
                 const timeA = a.fecha_actualizacion instanceof Date && !isNaN(a.fecha_actualizacion.getTime()) ? a.fecha_actualizacion.getTime() : -Infinity;
                 const timeB = b.fecha_actualizacion instanceof Date && !isNaN(b.fecha_actualizacion.getTime()) ? b.fecha_actualizacion.getTime() : -Infinity;
-                return timeB - timeA; // Descendente (más reciente primero)
+                return timeB - timeA;
+            });
+
+            // Calcular totales finales DEBE y HABER a partir de registrosTemporales
+            let finalTotalDebe = 0;
+            let finalTotalHaber = 0;
+            registrosTemporales.forEach(reg => {
+                if (reg.debe !== null) finalTotalDebe += reg.debe;
+                if (reg.haber !== null) finalTotalHaber += reg.haber;
             });
 
             if (fetchErrors.length > 0) {
@@ -300,10 +280,10 @@ export default function ContabilidadTable() {
                 console.error("Todos los errores de fetch/procesamiento encontrados:", fetchErrors);
             }
 
-            setRegistros(registrosCombinados);
-            setTotalDebe(newTotalDebe);
-            setTotalHaber(newTotalHaber);
-            setBalance(newTotalDebe - newTotalHaber);
+            setRegistros(registrosTemporales);
+            setTotalDebe(finalTotalDebe);
+            setTotalHaber(finalTotalHaber);
+            setBalance(finalTotalDebe - finalTotalHaber);
             //eslint-disable-next-line
         } catch (err: any) {
             console.error("Error general no capturado en fetchRegistrosContables:", err);
@@ -313,16 +293,16 @@ export default function ContabilidadTable() {
             setIsLoading(false);
             setLoadingStage("Proceso completado.");
         }
-    }, [token]); // Dependencia del token para re-ejecutar si cambia
+    }, [token]); 
 
     useEffect(() => {
         if (token) {
             fetchRegistrosContables();
         }
-        // No es necesario un 'else' aquí si el useEffect de inicialización del token ya maneja el caso sin token.
-    }, [fetchRegistrosContables, token]); // Ejecutar cuando fetchRegistrosContables (por cambio de token) o token cambie.
+    }, [fetchRegistrosContables, token]);
 
     return (
+        // ... (JSX sin cambios)
         <div className="p-4 md:p-6 bg-gray-50 min-h-screen">
             <div className="max-w-5xl mx-auto bg-white shadow rounded-lg p-4 md:p-6">
                 <h1 className="text-xl md:text-2xl font-semibold text-gray-800 mb-6">Libro Mayor / Registros Contables</h1>
@@ -334,7 +314,7 @@ export default function ContabilidadTable() {
                          <button 
                             onClick={fetchRegistrosContables} 
                             className="mt-3 px-3 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50"
-                            disabled={isLoading}
+                            disabled={isLoading || !token}
                          >
                             Reintentar
                         </button>

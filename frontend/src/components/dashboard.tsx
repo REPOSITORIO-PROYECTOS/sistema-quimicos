@@ -8,7 +8,7 @@ import {
     CardTitle,
 } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { DollarSign, ShoppingCart, TrendingUp } from "lucide-react";
+import { DollarSign, ShoppingCart, TrendingUp } from "lucide-react"; // Info para la card de contexto
 import { useEffect, useState, useMemo } from "react";
 import {
     XAxis,
@@ -20,91 +20,60 @@ import {
     PieChart,
     Pie,
     Cell,
-    BarChart, 
-    Bar,      
+    BarChart,
+    Bar,
 } from "recharts";
 
-// --- INICIO: Definición de Tipos ---
-
-// Tipos INTERNOS del Dashboard para Ventas (después de transformación)
+// --- INICIO: Definición de Tipos (sin cambios) ---
 type VentaTipo = "puerta" | "pedido";
-interface VentaDetalle {
-    id: string;
-    productoNombre: string;
-    cantidad: number;
-    precioVentaUnitario: number;
-    costoUnitario: number;
-}
-interface Venta { // Este es el tipo que usan los useMemo y gráficos para ventas
-    id: string;
-    fecha: string; // YYYY-MM-DD
-    tipo: VentaTipo;
-    items: VentaDetalle[];
-    totalVenta: number;
-    totalCosto: number;
-}
-
-// Tipos para la respuesta de la API de VENTAS (lista /ventas/obtener_todas)
-interface VentaApi { // Este es el tipo para la lista inicial de ventas
-    // !!! VERIFICA Y AJUSTA ESTOS NOMBRES DE CAMPO SEGÚN TU API !!!
-    venta_id: number | string; 
-    fecha_registro: string;   
-    direccion_entrega?: string | null; 
-    monto_final_con_recargos?: number; 
-    // No esperamos 'detalles' aquí, ya que se obtendrán individualmente
-    // ... otros campos que devuelve la lista de ventas resumen ...
-}
-
-interface PaginatedVentasResponse { // Para la lista de ventas
-    ventas: VentaApi[];
-    pagination: { total_pages: number; /* ...otros campos de paginación... */ };
-}
-
-// Tipos para la respuesta de la API de VENTA INDIVIDUAL (/ventas/obtener/:id)
-interface DetalleVentaIndividualApi {
-    // !!! VERIFICA Y AJUSTA ESTOS NOMBRES DE CAMPO SEGÚN TU API !!!
-    id_detalle_venta?: number | string; 
-    producto_nombre?: string;
-    cantidad?: number; // o 'cantidad'
-    precio_unitario_base_ars?: number; // o 'precio_unitario'
-    costo_unitario_momento_ars?: number; // ESENCIAL PARA EL COSTO
-    // ... otros campos del detalle individual
-}
-
-interface VentaIndividualApi { // Para la respuesta de /ventas/obtener/:id
-    // !!! VERIFICA Y AJUSTA ESTOS NOMBRES DE CAMPO SEGÚN TU API !!!
-    venta_id: number | string;
-    // ... otros campos que devuelve este endpoint ...
-    detalles: DetalleVentaIndividualApi[]; // Array de detalles con el costo
-}
-
-
-// Tipos para la respuesta de la API de COMPRAS (como antes)
+interface VentaDetalle { id: string; productoNombre: string; cantidad: number; precioVentaUnitario: number; costoUnitario: number; }
+interface Venta { id: string; fecha: string; tipo: VentaTipo; items: VentaDetalle[]; totalVenta: number; totalCosto: number; /* COGS */ }
+interface VentaApi { venta_id: number | string; fecha_registro: string; direccion_entrega?: string | null; monto_final_con_recargos?: number; }
+interface PaginatedVentasResponse { ventas: VentaApi[]; pagination: { total_pages: number; }; }
+interface DetalleVentaIndividualApi { detalle_id?: number | string; producto_nombre?: string; cantidad?: number; precio_unitario_venta_ars?: number; costo_unitario_momento_ars?: number; }
+interface VentaIndividualApi { venta_id: number | string; monto_final_con_recargos: number; detalles: DetalleVentaIndividualApi[]; }
 interface ItemOrdenCompraApi { id_linea: number; producto_id: number; producto_codigo: string; producto_nombre: string; cantidad_solicitada: number | null; cantidad_recibida: number | null; notas_item_recepcion: string | null; precio_unitario_estimado: number | null; importe_linea_estimado: number | null; }
-interface OrdenCompraApi { id: number; nro_solicitud_interno: string | null; fecha_creacion: string | null; estado: string; proveedor_id: number; proveedor_nombre: string | null; items: ItemOrdenCompraApi[]; importe_total_estimado: number | null; /* ...otros campos...*/ }
-interface PaginatedOrdenesCompraResponse { ordenes: OrdenCompraApi[]; pagination: { total_pages: number; /* ...otros campos de paginación...*/ }; }
+interface OrdenCompraApi { id: number; nro_solicitud_interno: string | null; fecha_creacion: string | null; estado: string; proveedor_id: number; proveedor_nombre: string | null; items: ItemOrdenCompraApi[]; importe_total_estimado: number | null; }
+interface PaginatedOrdenesCompraResponse { ordenes: OrdenCompraApi[]; pagination: { total_pages: number; }; }
 
-const ESTADOS_API_A_EN_ESPERA: string[] = [ "PENDIENTE_APROBACION", "APROBADO", "EN_ESPERA_RECEPCION", "RECIBIDA_PARCIAL"];
+const ESTADOS_API_A_EN_ESPERA: string[] = [ "PENDIENTE_APROBACION", "APROBADO","CON DEUDA", "EN_ESPERA_RECEPCION", "RECIBIDA_PARCIAL"];
 const ESTADOS_API_A_PAGADO: string[] = [ "PAGADA_PARCIAL", "PAGADA_TOTAL", "RECIBIDO"];
 // --- FIN: Definición de Tipos ---
 
 
 // --- INICIO: Funciones de Fetching y Procesamiento ---
-async function fetchTodasLasOrdenesDeCompra(): Promise<OrdenCompraApi[]> {
+
+// fetchOrdenesDeCompra: Intenta usar filtros de fecha en API, pero si no, se filtra en cliente.
+// Asumimos que la API *podría* no soportar filtros de fecha, así que traemos todo y filtramos en cliente si es necesario.
+async function fetchTodasLasOrdenesDeCompraHistoricas(): Promise<OrdenCompraApi[]> {
     const currentToken = typeof window !== "undefined" ? localStorage.getItem("token") : null;
     if (!currentToken) { console.error("Token no encontrado para API Compras"); throw new Error("Token no disponible");}
     let todasLasOrdenes: OrdenCompraApi[] = [];
     let currentPage = 1;
     let totalPages = 1;
+    const baseUrl = `https://quimex.sistemataup.online/ordenes_compra/obtener_todas`;
+
     do {
-        const response = await fetch(`https://quimex.sistemataup.online/ordenes_compra/obtener_todas?page=${currentPage}&per_page=100`, {
+        const params = new URLSearchParams({
+            page: currentPage.toString(),
+            per_page: '100', // Traer de a 100 para eficiencia
+        });
+        
+        const url = `${baseUrl}?${params.toString()}`;
+        // console.log("Fetching todas las compras URL:", url);
+
+        const response = await fetch(url, {
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${currentToken}` } });
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({ error: "Error desconocido" }));
-            console.error("Error API Compras:", errorData);
-            throw new Error(`Error fetching compras (página ${currentPage}): ${errorData.error || response.statusText}`);
+            console.error("Error API Compras (históricas):", errorData, response.status, response.statusText);
+            throw new Error(`Error fetching todas las compras (página ${currentPage}): ${errorData.error || response.statusText}`);
         }
         const data: PaginatedOrdenesCompraResponse = await response.json();
+        if (!data.ordenes) {
+             console.warn("Respuesta de API Compras (históricas) no contiene 'ordenes':", data);
+             data.ordenes = [];
+        }
         todasLasOrdenes = todasLasOrdenes.concat(data.ordenes);
         totalPages = data.pagination.total_pages;
         currentPage++;
@@ -112,24 +81,59 @@ async function fetchTodasLasOrdenesDeCompra(): Promise<OrdenCompraApi[]> {
     return todasLasOrdenes;
 }
 
-const obtenerDatosComprasParaDashboard = async (): Promise<{ name: string; cantidad: number }[]> => {
+
+const obtenerDatosComprasDashboard = async (mes: number, anio: number): Promise<{
+    statusCountsHistoricos: { name: string; cantidad: number }[];
+    totalGastadoEnComprasDelMes: number;
+}> => {
     try {
-        const ordenesCompraApi = await fetchTodasLasOrdenesDeCompra();
+        const todasLasOrdenesHistoricas = await fetchTodasLasOrdenesDeCompraHistoricas();
+        
         let enEsperaCount = 0;
         let pagadosCount = 0;
-        ordenesCompraApi.forEach(orden => {
+        let totalGastadoMesCalculadoCliente = 0;
+
+        const primerDiaDelMes = new Date(anio, mes, 1);
+        const ultimoDiaDelMes = new Date(anio, mes + 1, 0);
+        const fechaDesdeStr = primerDiaDelMes.toISOString().split('T')[0];
+        const fechaHastaStr = ultimoDiaDelMes.toISOString().split('T')[0];
+
+        // console.log(`Filtrando compras para el mes: ${mes+1}/${anio} (Desde: ${fechaDesdeStr}, Hasta: ${fechaHastaStr})`);
+
+        todasLasOrdenesHistoricas.forEach(orden => {
+            // Para statusCounts (históricos)
             const estadoUpper = orden.estado?.toUpperCase() || "";
             if (ESTADOS_API_A_EN_ESPERA.map(s => s.toUpperCase()).includes(estadoUpper)) enEsperaCount++;
             else if (ESTADOS_API_A_PAGADO.map(s => s.toUpperCase()).includes(estadoUpper)) pagadosCount++;
+
+            // Para totalGastadoEnComprasDelMes (filtrado en cliente)
+            // Asegúrate que `orden.fecha_creacion` exista y sea un string de fecha comparable
+            if (orden.fecha_creacion) {
+                const fechaOrden = orden.fecha_creacion.split('T')[0]; // Asume formato YYYY-MM-DD o YYYY-MM-DDTHH:mm:ss
+                if (fechaOrden >= fechaDesdeStr && fechaOrden <= fechaHastaStr) {
+                    totalGastadoMesCalculadoCliente += orden.importe_total_estimado || 0;
+                }
+            }
         });
-        return [ { name: "En Espera", cantidad: enEsperaCount }, { name: "Pagados", cantidad: pagadosCount }];
+        
+        return {
+            statusCountsHistoricos: [
+                { name: "En Espera", cantidad: enEsperaCount },
+                { name: "Pagados", cantidad: pagadosCount }
+            ],
+            totalGastadoEnComprasDelMes: parseFloat(totalGastadoMesCalculadoCliente.toFixed(2))
+        };
+
     } catch (error) {
         console.error("Error procesando datos de compras para dashboard:", error);
-        return [ { name: "En Espera", cantidad: 0 }, { name: "Pagados", cantidad: 0 }];
+        return {
+            statusCountsHistoricos: [ { name: "En Espera", cantidad: 0 }, { name: "Pagados", cantidad: 0 }],
+            totalGastadoEnComprasDelMes: 0
+        };
     }
 };
 
-// VENTAS: Paso 1 - Obtener lista de resúmenes de ventas
+// --- Funciones de Ventas (sin cambios) ---
 async function fetchListaVentasResumenDelMes(mes: number, anio: number): Promise<VentaApi[]> {
     const currentToken = typeof window !== "undefined" ? localStorage.getItem("token") : null;
     if (!currentToken) { console.error("Token no encontrado para API Ventas (Lista)"); throw new Error("Token no disponible");}
@@ -169,7 +173,6 @@ async function fetchListaVentasResumenDelMes(mes: number, anio: number): Promise
     return todasLasVentasResumen;
 }
 
-// VENTAS: Paso 2 - Obtener detalles de una venta individual
 async function fetchDetallesDeVentaIndividual(ventaId: number | string): Promise<VentaIndividualApi> {
     const currentToken = typeof window !== "undefined" ? localStorage.getItem("token") : null;
     if (!currentToken) { console.error("Token no encontrado para API Detalle Venta"); throw new Error("Token no disponible");}
@@ -187,67 +190,59 @@ async function fetchDetallesDeVentaIndividual(ventaId: number | string): Promise
         console.warn(`Respuesta de API Detalle Venta (ID: ${ventaId}) no contiene 'detalles'. Asumiendo detalles vacíos.`, data);
         data.detalles = [];
     }
+    if (typeof data.monto_final_con_recargos !== 'number') {
+        console.warn(`Respuesta de API Detalle Venta (ID: ${ventaId}) no contiene 'monto_final_con_recargos' válido. Asumiendo 0.`, data);
+        data.monto_final_con_recargos = 0;
+    }
     return data;
 }
 
-// VENTAS: Paso 3 - Combinar y transformar datos para el dashboard
 const obtenerDatosVentasParaDashboard = async (mes: number, anio: number): Promise<Venta[]> => {
     try {
-        const ventasResumenApi = await fetchListaVentasResumenDelMes(mes, anio); // Asumo que esta función está definida en otra parte
-        // console.log(`Fetched ${ventasResumenApi.length} sales summaries for month ${mes+1}/${anio}.`);
-
+        const ventasResumenApi = await fetchListaVentasResumenDelMes(mes, anio);
+        
         const ventasConDetallesPromises = ventasResumenApi.map(async (vResumen) => {
             try {
-                // console.log(`Fetching details for sale ID: ${vResumen.venta_id}`);
-                const ventaConDetallesFull = await fetchDetallesDeVentaIndividual(vResumen.venta_id); // Asumo que esta función está definida
-                // console.log(`Details for sale ID ${vResumen.venta_id}:`, ventaConDetallesFull.detalles);
+                const ventaConDetallesFull = await fetchDetallesDeVentaIndividual(vResumen.venta_id);
                 
                 const esDireccionNula = vResumen.direccion_entrega === null || vResumen.direccion_entrega === undefined || vResumen.direccion_entrega.trim() === "";
                 const tipoVenta: VentaTipo = esDireccionNula ? "puerta" : "pedido";
                 
-                let totalCostoVenta = 0;
+                let totalCostoVenta = 0; // COGS para esta venta
                 const itemsTransformados: VentaDetalle[] = (ventaConDetallesFull.detalles || []).map((dApi, index) => {
-                    // !!! VERIFICA ESTOS NOMBRES DE CAMPO CON TU API !!!
-
-                    const cantidad = typeof dApi.cantidad === 'number' ? dApi.cantidad: 0; // O dApi.cantidad
+                    const cantidad = typeof dApi.cantidad === 'number' ? dApi.cantidad: 0;
                     const costoUnitario = typeof dApi.costo_unitario_momento_ars === 'number' ? dApi.costo_unitario_momento_ars : 0;
-                    const precioUnitario = typeof dApi.precio_unitario_base_ars === 'number' ? dApi.precio_unitario_base_ars : 0; // O dApi.precio_unitario
+                    const precioUnitarioVenta = typeof dApi.precio_unitario_venta_ars === 'number' ? dApi.precio_unitario_venta_ars : 0;
                     
                     totalCostoVenta += cantidad * costoUnitario;
 
                     return {
-                        id: String(dApi.id_detalle_venta || `item-${vResumen.venta_id}-${index}`), 
+                        id: String(dApi.detalle_id || `item-${vResumen.venta_id}-${index}`), 
                         productoNombre: dApi.producto_nombre || "N/A",
                         cantidad: cantidad,
-                        precioVentaUnitario: precioUnitario,
+                        precioVentaUnitario: precioUnitarioVenta,
                         costoUnitario: costoUnitario,
                     };
                 });
-                // if (totalCostoVenta === 0 && (ventaConDetallesFull.detalles || []).length > 0) {
-                //     console.warn(`Total cost is 0 for sale ID ${vResumen.venta_id} despite having details. Check 'costo_unitario_momento_ars'. Details:`, ventaConDetallesFull.detalles);
-                // }
 
-                // Este objeto es del tipo Venta
-                return { // TypeScript infiere correctamente el tipo aquí si tipoVenta es VentaTipo
+                return {
                     id: String(vResumen.venta_id),
                     fecha: vResumen.fecha_registro.split('T')[0],
-                    tipo: tipoVenta, // tipoVenta ya es VentaTipo
+                    tipo: tipoVenta,
                     items: itemsTransformados,
-                    totalVenta: typeof vResumen.monto_final_con_recargos === 'number' ? vResumen.monto_final_con_recargos : 0,
-                    totalCosto: parseFloat(totalCostoVenta.toFixed(2)),
+                    totalVenta: typeof ventaConDetallesFull.monto_final_con_recargos === 'number' ? ventaConDetallesFull.monto_final_con_recargos : 0,
+                    totalCosto: parseFloat(totalCostoVenta.toFixed(2)), // COGS
                 };
 
             } catch (errorDetalle) {
                 console.error(`No se pudieron obtener detalles para venta ID ${vResumen.venta_id}:`, errorDetalle);
-                // Asegurar que el objeto de fallback también sea del tipo Venta
                 const esDireccionNulaFallback = vResumen.direccion_entrega === null || vResumen.direccion_entrega === undefined || vResumen.direccion_entrega.trim() === "";
-                // Aplicar la corrección aquí:
                 const tipoVentaFallback: VentaTipo = esDireccionNulaFallback ? "puerta" : "pedido"; 
 
-                return { // Este objeto AHORA es del tipo Venta
+                return {
                     id: String(vResumen.venta_id),
                     fecha: vResumen.fecha_registro.split('T')[0],
-                    tipo: tipoVentaFallback, // Usar la variable explícitamente tipada
+                    tipo: tipoVentaFallback,
                     items: [], 
                     totalVenta: typeof vResumen.monto_final_con_recargos === 'number' ? vResumen.monto_final_con_recargos : 0,
                     totalCosto: 0,
@@ -255,11 +250,7 @@ const obtenerDatosVentasParaDashboard = async (mes: number, anio: number): Promi
             }
         });
 
-        // Ahora TypeScript sabe que cada elemento de la promesa es de tipo Venta
         const ventasTransformadas: Venta[] = await Promise.all(ventasConDetallesPromises);
-        
-        // console.log("Dashboard Ventas (transformadas finales):", ventasTransformadas.length, "ventas.");
-        // console.log("Dashboard Ventas - Primeras 2 transformadas finales:", JSON.stringify(ventasTransformadas.slice(0,2), null, 2));
         return ventasTransformadas.sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime());
 
     } catch (error) {
@@ -274,7 +265,8 @@ const BAR_CHART_VENTAS_COLORS = ["#8884d8", "#82ca9d"];
 
 export default function Dashboard() {
     const [ventas, setVentas] = useState<Venta[]>([]);
-    const [estadoComprasData, setEstadoComprasData] = useState<{ name: string; cantidad: number }[]>([]);
+    const [statusCountsComprasHistoricos, setStatusCountsComprasHistoricos] = useState<{ name: string; cantidad: number }[]>([]);
+    const [totalGastadoComprasDelMes, setTotalGastadoComprasDelMes] = useState<number>(0);
     const [isLoading, setIsLoading] = useState(true);
     const [currentMonthName, setCurrentMonthName] = useState("");
     const [error, setError] = useState<string | null>(null);
@@ -285,23 +277,25 @@ export default function Dashboard() {
             setError(null);
             try {
                 const today = new Date();
-                const currentMonth = today.getMonth();
+                const currentMonth = today.getMonth(); 
                 const currentYear = today.getFullYear();
                 setCurrentMonthName(today.toLocaleString('es-ES', { month: 'long' }));
 
-                const [ventasData, comprasParaGraficoData] = await Promise.all([
+                const [ventasData, datosCompras] = await Promise.all([
                     obtenerDatosVentasParaDashboard(currentMonth, currentYear),
-                    obtenerDatosComprasParaDashboard()
+                    obtenerDatosComprasDashboard(currentMonth, currentYear) 
                 ]);
 
                 setVentas(ventasData);
-                setEstadoComprasData(comprasParaGraficoData);
-              //eslint-disable-next-line
+                setStatusCountsComprasHistoricos(datosCompras.statusCountsHistoricos);
+                setTotalGastadoComprasDelMes(datosCompras.totalGastadoEnComprasDelMes);
+              // eslint-disable-next-line
             } catch (err: any) {
                 console.error("Error general al cargar datos para el dashboard:", err);
                 setError("Ocurrió un error al cargar los datos.");
                 setVentas([]);
-                setEstadoComprasData([{ name: "En Espera", cantidad: 0 },{ name: "Pagados", cantidad: 0 }]);
+                setStatusCountsComprasHistoricos([{ name: "En Espera", cantidad: 0 },{ name: "Pagados", cantidad: 0 }]);
+                setTotalGastadoComprasDelMes(0);
             } finally {
                 setIsLoading(false);
             }
@@ -327,30 +321,41 @@ export default function Dashboard() {
             .sort((a, b) => parseInt(a.name) - parseInt(b.name));
     }, [ventas]);
 
-    const metricasVentasMes = useMemo(() => {
-        if (!ventas.length) return { totalVentas: 0, totalCostos: 0, margenGanancia: 0, ventasPuerta: 0, ventasPedidos: 0 };
-        let totalVentas = 0, totalCostos = 0, ventasPuerta = 0, ventasPedidos = 0;
+    const metricasMes = useMemo(() => {
+        let totalVentasMes = 0;
+        let totalCostoMercaderiaVendidaMes_COGS = 0; // COGS, para el margen bruto opcional
+        let ventasPuerta = 0;
+        let ventasPedidos = 0;
+
         ventas.forEach(venta => {
-            totalVentas += venta.totalVenta;
-            totalCostos += venta.totalCosto; // Este ahora debería tener valor si los detalles se cargan bien
+            totalVentasMes += venta.totalVenta;
+            totalCostoMercaderiaVendidaMes_COGS += venta.totalCosto; // Suma el COGS de cada venta
             if (venta.tipo === "puerta") ventasPuerta += venta.totalVenta;
             else ventasPedidos += venta.totalVenta;
         });
-        const margenGanancia = totalVentas - totalCostos;
-       // console.log("Metricas calculadas:", { totalVentas, totalCostos, margenGanancia, ventasPuerta, ventasPedidos });
+        
+        // Ganancia según tu definición
+        const gananciaNetaDefinidaUsuario = totalVentasMes - totalGastadoComprasDelMes;
+        // Margen Bruto (opcional, para contexto)
+        const margenGananciaBruta = totalVentasMes - totalCostoMercaderiaVendidaMes_COGS;
+
+
         return { 
-            totalVentas: parseFloat(totalVentas.toFixed(2)), 
-            totalCostos: parseFloat(totalCostos.toFixed(2)), 
-            margenGanancia: parseFloat(margenGanancia.toFixed(2)),
+            totalVentasMes: parseFloat(totalVentasMes.toFixed(2)), 
+            totalGastadoComprasDelMes: parseFloat(totalGastadoComprasDelMes.toFixed(2)),
+            gananciaNetaDefinidaUsuario: parseFloat(gananciaNetaDefinidaUsuario.toFixed(2)),
+            margenGananciaBruta: parseFloat(margenGananciaBruta.toFixed(2)), // Para la card de contexto
+            totalCostoMercaderiaVendidaMes_COGS: parseFloat(totalCostoMercaderiaVendidaMes_COGS.toFixed(2)), // Para la card de contexto
             ventasPuerta: parseFloat(ventasPuerta.toFixed(2)),
             ventasPedidos: parseFloat(ventasPedidos.toFixed(2)),
         };
-    }, [ventas]);
+    }, [ventas, totalGastadoComprasDelMes]);
+
 
     const tipoVentasPieData = useMemo(() => [
-        { name: "Ventas Puerta", value: metricasVentasMes.ventasPuerta },
-        { name: "Ventas Pedidos", value: metricasVentasMes.ventasPedidos },
-    ].filter(d => d.value > 0), [metricasVentasMes]);
+        { name: "Ventas Puerta", value: metricasMes.ventasPuerta },
+        { name: "Ventas Pedidos", value: metricasMes.ventasPedidos },
+    ].filter(d => d.value > 0), [metricasMes]);
     
     const formatCurrency = (value: number) => {
         return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(value);
@@ -375,36 +380,42 @@ export default function Dashboard() {
                 </TabsList>
 
                 <TabsContent value="overview" className="space-y-6">
-                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3"> 
                         <Card>
                             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                                 <CardTitle className="text-sm font-medium">Ventas Totales del Mes</CardTitle>
                                 <DollarSign className="h-4 w-4 text-muted-foreground" />
                             </CardHeader>
                             <CardContent>
-                                <div className="text-2xl font-bold">{formatCurrency(metricasVentasMes.totalVentas)}</div>
+                                <div className="text-2xl font-bold">{formatCurrency(metricasMes.totalVentasMes)}</div>
+                                <p className="text-xs text-muted-foreground">Suma de monto final con recargos.</p>
                             </CardContent>
                         </Card>
+                        
                         <Card>
                             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                <CardTitle className="text-sm font-medium">Costo Mercadería Vendida</CardTitle>
+                                <CardTitle className="text-sm font-medium">Gasto Total Compras (Mes)</CardTitle>
                                 <ShoppingCart className="h-4 w-4 text-muted-foreground" />
                             </CardHeader>
                             <CardContent>
-                                <div className="text-2xl font-bold">{formatCurrency(metricasVentasMes.totalCostos)}</div>
+                                <div className="text-2xl font-bold">{formatCurrency(metricasMes.totalGastadoComprasDelMes)}</div>
+                                <p className="text-xs text-muted-foreground">Suma importe total estimado de O.C. del mes.</p>
                             </CardContent>
                         </Card>
+
                         <Card>
                             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                <CardTitle className="text-sm font-medium">Margen de Ganancia Bruta</CardTitle>
+                                <CardTitle className="text-sm font-medium">Ganancia (Ventas Mes - Compras Mes)</CardTitle>
                                 <TrendingUp className="h-4 w-4 text-muted-foreground" />
                             </CardHeader>
                             <CardContent>
-                                <div className="text-2xl font-bold">{formatCurrency(metricasVentasMes.margenGanancia)}</div>
+                                <div className={`text-2xl font-bold ${metricasMes.gananciaNetaDefinidaUsuario < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                                    {formatCurrency(metricasMes.gananciaNetaDefinidaUsuario)}
+                                </div>
+                                <p className="text-xs text-muted-foreground">Ventas del Mes - Gasto en Compras del Mes.</p>
                             </CardContent>
                         </Card>
                     </div>
-
                     <Card>
                         <CardHeader>
                             <CardTitle>Ventas Diarias del Mes (Puerta vs. Pedidos)</CardTitle>
@@ -457,12 +468,12 @@ export default function Dashboard() {
 
                         <Card>
                             <CardHeader>
-                                <CardTitle>Estado de Órdenes de Compra</CardTitle>
-                                <CardDescription>Cantidad de pedidos de compra por estado.</CardDescription>
+                                <CardTitle>Estado de Órdenes de Compra (Conteo Histórico)</CardTitle>
+                                <CardDescription>Cantidad total histórica de O.C. por estado.</CardDescription>
                             </CardHeader>
                             <CardContent className="h-[300px]">
                                 <ResponsiveContainer width="100%" height="100%">
-                                    <BarChart data={estadoComprasData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                                    <BarChart data={statusCountsComprasHistoricos} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
                                         <CartesianGrid strokeDasharray="3 3" />
                                         <XAxis dataKey="name" />
                                         <YAxis allowDecimals={false} />
