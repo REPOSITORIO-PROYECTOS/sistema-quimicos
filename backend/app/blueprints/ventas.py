@@ -2,7 +2,7 @@
 
 from flask import Blueprint, request, jsonify, render_template, make_response
 from sqlalchemy.orm import selectinload # Para Eager Loading
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP, ROUND_UP
 import traceback
 import datetime
 
@@ -114,10 +114,10 @@ def calcular_precio_item_venta(producto_id, cantidad_decimal, cliente_id=None):
 
         denominador = Decimal(1) - margen
         if denominador == 0: raise ValueError("Margen no puede ser 1 (división por cero).")
-        #precio_unitario_ars = (costo_momento_ars / denominador * coeficiente_decimal).quantize(Decimal("0.1"), rounding=ROUND_UP)
-        valor = (costo_momento_ars / denominador * coeficiente_decimal)
-        precio_unitario_ars = (valor / Decimal('10')).to_integral_value(rounding=ROUND_UP) * Decimal('10')
-        precio_unitario_ars = precio_unitario_ars.quantize(Decimal("0.1"))
+        precio_unitario_ars = (costo_momento_ars / denominador * coeficiente_decimal).quantize(Decimal("0.1"), rounding=ROUND_UP)
+        # valor = (costo_momento_ars / denominador * coeficiente_decimal)
+        # precio_unitario_ars = (valor / Decimal('10')).to_integral_value(rounding=ROUND_UP) * Decimal('10')
+        # precio_unitario_ars = precio_unitario_ars.quantize(Decimal("0.1"))
         precio_total_ars = (precio_unitario_ars * cantidad_decimal).quantize(Decimal("0.01"), ROUND_HALF_UP)
         print(f"DEBUG [calcular_precio_item_venta]: Cálculo dinámico: PU={precio_unitario_ars:.4f}, PT={precio_total_ars:.2f}, Costo={costo_momento_ars:.4f}, Coef={coeficiente_decimal}")
 
