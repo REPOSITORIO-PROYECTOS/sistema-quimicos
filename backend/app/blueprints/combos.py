@@ -2,13 +2,24 @@
 
 from flask import Blueprint, request, jsonify
 from decimal import Decimal
-from models import db, Combo, ComboComponente, Producto, Receta 
+from ..models import db, Combo, ComboComponente, Producto, Receta, TipoCambio
 from calculator.core import obtener_coeficiente_por_rango
 from sqlalchemy.exc import IntegrityError
 import traceback
 
 combos_bp = Blueprint('combos_bp', __name__, url_prefix='/combos')
 
+
+def calcular_precio_combo_ars(precio_base_usd_combo, nombre_tc='Oficial'):
+    """
+    Convierte el precio base USD del combo a ARS usando el tipo de cambio indicado.
+    """
+    tipo_cambio = TipoCambio.query.filter_by(nombre=nombre_tc).first()
+    if not tipo_cambio or tipo_cambio.valor is None or tipo_cambio.valor <= 0:
+        return None, f"Tipo de cambio '{nombre_tc}' no válido o no encontrado."
+    precio_ars = (Decimal(str(precio_base_usd_combo)) * tipo_cambio.valor).quantize(Decimal("0.01"))
+    return float(precio_ars), None
+    
 # --- FUNCIONES AUXILIARES DE CÁLCULO (ENFOCADAS EN USD) ---
 
 def _obtener_costo_producto_usd_directo(producto: Producto) -> Decimal:
@@ -86,7 +97,8 @@ def calcular_costo_y_precio_base_combo_usd(combo_id: int):
         'combo_id': combo.id,
         'nombre_combo': combo.nombre,
         'margen_combo_aplicado': float(margen_del_combo),
-        'costo_total_combo_usd': float(costo_total_combo_usd.quantize(Decimal('0.01'))),
+        'costo_referencia_usd': float(costo_total_combo_usd.quantize(Decimal('0.01'))),
+        #'costo_referencia_ars': calcular_precio_combo_ars(),
         'precio_base_combo_usd': float(precio_base_combo_usd.quantize(Decimal('0.01'))), # Este es el que usarás como 'ref_calculo'
         'componentes_detalle_costo_usd': componentes_info_costo
     }
@@ -252,9 +264,18 @@ def obtener_combos():
     try:
         combos = Combo.query.order_by(Combo.nombre).all()
         resultado = []
+        #for c in combos:
+        #    info_calc_usd = calcular_costo_y_precio_base_combo_usd(c.id) if incluir_info_usd else None
+        #    resultado.append(c.to_dict(incluir_componentes=incluir_componentes, info_calculada=info_calc_usd))
         for c in combos:
             info_calc_usd = calcular_costo_y_precio_base_combo_usd(c.id) if incluir_info_usd else None
-            resultado.append(c.to_dict(incluir_componentes=incluir_componentes, info_calculada=info_calc_usd))
+            combo_dict = c.to_dict(incluir_componentes=incluir_componentes, info_calculada=info_calc_usd)
+            # --- Agregar precio ARS ---
+            if info_calc_usd and 'precio_base_combo_usd' in info_calc_usd:
+                precio_ars, error_ars = calcular_precio_combo_ars(info_calc_usd['precio_base_combo_usd'])
+                combo_dict['precio_base_combo_ars'] = precio_ars
+                combo_dict['error_calculo_ars'] = error_ars
+            resultado.append(combo_dict)
         return jsonify(resultado), 200
     except Exception as e:
         print(f"Error inesperado al obtener combos: {traceback.format_exc()}")
@@ -270,8 +291,15 @@ def obtener_combo_por_id(combo_id):
     if not combo:
         return jsonify({'error': 'Combo no encontrado'}), 404
     
-    info_calc_usd = calcular_costo_y_precio_base_combo_usd(combo.id) if incluir_info_usd else None
-    return jsonify(combo.to_dict(incluir_componentes=incluir_componentes, info_calculada=info_calc_usd)), 200
+    combo_dict = combo.to_dict(incluir_componentes=incluir_componentes, info_calculada=info_calc_usd)
+    # --- Agregar precio ARS ---
+    if info_calc_usd and 'precio_base_combo_usd' in info_calc_usd:
+        precio_ars, error_ars = calcular_precio_combo_ars(info_calc_usd['precio_base_combo_usd'])
+        combo_dict['precio_base_combo_ars'] = precio_ars
+        combo_dict['error_calculo_ars'] = error_ars
+    return jsonify(combo_dict), 200
+    #info_calc_usd = calcular_costo_y_precio_base_combo_usd(combo.id) if incluir_info_usd else None
+    #return jsonify(combo.to_dict(incluir_componentes=incluir_componentes, info_calculada=info_calc_usd)), 200
 
 
 # PUT /api/v1/combos/<combo_id> (Actualizar combo)

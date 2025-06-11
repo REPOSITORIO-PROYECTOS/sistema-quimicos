@@ -114,7 +114,10 @@ def calcular_precio_item_venta(producto_id, cantidad_decimal, cliente_id=None):
 
         denominador = Decimal(1) - margen
         if denominador == 0: raise ValueError("Margen no puede ser 1 (división por cero).")
-        precio_unitario_ars = (costo_momento_ars / denominador * coeficiente_decimal).quantize(Decimal("0.0001"))
+        #precio_unitario_ars = (costo_momento_ars / denominador * coeficiente_decimal).quantize(Decimal("0.1"), rounding=ROUND_UP)
+        valor = (costo_momento_ars / denominador * coeficiente_decimal)
+        precio_unitario_ars = (valor / Decimal('10')).to_integral_value(rounding=ROUND_UP) * Decimal('10')
+        precio_unitario_ars = precio_unitario_ars.quantize(Decimal("0.1"))
         precio_total_ars = (precio_unitario_ars * cantidad_decimal).quantize(Decimal("0.01"), ROUND_HALF_UP)
         print(f"DEBUG [calcular_precio_item_venta]: Cálculo dinámico: PU={precio_unitario_ars:.4f}, PT={precio_total_ars:.2f}, Costo={costo_momento_ars:.4f}, Coef={coeficiente_decimal}")
 
@@ -173,10 +176,11 @@ def calcular_monto_final_y_vuelto(monto_base, forma_pago=None, requiere_factura=
             # Convertir monto_pagado a Decimal (viene como string o None)
             monto_pagado_decimal = Decimal(str(monto_pagado)).quantize(Decimal("0.01"))
             if monto_pagado_decimal < monto_final:
-                faltante = (monto_final - monto_pagado_decimal).quantize(Decimal("0.01"), ROUND_HALF_UP)
-                error = f"Pago insuficiente. Monto pagado: {monto_pagado_decimal:.2f}, Total final: {monto_final:.2f}, Faltan: {faltante:.2f}"
-                print(f"WARN [calc_final]: {error}")
-                return monto_final, recargo_t, recargo_f, None, error
+                vuelto = Decimal("0.00")
+                # faltante = (monto_final - monto_pagado_decimal).quantize(Decimal("0.01"), ROUND_HALF_UP)
+                # error = f"Pago insuficiente. Monto pagado: {monto_pagado_decimal:.2f}, Total final: {monto_final:.2f}, Faltan: {faltante:.2f}"
+                # print(f"WARN [calc_final]: {error}")
+                # return monto_final, recargo_t, recargo_f, None, error
             else:
                 vuelto = (monto_pagado_decimal - monto_final).quantize(Decimal("0.01"), ROUND_HALF_UP)
                 print(f"DEBUG [calc_final]: Vuelto calculado: {vuelto}")
@@ -262,6 +266,7 @@ def registrar_venta(current_user):
                 cantidad=cantidad,
                 # Guardar margen/coeficiente APLICADOS (pueden ser None si fue precio especial)
                 margen_aplicado=producto_db.margen if not fue_especial and producto_db.margen is not None else None,
+                observacion_item=item_data.get("observacion_item"),
                 coeficiente_usado=coef if not fue_especial and coef is not None else None,
                 costo_unitario_momento_ars=costo_u, # Siempre guardar costo si se pudo calcular
                 precio_unitario_venta_ars=precio_u,
@@ -310,7 +315,7 @@ def registrar_venta(current_user):
             requiere_factura=requiere_factura,
             recargo_transferencia=recargo_t_calc if recargo_t_calc > 0 else None,
             recargo_factura=recargo_f_calc if recargo_f_calc > 0 else None,
-            monto_final_con_recargos=monto_final_calc,
+            monto_final_con_recargos=data.get('monto_final_con_recargos'),
             # Guardar monto pagado como Decimal, redondeado
             monto_pagado_cliente=Decimal(monto_pagado_str).quantize(Decimal("0.01")) if monto_pagado_str is not None else None,
             vuelto_calculado=vuelto_calc
@@ -693,6 +698,7 @@ def detalle_venta_a_dict(detalle):
         "producto_codigo": detalle.producto.id if detalle.producto else None, # Usar codigo_interno
         "producto_nombre": detalle.producto.nombre if detalle.producto else None,
         "cantidad": float(detalle.cantidad) if detalle.cantidad is not None else None,
+        "observacion_item": detalle.observacion_item,
         "margen_aplicado": float(detalle.margen_aplicado) if detalle.margen_aplicado is not None else None,
         "costo_unitario_momento_ars": float(detalle.costo_unitario_momento_ars) if detalle.costo_unitario_momento_ars is not None else None,
         "coeficiente_usado": float(detalle.coeficiente_usado) if detalle.coeficiente_usado is not None else None,

@@ -27,7 +27,7 @@ BASE_API_URL = "http://localhost:8001"
 compras_bp = Blueprint('compras', __name__, url_prefix='/ordenes_compra')
 
 # --- Estados Permitidos (Opcional, puede definirse en otro lugar) ---
-ESTADOS_ORDEN = ["Solicitado", "Aprobado", "Rechazado", "Recibido", "Parcialmente Recibido"] # Añadir estado parcial
+ESTADOS_ORDEN = ["Solicitado", "Aprobado", "Rechazado", "Recibido", "Con Deuda", "Parcialmente Recibido"] # Añadir estado parcial
 ESTADOS_RECEPCION = ["Completa", "Parcial", "Extra", "Con Daños"]
 FORMAS_PAGO = ["Cheque", "Efectivo", "Transferencia", "Cuenta Corriente"]
 
@@ -52,6 +52,7 @@ def formatear_orden_por_rol(orden_db, rol="almacen"):
         # Campos de aprobación
         "fecha_aprobacion": orden_db.fecha_aprobacion.isoformat() if orden_db.fecha_aprobacion else None,
         "aprobado_por": orden_db.aprobado_por_id,
+        "forma_pago": orden_db.forma_pago,
         # Campos de rechazo
         "fecha_rechazo": orden_db.fecha_rechazo.isoformat() if orden_db.fecha_rechazo else None,
 #        "rechazado_por": orden_db.rechazado_por,
@@ -189,6 +190,7 @@ def crear_orden_compra(current_user):
             # id=nuevo_id_orden, # Si usas UUID string PK
             nro_solicitud_interno=nro_interno_solicitud,
             proveedor_id=proveedor_id,
+            forma_pago=data.get("forma_pago"),
             importe_total_estimado=importe_total_estimado_calc,
             observaciones_solicitud=data.get("observaciones_solicitud"),
             estado="Solicitado", # Estado inicial
@@ -438,7 +440,7 @@ def rechazar_orden_compra(current_user, orden_id):
 # --- Endpoint: Recibir Mercadería de Orden de Compra ---
 @compras_bp.route('/recibir/<int:orden_id>', methods=['PUT'])
 @token_required
-@roles_required(ROLES['ADMIN'], ROLES['ALMACEN']) # Permitir a ADMIN y ALMACEN recibir 
+@roles_required(ROLES['ADMIN']) # Permitir a ADMIN y ALMACEN recibir 
 def recibir_orden_compra(current_user, orden_id):
     """
     Registra la recepción de mercadería, actualiza cantidades y llama a actualizar costos.
@@ -494,7 +496,7 @@ def recibir_orden_compra(current_user, orden_id):
         if not orden_db: return jsonify({"error": "Orden de compra no encontrada"}), 404
 
         # Permitir recibir solo si está Aprobada (o Parcialmente Recibida si implementas multi-recepción)
-        if orden_db.estado not in ['Aprobado', 'Parcialmente Recibido']: # Ajustar si soportas múltiples recepciones
+        if orden_db.estado not in ['Aprobado', 'Parcialmente Recibido', 'Con Deuda']: # Ajustar si soportas múltiples recepciones
             return jsonify({"error": f"Solo se puede recibir mercadería de órdenes 'Aprobadas'. Estado actual: {orden_db.estado}"}), 409 # Conflict
 
         # --- Procesar Items Recibidos ---
@@ -505,7 +507,7 @@ def recibir_orden_compra(current_user, orden_id):
         for item_recibido_data in items_recibidos_payload:
             id_linea = item_recibido_data.get('id_linea') # Preferir ID de línea si viene
             codigo_prod = item_recibido_data.get('producto_codigo') # Alternativa si no viene ID
-            cantidad_rec_str = str(item_recibido_data.get('cantidad_recibida', '0')).replace(',','.')
+            cantidad_rec_str = item_recibido_data.get('cantidad_recibida')
             costo_ars_str = str(item_recibido_data.get('costo_unitario_ars', '')).replace(',','.') # Costo de esta recepción
             notas_item = item_recibido_data.get('notas_item')
 
@@ -516,7 +518,7 @@ def recibir_orden_compra(current_user, orden_id):
             elif codigo_prod:
                 # Buscar por código si no hay ID (menos preciso si el mismo producto está varias veces)
                 for det in orden_db.items:
-                    if det.producto and det.producto.codigo_interno == codigo_prod:
+                    if det.producto and det.producto.id == codigo_prod:
                         detalle_orden_db = det
                         break # Tomar el primero que coincida
 
@@ -532,7 +534,7 @@ def recibir_orden_compra(current_user, orden_id):
 
             # Validar y convertir cantidad y costo
             try:
-                cantidad_recibida = Decimal(cantidad_rec_str)
+                cantidad_recibida = cantidad_rec_str
                 # Costo ARS es opcional en el payload? Si no viene, no actualizamos costo ref USD.
                 costo_unitario_ars = Decimal(costo_ars_str) if costo_ars_str else None
                 if cantidad_recibida < 0: raise ValueError("Cantidad recibida no puede ser negativa")
@@ -584,15 +586,21 @@ def recibir_orden_compra(current_user, orden_id):
         # Determinar estado final (podría ser más complejo si hay multi-recepción)
         # Simplificado: Si se recibió algo, pasa a Recibido (o Parcial si se indica)
         # Una lógica mejor compararía total recibido vs solicitado para todos los items.
-        orden_db.estado = 'Recibido' if estado_recepcion_payload in ['Completa', 'Extra', 'Con Daños'] else 'Parcialmente Recibido'
-        orden_db.fecha_recepcion = datetime.datetime.utcnow() # O tomar fecha del payload?
-        orden_db.recibido_por = recibido_por
-        orden_db.nro_remito_proveedor = nro_remito
-        orden_db.estado_recepcion = estado_recepcion_payload
-        orden_db.notas_recepcion = data.get('notas_recepcion_general')
+        if orden_db.importe_total_estimado == Decimal(str(data['importe_abonado'])):
+            orden_db.estado = 'Recibido' if estado_recepcion_payload in ['Completa', 'Extra', 'Con Daños'] else 'Parcialmente Recibido'
+            for item in orden_db.items:
+                if item.producto and item.precio_unitario_estimado is not None:
+                    item.producto.costo_referencia_usd = item.precio_unitario_estimado
+        else:
+            orden_db.estado = 'Con Deuda' if estado_recepcion_payload in ['Completa', 'Extra', 'Con Daños'] else 'Parcialmente Recibido'
+            orden_db.fecha_recepcion = datetime.datetime.utcnow() # O tomar fecha del payload?
+            orden_db.recibido_por = recibido_por
+            orden_db.nro_remito_proveedor = nro_remito
+            orden_db.estado_recepcion = estado_recepcion_payload
+            orden_db.notas_recepcion = data.get('notas_recepcion_general')
         # fecha_actualizacion se actualiza via onupdate
 
-        # --- Actualizar Datos de Pago/Costo en la Orden (si vienen y rol es     ADMIN) ---
+        # --- Actualizar Datos de Pago/Costo en la Orden (si vienen y rol es ADMIN) ---
         if rol_usuario == "ADMIN":
             # Convertir 'SI'/'NO' a boolean si es necesario
             ajuste_tc_payload = data.get('ajuste_tc')
@@ -607,8 +615,6 @@ def recibir_orden_compra(current_user, orden_id):
 
             try:
                 # Convertir a Decimal o Float asegurando que sean números si vienen
-                orden_db.importe_cc = Decimal(str(data['importe_cc'])) if 'importe_cc' in data else orden_db.importe_cc
-                orden_db.dif_ajuste_cambio = Decimal(str(data['dif_ajuste_cambio'])) if 'dif_ajuste_cambio' in data else orden_db.dif_ajuste_cambio
                 orden_db.importe_abonado = Decimal(str(data['importe_abonado'])) if 'importe_abonado' in data else orden_db.importe_abonado
             except (ValueError, TypeError, InvalidOperation) as e:
                  db.session.rollback()
