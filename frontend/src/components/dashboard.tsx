@@ -111,7 +111,7 @@ const obtenerDatosComprasDashboard = async (mes: number, anio: number): Promise<
             if (orden.fecha_creacion) {
                 const fechaOrden = orden.fecha_creacion.split('T')[0]; // Asume formato YYYY-MM-DD o YYYY-MM-DDTHH:mm:ss
                 if (fechaOrden >= fechaDesdeStr && fechaOrden <= fechaHastaStr) {
-                    totalGastadoMesCalculadoCliente += orden.importe_total_estimado || 0;
+                    totalGastadoMesCalculadoCliente += orden.items[0].importe_linea_estimado || 0;
                 }
             }
         });
