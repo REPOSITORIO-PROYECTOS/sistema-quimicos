@@ -337,7 +337,7 @@ export default function RegistrarPedidoPuertaPage() {
         cantidad: i.qx,
         observacion_item: i.observacion || ""
       })),
-      cliente_id:0, 
+      cliente_id:17, 
       fecha_emision: formData.fechaEmision || new Date().toISOString().slice(0,16),
       fecha_pedido: formData.fechaEmision || new Date().toISOString().slice(0,16),
       direccion_entrega: "", 

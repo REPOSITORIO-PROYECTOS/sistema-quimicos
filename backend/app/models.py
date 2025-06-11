@@ -170,6 +170,7 @@ class DetalleVenta(db.Model):
     producto_id = db.Column(db.Integer, db.ForeignKey('productos.id', ondelete='RESTRICT'), nullable=False)
     cantidad = db.Column(db.Numeric(15, 4), nullable=False)
     margen_aplicado = db.Column(db.Numeric(10, 4), nullable=True)
+    observacion_item = db.Column(db.Text, nullable=True)
     costo_unitario_momento_ars = db.Column(db.Numeric(15, 4), nullable=True)
     coeficiente_usado = db.Column(db.Numeric(10, 4), nullable=True)
     precio_unitario_venta_ars = db.Column(db.Numeric(15, 4), nullable=False)
@@ -224,7 +225,7 @@ class DetalleOrdenCompra(db.Model):
     cantidad_solicitada = db.Column(db.Numeric(15, 4), nullable=False)
     precio_unitario_estimado = db.Column(db.Numeric(15, 4), nullable=True)
     importe_linea_estimado = db.Column(db.Numeric(15, 2), nullable=True)
-    cantidad_recibida = db.Column(db.Numeric(15, 4), nullable=True, default=Decimal('0.0'))
+    cantidad_recibida = db.Column(db.Numeric(15, 4), nullable=True)
     costo_unitario_recepcion_ars = db.Column(db.Numeric(15, 4), nullable=True)
     notas_item_recepcion = db.Column(db.String(255), nullable=True)
     orden = db.relationship('OrdenCompra', back_populates='items')
@@ -287,6 +288,7 @@ class Combo(db.Model):
     nombre = db.Column(db.String(255), nullable=False, unique=True, index=True)
     sku_combo = db.Column(db.String(100), unique=True, nullable=True, index=True) # SKU del combo si lo vendes así
     descripcion = db.Column(db.Text, nullable=True)
+    margen_combo = db.Column(db.Numeric(10, 4), default=Decimal('0.0'))
     activo = db.Column(db.Boolean, default=True, nullable=False, index=True)
     fecha_creacion = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     fecha_modificacion = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
@@ -303,6 +305,7 @@ class Combo(db.Model):
             'nombre': self.nombre,
             'sku_combo': self.sku_combo,
             'descripcion': self.descripcion,
+            'margen_combo': self.margen_combo,
             'activo': self.activo,
             'fecha_creacion': self.fecha_creacion.isoformat() if self.fecha_creacion else None,
             'fecha_modificacion': self.fecha_modificacion.isoformat() if self.fecha_modificacion else None,
