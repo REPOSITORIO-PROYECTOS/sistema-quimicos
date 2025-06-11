@@ -103,7 +103,7 @@ export default function SolicitudIngresoPage({ id }: any) {
       setCodigo(itemPrincipal.producto_codigo || ''); // Código del producto
       setCantidad(itemPrincipal.cantidad_solicitada?.toString() ?? '');
       // setMoneda(data.moneda_oc || ''); // Si hay una moneda general para la OC
-      setImporteTotal(data.importe_total_estimado?.toString() ?? '0'); // Total GENERAL de la OC
+      setImporteTotal(data.items[0].importe_linea_estimado?.toString() ?? '0'); // Total GENERAL de la OC
       setEstadoOC(data.estado || '');
       setIdLineaOCOriginal(itemPrincipal.id_linea_oc || itemPrincipal.id_linea || ''); // ID DE LA LÍNEA DE LA OC
 
