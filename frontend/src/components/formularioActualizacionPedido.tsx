@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useProductsContext, Producto as ProductoContextType } from "@/context/ProductsContext";
 import Select from 'react-select';
+import { useRouter } from 'next/navigation';
 
 // Tipos
 type ProductoPedido = {
@@ -58,7 +59,8 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     requiereFactura: false,
     observaciones: "",
   });
-
+  const router = useRouter();
+  const irAcciones = () => router.push('/acciones');
   const [productos, setProductos] = useState<ProductoPedido[]>([initialProductoItem]);
   const [totalCalculadoApi, setTotalCalculadoApi] = useState<TotalCalculadoAPI | null>(null);
   const [isCalculatingTotal, setIsCalculatingTotal] = useState(false);
@@ -235,8 +237,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         recalcularTodo();
     }
   }, [montoBaseProductos, formData.formaPago, formData.requiereFactura, formData.montoPagado, formData.descuentoTotal, isLoading, hasUserInteracted, initialTotalNetoDelGet]);
-
-  // CAMBIO: Se introduce la función orquestadora para manejar los precios.
+  
   const recalculatePricesForProducts = useCallback(async (currentProducts: ProductoPedido[]) => {
     setHasUserInteracted(true);
     const token = localStorage.getItem("token");
@@ -457,6 +458,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         setSuccessMensaje("¡Pedido actualizado con éxito!");
         setHasUserInteracted(false); 
         handleImprimirPresupuesto();
+        irAcciones();
       }
       //eslint-disable-next-line
     } catch (err: any) {
@@ -523,12 +525,20 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
 
             <fieldset className="border p-4 rounded-md">
               <legend className="text-lg font-medium text-gray-700 px-2">Productos del Pedido</legend>
-              <div className="mb-2 hidden md:grid md:grid-cols-[minmax(0,0.7fr)_minmax(0,0.5fr)_70px_70px_90px_90px_32px] items-center gap-x-2 font-semibold text-sm text-gray-600 px-1 md:px-3">
-                <span>Producto*</span><span>Observ. Prod.</span><span className="text-center">Cant*</span><span className="text-center">Desc%</span><span className="text-right">P.Unit</span><span className="text-right">Total</span><span />
+              {/* <--- CAMBIO: Se ajustó el orden y tamaño de las columnas en la grilla */}
+              <div className="mb-2 hidden md:grid md:grid-cols-[minmax(0,0.7fr)_70px_minmax(0,0.5fr)_70px_90px_90px_32px] items-center gap-x-2 font-semibold text-sm text-gray-600 px-1 md:px-3">
+                <span>Producto*</span>
+                <span className="text-center">Cant*</span>
+                <span>Observ. Prod.</span>
+                <span className="text-center">Desc%</span>
+                <span className="text-right">P.Unit</span>
+                <span className="text-right">Total</span>
+                <span />
               </div>
               <div className="space-y-3">
                 {productos.map((item, index) => (
-                  <div key={`producto-item-${index}-${item.id_detalle || index}`} className="grid grid-cols-1 md:grid-cols-[minmax(0,0.7fr)_minmax(0,0.5fr)_70px_70px_90px_90px_32px] items-center gap-x-2 gap-y-1 border-b pb-2 last:border-b-0 md:border-none md:pb-0">
+                  // <--- CAMBIO: Se ajustó el orden y tamaño de las columnas para que coincida con el encabezado
+                  <div key={`producto-item-${index}-${item.id_detalle || index}`} className="grid grid-cols-1 md:grid-cols-[minmax(0,0.7fr)_70px_minmax(0,0.5fr)_70px_90px_90px_32px] items-center gap-x-2 gap-y-1 border-b pb-2 last:border-b-0 md:border-none md:pb-0">
                     
                     <Select
                       name={`producto-${index}`}
@@ -545,8 +555,12 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
                       classNamePrefix="react-select"
                     />
 
-                    <input type="text" name="observacion" placeholder="Obs. ítem" value={item.observacion || ''} onChange={(e) => handleProductRowInputChange(index, e)} className={`${inputBaseClasses} text-sm`}/>
+                    {/* <--- CAMBIO: Campo de Cantidad movido aquí */}
                     <input type="number" name="qx" placeholder="Cant." value={getNumericInputValue(item.qx)} onChange={(e) => handleProductRowInputChange(index, e)} min="0" required className={`${inputBaseClasses} text-sm text-center no-spinners`}/>
+
+                    {/* <--- CAMBIO: Campo de Observación movido aquí */}
+                    <input type="text" name="observacion" placeholder="Obs. ítem" value={item.observacion || ''} onChange={(e) => handleProductRowInputChange(index, e)} className={`${inputBaseClasses} text-sm`}/>
+
                     <input type="number" name="descuento" placeholder="0%" value={getNumericInputValue(item.descuento)} onChange={(e) => handleProductRowInputChange(index, e)} min="0" max="100" className={`${inputBaseClasses} text-sm text-center no-spinners`}/>
                     <input type="text" value={`$ ${item.precio.toFixed(2)}`} readOnly title="Precio unitario con descuento por volumen" className={`${inputReadOnlyClasses} text-sm text-right`}/>
                     <input type="text" value={`$ ${item.total.toFixed(2)}`} readOnly title="Total con descuento de producto" className={`${inputReadOnlyClasses} text-sm text-right`}/>

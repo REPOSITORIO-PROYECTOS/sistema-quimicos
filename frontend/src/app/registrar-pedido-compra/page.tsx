@@ -1,6 +1,7 @@
 'use client';
 import { useProductsContext } from '@/context/ProductsContext';
 import { useProveedoresContext, Proveedor } from '@/context/ProveedoresContext'; // 1. IMPORTAR
+import { useRouter } from 'next/navigation';
 import React, { useState } from 'react';
 
 // Definimos el tipo para un solo pedido para usar en el estado
@@ -31,14 +32,14 @@ export default function RegistrarIngreso() {
   const [importeTotal, setImporteTotal] = useState('');
   const [importeAbonado, setImporteAbonado] = useState('');
   const [chequePerteneciente, setChequePerteneciente] = useState('');
-  
+  const irAccionesPuerta = () => router.push('/compras');
   const { productos, loading: productsLoading, error: productsError } = useProductsContext(); // Renombrar loading/error para evitar colisiones
   const { 
     proveedores, 
     loading: proveedoresLoading, 
     error: proveedoresError 
   } = useProveedoresContext(); // 2. OBTENER PROVEEDORES DEL CONTEXTO
-
+  const router = useRouter();
   const [pedidos, setPedidos] = useState<IPedido[]>([]);
   const [errorApi, setErrorApi] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -113,6 +114,7 @@ export default function RegistrarIngreso() {
       setFecha(''); setProducto(''); setProveedorId(''); setCantidad('');
       setPrecioSinIva(''); setCuenta(''); setIibb('');
       setImporteTotal(''); setImporteAbonado(''); ; setChequePerteneciente('');
+      irAccionesPuerta();
       //eslint-disable-next-line
     } catch (error: any) {
       console.error('Error al registrar compra:', error);

@@ -39,13 +39,13 @@ export default function AccionesPage() {
             className="bg-white text-indigo-800 font-medium py-3 px-6 rounded-lg shadow hover:bg-indigo-100 transition-all flex items-center justify-center gap-2"
             onClick={handleVerBoleta}
           >
-            🧾 Ver Boletas
+            📦 Pedidos
           </button>
           <button
             className="bg-white text-indigo-800 font-medium py-3 px-6 rounded-lg shadow hover:bg-indigo-100 transition-all flex items-center justify-center gap-2"
             onClick={handleVerPedidos}
          >
-            📦 Pedidos
+            🧾 Ver Boletas
           </button>
           <button
             className="bg-white text-indigo-800 font-medium py-3 px-6 rounded-lg shadow hover:bg-indigo-100 transition-all flex items-center justify-center gap-2"

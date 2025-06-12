@@ -2,8 +2,8 @@
 
 import { useProductsContext } from "@/context/ProductsContext"; 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 
-// CAMBIO: Añadido campo 'observacion'
 type ProductoPedido = {
   producto: number;
   qx: number;
@@ -39,7 +39,6 @@ interface TotalCalculadoAPI {
 
 const VENDEDORES = ["martin", "moises", "sergio", "gabriel", "mauricio", "elias", "ardiles", "redonedo"];
 
-
 export default function DetalleActualizarPedidoPage({ id }: { id: number | undefined }) {
   const [formData, setFormData] = useState<IFormData>({
     nombre: "",
@@ -55,7 +54,6 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     observaciones: "",
   });
 
-  // CAMBIO: Estado inicial con 'observacion'
   const [productos, setProductos] = useState<ProductoPedido[]>([
     { producto: 0, qx: 0, precio: 0, total: 0, observacion: "" },
   ]);
@@ -65,7 +63,8 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
   const [successMensaje, setSuccessMensaje] = useState('');
   const [isLoading, setIsLoading] = useState(true); 
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
+  const router = useRouter();
+  const irAccionesPuerta = () => router.push('/acciones-puerta');
   const [nombreVendedor, setNombreVendedor] = useState<string>(''); 
 
   const productosContext = useProductsContext();
@@ -110,17 +109,15 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         observaciones: datosAPI.observaciones || "",
       });
       
-      // CAMBIO: Mapear 'observacion_item' de la API a 'observacion' en el estado
       //eslint-disable-next-line
       const productosCargados: ProductoPedido[] = datosAPI.detalles?.map((detalle: any) => ({
         producto: detalle.producto_id,
         qx: detalle.cantidad,
         precio: detalle.precio_unitario_venta_ars || 0,
         total: detalle.precio_total_item_ars || 0,
-        observacion: detalle.observacion_item || "", // NUEVA LÍNEA
+        observacion: detalle.observacion_item || "",
       })) || [];
       
-      // CAMBIO: Estado inicial si no hay productos, debe incluir 'observacion'
       setProductos(productosCargados.length > 0 ? productosCargados : [{ producto: 0, qx: 0, precio: 0, total: 0, observacion: "" }]);
     } //eslint-disable-next-line
      catch (error: any) {
@@ -288,23 +285,37 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
   
   const handleSubmit = async (e: React.FormEvent ) => {
     e.preventDefault();
-    setErrorMensaje(''); setSuccessMensaje('');
-    if (!id) { setErrorMensaje("ID de pedido no válido para actualizar."); return; }
-    
+    setErrorMensaje(''); 
+    setSuccessMensaje('');
+
+    // --- Validaciones ---
+    if (!id) {
+      setErrorMensaje("ID de pedido no válido para actualizar.");
+      return;
+    }
     if (!nombreVendedor.trim()) { 
         setErrorMensaje("Por favor, seleccione o confirme el nombre del vendedor.");
-        setIsSubmitting(false);
+        return;
+    }
+    if (!totalCalculadoApi && montoBaseProductos > 0) {
+        setErrorMensaje("Error calculando el total final del pedido. No se puede actualizar.");
         return;
     }
 
+    // <--- CAMBIO: Nueva validación de pago completo
+    const totalDelPedido = totalCalculadoApi ? totalCalculadoApi.monto_final_con_recargos : montoBaseProductos;
+    if (totalDelPedido > 0 && formData.montoPagado < totalDelPedido) {
+        setErrorMensaje(`El monto pagado ($${formData.montoPagado.toFixed(2)}) es menor al total del pedido ($${totalDelPedido.toFixed(2)}).`);
+        return;
+    }
+
+    // Si todas las validaciones pasan, se procede con el envío
     setIsSubmitting(true);
     const token = localStorage.getItem("token");
-    if (!token) { setErrorMensaje("No autenticado."); setIsSubmitting(false); return; }
-
-    if (!totalCalculadoApi && montoBaseProductos > 0) {
-        setErrorMensaje("Error calculando el total final del pedido. No se puede actualizar.");
-        setIsSubmitting(false);
-        return;
+    if (!token) { 
+      setErrorMensaje("No autenticado."); 
+      setIsSubmitting(false); 
+      return; 
     }
 
     const dataToUpdate = {
@@ -317,11 +328,9 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
       observaciones: formData.observaciones || "",
       requiere_factura: formData.requiereFactura,
       monto_total_base: montoBaseProductos,
-      monto_total_final_con_recargos: totalCalculadoApi ? totalCalculadoApi.monto_final_con_recargos : montoBaseProductos,
+      monto_total_final_con_recargos: totalDelPedido, // <--- CAMBIO: Usamos la variable ya calculada
     };
  
-    console.log("Enviando datos para actualizar:", dataToUpdate);
-
     try {
       const response = await fetch(`https://quimex.sistemataup.online/ventas/actualizar/${id}`, {
         method: "PUT",
@@ -334,6 +343,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
       } else {
         setSuccessMensaje("¡Pedido actualizado con éxito!");
         handleImprimirPresupuesto();
+        setTimeout(() => irAccionesPuerta(), 1500); // Dar tiempo para ver el mensaje
       }
       //eslint-disable-next-line
     } catch (err: any) {
@@ -368,7 +378,6 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
   return (
     <>
       <div className="flex items-center justify-center min-h-screen bg-indigo-900 py-10 px-4 print:hidden">
-        {/* CAMBIO: Aumentado el ancho para dar espacio a la nueva columna */}
         <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-5xl">
           
           <h2 className="text-3xl font-bold text-center text-indigo-800 mb-4">
@@ -410,22 +419,26 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
 
             <fieldset className="border p-4 rounded-md">
               <legend className="text-lg font-medium text-gray-700 px-2">Productos del Pedido</legend>
-              {/* CAMBIO: Añadida la cabecera de la columna de observación */}
-              <div className="mb-2 hidden md:grid md:grid-cols-[1fr_1fr_90px_100px_100px] items-center gap-2 font-semibold text-sm text-gray-600 px-3">
+              {/* <--- CAMBIO: Se ajustó el orden y tamaño de las columnas en la grilla */}
+              <div className="mb-2 hidden md:grid md:grid-cols-[1fr_90px_1fr_100px_100px] items-center gap-2 font-semibold text-sm text-gray-600 px-3">
                 <span>Producto</span>
-                <span>Observ. Prod.</span> {/* NUEVA CABECERA */}
                 <span className="text-center">Cant.</span>
+                <span>Observ. Prod.</span>
                 <span className="text-right">P.Unit</span>
                 <span className="text-right">Total</span>
               </div>
               <div className="space-y-2">
                 {productos.map((item, index) => (
-                  // CAMBIO: Añadido el campo de observación a la fila del producto
-                  <div key={index} className="grid grid-cols-1 md:grid-cols-[1fr_1fr_90px_100px_100px] items-center gap-2 border-b pb-1 last:border-b-0">
+                  // <--- CAMBIO: Se ajustó el orden y tamaño de las columnas para que coincida con el encabezado
+                  <div key={index} className="grid grid-cols-1 md:grid-cols-[1fr_90px_1fr_100px_100px] items-center gap-2 border-b pb-1 last:border-b-0">
                     <input type="text" readOnly disabled value={productosContext.productos.find(p=>p.id===item.producto)?.nombre||`ID:${item.producto}`} className="shadow-sm border rounded w-full py-1 px-3 text-gray-700 bg-gray-100"/>
-                    {/* NUEVO CAMPO */}
-                    <input type="text" readOnly disabled value={item.observacion || ''} className="shadow-sm border rounded w-full py-1 px-3 text-gray-700 bg-gray-100 text-sm"/>
+                    
+                    {/* <--- CAMBIO: Campo de Cantidad movido aquí */}
                     <input type="number" readOnly disabled value={item.qx===0?'':item.qx} className="shadow-sm border rounded w-full py-1 px-2 text-gray-700 text-center bg-gray-100"/>
+                    
+                    {/* <--- CAMBIO: Campo de Observación movido aquí */}
+                    <input type="text" readOnly disabled value={item.observacion || ''} className="shadow-sm border rounded w-full py-1 px-3 text-gray-700 bg-gray-100 text-sm"/>
+                    
                     <input type="text" readOnly disabled value={`$ ${item.precio.toFixed(2)}`} className="shadow-sm border rounded w-full py-1 px-2 text-gray-700 text-right bg-gray-100"/>
                     <input type="text" readOnly disabled value={`$ ${item.total.toFixed(2)}`} className="shadow-sm border rounded w-full py-1 px-2 text-gray-700 text-right bg-gray-100"/>
                   </div>
@@ -467,7 +480,6 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         </div>
       </div>
       
-      {/* CAMBIO: Actualizada la sección de impresión */}
       <div id="presupuesto-imprimible" className="hidden print:block presupuesto-container">
         <header className="presupuesto-header">
           <div className="logo-container"><img src="/logo.png" alt="QuiMex" className="logo" /><p className="sub-logo-text">PRESUPUESTO NO VALIDO COMO FACTURA</p></div>
@@ -490,8 +502,8 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         </section>
         <section className="detalle-productos">
           <table className="tabla-items">
-            {/* CAMBIO: Cabecera con la nueva columna */}
-            <thead><tr><th>ITEM</th><th>PRODUCTO</th><th>OBSERV.</th><th>CANTIDAD</th><th>SUBTOTAL</th></tr></thead>
+            {/* <--- CAMBIO: Cabecera con la nueva columna */}
+            <thead><tr><th>ITEM</th><th>PRODUCTO</th><th>CANTIDAD</th><th>OBSERV.</th><th>SUBTOTAL</th></tr></thead>
             <tbody>
               {productos.filter(p => p.producto && p.qx > 0).map((item, index) => {
                 const pInfo = productosContext.productos.find(p => p.id === item.producto);
@@ -499,14 +511,14 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
                   <tr key={`print-item-${index}`}>
                     <td>{index + 1}</td>
                     <td>{pInfo?.nombre || `ID: ${item.producto}`}</td>
-                    {/* NUEVA CELDA */}
-                    <td>{item.observacion || '-'}</td>
+                    {/* <--- CAMBIO: Celdas intercambiadas */}
                     <td className="text-center">{item.qx}</td>
+                    <td>{item.observacion || '-'}</td>
                     <td className="text-right">$ {item.total.toFixed(2)}</td>
                   </tr>
                 );
               })}
-              {/* CAMBIO: Ajuste de celdas vacías */}
+              {/* <--- CAMBIO: Ajuste de celdas vacías */}
               {Array.from({ length: Math.max(0, 12 - productos.filter(p => p.producto && p.qx > 0).length) }).map((_, i) => 
                 <tr key={`empty-row-${i}`} className="empty-row"><td> </td><td> </td><td> </td><td> </td><td> </td></tr>)}
             </tbody>

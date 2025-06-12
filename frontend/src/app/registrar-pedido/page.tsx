@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useProductsContext, Producto as ProductoContextType } from "@/context/ProductsContext";
 import { useClientesContext, Cliente } from "@/context/ClientesContext"; 
 import Select from 'react-select';
+import { useRouter } from 'next/navigation';
 
 type ProductoPedido = {
   producto: number;
@@ -63,10 +64,10 @@ export default function RegistrarPedidoPage() {
     loading: loadingClientes,
     error: errorClientes,
   } = useClientesContext();
-
+  const router = useRouter();
   const [formData, setFormData] = useState<IFormData>(initialFormData);
   const [productos, setProductos] = useState<ProductoPedido[]>(initialProductos);
-
+  const irAccionesPedidos = () => router.push('/acciones');
   const [totalCalculadoApi, setTotalCalculadoApi] = useState<TotalCalculadoAPI | null>(null);
   const [isCalculatingTotal, setIsCalculatingTotal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -82,11 +83,38 @@ export default function RegistrarPedidoPage() {
     })) || [],
   [productosContext?.productos]);
 
-  useEffect(() => {
-    const now = new Date();
-    now.setMinutes(now.getMinutes() - now.getTimezoneOffset()); 
-    setFormData(prev => ({...prev, fechaEmision: now.toISOString().slice(0, 16)}));
-  }, []);
+  const resetearFormulario = () => {
+      const now = new Date();
+      now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+      
+      setFormData({
+        clienteId: null,
+        cuit: "",
+        nombre: "",
+        direccion: "",
+        fechaEmision: now.toISOString().slice(0, 16), 
+        fechaEntrega: "",
+        formaPago: "efectivo",
+        montoPagado: 0,
+        descuentoTotal: 0,
+        vuelto: 0,
+        requiereFactura: false,
+        observaciones: "",
+      });
+      
+      setProductos([
+       { producto: 0, qx: 0, precio: 0, descuento: 0, total: 0, observacion: "" }
+      ]);
+      
+      setTotalCalculadoApi(null);
+      setSuccessMessage('');
+      setErrorMessage('');
+    };
+  
+  
+     useEffect(() => {
+      resetearFormulario();
+    }, []);
 
   const montoBaseProductos = React.useMemo(() => {
     return productos.reduce((sum, item) => sum + (item.total || 0), 0);
@@ -358,11 +386,7 @@ export default function RegistrarPedidoPage() {
     }));
   };
 
-  const handleMontoPagadoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    const montoIngresado = Math.max(0, parseFloat(value) || 0);
-    setFormData((prev) => ({ ...prev, [name]: montoIngresado }));
-  };
+
 
   const handleSubmit = async (e: React.FormEvent ) => {
     e.preventDefault();
@@ -432,20 +456,20 @@ export default function RegistrarPedidoPage() {
       });
       const result = await response.json();
       if (response.ok) {
-        const mensajeExito = `¡Pedido registrado exitosamente!`;
-        setSuccessMessage(mensajeExito);
-        const now = new Date();
-        now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-        setFormData({...initialFormData, fechaEmision: now.toISOString().slice(0, 16)});
-        setProductos(initialProductos);
-        setTotalCalculadoApi(null);
+        setSuccessMessage(`¡Pedido registrado exitosamente!`);
+        resetearFormulario();
         
         if (result.venta_id) { 
            handleImprimirPresupuesto(result.venta_id);
+           setTimeout(() => {
+             irAccionesPedidos();
+           }, 1500); // Espera 1.5s antes de redirigir
         }
+        
       } else {
         setErrorMessage(result.message || result.detail || result.error || `Error ${response.status} al registrar el pedido.`);
       }
+      
       //eslint-disable-next-line
     } catch (err: any) {
       setErrorMessage(err.message || "Error de red al intentar registrar el pedido.");
@@ -538,10 +562,11 @@ export default function RegistrarPedidoPage() {
 
             <fieldset className="border p-4 rounded-md">
               <legend className="text-lg font-medium text-gray-700 px-2">Productos</legend>
-              <div className="mb-2 hidden md:grid md:grid-cols-[minmax(0,0.7fr)_minmax(0,0.5fr)_70px_70px_90px_90px_32px] items-center gap-x-2 font-semibold text-sm text-gray-600 px-1 md:px-3">
+              {/* <--- CAMBIO: Se ajustó el orden y tamaño de las columnas en la grilla */}
+              <div className="mb-2 hidden md:grid md:grid-cols-[minmax(0,0.7fr)_70px_minmax(0,0.5fr)_70px_90px_90px_32px] items-center gap-x-2 font-semibold text-sm text-gray-600 px-1 md:px-3">
                 <span>Producto*</span>
-                <span>Observ. Prod.</span>
                 <span className="text-center">Cant*</span>
+                <span>Observ. Prod.</span>
                 <span className="text-center">Desc%</span> 
                 <span className="text-right">P.Unit</span>
                 <span className="text-right">Total</span>
@@ -549,7 +574,8 @@ export default function RegistrarPedidoPage() {
               </div>
               <div className="space-y-3">
                 {productos.map((item, index) => (
-                  <div key={index} className="grid grid-cols-1 md:grid-cols-[minmax(0,0.7fr)_minmax(0,0.5fr)_70px_70px_90px_90px_32px] items-center gap-x-2 gap-y-1 border-b pb-2 last:border-b-0 md:border-none md:pb-0">
+                  // <--- CAMBIO: Se ajustó el orden y tamaño de las columnas para que coincida con el encabezado
+                  <div key={index} className="grid grid-cols-1 md:grid-cols-[minmax(0,0.7fr)_70px_minmax(0,0.5fr)_70px_90px_90px_32px] items-center gap-x-2 gap-y-1 border-b pb-2 last:border-b-0 md:border-none md:pb-0">
                     <div className="w-full">
                       <Select
                         name={`producto-${index}`}
@@ -566,6 +592,14 @@ export default function RegistrarPedidoPage() {
                         classNamePrefix="react-select"
                       />
                     </div>
+
+                    {/* <--- CAMBIO: Campo de Cantidad movido aquí */}
+                    <div className="w-full">
+                      <input type="number" name="qx" placeholder="Cant." value={item.qx === 0 ? '' : item.qx} onChange={(e) => handleProductRowInputChange(index, e)} min="1" required
+                        className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-sm text-center focus:outline-none focus:ring-1 focus:ring-indigo-500 no-spinners"/>
+                    </div>
+
+                    {/* <--- CAMBIO: Campo de Observación movido aquí */}
                     <div className="w-full">
                         <input
                         type="text"
@@ -576,10 +610,7 @@ export default function RegistrarPedidoPage() {
                         className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
                         />
                     </div>
-                    <div className="w-full">
-                      <input type="number" name="qx" placeholder="Cant." value={item.qx === 0 ? '' : item.qx} onChange={(e) => handleProductRowInputChange(index, e)} min="1" required
-                        className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-sm text-center focus:outline-none focus:ring-1 focus:ring-indigo-500 no-spinners"/>
-                    </div>
+
                     <div className="w-full">
                       <input 
                         type="number" 
@@ -615,20 +646,6 @@ export default function RegistrarPedidoPage() {
                     <option value="efectivo">Efectivo</option><option value="transferencia">Transferencia</option>
                     <option value="factura">Factura</option>
                   </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="montoPagado">Monto Pagado</label>
-                  <input
-                      id="montoPagado"
-                      type="number"
-                      name="montoPagado"
-                      className="w-full bg-white shadow-sm border rounded py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 no-spinners"
-                      value={formData.montoPagado === 0 ? '' : formData.montoPagado}
-                      onChange={handleMontoPagadoChange}
-                      placeholder="0.00" 
-                      step="0.01"
-                      min="0"
-                    />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="descuentoTotal">Descuento Total (%)</label>

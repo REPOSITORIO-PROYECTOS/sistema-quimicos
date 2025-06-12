@@ -175,7 +175,7 @@ export default function ListaBoletasPuerta() {
                     {boletas.length > 0 ? boletas.map((boleta) => (
                       <li key={boleta.venta_id} className="grid grid-cols-4 gap-x-4 items-center bg-gray-50 hover:bg-gray-100 p-3 rounded-md text-sm transition-colors">
                         <span className="text-center">{`Nº ${boleta.venta_id.toString().padStart(4, '0')}`}</span>
-                        <span className="text-center font-medium">${boleta.monto_final_con_recargos.toFixed(2)}</span> 
+                        <span className="text-center font-medium">${boleta.monto_final_con_recargos}</span> 
                         <span className="text-center truncate" title={boleta.cliente_nombre}>{"Cliente puerta"}</span>
                         <div className="flex items-center justify-center gap-3">
                           <button

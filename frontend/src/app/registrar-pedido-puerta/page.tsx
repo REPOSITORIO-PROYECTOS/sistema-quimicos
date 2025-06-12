@@ -3,6 +3,7 @@ import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useProductsContext, Producto as ProductoContextType } from "@/context/ProductsContext";
 import { useClientesContext } from "@/context/ClientesContext";
 import Select from 'react-select';
+import { useRouter } from 'next/navigation';
 
 type ProductoPedido = {
   producto: number;
@@ -67,7 +68,8 @@ export default function RegistrarPedidoPuertaPage() {
   const [errorMessage, setErrorMessage] = useState('');
   const productosContext = useProductsContext();
   const [nombreVendedor, setNombreVendedor] = useState<string>(''); 
-
+  const router = useRouter();
+  const irAccionesPuerta = () => router.push('/acciones-puerta');
   const opcionesDeProductoParaSelect = useMemo(() => 
     productosContext?.productos.map((prod: ProductoContextType) => ({
       value: prod.id,
@@ -75,15 +77,41 @@ export default function RegistrarPedidoPuertaPage() {
     })) || [],
   [productosContext?.productos]);
 
-  useEffect(() => {
+
+  const resetearFormulario = () => {
     const now = new Date();
     now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-    setFormData(prev => ({...prev, fechaEmision: now.toISOString().slice(0, 16)}));
+    
+    setFormData({
+      clienteId: null,
+      cuit: "",
+      fechaEmision: now.toISOString().slice(0, 16),
+      formaPago: "efectivo",
+      montoPagado: 0,
+      vuelto: 0,
+      requiereFactura: false,
+      observaciones: "",
+    });
+    
+    setProductos([
+      { producto: 0, qx: 0, precio: 0, total: 0, observacion: "" }
+    ]);
+    
+    setTotalCalculadoApi(null);
+    setNombreVendedor('');
+    setSuccessMessage('');
+    setErrorMessage('');
+  };
+
+
+   useEffect(() => {
+    resetearFormulario();
   }, []);
 
   const montoBaseProductos = useMemo(() => {
     return productos.reduce((sum, item) => sum + (item.total || 0), 0);
   }, [productos]);
+
 
   useEffect(() => {
     const recalcularTodo = async () => {
@@ -166,7 +194,6 @@ export default function RegistrarPedidoPuertaPage() {
     }
   }, [montoBaseProductos, formData.formaPago, formData.requiereFactura, formData.montoPagado]);
 
-  // CAMBIO: Se introduce la función orquestadora para manejar los precios.
   const recalculatePricesForProducts = useCallback(async (currentProducts: ProductoPedido[]) => {
     const token = localStorage.getItem("token");
     if (!token) {
@@ -310,24 +337,50 @@ export default function RegistrarPedidoPuertaPage() {
   };
 
   const handleSubmit = async (e: React.FormEvent ) => {
-    e.preventDefault(); setIsSubmitting(true); setSuccessMessage(''); setErrorMessage('');
+    e.preventDefault(); 
+    setIsSubmitting(true); 
+    setSuccessMessage(''); 
+    setErrorMessage('');
+
+    // <--- CAMBIO: Se calcula el total aquí para usarlo en la validación.
+    const totalDelPedido = totalCalculadoApi ? totalCalculadoApi.monto_final_con_recargos : montoBaseProductos;
+
     if (!nombreVendedor.trim()) { 
         setErrorMessage("Por favor, seleccione un vendedor.");
         setIsSubmitting(false);
         return;
     }
     if (productos.every(p=>p.producto===0||p.qx===0)) {
-        setErrorMessage("Añada al menos un producto."); setIsSubmitting(false); return;
+        setErrorMessage("Añada al menos un producto."); 
+        setIsSubmitting(false); 
+        return;
     }
     if (!totalCalculadoApi && montoBaseProductos > 0) {
-        setErrorMessage("Error calculando el total final. Verifique forma de pago."); setIsSubmitting(false); return;
+        setErrorMessage("Error calculando el total final. Verifique forma de pago."); 
+        setIsSubmitting(false); 
+        return;
+    }
+
+    // <--- CAMBIO: Nueva validación de monto pagado vs total.
+    if (totalDelPedido > 0 && formData.montoPagado < totalDelPedido) {
+        setErrorMessage(`El monto pagado ($${formData.montoPagado.toFixed(2)}) no puede ser menor al total del pedido ($${totalDelPedido.toFixed(2)}).`);
+        setIsSubmitting(false);
+        return;
     }
 
     const token = localStorage.getItem("token");
     const usuarioId = localStorage.getItem("usuario_id");
 
-    if (!token) { setErrorMessage("No autenticado."); setIsSubmitting(false); return; }
-    if (!usuarioId) { setErrorMessage("ID de usuario no encontrado. Por favor, vuelva a iniciar sesión."); setIsSubmitting(false); return; }
+    if (!token) { 
+        setErrorMessage("No autenticado."); 
+        setIsSubmitting(false); 
+        return; 
+    }
+    if (!usuarioId) { 
+        setErrorMessage("ID de usuario no encontrado. Por favor, vuelva a iniciar sesión."); 
+        setIsSubmitting(false); 
+        return; 
+    }
 
     const dataPayload = {
       usuario_interno_id: parseInt(usuarioId, 10),
@@ -347,11 +400,9 @@ export default function RegistrarPedidoPuertaPage() {
       vuelto: formData.vuelto,
       requiere_factura: formData.requiereFactura,
       monto_total_base: montoBaseProductos,
-      monto_total_final_con_recargos: totalCalculadoApi ? totalCalculadoApi.monto_final_con_recargos : montoBaseProductos,
+      monto_total_final_con_recargos: totalDelPedido, // <--- CAMBIO: Usamos la variable ya calculada
       observaciones: formData.observaciones || "",
     };
-
-    console.log("Enviando datos (Registrar Pedido Puerta):", dataPayload);
 
     try {
       const response = await fetch("https://quimex.sistemataup.online/ventas/registrar", {
@@ -362,15 +413,13 @@ export default function RegistrarPedidoPuertaPage() {
       const result = await response.json();
       if (response.ok) {
         setSuccessMessage("¡Pedido registrado exitosamente!");
-        const now = new Date(); now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-        setFormData({
-            ...initialFormData,
-            fechaEmision: now.toISOString().slice(0,16),
-        });
-        setProductos(initialProductos);
-        setTotalCalculadoApi(null);
-        setNombreVendedor('');
-         if (result.venta_id) handleImprimirPresupuesto(result.venta_id); 
+        resetearFormulario(); // <--- CAMBIO: Llamada a la función de reseteo
+        if (result.venta_id){
+          handleImprimirPresupuesto(result.venta_id); 
+          setTimeout(() => {
+              irAccionesPuerta();
+          }, 1500);
+        }
       } else {
         setErrorMessage(result.message || result.detail || result.error || `Error ${response.status}`);
       }
@@ -380,7 +429,6 @@ export default function RegistrarPedidoPuertaPage() {
     } finally {
         setIsSubmitting(false);
     }
-
   };
 
   const handleImprimirPresupuesto = (pedidoIdParaImprimir?: number) => {
@@ -462,17 +510,19 @@ export default function RegistrarPedidoPuertaPage() {
 
             <fieldset className="border p-4 rounded-md">
               <legend className="text-lg font-medium text-gray-700 px-2">Productos</legend>
-              <div className="mb-2 hidden md:grid md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_90px_100px_100px_32px] items-center gap-2 font-semibold text-sm text-gray-600 px-3">
+              {/* <--- CAMBIO: Se ajustó el orden y tamaño de las columnas en la grilla */}
+              <div className="mb-2 hidden md:grid md:grid-cols-[minmax(0,1fr)_90px_minmax(0,1fr)_100px_100px_32px] items-center gap-2 font-semibold text-sm text-gray-600 px-3">
                 <span>Producto*</span>
-                <span>Observ. Prod.</span>
                 <span className="text-center">Cantidad*</span>
+                <span>Observ. Prod.</span>
                 <span className="text-right">Precio U.</span>
                 <span className="text-right">Total</span>
                 <span />
               </div>
               <div className="space-y-3">
                 {productos.map((item, index) => (
-                  <div key={index} className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_90px_100px_100px_32px] items-center gap-2 border-b pb-2 last:border-b-0 md:border-none md:pb-0">
+                  // <--- CAMBIO: Se ajustó el orden y tamaño de las columnas para que coincida con el encabezado
+                  <div key={index} className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_90px_minmax(0,1fr)_100px_100px_32px] items-center gap-2 border-b pb-2 last:border-b-0 md:border-none md:pb-0">
                     
                     <Select
                       name={`producto-${index}`}
@@ -489,6 +539,11 @@ export default function RegistrarPedidoPuertaPage() {
                       classNamePrefix="react-select"
                     />
 
+                    {/* <--- CAMBIO: Campo de Cantidad movido aquí */}
+                    <input type="number" name="qx" placeholder="Cant." value={item.qx === 0 ? '' : item.qx} onChange={(e) => handleProductRowInputChange(index, e)} min="1" required
+                      className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-center focus:outline-none focus:ring-1 focus:ring-indigo-500 no-spinners"/>
+
+                    {/* <--- CAMBIO: Campo de Observación movido aquí */}
                     <input
                       type="text"
                       name="observacion"
@@ -497,9 +552,6 @@ export default function RegistrarPedidoPuertaPage() {
                       onChange={(e) => handleProductRowInputChange(index, e)}
                       className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
                     />
-                    
-                    <input type="number" name="qx" placeholder="Cant." value={item.qx === 0 ? '' : item.qx} onChange={(e) => handleProductRowInputChange(index, e)} min="1" required
-                      className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-center focus:outline-none focus:ring-1 focus:ring-indigo-500 no-spinners"/>
                     
                     <input type="text" value={`$ ${item.precio.toFixed(2)}`} readOnly className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-right bg-gray-100"/>
                     <input type="text" value={`$ ${item.total.toFixed(2)}`} readOnly className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-right bg-gray-100"/>
