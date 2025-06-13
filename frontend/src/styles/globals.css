@@ -162,9 +162,9 @@
   @page {
     /* Ancho estándar de ticket (80mm o 58mm son comunes). Ajusta a tu impresora.
        La altura 'auto' permite que el ticket sea tan largo como sea necesario. */
-    size: 80mm auto; 
+    size: 80mm auto !important;
     /* Márgenes mínimos para aprovechar el espacio */
-    margin: 3mm;
+    margin: 3mm !important;
   }
 
   /* --- Contenedor principal del ticket --- */
@@ -285,132 +285,5 @@
   .tabla-items .col-cantidad,
   .tabla-items .col-subtotal {
       text-align: right !important; /* Alinear números a la derecha */
-  }
-}@media print {
-  body, html {
-    visibility: hidden !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    background-color: white !important;
-    font-family: Arial, sans-serif !important;
-    font-size: 14pt !important;
-    color: black !important;
-    -webkit-print-color-adjust: exact !important;
-    color-adjust: exact !important;
-  }
-
-  #presupuesto-imprimible,
-  #presupuesto-imprimible * {
-    visibility: visible !important;
-  }
-
-  #presupuesto-imprimible {
-    position: absolute !important;
-    left: 0 !important;
-    top: 0 !important;
-    width: 180mm !important;
-    margin: 0 auto !important;
-    padding: 0 !important;
-    box-sizing: border-box !important;
-    box-shadow: none !important;
-  }
-
-  @page {
-    size: A4 portrait;
-    margin: 10mm 10mm 10mm 12mm;
-  }
-
-  .presupuesto-header {
-    display: flex !important;
-    justify-content: space-between !important;
-    align-items: flex-start !important;
-    margin-bottom: 8px !important;
-    border-bottom: 1.5px solid black !important;
-    padding-bottom: 6px !important;
-  }
-
-  .logo-container .logo {
-    max-width: 130px !important;
-    max-height: 40px !important;
-    display: block !important;
-  }
-
-  .sub-logo-text {
-    font-size: 0.8em !important;
-    font-weight: bold !important;
-  }
-
-  .info-empresa {
-    font-size: 0.9em !important;
-  }
-
-  .info-empresa p {
-    margin: 1px 0 !important;
-  }
-
-  .info-empresa .icon {
-    font-size: 0.95em !important;
-    margin-right: 3px !important;
-  }
-
-  .tabla-datos-principales,
-  .tabla-datos-secundarios {
-    width: 100% !important;
-    border-collapse: collapse !important;
-    margin-bottom: 6px !important;
-    font-size: 0.95em !important;
-  }
-
-  .tabla-datos-principales td,
-  .tabla-datos-secundarios td {
-    padding: 1px 3px !important;
-    border: 1px solid #555 !important;
-    vertical-align: middle !important;
-  }
-
-  .tabla-datos-principales td:first-child,
-  .tabla-datos-secundarios td:first-child {
-    font-weight: bold !important;
-    width: 90px !important;
-    background-color: #f7f7f7 !important;
-  }
-
-  .tabla-datos-secundarios tr:last-child td {
-    font-size: 1.1em !important;
-    font-weight: bold !important;
-    background-color: #ebebeb !important;
-  }
-
-  .tabla-datos-principales tr:nth-child(4) td {
-    font-size: 1.05em !important;
-  }
-
-  .text-red-600.print\:text-red-600 {
-    color: #E53E3E !important;
-  }
-
-  .detalle-productos {
-    margin-bottom: 10px !important;
-  }
-
-  .tabla-items {
-    width: 100% !important;
-    border-collapse: collapse !important;
-    font-size: 1em !important;
-  }
-
-  .tabla-items th,
-  .tabla-items td {
-    border: 1px solid #666 !important;
-    padding: 1px 4px !important;
-    text-align: left !important;
-    vertical-align: middle !important;
-  }
-
-  .tabla-items th {
-    background-color: #ebebeb !important;
-    font-weight: bold !important;
-    text-align: center !important;
-    font-size: 1em !important;
   }
 }
