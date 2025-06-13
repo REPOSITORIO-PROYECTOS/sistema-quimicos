@@ -203,7 +203,7 @@ export default function RegistrarPedidoPuertaPage() {
 
     const productQuantities = new Map<number, { totalQuantity: number; indices: number[] }>();
     currentProducts.forEach((p, index) => {
-        if (p.producto > 0 && p.qx > 0) {
+        if (p.producto > 0 && p.qx >= 0) {
             const existing = productQuantities.get(p.producto);
             if (existing) {
                 existing.totalQuantity += p.qx;
@@ -220,6 +220,8 @@ export default function RegistrarPedidoPuertaPage() {
     const pricePromises = Array.from(productQuantities.entries()).map(
         async ([productoId, { totalQuantity, indices }]) => {
             try {
+              if (totalQuantity==0)
+                  totalQuantity = 1;  
                 const precioRes = await fetch(`https://quimex.sistemataup.online/productos/calcular_precio/${productoId}`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
@@ -292,7 +294,7 @@ export default function RegistrarPedidoPuertaPage() {
 
     if (selectedOption) {
         currentProductItem.producto = selectedOption.value;
-        currentProductItem.qx = currentProductItem.qx > 0 ? currentProductItem.qx : 1;
+        currentProductItem.qx = currentProductItem.qx > 0 ? currentProductItem.qx : 0;
     } else {
         nuevosProductos[index] = { ...initialProductos[0] };
     }
@@ -310,7 +312,7 @@ export default function RegistrarPedidoPuertaPage() {
     const currentProductItem = nuevosProductos[index];
 
     if (name === "qx") {
-        currentProductItem.qx = parseInt(value) || 0;
+        currentProductItem.qx = parseFloat(value) || 0;
     } else if (name === "observacion") {
         currentProductItem.observacion = value;
     }
@@ -416,6 +418,7 @@ export default function RegistrarPedidoPuertaPage() {
         resetearFormulario(); // <--- CAMBIO: Llamada a la función de reseteo
         if (result.venta_id){
           handleImprimirPresupuesto(result.venta_id); 
+          alert("PEDIDO REGISTRADO CON EXITO");
           setTimeout(() => {
               irAccionesPuerta();
           }, 1500);
@@ -540,7 +543,7 @@ export default function RegistrarPedidoPuertaPage() {
                     />
 
                     {/* <--- CAMBIO: Campo de Cantidad movido aquí */}
-                    <input type="number" name="qx" placeholder="Cant." value={item.qx === 0 ? '' : item.qx} onChange={(e) => handleProductRowInputChange(index, e)} min="1" required
+                    <input type="number" name="qx" placeholder="Cant." value={item.qx === 0 ? '' : item.qx} onChange={(e) => handleProductRowInputChange(index, e)} min="0" step="any" required
                       className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-center focus:outline-none focus:ring-1 focus:ring-indigo-500 no-spinners"/>
 
                     {/* <--- CAMBIO: Campo de Observación movido aquí */}

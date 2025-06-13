@@ -286,4 +286,10 @@
   .tabla-items .col-subtotal {
       text-align: right !important; /* Alinear números a la derecha */
   }
+
+  #presupuesto-imprimible,
+  #presupuesto-imprimible * {
+  visibility: visible !important;
+  font-weight: bold !important; /* <-- ESTA ES LA LÍNEA AGREGADA */
+}
 }

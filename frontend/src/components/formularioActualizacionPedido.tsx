@@ -248,7 +248,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
 
     const productQuantities = new Map<number, { totalQuantity: number; indices: number[] }>();
     currentProducts.forEach((p, index) => {
-        if (p.producto > 0 && p.qx > 0) {
+        if (p.producto > 0 && p.qx >= 0) {
             const existing = productQuantities.get(p.producto);
             if (existing) {
                 existing.totalQuantity += p.qx;
@@ -263,8 +263,11 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     });
 
     const pricePromises = Array.from(productQuantities.entries()).map(
-        async ([productoId, { totalQuantity, indices }]) => {
+        async ([productoId, { totalQuantity, indices }]) => {  
+                   
             try {
+                if (totalQuantity==0)
+                  totalQuantity = 1;  
                 const precioRes = await fetch(`https://quimex.sistemataup.online/productos/calcular_precio/${productoId}`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
@@ -343,7 +346,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     
     if (selectedOption) {
         currentProductItem.producto = selectedOption.value;
-        currentProductItem.qx = currentProductItem.qx > 0 ? currentProductItem.qx : 1;
+        currentProductItem.qx = currentProductItem.qx > 0 ? currentProductItem.qx : 0;
     } else {
         nuevosProductos[index] = { ...initialProductoItem };
     }
@@ -361,7 +364,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     const currentProductItem = nuevosProductos[index];
 
     if (name === "qx") {
-        currentProductItem.qx = value === '' ? 0 : parseInt(value) || 0;
+        currentProductItem.qx = value === '' ? 0 : parseFloat(value) || 0;
     } else if (name === "descuento") {
         const descVal = value === '' ? 0 : parseFloat(value) || 0;
         currentProductItem.descuento = Math.max(0, Math.min(100, descVal));
@@ -556,7 +559,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
                     />
 
                     {/* <--- CAMBIO: Campo de Cantidad movido aquí */}
-                    <input type="number" name="qx" placeholder="Cant." value={getNumericInputValue(item.qx)} onChange={(e) => handleProductRowInputChange(index, e)} min="0" required className={`${inputBaseClasses} text-sm text-center no-spinners`}/>
+                    <input type="number" name="qx" placeholder="Cant." min="0" step="any" value={getNumericInputValue(item.qx)} onChange={(e) => handleProductRowInputChange(index, e)}  required className={`${inputBaseClasses} text-sm text-center no-spinners`}/>
 
                     {/* <--- CAMBIO: Campo de Observación movido aquí */}
                     <input type="text" name="observacion" placeholder="Obs. ítem" value={item.observacion || ''} onChange={(e) => handleProductRowInputChange(index, e)} className={`${inputBaseClasses} text-sm`}/>

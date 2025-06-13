@@ -234,7 +234,7 @@ export default function RegistrarPedidoPage() {
 
     const productQuantities = new Map<number, { totalQuantity: number; indices: number[] }>();
     currentProducts.forEach((p, index) => {
-        if (p.producto > 0 && p.qx > 0) {
+        if (p.producto > 0 && p.qx >= 0) {
             const existing = productQuantities.get(p.producto);
             if (existing) {
                 existing.totalQuantity += p.qx;
@@ -251,6 +251,8 @@ export default function RegistrarPedidoPage() {
     const pricePromises = Array.from(productQuantities.entries()).map(
         async ([productoId, { totalQuantity, indices }]) => {
             try {
+              if (totalQuantity==0)
+                  totalQuantity = 1;  
                 const precioRes = await fetch(`https://quimex.sistemataup.online/productos/calcular_precio/${productoId}`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
@@ -307,7 +309,7 @@ export default function RegistrarPedidoPage() {
     
     if (selectedOption) {
         currentProductItem.producto = selectedOption.value;
-        currentProductItem.qx = currentProductItem.qx > 0 ? currentProductItem.qx : 1;
+        currentProductItem.qx = currentProductItem.qx > 0 ? currentProductItem.qx : 0;
     } else {
         nuevosProductos[index] = { ...initialProductos[0] };
     }
@@ -325,7 +327,7 @@ export default function RegistrarPedidoPage() {
     const currentProductItem = nuevosProductos[index];
 
     if (name === "qx") {
-        currentProductItem.qx = parseInt(value) || 0;
+        currentProductItem.qx = parseFloat(value) || 0;
     } else if (name === "descuento") {
         const descVal = parseFloat(value) || 0;
         currentProductItem.descuento = Math.max(0, Math.min(100, descVal));
@@ -461,6 +463,7 @@ export default function RegistrarPedidoPage() {
         
         if (result.venta_id) { 
            handleImprimirPresupuesto(result.venta_id);
+           alert("PEDIDO REGISTRADO CON EXITO");
            setTimeout(() => {
              irAccionesPedidos();
            }, 1500); // Espera 1.5s antes de redirigir
@@ -595,7 +598,7 @@ export default function RegistrarPedidoPage() {
 
                     {/* <--- CAMBIO: Campo de Cantidad movido aquí */}
                     <div className="w-full">
-                      <input type="number" name="qx" placeholder="Cant." value={item.qx === 0 ? '' : item.qx} onChange={(e) => handleProductRowInputChange(index, e)} min="1" required
+                      <input type="number" name="qx" placeholder="Cant." value={item.qx === 0 ? '' : item.qx} onChange={(e) => handleProductRowInputChange(index, e)} min="0" required step="any"
                         className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-sm text-center focus:outline-none focus:ring-1 focus:ring-indigo-500 no-spinners"/>
                     </div>
 
