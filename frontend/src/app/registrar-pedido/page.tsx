@@ -256,7 +256,7 @@ export default function RegistrarPedidoPage() {
                 const precioRes = await fetch(`https://quimex.sistemataup.online/productos/calcular_precio/${productoId}`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-                    body: JSON.stringify({ producto_id: productoId, quantity: totalQuantity }),
+                    body: JSON.stringify({ producto_id: productoId, quantity: totalQuantity,cliente_id: formData.clienteId || 12}),
                 });
                 if (!precioRes.ok) {
                     const errData = await precioRes.json().catch(() => ({ message: "Error al calcular precio." }));
