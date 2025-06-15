@@ -4,7 +4,7 @@ import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useProductsContext, Producto as ProductoContextType } from "@/context/ProductsContext";
 import Select from 'react-select';
 import { useRouter } from 'next/navigation';
-
+let idClient = 0;
 // Tipos
 type ProductoPedido = {
   id_detalle?: number;
@@ -93,7 +93,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         throw new Error(errData.message || "No se pudieron cargar los datos del pedido.");
       }
       const datosAPI = await response.json();
-
+      idClient = datosAPI.cliente_id;
       setFormData({
         nombre: datosAPI.cliente_nombre || "N/A",
         cuit: datosAPI.cuit_cliente || "",
@@ -271,7 +271,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
                 const precioRes = await fetch(`https://quimex.sistemataup.online/productos/calcular_precio/${productoId}`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-                    body: JSON.stringify({ producto_id: productoId, quantity: totalQuantity,cliente_id: formData.cliente_id || null }),
+                    body: JSON.stringify({ producto_id: productoId, quantity: totalQuantity,cliente_id: idClient || null }),
                 });
                 if (!precioRes.ok) {
                     const errData = await precioRes.json().catch(() => ({ message: "Error al calcular precio." }));

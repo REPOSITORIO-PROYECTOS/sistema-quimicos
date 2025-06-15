@@ -5,7 +5,7 @@ import { useProductsContext, Producto as ProductoContextType } from "@/context/P
 import { useClientesContext, Cliente } from "@/context/ClientesContext"; 
 import Select from 'react-select';
 import { useRouter } from 'next/navigation';
-
+let idClient = 0
 type ProductoPedido = {
   producto: number;
   qx: number;
@@ -256,7 +256,7 @@ export default function RegistrarPedidoPage() {
                 const precioRes = await fetch(`https://quimex.sistemataup.online/productos/calcular_precio/${productoId}`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-                    body: JSON.stringify({ producto_id: productoId, quantity: totalQuantity,cliente_id: formData.clienteId || 12}),
+                    body: JSON.stringify({ producto_id: productoId, quantity: totalQuantity,cliente_id: idClient || null}),
                 });
                 if (!precioRes.ok) {
                     const errData = await precioRes.json().catch(() => ({ message: "Error al calcular precio." }));
@@ -378,6 +378,7 @@ export default function RegistrarPedidoPage() {
 
   const handleClienteSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const selectedId = e.target.value;
+    idClient = parseInt(e.target.value);
     const selectedCliente = clientes.find(c => String(c.id) === selectedId);
     setFormData(prev => ({
       ...prev,
