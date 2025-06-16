@@ -278,18 +278,18 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
             })
           );
         }
-      });
+      }); 
 
       // 2. Identificar precios a CREAR o ACTUALIZAR
       for (const actual of preciosFormActualValidos) {
         const original = preciosEspecialesOriginales.find(o => o.id_precio_especial === actual.id_precio_especial);
-
+        console.log(original)
         if (!actual.id_precio_especial || !original) { // Es NUEVO (no tiene id_precio_especial O no estaba en los originales con ese id_precio_especial)
           console.log(`Preparando para crear nuevo precio especial para producto ID: ${actual.producto_id}`);
           const payloadCrear = {
             cliente_id: id_cliente,
             producto_id: Number(actual.producto_id),
-            precio_unitario_fijo_ars: String(actual.valor), // API espera string
+            precio_unitario_fijo_ars: String(actual.valor), 
             activo: actual.activo,
           };
           promesasPrecios.push(
@@ -303,15 +303,7 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
             })
           );
         } else { // Existe (tiene id_precio_especial y estaba en los originales), verificar si hay cambios para ACTUALIZAR
-          const necesitaActualizacion =
-            // original.producto_id no debe cambiar para un id_precio_especial existente.
-            // Si el producto_id del formulario para este id_precio_especial es diferente al original, es un error de lógica
-            // o se debió manejar como eliminación del viejo y creación del nuevo.
-            // Por ahora, asumimos que si el id_precio_especial coincide, el producto_id no se modifica.
-            original.valor !== actual.valor ||
-            original.activo !== actual.activo;
-
-          if (necesitaActualizacion && actual.id_precio_especial) {
+          if (true) {
             console.log(`Preparando para actualizar precio especial ID: ${actual.id_precio_especial}`);
             const payloadActualizar = {
               precio_unitario_fijo_ars: String(actual.valor), // API espera string
@@ -319,7 +311,7 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
               // producto_id y cliente_id no se envían en el PUT a un precio_especial existente
             };
             promesasPrecios.push(
-              fetch(`https://quimex.sistemataup.online/precios_especiales/editar/${actual.id_precio_especial}`, {
+              fetch(`https://quimex.sistemataup.online/precios_especiales/editar/${original.id_precio_especial}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 body: JSON.stringify(payloadActualizar),

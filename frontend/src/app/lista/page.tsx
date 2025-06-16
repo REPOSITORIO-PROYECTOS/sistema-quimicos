@@ -109,6 +109,21 @@ export default function ProductPriceTable() {
   const [isPreparingDownload, setIsPreparingDownload] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
 
+ useEffect(() => {
+    if (isProductModalOpen) {
+      document.body.classList.add('modal-open');
+      document.body.style.overflow = 'hidden'; // Buena práctica mantenerlo
+    } else {
+      document.body.classList.remove('modal-open');
+      document.body.style.overflow = 'auto';
+    }
+
+    // Limpieza por si el componente se desmonta
+    return () => {
+      document.body.classList.remove('modal-open');
+      document.body.style.overflow = 'auto';
+    };
+  }, [isProductModalOpen]);
 
   const generateAndDownloadExcel = (itemsToExport: DisplayItem[]) => {
     const dataForExcel = itemsToExport.map((item) => {
@@ -335,7 +350,7 @@ export default function ProductPriceTable() {
     setDisplayedItems(paginated);
 
   }, [allItems, searchTerm, currentPage, calculatePrice]);
-
+  
   useEffect(() => { setCurrentPage(1); }, [searchTerm]);
 
   const formatDate = (isoDateString: string | null | undefined): string => {

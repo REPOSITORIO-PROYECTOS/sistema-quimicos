@@ -137,6 +137,9 @@
   margin: 0;
 }
 
+body.modal-open .z-50 {
+  z-index: 0 !important;
+}
 .no-spinners {
   -moz-appearance: textfield; /* Para Firefox */
 }
