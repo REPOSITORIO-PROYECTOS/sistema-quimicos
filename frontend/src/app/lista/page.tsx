@@ -112,13 +112,12 @@ export default function ProductPriceTable() {
  useEffect(() => {
     if (isProductModalOpen) {
       document.body.classList.add('modal-open');
-      document.body.style.overflow = 'hidden'; // Buena práctica mantenerlo
+      document.body.style.overflow = 'hidden';
     } else {
       document.body.classList.remove('modal-open');
       document.body.style.overflow = 'auto';
     }
 
-    // Limpieza por si el componente se desmonta
     return () => {
       document.body.classList.remove('modal-open');
       document.body.style.overflow = 'auto';
@@ -188,7 +187,8 @@ export default function ProductPriceTable() {
 
       if (itemsToCalculate.length > 0) {
         const pricePromises = itemsToCalculate.map(item =>
-          calculatePrice(item.id, item.type, item.combo_id_original)
+          // --- CAMBIO #1 ---
+          calculatePrice(item)
             .then(price => ({ id: item.displayId, price, status: 'fulfilled' as const }))
             .catch(error => ({ id: item.displayId, error, status: 'rejected' as const }))
         );
@@ -214,7 +214,7 @@ export default function ProductPriceTable() {
         setAllItems(finalItems);
       }
       generateAndDownloadExcel(finalItems);
-      //eslint-disable-next-line
+       // eslint-disable-next-line
     } catch (err: any) {
       console.error("Error durante la preparación de la descarga:", err);
       setDownloadError("Ocurrió un error al calcular los precios. Inténtalo de nuevo.");
@@ -223,27 +223,40 @@ export default function ProductPriceTable() {
     }
   };
   
-  const calculatePrice = useCallback(async (originalId: number, type: 'product' | 'combo', comboIdForLookup?: number | null): Promise<number> => {
+  // --- CAMBIO #2: FUNCIÓN MODIFICADA ---
+  const calculatePrice = useCallback(async (item: DisplayItem): Promise<number> => {
     if (!token) throw new Error("Token no disponible.");
     try {
-      //eslint-disable-next-line
-      const body: any = { quantity: 1 };
-      const calculateUrl = `https://quimex.sistemataup.online/productos/calcular_precio/${originalId}`;
-      body.producto_id = originalId;
-      const response = await fetch(calculateUrl, { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }, body: JSON.stringify(body) });
+      // Determinar la cantidad a usar.
+      // 1. Intenta parsear ref_calculo como número.
+      // 2. Si no es un número válido o es nulo/undefined, usa 1 como fallback.
+      const quantity = parseFloat(item.ref_calculo || '1') || 1;
+
+      const body = { 
+        quantity: quantity,
+        producto_id: item.id 
+      };
+      
+      const calculateUrl = `https://quimex.sistemataup.online/productos/calcular_precio/${item.id}`;
+      
+      const response = await fetch(calculateUrl, { 
+        method: "POST", 
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }, 
+        body: JSON.stringify(body) 
+      });
+
       if (!response.ok) { 
         const errorData = await response.json().catch(() => ({ detail: `Error ${response.status}` })); 
         throw new Error(errorData.mensaje || errorData.detail || `Error ${response.status}`); 
       }
       const data = await response.json();
-      const precioCalculado = data.precio_total_calculado_ars;
+      const precioCalculado = data.precio_venta_unitario_ars;
       if (typeof precioCalculado !== 'number') { 
         throw new Error('Formato de precio inválido desde la API'); 
       }
       return precioCalculado;
     } catch (error) {
-       console.log(comboIdForLookup);
-       console.error(`Error calculando precio para ${type} ID ${originalId}:`, error); 
+       console.error(`Error calculando precio para ${item.type} ID ${item.id}:`, error); 
        throw error; 
     }
   }, [token]);
@@ -255,9 +268,9 @@ export default function ProductPriceTable() {
       const res = await fetch('https://quimex.sistemataup.online/tipos_cambio/obtener_todos', { headers: { "Authorization": `Bearer ${token}` } });
       if (!res.ok) throw new Error(`Error ${res.status}`);
       const data = await res.json();
-      //eslint-disable-next-line
+       // eslint-disable-next-line
       const quimexValor = data.find((d: any) => d.nombre === "Empresa")?.valor;
-      //eslint-disable-next-line
+       // eslint-disable-next-line
       const oficialValor = data.find((d: any) => d.nombre === "Oficial")?.valor;
       setDolarQuimex(typeof quimexValor === 'number' ? quimexValor : null);
       setDolarOficial(typeof oficialValor === 'number' ? oficialValor : null);
@@ -302,7 +315,7 @@ export default function ProductPriceTable() {
 
       const combined = [...displayProducts, ...displayCombos].sort((a, b) => a.nombre.localeCompare(b.nombre));
       setAllItems(combined);
-      //eslint-disable-next-line
+       // eslint-disable-next-line
     } catch (err: any) {
       console.error("Error fetchAndCombineData:", err);
       setErrorInitial(err.message || 'Error cargando datos combinados.');
@@ -335,7 +348,8 @@ export default function ProductPriceTable() {
     const itemsNeedingPrice = paginated.filter(item => item.isLoadingPrice && item.precio === undefined);
     if (itemsNeedingPrice.length > 0) {
       const pricePromises = itemsNeedingPrice.map(item =>
-        calculatePrice(item.id, item.type, item.combo_id_original)
+        // --- CAMBIO #3 ---
+        calculatePrice(item)
           .then(price => ({...item, precio: price, isLoadingPrice: false, priceError: false}))
           .catch(() => ({...item, isLoadingPrice: false, priceError: true}))
       );
@@ -392,7 +406,7 @@ export default function ProductPriceTable() {
             setErrorDolarSave(`Errores: ${errors.join('; ')}`);
         }
     }
-    //eslint-disable-next-line
+     // eslint-disable-next-line
     catch (err: any) { setErrorDolarSave(err.message || "Error de red."); }
     finally { setLoadingDolarSave(false); }
  };
@@ -425,7 +439,7 @@ export default function ProductPriceTable() {
         }
         alert(`"${itemToDelete.nombre}" eliminado.`);
         fetchAndCombineData();
-        //eslint-disable-next-line
+         // eslint-disable-next-line
      } catch (err: any) { setDeleteError(err.message); alert(`Error: ${err.message}`); }
      finally { setDeletingItem(null); }
   };
@@ -454,7 +468,7 @@ export default function ProductPriceTable() {
       const fileInput = document.getElementById('csv-upload-input') as HTMLInputElement; if (fileInput) fileInput.value = '';
       alert(result.message + (result.details?.message ? `\nDetalles: ${result.details.message}` : ''));
       fetchAndCombineData();
-      //eslint-disable-next-line
+       // eslint-disable-next-line
     } catch (error: any) { setUploadErrorMsg(error.message || "Error al subir."); }
     finally { setIsUploading(false); }
   };
@@ -507,7 +521,7 @@ export default function ProductPriceTable() {
             <div className="flex items-center gap-x-4 gap-y-2 flex-wrap border p-2 rounded-md">
                 <div className="text-sm flex items-center gap-1"> <label htmlFor="dolarOficialInput" className="font-medium">Dólar Oficial:</label> {loadingDolar ? "..." : isEditingDolar ? <input id="dolarOficialInput" type="text" name="dolarOficial" value={editDolarOficial} onChange={handleDolarInputChange} className="px-2 py-1 border rounded text-sm w-24" disabled={loadingDolarSave} inputMode="decimal" /> : dolarOficial !== null ? <span className="font-semibold">${dolarOficial.toFixed(2)}</span> : <span className="text-red-500 text-xs">{errorDolar || 'Error'}</span>} </div>
                 <div className="text-sm flex items-center gap-1"> <label htmlFor="dolarQuimexInput" className="font-medium">Dólar Empresa:</label> {loadingDolar ? "..." : isEditingDolar ? <input id="dolarQuimexInput" type="text" name="dolarQuimex" value={editDolarQuimex} onChange={handleDolarInputChange} className="px-2 py-1 border rounded text-sm w-24" disabled={loadingDolarSave} inputMode="decimal" /> : dolarQuimex !== null ? <span className="font-semibold">${dolarQuimex.toFixed(2)}</span> : <span className="text-red-500 text-xs">{errorDolar || 'Error'}</span>} </div>
-                <div className="flex items-center gap-2"> {isEditingDolar ? (<> <button onClick={handleSaveDolarValues} disabled={loadingDolarSave || loadingDolar} className={`px-3 py-1 text-xs rounded flex items-center gap-1 ${ loadingDolarSave || loadingDolar ? 'bg-gray-300 cursor-not-allowed' : 'bg-green-100 text-green-700 hover:bg-green-200' }`}> <svg className={`h-3 w-3 ${loadingDolarSave ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg> {loadingDolarSave ? '...' : 'Guardar'} </button> <button onClick={handleCancelDolarEdit} disabled={loadingDolarSave} className="px-3 py-1 text-xs bg-gray-100 rounded hover:bg-gray-200"> Cancelar </button> </>) : (<button onClick={handleEditDolarClick} disabled={loadingDolar || dolarOficial === null || dolarQuimex === null} className={`px-3 py-1 text-xs rounded flex items-center gap-1 ${ loadingDolar || dolarOficial === null || dolarQuimex === null ? 'bg-gray-300 cursor-not-allowed' : 'bg-blue-100 text-blue-700 hover:bg-blue-200' }`}> <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg> Editar Dólar </button> )} </div>
+                <div className="flex items-center gap-2"> {isEditingDolar ? (<> <button onClick={handleSaveDolarValues} disabled={loadingDolarSave || loadingDolar} className={`px-3 py-1 text-xs rounded flex items-center gap-1 ${ loadingDolarSave || loadingDolar ? 'bg-gray-300 cursor-not-allowed' : 'bg-green-100 text-green-700 hover:bg-green-200' }`}> <svg className={`h-3 w-3 ${loadingDolarSave ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg> {loadingDolarSave ? '...' : 'Guardar'} </button> <button onClick={handleCancelDolarEdit} disabled={loadingDolarSave} className="px-3 py-1 text-xs bg-gray-100 rounded hover:bg-gray-200"> Cancelar </button> </> ) : (<button onClick={handleEditDolarClick} disabled={loadingDolar || dolarOficial === null || dolarQuimex === null} className={`px-3 py-1 text-xs rounded flex items-center gap-1 ${ loadingDolar || dolarOficial === null || dolarQuimex === null ? 'bg-gray-300 cursor-not-allowed' : 'bg-blue-100 text-blue-700 hover:bg-blue-200' }`}> <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg> Editar Dólar </button> )} </div>
                 {errorDolarSave && ( <p className="text-xs text-red-600 mt-1 w-full text-right sm:text-left sm:w-auto">{errorDolarSave}</p> )}
             </div>
 

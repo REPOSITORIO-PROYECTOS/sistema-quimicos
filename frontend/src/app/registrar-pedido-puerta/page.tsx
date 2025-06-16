@@ -441,6 +441,7 @@ export default function RegistrarPedidoPuertaPage() {
     const originalTitle = document.title;
     document.title = `Presupuesto QuiMex - Pedido ${numPedido} - (${fechaFormateada})`;
     window.print();
+    window.print();
     setTimeout(() => {document.title = originalTitle;}, 1000);
   };
 

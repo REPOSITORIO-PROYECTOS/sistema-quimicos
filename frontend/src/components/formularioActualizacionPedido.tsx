@@ -479,6 +479,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     const originalTitle = document.title;
     document.title = `Presupuesto QuiMex - Pedido ${numPedido} - ${nombreCliente} (${fechaFormateada})`;
     window.print();
+    window.print();
     setTimeout(() => {document.title = originalTitle;}, 1000);
   };
 
