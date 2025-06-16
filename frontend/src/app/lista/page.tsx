@@ -5,7 +5,7 @@ import React, { useState, useEffect, useCallback, ChangeEvent } from 'react';
 import CreateProductModal from '@/components/CreateProductModal';
 import * as XLSX from 'xlsx';
 
-// --- Tipos de Datos (sin cambios) ---
+// --- Tipos de Datos (sin cambios, omitidos por brevedad en la explicación pero incluidos en el código final) ---
 type ProductDataRaw = {
   ajusta_por_tc: boolean;
   costo_referencia_usd: number | null;
@@ -67,6 +67,7 @@ export type DisplayItem = {
   priceError: boolean;
   es_combo_proxy?: boolean;
   combo_id_original?: number | null;
+  ajusta_por_tc: boolean; // Propiedad ya existente
 };
 
 const ITEMS_PER_PAGE = 15;
@@ -149,13 +150,14 @@ export default function ProductPriceTable() {
         'Ref. Cálculo': item.ref_calculo || 'N/A',
         'Costo USD': typeof item.costo_referencia_usd === 'number' ? item.costo_referencia_usd : 'N/A',
         'Precio Venta ARS': precioFinal,
+        'Ajusta por TC': item.ajusta_por_tc ? 'Sí' : 'No', // Columna añadida para claridad en Excel
       };
     });
 
     const worksheet = XLSX.utils.json_to_sheet(dataForExcel);
     worksheet['!cols'] = [
       { wch: 15 }, { wch: 45 }, { wch: 20 }, { wch: 20 }, { wch: 15 },
-      { wch: 12 }, { wch: 15 }, { wch: 15 }, { wch: 20 },
+      { wch: 12 }, { wch: 15 }, { wch: 15 }, { wch: 20 }, { wch: 15 }
     ];
     const range = XLSX.utils.decode_range(worksheet['!ref']!);
     for (let R = range.s.r + 1; R <= range.e.r; ++R) {
@@ -377,6 +379,7 @@ export default function ProductPriceTable() {
         ref_calculo: p.ref_calculo || undefined, costo_referencia_usd: p.costo_referencia_usd === null ? undefined : p.costo_referencia_usd,
         es_combo_proxy: p.es_combo || false, combo_id_original: p.combo_id || null,
         precio: undefined, isLoadingPrice: true, priceError: false,
+        ajusta_por_tc : p.ajusta_por_tc,
       }));
 
       const productProxyComboIds = new Set(displayProducts.filter(p => p.es_combo_proxy && p.combo_id_original).map(p => p.combo_id_original));
@@ -387,6 +390,7 @@ export default function ProductPriceTable() {
         margen: c.margen_combo ? c.margen_combo * 100 : undefined, ref_calculo: "-",
         costo_referencia_usd: c.costo_referencia_usd, es_combo_proxy: false, combo_id_original: c.id,
         precio: c.costo_referencia_ars, isLoadingPrice: c.costo_referencia_ars === undefined, priceError: false,
+        ajusta_por_tc: false, // Los combos directos no tienen esta propiedad
       }));
 
       const combined = [...displayProducts, ...displayCombos].sort((a, b) => a.nombre.localeCompare(b.nombre));
@@ -559,13 +563,34 @@ export default function ProductPriceTable() {
     tableBodyContent = displayedItems.map((item) => {
         const isDeletingCurrent = deletingItem?.displayId === item.displayId;
         return (
-            <tr key={item.displayId} className={`transition duration-150 ease-in-out ${isDeletingCurrent ? 'opacity-50 bg-red-50' : item.type === 'combo' ? 'bg-lime-50 hover:bg-lime-100' : (item.es_combo_proxy ? 'bg-yellow-50 hover:bg-yellow-100' : 'hover:bg-indigo-50')}`}>
+            // ==========================================================
+            // =====> INICIO DE LA MODIFICACIÓN <=====
+            // ==========================================================
+            <tr 
+                key={item.displayId} 
+                className={`transition duration-150 ease-in-out ${
+                    isDeletingCurrent 
+                        ? 'opacity-50 bg-red-50' 
+                        : item.ajusta_por_tc // Nueva condición con alta prioridad
+                            ? 'bg-amber-100 hover:bg-amber-200' 
+                            : item.type === 'combo' 
+                                ? 'bg-lime-50 hover:bg-lime-100' 
+                                : (item.es_combo_proxy 
+                                    ? 'bg-yellow-50 hover:bg-yellow-100' 
+                                    : 'hover:bg-indigo-50')
+                }`}
+            >
                 <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{item.codigo || item.id}</td>
                 <td className="px-4 py-3 text-sm font-medium text-gray-900">
                     {item.nombre}
                     {item.type === 'combo' && <span className="ml-2 text-xs bg-lime-200 text-lime-800 px-1.5 py-0.5 rounded-full font-semibold">COMBO</span>}
                     {item.type === 'product' && item.es_combo_proxy && <span className="ml-2 text-xs bg-yellow-200 text-yellow-800 px-1.5 py-0.5 rounded-full font-semibold">P-COMBO</span>}
+                    {/* Indicador visual para saber POR QUÉ la fila está de otro color */}
+                    {item.ajusta_por_tc && <span className="ml-2 text-xs bg-amber-200 text-amber-800 px-1.5 py-0.5 rounded-full font-semibold">TC</span>}
                 </td>
+                {/* ==========================================================
+                // =====> FIN DE LA MODIFICACIÓN <=====
+                // ========================================================== */}
                 <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{item.fecha_actualizacion}</td>
                 <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{item.tipo_calculo}</td>
                 <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-left">{typeof item.margen === 'number' ? `${item.margen.toFixed(2)}%` : 'N/A'}</td>
@@ -587,6 +612,7 @@ export default function ProductPriceTable() {
 
   return (
     <div className="p-4 md:p-6 bg-gray-100 min-h-screen">
+      {/* El resto del componente permanece sin cambios... */}
       <div className="max-w-7xl mx-auto bg-white shadow-md rounded-lg p-4 md:p-6">
         <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
           <input type="text" placeholder="Buscar por nombre o código..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="px-4 py-2 border rounded-md w-full md:w-auto"/>
