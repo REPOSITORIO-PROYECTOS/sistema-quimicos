@@ -5,7 +5,7 @@ import React, { useState, useEffect, useCallback, ChangeEvent } from 'react';
 import CreateProductModal from '@/components/CreateProductModal';
 import * as XLSX from 'xlsx';
 
-// --- Tipos de Datos ---
+// --- Tipos de Datos (sin cambios) ---
 type ProductDataRaw = {
   ajusta_por_tc: boolean;
   costo_referencia_usd: number | null;
@@ -109,6 +109,10 @@ export default function ProductPriceTable() {
   const [isPreparingDownload, setIsPreparingDownload] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
 
+  const [isPreparingPriceList, setIsPreparingPriceList] = useState(false);
+  const [priceListError, setPriceListError] = useState<string | null>(null);
+
+
  useEffect(() => {
     if (isProductModalOpen) {
       document.body.classList.add('modal-open');
@@ -187,9 +191,8 @@ export default function ProductPriceTable() {
 
       if (itemsToCalculate.length > 0) {
         const pricePromises = itemsToCalculate.map(item =>
-          // --- CAMBIO #1 ---
           calculatePrice(item)
-            .then(price => ({ id: item.displayId, price, status: 'fulfilled' as const }))
+            .then(result => ({ id: item.displayId, price: result.totalPrice, status: 'fulfilled' as const }))
             .catch(error => ({ id: item.displayId, error, status: 'rejected' as const }))
         );
 
@@ -214,7 +217,7 @@ export default function ProductPriceTable() {
         setAllItems(finalItems);
       }
       generateAndDownloadExcel(finalItems);
-       // eslint-disable-next-line
+      //eslint-disable-next-line
     } catch (err: any) {
       console.error("Error durante la preparación de la descarga:", err);
       setDownloadError("Ocurrió un error al calcular los precios. Inténtalo de nuevo.");
@@ -223,14 +226,10 @@ export default function ProductPriceTable() {
     }
   };
   
-  // --- CAMBIO #2: FUNCIÓN MODIFICADA ---
-  const calculatePrice = useCallback(async (item: DisplayItem): Promise<number> => {
+  const calculatePrice = useCallback(async (item: DisplayItem, quantityOverride?: number): Promise<{ unitPrice: number, totalPrice: number }> => {
     if (!token) throw new Error("Token no disponible.");
     try {
-      // Determinar la cantidad a usar.
-      // 1. Intenta parsear ref_calculo como número.
-      // 2. Si no es un número válido o es nulo/undefined, usa 1 como fallback.
-      const quantity = parseFloat(item.ref_calculo || '1') || 1;
+      const quantity = quantityOverride !== undefined ? quantityOverride : (parseFloat(item.ref_calculo || '1') || 1);
 
       const body = { 
         quantity: quantity,
@@ -250,16 +249,93 @@ export default function ProductPriceTable() {
         throw new Error(errorData.mensaje || errorData.detail || `Error ${response.status}`); 
       }
       const data = await response.json();
-      const precioCalculado = data.precio_venta_unitario_ars;
-      if (typeof precioCalculado !== 'number') { 
+      const unitPrice = data.precio_venta_unitario_ars;
+      const totalPrice = data.precio_venta_unitario_ars;
+      
+      if (typeof unitPrice !== 'number' || typeof totalPrice !== 'number') { 
         throw new Error('Formato de precio inválido desde la API'); 
       }
-      return precioCalculado;
+      return { unitPrice, totalPrice };
     } catch (error) {
        console.error(`Error calculando precio para ${item.type} ID ${item.id}:`, error); 
        throw error; 
     }
   }, [token]);
+
+  const handleDownloadPriceList = async () => {
+    if (!window.confirm("Se calculará el precio base de todos los productos para generar la lista. Esto puede tomar varios segundos. ¿Deseas continuar?")) {
+      return;
+    }
+    setIsPreparingPriceList(true);
+    setPriceListError(null);
+
+    const quantities = [0.250, 0.500, 1, 5, 10, 25, 50, 100];
+
+    try {
+      const productsToProcess = allItems.filter(item => item.type === 'product');
+
+      const pricePromises = productsToProcess.map(product =>
+        calculatePrice(product, 1)
+          .then(result => ({
+            nombre: product.nombre,
+            unitPrice: result.unitPrice,
+          }))
+          .catch(error => {
+            console.error(`No se pudo calcular el precio para ${product.nombre}:`, error);
+            return {
+              nombre: product.nombre,
+              unitPrice: null,
+            };
+          })
+      );
+
+      const priceResults = await Promise.all(pricePromises);
+
+      // --- CORRECCIÓN EN LA GENERACIÓN DEL EXCEL ---
+      const headers = ['Producto', ...quantities.map(String)];
+      const excelData = priceResults.map(result => {
+        const row: { [key: string]: string | number } = {
+          'Producto': result.nombre,
+        };
+
+        if (result.unitPrice === null) {
+          quantities.forEach(q => {
+            row[String(q)] = "Error";
+          });
+        } else {
+          quantities.forEach(q => {
+            row[String(q)] = result.unitPrice! * q;
+          });
+        }
+        return row;
+      });
+
+      const worksheet = XLSX.utils.json_to_sheet(excelData, { header: headers });
+      
+      worksheet['!cols'] = [{ wch: 45 }, ...quantities.map(() => ({ wch: 15 }))];
+      const range = XLSX.utils.decode_range(worksheet['!ref']!);
+      for (let R = range.s.r + 1; R <= range.e.r; ++R) {
+        for (let C = 1; C <= range.e.c; ++C) {
+            const cell_address = { c: C, r: R };
+            const cell_ref = XLSX.utils.encode_cell(cell_address);
+            if (worksheet[cell_ref] && typeof worksheet[cell_ref].v === 'number') {
+                worksheet[cell_ref].t = 'n';
+                worksheet[cell_ref].z = '$#,##0.00';
+            }
+        }
+      }
+
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Lista de Precios por Volumen");
+      XLSX.writeFile(workbook, "Lista_Precios_Volumen_Quimex.xlsx");
+      //eslint-disable-next-line
+    } catch (err: any) {
+      console.error("Error generando la lista de precios por volumen:", err);
+      setPriceListError("Ocurrió un error general. Inténtalo de nuevo.");
+    } finally {
+      setIsPreparingPriceList(false);
+    }
+  };
 
   const fetchDolarValues = useCallback(async () => {
     if (!token) { setErrorDolar("Token no disponible."); setLoadingDolar(false); return; }
@@ -268,9 +344,9 @@ export default function ProductPriceTable() {
       const res = await fetch('https://quimex.sistemataup.online/tipos_cambio/obtener_todos', { headers: { "Authorization": `Bearer ${token}` } });
       if (!res.ok) throw new Error(`Error ${res.status}`);
       const data = await res.json();
-       // eslint-disable-next-line
+      //eslint-disable-next-line
       const quimexValor = data.find((d: any) => d.nombre === "Empresa")?.valor;
-       // eslint-disable-next-line
+      //eslint-disable-next-line
       const oficialValor = data.find((d: any) => d.nombre === "Oficial")?.valor;
       setDolarQuimex(typeof quimexValor === 'number' ? quimexValor : null);
       setDolarOficial(typeof oficialValor === 'number' ? oficialValor : null);
@@ -315,7 +391,7 @@ export default function ProductPriceTable() {
 
       const combined = [...displayProducts, ...displayCombos].sort((a, b) => a.nombre.localeCompare(b.nombre));
       setAllItems(combined);
-       // eslint-disable-next-line
+      //eslint-disable-next-line
     } catch (err: any) {
       console.error("Error fetchAndCombineData:", err);
       setErrorInitial(err.message || 'Error cargando datos combinados.');
@@ -348,9 +424,8 @@ export default function ProductPriceTable() {
     const itemsNeedingPrice = paginated.filter(item => item.isLoadingPrice && item.precio === undefined);
     if (itemsNeedingPrice.length > 0) {
       const pricePromises = itemsNeedingPrice.map(item =>
-        // --- CAMBIO #3 ---
         calculatePrice(item)
-          .then(price => ({...item, precio: price, isLoadingPrice: false, priceError: false}))
+          .then(result => ({...item, precio: result.totalPrice, isLoadingPrice: false, priceError: false}))
           .catch(() => ({...item, isLoadingPrice: false, priceError: true}))
       );
       Promise.all(pricePromises).then(resolvedItems => {
@@ -406,7 +481,7 @@ export default function ProductPriceTable() {
             setErrorDolarSave(`Errores: ${errors.join('; ')}`);
         }
     }
-     // eslint-disable-next-line
+    //eslint-disable-next-line
     catch (err: any) { setErrorDolarSave(err.message || "Error de red."); }
     finally { setLoadingDolarSave(false); }
  };
@@ -439,7 +514,7 @@ export default function ProductPriceTable() {
         }
         alert(`"${itemToDelete.nombre}" eliminado.`);
         fetchAndCombineData();
-         // eslint-disable-next-line
+        //eslint-disable-next-line
      } catch (err: any) { setDeleteError(err.message); alert(`Error: ${err.message}`); }
      finally { setDeletingItem(null); }
   };
@@ -468,7 +543,7 @@ export default function ProductPriceTable() {
       const fileInput = document.getElementById('csv-upload-input') as HTMLInputElement; if (fileInput) fileInput.value = '';
       alert(result.message + (result.details?.message ? `\nDetalles: ${result.details.message}` : ''));
       fetchAndCombineData();
-       // eslint-disable-next-line
+      //eslint-disable-next-line
     } catch (error: any) { setUploadErrorMsg(error.message || "Error al subir."); }
     finally { setIsUploading(false); }
   };
@@ -525,27 +600,27 @@ export default function ProductPriceTable() {
                 {errorDolarSave && ( <p className="text-xs text-red-600 mt-1 w-full text-right sm:text-left sm:w-auto">{errorDolarSave}</p> )}
             </div>
 
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex flex-col sm:flex-row items-center gap-2 flex-wrap">
+                 <button
+                    onClick={handleDownloadPriceList}
+                    disabled={!token || allItems.length === 0 || isPreparingPriceList}
+                    className="w-full sm:w-auto bg-cyan-600 text-white px-4 py-2 rounded-md shadow-sm hover:bg-cyan-700 disabled:bg-gray-400 disabled:cursor-wait flex items-center justify-center gap-2"
+                >
+                    {isPreparingPriceList ? ( <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25"></circle><path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" className="opacity-75" fill="currentColor"></path></svg> ) : ( <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a6 6 0 00-6 6v3.586l-1.293 1.293a1 1 0 001.414 1.414L6 13.586V16h8v-2.414l2.293 2.293a1 1 0 001.414-1.414L14 11.586V8a6 6 0 00-6-6zM4 18a1 1 0 01-1-1v-1h14v1a1 1 0 01-1 1H4z" /></svg> )}
+                    {isPreparingPriceList ? 'Preparando...' : 'Precios (Kg/Lt)'}
+                </button>
                 <button
                     onClick={handleDownloadExcel}
                     disabled={!token || allItems.length === 0 || isPreparingDownload}
                     className="w-full sm:w-auto bg-green-600 text-white px-4 py-2 rounded-md shadow-sm hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-wait flex items-center justify-center gap-2"
                 >
-                    {isPreparingDownload ? (
-                        <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
-                            <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25"></circle>
-                            <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" className="opacity-75" fill="currentColor"></path>
-                        </svg>
-                    ) : (
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                           <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 9.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 7.414V13a1 1 0 11-2 0V7.414L7.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                        </svg>
-                    )}
-                    {isPreparingDownload ? 'Preparando...' : 'Descargar Lista'}
+                    {isPreparingDownload ? ( <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25"></circle><path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" className="opacity-75" fill="currentColor"></path></svg> ) : ( <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 9.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 7.414V13a1 1 0 11-2 0V7.414L7.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" /></svg> )}
+                    {isPreparingDownload ? 'Preparando...' : 'Lista General'}
                 </button>
                 <button onClick={handleOpenUploadModal} disabled={!token} className="w-full sm:w-auto bg-teal-500 text-white px-4 py-2 rounded-md shadow-sm hover:bg-teal-600 disabled:bg-gray-400 flex items-center justify-center gap-1"> <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg> Actualizar Costos </button>
                 <button onClick={handleOpenCreateProductModal} disabled={!token} className="w-full sm:w-auto bg-indigo-600 text-white px-4 py-2 rounded-md shadow-sm hover:bg-indigo-700 disabled:bg-gray-400 flex items-center justify-center gap-1"> <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"> <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" /> </svg> Crear Item </button>
             </div>
+
           </div>
         </div>
 
@@ -554,6 +629,7 @@ export default function ProductPriceTable() {
         {errorInitial && token && <p className="text-center text-red-600 my-6">Error: {errorInitial}</p>}
         {deleteError && token && <p className="text-center text-red-600 my-2 bg-red-50 p-2 rounded border text-sm">Error al eliminar: {deleteError}</p>}
         {downloadError && <p className="text-center text-red-600 my-2 bg-red-50 p-2 rounded border text-sm">{downloadError}</p>}
+        {priceListError && <p className="text-center text-red-600 my-2 bg-red-50 p-2 rounded border text-sm">{priceListError}</p>}
 
 
         {!loadingInitial && !errorInitial && token && (
