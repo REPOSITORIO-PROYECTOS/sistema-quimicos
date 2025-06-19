@@ -1,5 +1,7 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;700&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
+
 
 @custom-variant dark (&:is(.dark *));
 
@@ -153,7 +155,7 @@ body.modal-open .z-50 {
     padding: 0 !important;
     background-color: white !important;
     /* Usamos una fuente monoespaciada para que los números y caracteres se alineen bien */
-    font-family: 'Courier New', Courier, monospace !important; 
+    font-family: 'IBM Plex Mono', monospace !important;
     /* Tamaño de fuente base más pequeño para tickets */
     font-size: 9pt !important;
     color: black !important;
