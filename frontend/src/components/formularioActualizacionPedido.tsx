@@ -302,9 +302,9 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
             item.precio = precio;
             let totalBruto;
              if (item.qx < 1)
-               totalBruto = item.precio * item.qx;
+                totalBruto = item.precio;
             else 
-               totalBruto = item.precio;
+               totalBruto = item.precio * item.qx;
             item.total = totalBruto * (1 - (item.descuento / 100));
         });
     });

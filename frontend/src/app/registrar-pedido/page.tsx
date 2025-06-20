@@ -286,10 +286,11 @@ export default function RegistrarPedidoPage() {
             const item = updatedProducts[index];
             item.precio = precio;
             let totalBruto;
+            console.log(item.qx)
             if (item.qx < 1)
-               totalBruto = item.precio * item.qx;
-            else 
                totalBruto = item.precio;
+            else 
+              totalBruto = item.precio * item.qx;
             
             item.total = totalBruto * (1 - (item.descuento / 100));
         });
