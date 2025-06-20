@@ -286,7 +286,7 @@ export default function RegistrarPedidoPage() {
             const item = updatedProducts[index];
             item.precio = precio;
             let totalBruto;
-            if (precio < 1)
+            if (item.qx < 1)
                totalBruto = item.precio * item.qx;
             else 
                totalBruto = item.precio;

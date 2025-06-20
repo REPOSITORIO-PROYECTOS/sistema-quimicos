@@ -254,7 +254,7 @@ export default function RegistrarPedidoPuertaPage() {
         indices.forEach(index => {
             const item = updatedProducts[index];
             item.precio = precio;
-            if (precio < 1)
+            if (item.qx < 1)
               item.total = item.precio;
             else 
               item.total = item.precio * item.qx;
