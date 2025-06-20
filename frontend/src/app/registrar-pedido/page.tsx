@@ -285,7 +285,12 @@ export default function RegistrarPedidoPage() {
         indices.forEach(index => {
             const item = updatedProducts[index];
             item.precio = precio;
-            const totalBruto = item.precio * item.qx;
+            let totalBruto;
+            if (precio < 1)
+               totalBruto = item.precio * item.qx;
+            else 
+               totalBruto = item.precio;
+            
             item.total = totalBruto * (1 - (item.descuento / 100));
         });
     });

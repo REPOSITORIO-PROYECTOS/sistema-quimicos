@@ -254,7 +254,10 @@ export default function RegistrarPedidoPuertaPage() {
         indices.forEach(index => {
             const item = updatedProducts[index];
             item.precio = precio;
-            item.total = item.precio * item.qx;
+            if (precio < 1)
+              item.total = item.precio;
+            else 
+              item.total = item.precio * item.qx;
         });
     });
 
