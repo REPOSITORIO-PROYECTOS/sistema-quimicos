@@ -3,6 +3,7 @@
 import { useProductsContext } from "@/context/ProductsContext"; 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import BotonVolver from "./BotonVolver";
 
 type ProductoPedido = {
   producto: number;
@@ -380,7 +381,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     <>
       <div className="flex items-center justify-center min-h-screen bg-indigo-900 py-10 px-4 print:hidden">
         <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-5xl">
-          
+          <BotonVolver className="ml-0" />
           <h2 className="text-3xl font-bold text-center text-indigo-800 mb-4">
             Detalle y Actualización del Pedido #{id}
           </h2>

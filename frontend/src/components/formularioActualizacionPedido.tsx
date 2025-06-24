@@ -4,8 +4,10 @@ import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useProductsContext, Producto as ProductoContextType } from "@/context/ProductsContext";
 import Select from 'react-select';
 import { useRouter } from 'next/navigation';
+import BotonVolver from './BotonVolver';
+
 let idClient = 0;
-// Tipos
+
 type ProductoPedido = {
   id_detalle?: number;
   producto: number;
@@ -39,10 +41,91 @@ interface TotalCalculadoAPI {
     transferencia: number;
     factura_iva: number;
   };
-  monto_final_con_recargos: number; 
+  monto_final_con_recargos: number;
 }
 
 const initialProductoItem: ProductoPedido = { producto: 0, qx: 0, precio: 0, descuento: 0, total: 0, observacion: "" };
+
+const TicketActualizarComponent: React.FC<{
+    id: number | undefined;
+    formData: IFormData;
+    montoBaseProductos: number;
+    totalCalculadoApi: TotalCalculadoAPI | null;
+    displayTotalToShow: number;
+    productos: ProductoPedido[];
+    // eslint-disable-next-line
+    productosContext: any;
+    isOriginal: boolean;
+}> = ({
+    id,
+    formData,
+    montoBaseProductos,
+    totalCalculadoApi,
+    displayTotalToShow,
+    productos,
+    productosContext,
+    isOriginal
+}) => {
+    return (
+        <div className="presupuesto-container">
+            <header className="presupuesto-header">
+                <div className="logo-container">
+                    <img src="/logo.png" alt="QuiMex" className="logo" />
+                    <p className="sub-logo-text">PRESUPUESTO NO VALIDO COMO FACTURA</p>
+                </div>
+                <div className="info-empresa">
+                    <p>📱 11 2395 1494</p>
+                    <p>📞 4261 3605</p>
+                    <p>📸 quimex_berazategui</p>
+                </div>
+                <div className="copia-info" style={{ fontWeight: 'bold', fontSize: '0.8em', textAlign: 'center', marginTop: '5px' }}>
+                    {isOriginal ? 'ORIGINAL' : 'DUPLICADO'}
+                </div>
+            </header>
+            <section className="datos-pedido">
+                <table className="tabla-datos-principales"><tbody>
+                    <tr><td>PEDIDO</td><td>{id || 'N/A'}</td></tr>
+                    <tr><td>FECHA</td><td>{formData.fechaEmision ? new Date(formData.fechaEmision).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'}) : ''}</td></tr>
+                    <tr><td>CLIENTE</td><td>{formData.nombre || 'CONSUMIDOR FINAL'}</td></tr>
+                    <tr><td>SUBTOTAL (Productos c/desc. ítem)</td><td className="text-right">$ {montoBaseProductos.toFixed(2)}</td></tr>
+                </tbody></table>
+                <table className="tabla-datos-secundarios"><tbody>
+                    <tr><td>DIRECCIÓN</td><td>{formData.direccion || '-'}</td></tr>
+                    {totalCalculadoApi && totalCalculadoApi.recargos.transferencia > 0 && <tr><td>RECARGO ({totalCalculadoApi.forma_pago_aplicada})</td><td className="text-right">$ {totalCalculadoApi.recargos.transferencia.toFixed(2)}</td></tr>}
+                    {totalCalculadoApi && totalCalculadoApi.recargos.factura_iva > 0 && <tr><td>{formData.requiereFactura ? "IVA (Factura)" : "Recargo (Factura)"}</td><td className="text-right">$ {totalCalculadoApi.recargos.factura_iva.toFixed(2)}</td></tr>}
+                    {formData.descuentoTotal > 0 && <tr><td>DESCUENTO GLOBAL ({formData.descuentoTotal}%)</td><td className="text-right text-red-600 print:text-red-600">- $ {( (totalCalculadoApi ? totalCalculadoApi.monto_final_con_recargos : montoBaseProductos) * (formData.descuentoTotal / 100)).toFixed(2)}</td></tr>}
+                    <tr><td>TOTAL FINAL</td><td className="text-right font-bold">$ {displayTotalToShow.toFixed(2)}</td></tr>
+                </tbody></table>
+            </section>
+            <section className="detalle-productos">
+                <table className="tabla-items">
+                    <thead><tr><th>ITEM</th><th>PRODUCTO</th><th>OBSERV.</th><th>CANT.</th><th>DESC.%</th><th>SUBTOTAL</th></tr></thead>
+                    <tbody>
+                    {productos.filter(p => p.producto && p.qx > 0).map((item, index) => {
+                      // eslint-disable-next-line
+                        const pInfo = productosContext?.productos.find((p: any) => p.id === item.producto);
+                        return (
+                        <tr key={`print-item-${index}`}>
+                            <td>{index + 1}</td>
+                            <td>{pInfo?.nombre || `ID: ${item.producto}`}</td>
+                            <td>{item.observacion || '-'}</td>
+                            <td className="text-center">{item.qx}</td>
+                            <td className="text-center">{item.descuento > 0 ? `${item.descuento}%` : '-'}</td>
+                            <td className="text-right">$ {item.total.toFixed(2)}</td>
+                        </tr>);
+                    })}
+                    {Array.from({ length: Math.max(0, 12 - productos.filter(p => p.producto && p.qx > 0).length) }).map((_, i) =>
+                        <tr key={`empty-row-${i}`} className="empty-row"><td> </td><td> </td><td> </td><td> </td><td> </td><td> </td></tr>)}
+                    </tbody>
+                </table>
+            </section>
+            <footer className="presupuesto-footer">
+                <p>Precios sujetos a modificaciones sin previo aviso. Presupuesto válido por 7 días.</p>
+                 {formData.observaciones && <p className="observaciones-generales"><strong>Observaciones Generales:</strong> {formData.observaciones}</p>}
+            </footer>
+        </div>
+    );
+};
 
 export default function DetalleActualizarPedidoPage({ id }: { id: number | undefined }) {
   const [formData, setFormData] = useState<IFormData>({
@@ -79,7 +162,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     setSuccessMensaje('');
     setInitialTotalNetoDelGet(null);
     setTotalCalculadoApi(null);
-    setHasUserInteracted(false); 
+    setHasUserInteracted(false);
     const token = localStorage.getItem("token");
     if (!token) {
       setErrorMensaje("Usuario no autenticado."); setIsLoading(false); return;
@@ -108,7 +191,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         requiereFactura: datosAPI.requiere_factura || false,
         observaciones: datosAPI.observaciones || "",
       });
-      //eslint-disable-next-line
+      // eslint-disable-next-line
       const productosCargados: ProductoPedido[] = datosAPI.detalles?.map((detalle: any) => ({
         id_detalle: detalle.id,
         producto: detalle.producto_id,
@@ -123,7 +206,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
       if (datosAPI.monto_final_con_recargos !== undefined && datosAPI.monto_final_con_recargos !== null) {
         setInitialTotalNetoDelGet(parseFloat(datosAPI.monto_final_con_recargos));
       }
-      //eslint-disable-next-line
+      // eslint-disable-next-line
     } catch (error: any) {
       setErrorMensaje(error.message || "Ocurrió un error desconocido al cargar los detalles del pedido.");
     } finally {
@@ -143,8 +226,8 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
   const montoBaseProductos = useMemo(() => {
     return productos.reduce((sum, item) => sum + (item.total || 0), 0);
   }, [productos]);
-  
-  const opcionesDeProductoParaSelect = useMemo(() => 
+
+  const opcionesDeProductoParaSelect = useMemo(() =>
     productosContext?.productos.map((prod: ProductoContextType) => ({
       value: prod.id,
       label: prod.nombre,
@@ -153,7 +236,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
 
   useEffect(() => {
     const recalcularTodo = async () => {
-        if (isLoading) return; 
+        if (isLoading) return;
 
         if (montoBaseProductos <= 0 && formData.montoPagado <= 0 && formData.descuentoTotal === 0) {
             setTotalCalculadoApi(null);
@@ -220,7 +303,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
             } else {
                 setFormData(prev => ({ ...prev, vuelto: 0 }));
             }
-            //eslint-disable-next-line
+            // eslint-disable-next-line
         } catch (error: any) {
             setErrorMensaje((prevError) => prevError && prevError.includes(error.message) ? prevError : (prevError ? `${prevError}. ${error.message}` : error.message || "Error recalculando totales/vuelto."));
             setTotalCalculadoApi(null);
@@ -237,7 +320,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         recalcularTodo();
     }
   }, [montoBaseProductos, formData.formaPago, formData.requiereFactura, formData.montoPagado, formData.descuentoTotal, isLoading, hasUserInteracted, initialTotalNetoDelGet]);
-  
+
   const recalculatePricesForProducts = useCallback(async (currentProducts: ProductoPedido[]) => {
     setHasUserInteracted(true);
     const token = localStorage.getItem("token");
@@ -263,11 +346,11 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     });
 
     const pricePromises = Array.from(productQuantities.entries()).map(
-        async ([productoId, { totalQuantity, indices }]) => {  
-                   
+        async ([productoId, { totalQuantity, indices }]) => {
+
             try {
                 if (totalQuantity==0)
-                  totalQuantity = 1;  
+                  totalQuantity = 1;
                 const precioRes = await fetch(`https://quimex.sistemataup.online/productos/calcular_precio/${productoId}`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
@@ -282,7 +365,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
                     precio: precioData.precio_venta_unitario_ars || 0,
                     indices,
                 };
-                //eslint-disable-next-line
+                // eslint-disable-next-line
             } catch (error: any) {
                 console.error(`Error al obtener precio para producto ID ${productoId}:`, error);
                 setErrorMensaje(error.message);
@@ -292,7 +375,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     );
 
     const priceResults = await Promise.all(pricePromises);
-    
+
     const updatedProducts = [...currentProducts];
 
     priceResults.forEach(result => {
@@ -303,7 +386,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
             let totalBruto;
              if (item.qx < 1)
                 totalBruto = item.precio;
-            else 
+            else
                totalBruto = item.precio * item.qx;
             item.total = totalBruto * (1 - (item.descuento / 100));
         });
@@ -315,7 +398,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
             item.total = 0;
         }
     });
-    
+
     setProductos(updatedProducts);
   }, [setErrorMensaje]);
 
@@ -340,22 +423,22 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
       return newState;
     });
   };
-  
+
   const handleProductSelectChange = async (
     index: number,
     selectedOption: { value: number; label: string } | null
   ) => {
     const nuevosProductos = [...productos];
     const currentProductItem = nuevosProductos[index];
-    
+
     if (selectedOption) {
         currentProductItem.producto = selectedOption.value;
         currentProductItem.qx = currentProductItem.qx > 0 ? currentProductItem.qx : 0;
     } else {
         nuevosProductos[index] = { ...initialProductoItem };
     }
-    
-    setProductos(nuevosProductos); 
+
+    setProductos(nuevosProductos);
     await recalculatePricesForProducts(nuevosProductos);
   };
 
@@ -381,7 +464,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
   };
 
   const agregarProducto = () => { setHasUserInteracted(true); setProductos([...productos, { ...initialProductoItem }]); };
-  
+
   const eliminarProducto = async (index: number) => {
     setHasUserInteracted(true);
     const nuevosProductos = productos.filter((_, i) => i !== index);
@@ -421,7 +504,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         montoFinalParaEnviarAlBackend = Math.max(0, totalCalculadoApi.monto_final_con_recargos * (1 - (formData.descuentoTotal / 100)));
     } else if (initialTotalNetoDelGet !== null && !hasUserInteracted) {
         montoFinalParaEnviarAlBackend = Math.max(0, initialTotalNetoDelGet * (1 - (formData.descuentoTotal / 100)));
-    } else { 
+    } else {
          montoFinalParaEnviarAlBackend = Math.max(0, montoBaseProductos * (1 - (formData.descuentoTotal / 100)));
     }
 
@@ -457,17 +540,17 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
       if(!response.ok){
         let detailedError = "";
         if (result && result.detail && Array.isArray(result.detail)) {
-          //eslint-disable-next-line
+          // eslint-disable-next-line
             detailedError = result.detail.map((err: any) => `${err.loc ? err.loc.join('->') + ': ' : ''}${err.msg}`).join('; ');
         }
         setErrorMensaje(detailedError || result?.message || result?.detail || result?.error || 'Error al actualizar el pedido.');
       } else {
         setSuccessMensaje("¡Pedido actualizado con éxito!");
-        setHasUserInteracted(false); 
+        setHasUserInteracted(false);
         handleImprimirPresupuesto();
         irAcciones();
       }
-      //eslint-disable-next-line
+      // eslint-disable-next-line
     } catch (err: any) {
       setErrorMensaje(err.message || "Error de red.");
     } finally {
@@ -483,10 +566,8 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     const originalTitle = document.title;
     document.title = `Presupuesto QuiMex - Pedido ${numPedido} - ${nombreCliente} (${fechaFormateada})`;
     window.print();
-    window.print();
     setTimeout(() => {document.title = originalTitle;}, 1000);
   };
-
 
   if (isLoading && !id) return <div className="flex items-center justify-center min-h-screen bg-red-900"><p className="text-white text-xl">Error: ID de pedido no especificado.</p></div>;
   if (isLoading) return <div className="flex items-center justify-center min-h-screen bg-indigo-900"><p className="text-white text-xl">Cargando detalles del pedido...</p></div>;
@@ -508,10 +589,21 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     return String(value);
   };
 
+  const ticketProps = {
+    id,
+    formData,
+    montoBaseProductos,
+    totalCalculadoApi,
+    displayTotalToShow,
+    productos,
+    productosContext
+  };
+
   return (
     <>
       <div className="flex items-center justify-center min-h-screen bg-indigo-900 py-10 px-4 print:hidden">
         <div className="bg-white p-6 md:p-8 rounded-lg shadow-md w-full max-w-5xl">
+          <BotonVolver className="ml-0" />
           <h2 className="text-3xl font-bold text-center text-indigo-800 mb-6">Actualizar Pedido #{id}</h2>
           {errorMensaje && <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4"><p>{errorMensaje}</p></div>}
           {successMensaje && <div className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4"><p>{successMensaje}</p></div>}
@@ -533,7 +625,6 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
 
             <fieldset className="border p-4 rounded-md">
               <legend className="text-lg font-medium text-gray-700 px-2">Productos del Pedido</legend>
-              {/* <--- CAMBIO: Se ajustó el orden y tamaño de las columnas en la grilla */}
               <div className="mb-2 hidden md:grid md:grid-cols-[minmax(0,0.7fr)_70px_minmax(0,0.5fr)_70px_90px_90px_32px] items-center gap-x-2 font-semibold text-sm text-gray-600 px-1 md:px-3">
                 <span>Producto*</span>
                 <span className="text-center">Cant*</span>
@@ -545,9 +636,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
               </div>
               <div className="space-y-3">
                 {productos.map((item, index) => (
-                  // <--- CAMBIO: Se ajustó el orden y tamaño de las columnas para que coincida con el encabezado
                   <div key={`producto-item-${index}-${item.id_detalle || index}`} className="grid grid-cols-1 md:grid-cols-[minmax(0,0.7fr)_70px_minmax(0,0.5fr)_70px_90px_90px_32px] items-center gap-x-2 gap-y-1 border-b pb-2 last:border-b-0 md:border-none md:pb-0">
-                    
                     <Select
                       name={`producto-${index}`}
                       options={opcionesDeProductoParaSelect}
@@ -562,13 +651,8 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
                       className="text-sm react-select-container"
                       classNamePrefix="react-select"
                     />
-
-                    {/* <--- CAMBIO: Campo de Cantidad movido aquí */}
                     <input type="number" name="qx" placeholder="Cant." min="0" step="any" value={getNumericInputValue(item.qx)} onChange={(e) => handleProductRowInputChange(index, e)}  required className={`${inputBaseClasses} text-sm text-center no-spinners`}/>
-
-                    {/* <--- CAMBIO: Campo de Observación movido aquí */}
                     <input type="text" name="observacion" placeholder="Obs. ítem" value={item.observacion || ''} onChange={(e) => handleProductRowInputChange(index, e)} className={`${inputBaseClasses} text-sm`}/>
-
                     <input type="number" name="descuento" placeholder="0%" value={getNumericInputValue(item.descuento)} onChange={(e) => handleProductRowInputChange(index, e)} min="0" max="100" className={`${inputBaseClasses} text-sm text-center no-spinners`}/>
                     <input type="text" value={`$ ${item.precio.toFixed(2)}`} readOnly title="Precio unitario con descuento por volumen" className={`${inputReadOnlyClasses} text-sm text-right`}/>
                     <input type="text" value={`$ ${item.total.toFixed(2)}`} readOnly title="Total con descuento de producto" className={`${inputReadOnlyClasses} text-sm text-right`}/>
@@ -589,7 +673,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
               </div>
               <div className="mt-4 text-right">
                 {isCalculatingTotal && <p className="text-sm text-blue-600 italic">Calculando...</p>}
-                {(totalCalculadoApi || (initialTotalNetoDelGet === null && montoBaseProductos > 0)) && ( 
+                {(totalCalculadoApi || (initialTotalNetoDelGet === null && montoBaseProductos > 0)) && (
                 <div className="text-xs text-gray-600 mb-1">
                     <span>Base (Prod. c/desc ítem): ${totalCalculadoApi ? totalCalculadoApi.monto_base.toFixed(2) : montoBaseProductos.toFixed(2)}</span>
                     {totalCalculadoApi && totalCalculadoApi.recargos.transferencia > 0 && <span className="ml-2">Rec. Transf: ${totalCalculadoApi.recargos.transferencia.toFixed(2)}</span>}
@@ -610,52 +694,20 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
           </form>
         </div>
       </div>
-      <div id="presupuesto-imprimible" className="hidden print:block presupuesto-container">
-        <header className="presupuesto-header">
-            <div className="logo-container"><img src="/logo.png" alt="QuiMex" className="logo" /><p className="sub-logo-text">PRESUPUESTO NO VALIDO COMO FACTURA</p></div>
-            <div className="info-empresa"><p>📱 11 2395 1494</p><p>📞 4261 3605</p><p>📸 quimex_berazategui</p></div>
-        </header>
-        <section className="datos-pedido">
-            <table className="tabla-datos-principales"><tbody>
-                <tr><td>PEDIDO</td><td>{id || 'N/A'}</td></tr>
-                <tr><td>FECHA</td><td>{formData.fechaEmision ? new Date(formData.fechaEmision).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'}) : ''}</td></tr>
-                <tr><td>CLIENTE</td><td>{formData.nombre || 'CONSUMIDOR FINAL'}</td></tr>
-                <tr><td>SUBTOTAL (Productos c/desc. ítem)</td><td className="text-right">$ {montoBaseProductos.toFixed(2)}</td></tr>
-            </tbody></table>
-            <table className="tabla-datos-secundarios"><tbody>
-                <tr><td>DIRECCIÓN</td><td>{formData.direccion || '-'}</td></tr>
-                {totalCalculadoApi && totalCalculadoApi.recargos.transferencia > 0 && <tr><td>RECARGO ({totalCalculadoApi.forma_pago_aplicada})</td><td className="text-right">$ {totalCalculadoApi.recargos.transferencia.toFixed(2)}</td></tr>}
-                {totalCalculadoApi && totalCalculadoApi.recargos.factura_iva > 0 && <tr><td>{formData.requiereFactura ? "IVA (Factura)" : "Recargo (Factura)"}</td><td className="text-right">$ {totalCalculadoApi.recargos.factura_iva.toFixed(2)}</td></tr>}
-                {formData.descuentoTotal > 0 && <tr><td>DESCUENTO GLOBAL ({formData.descuentoTotal}%)</td><td className="text-right text-red-600 print:text-red-600">- $ {( (totalCalculadoApi ? totalCalculadoApi.monto_final_con_recargos : montoBaseProductos) * (formData.descuentoTotal / 100)).toFixed(2)}</td></tr>}
-                <tr><td>TOTAL FINAL</td><td className="text-right font-bold">$ {displayTotalToShow.toFixed(2)}</td></tr>
-            </tbody></table>
-        </section>
-        <section className="detalle-productos">
-            <table className="tabla-items">
-                <thead><tr><th>ITEM</th><th>PRODUCTO</th><th>OBSERV.</th><th>CANT.</th><th>DESC.%</th><th>SUBTOTAL</th></tr></thead>
-                <tbody>
-                {productos.filter(p => p.producto && p.qx > 0).map((item, index) => {
-                    const pInfo = productosContext?.productos.find(p => p.id === item.producto);
-                    return (
-                    <tr key={`print-item-${index}`}>
-                        <td>{index + 1}</td>
-                        <td>{pInfo?.nombre || `ID: ${item.producto}`}</td>
-                        <td>{item.observacion || '-'}</td>
-                        <td className="text-center">{item.qx}</td>
-                        <td className="text-center">{item.descuento > 0 ? `${item.descuento}%` : '-'}</td>
-                        <td className="text-right">$ {item.total.toFixed(2)}</td>
-                    </tr>);
-                })}
-                {Array.from({ length: Math.max(0, 12 - productos.filter(p => p.producto && p.qx > 0).length) }).map((_, i) =>
-                    <tr key={`empty-row-${i}`} className="empty-row"><td> </td><td> </td><td> </td><td> </td><td> </td><td> </td></tr>)}
-                </tbody>
-            </table>
-        </section>
-        <footer className="presupuesto-footer">
-            <p>Precios sujetos a modificaciones sin previo aviso. Presupuesto válido por 7 días.</p>
-             {formData.observaciones && <p className="observaciones-generales"><strong>Observaciones Generales:</strong> {formData.observaciones}</p>}
-        </footer>
+
+      <div id="presupuesto-imprimible" className="hidden print:block">
+        <TicketActualizarComponent {...ticketProps} isOriginal={true} />
+        <div
+          className="ticket-separator"
+          style={{
+            borderTop: '3px dashed #888',
+            margin: '20mm 0',
+            width: '100%'
+          }}
+        ></div>
+        <TicketActualizarComponent {...ticketProps} isOriginal={false} />
       </div>
+
       <style jsx global>{`
         .no-spinners::-webkit-outer-spin-button,
         .no-spinners::-webkit-inner-spin-button {
@@ -663,7 +715,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
           margin: 0;
         }
         .no-spinners {
-          -moz-appearance: textfield; /* Firefox */
+          -moz-appearance: textfield;
         }
         .presupuesto-container { font-family: Arial, sans-serif; color: #333; margin: 20px; }
         .presupuesto-header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom:15px;}

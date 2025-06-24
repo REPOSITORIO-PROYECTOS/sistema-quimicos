@@ -207,7 +207,7 @@ body.modal-open .z-50 {
   }
 
   .info-empresa {
-      font-size: 0.9em !important;
+      font-size: 1.4em !important;
       margin-bottom: 8px !important;
       border-top: 1px dashed black !important;
       border-bottom: 1px dashed black !important;
@@ -224,7 +224,7 @@ body.modal-open .z-50 {
     width: 100% !important;
     border-collapse: collapse !important;
     margin-bottom: 8px !important;
-    font-size: 0.9em !important;
+    font-size: 2em !important;
   }
 
   /* Quitamos los bordes complejos y usamos un layout más simple de dos columnas */
@@ -260,7 +260,7 @@ body.modal-open .z-50 {
   .tabla-items {
     width: 100% !important;
     border-collapse: collapse !important;
-    font-size: 0.95em !important;
+    font-size: 2em !important;
   }
   
   /* Encabezados de la tabla de items */
@@ -278,12 +278,14 @@ body.modal-open .z-50 {
     padding: 3px 2px !important;
     text-align: left !important;
     vertical-align: top !important;
+    font-size: 1.3em !important;
     border: none !important; /* Quitamos bordes en cada celda */
   }
   
   /* Línea divisoria entre productos para mayor claridad */
   .tabla-items tr:not(:last-child) td {
       border-bottom: 1px dashed #666 !important;
+      
   }
 
   /* Ajustes de alineación para columnas específicas */
@@ -296,5 +298,6 @@ body.modal-open .z-50 {
   #presupuesto-imprimible * {
   visibility: visible !important;
   font-weight: bold !important; /* <-- ESTA ES LA LÍNEA AGREGADA */
+  
 }
 }

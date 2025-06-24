@@ -2,6 +2,7 @@
 
 import { useEffect, useState, ChangeEvent, FormEvent, useCallback } from 'react';
 import { useProductsContext, Producto } from "@/context/ProductsContext";
+import BotonVolver from './BotonVolver';
 
 // Interfaz para un item de precio especial en el estado del formulario
 interface ProductoPrecioEspecialItem {
@@ -364,6 +365,7 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
   return (
     <main className="min-h-screen bg-[#20119d] text-white p-4 sm:p-8"> {/* Ajuste de padding para móviles */}
       <div className="max-w-3xl mx-auto bg-white text-black p-6 rounded-lg shadow-xl">
+        <BotonVolver className="ml-0" />
         <h1 className="text-3xl font-bold mb-6 text-center text-indigo-700">
           Actualizar Cliente (ID: {id_cliente})
         </h1>

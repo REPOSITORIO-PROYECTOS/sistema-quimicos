@@ -4,6 +4,7 @@ import { useProductsContext, Producto as ProductoContextType } from "@/context/P
 import { useClientesContext } from "@/context/ClientesContext";
 import Select from 'react-select';
 import { useRouter } from 'next/navigation';
+import BotonVolver from "@/components/BotonVolver";
 
 type ProductoPedido = {
   producto: number;
@@ -52,10 +53,83 @@ const initialProductos: ProductoPedido[] = [
 
 const VENDEDORES = ["martin", "moises", "sergio", "gabriel", "mauricio", "elias", "ardiles", "redonedo"];
 
+const TicketPuertaComponent: React.FC<{
+    formData: IFormData;
+    montoBaseProductos: number;
+    totalCalculadoApi: TotalCalculadoAPI | null;
+    displayTotal: number;
+    nombreVendedor: string;
+    productos: ProductoPedido[];
+    // eslint-disable-next-line
+    productosContext: any;
+    isOriginal: boolean;
+}> = ({
+    formData,
+    montoBaseProductos,
+    totalCalculadoApi,
+    displayTotal,
+    nombreVendedor,
+    productos,
+    productosContext,
+    isOriginal
+}) => {
+    return (
+        <div className="presupuesto-container">
+            <header className="presupuesto-header">
+                <div className="logo-container">
+                    <img src="/logo.png" alt="QuiMex" className="logo" />
+                    <p className="sub-logo-text">PRESUPUESTO NO VALIDO COMO FACTURA</p>
+                </div>
+                <div className="info-empresa">
+                    <p>📱 11 2395 1494</p>
+                    <p>📞 4261 3605</p>
+                    <p>📸 quimex_berazategui</p>
+                </div>
+                <div className="copia-info" style={{ fontWeight: 'bold', fontSize: '0.8em', textAlign: 'center', marginTop: '5px' }}>
+                    {isOriginal ? 'ORIGINAL' : 'DUPLICADO'}
+                </div>
+            </header>
+            <section className="datos-pedido">
+                <table className="tabla-datos-principales"><tbody>
+                    <tr><td>PEDIDO</td><td>NUEVO</td></tr>
+                    <tr><td>FECHA</td><td>{formData.fechaEmision ? new Date(formData.fechaEmision).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'}) : ''}</td></tr>
+                    <tr><td>CLIENTE</td><td>CONSUMIDOR FINAL</td></tr>
+                    <tr><td>VENDEDOR</td><td>{nombreVendedor ? nombreVendedor.charAt(0).toUpperCase() + nombreVendedor.slice(1) : '-'}</td></tr>
+                    <tr><td>SUBTOTAL (Productos)</td><td className="text-right">$ {montoBaseProductos.toFixed(2)}</td></tr>
+                </tbody></table>
+                <table className="tabla-datos-secundarios"><tbody>
+                    {totalCalculadoApi && totalCalculadoApi.recargos.transferencia > 0 && <tr><td>RECARGO ({totalCalculadoApi.forma_pago_aplicada})</td><td className="text-right">$ {totalCalculadoApi.recargos.transferencia.toFixed(2)}</td></tr>}
+                    {totalCalculadoApi && totalCalculadoApi.recargos.factura_iva > 0 && <tr><td>{formData.requiereFactura ? "IVA (Factura)" : "Recargo (Factura)"}</td><td className="text-right">$ {totalCalculadoApi.recargos.factura_iva.toFixed(2)}</td></tr>}
+                    <tr><td>TOTAL FINAL</td><td className="text-right font-bold">$ {displayTotal.toFixed(2)}</td></tr>
+                </tbody></table>
+            </section>
+            <section className="detalle-productos">
+                <table className="tabla-items">
+                    <thead><tr><th>ITEM</th><th>PRODUCTO</th><th>OBSERV.</th><th>CANTIDAD</th><th>SUBTOTAL</th></tr></thead>
+                    <tbody>
+                        {productos.filter(p => p.producto && p.qx > 0).map((item, index) => {
+                          // eslint-disable-next-line
+                            const pInfo = productosContext?.productos.find((p: any) => p.id === item.producto);
+                            return (
+                                <tr key={`print-item-${index}`}>
+                                    <td>{index + 1}</td>
+                                    <td>{pInfo?.nombre || `ID: ${item.producto}`}</td>
+                                    <td>{item.observacion || '-'}</td>
+                                    <td className="text-center">{item.qx}</td>
+                                    <td className="text-right">$ {item.total.toFixed(2)}</td>
+                                </tr>);
+                        })}
+                        {Array.from({ length: Math.max(0, 12 - productos.filter(p => p.producto && p.qx > 0).length) }).map((_, i) =>
+                            <tr key={`empty-row-${i}`} className="empty-row"><td> </td><td> </td><td> </td><td> </td><td> </td></tr>)}
+                    </tbody>
+                </table>
+            </section>
+        </div>
+    );
+};
 
 export default function RegistrarPedidoPuertaPage() {
   const {
-    clientes,
     loading: loadingClientes,
     error: errorClientes,
   } = useClientesContext();
@@ -67,10 +141,10 @@ export default function RegistrarPedidoPuertaPage() {
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const productosContext = useProductsContext();
-  const [nombreVendedor, setNombreVendedor] = useState<string>(''); 
+  const [nombreVendedor, setNombreVendedor] = useState<string>('');
   const router = useRouter();
   const irAccionesPuerta = () => router.push('/acciones-puerta');
-  const opcionesDeProductoParaSelect = useMemo(() => 
+  const opcionesDeProductoParaSelect = useMemo(() =>
     productosContext?.productos.map((prod: ProductoContextType) => ({
       value: prod.id,
       label: prod.nombre,
@@ -81,7 +155,7 @@ export default function RegistrarPedidoPuertaPage() {
   const resetearFormulario = () => {
     const now = new Date();
     now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-    
+
     setFormData({
       clienteId: null,
       cuit: "",
@@ -92,11 +166,11 @@ export default function RegistrarPedidoPuertaPage() {
       requiereFactura: false,
       observaciones: "",
     });
-    
+
     setProductos([
       { producto: 0, qx: 0, precio: 0, total: 0, observacion: "" }
     ]);
-    
+
     setTotalCalculadoApi(null);
     setNombreVendedor('');
     setSuccessMessage('');
@@ -130,7 +204,7 @@ export default function RegistrarPedidoPuertaPage() {
         return;
       }
       setIsCalculatingTotal(true);
-      setErrorMessage(''); 
+      setErrorMessage('');
       const token = localStorage.getItem("token");
       if (!token) {
         setErrorMessage("No autenticado para calcular total.");
@@ -176,7 +250,7 @@ export default function RegistrarPedidoPuertaPage() {
         } else {
             setFormData(prev => ({ ...prev, vuelto: 0 }));
         }
-        //eslint-disable-next-line
+        // eslint-disable-next-line
       } catch (error: any) {
         console.error("Error en recalcularTodo:", error);
         setErrorMessage(error.message || "Error al recalcular totales/vuelto.");
@@ -221,7 +295,7 @@ export default function RegistrarPedidoPuertaPage() {
         async ([productoId, { totalQuantity, indices }]) => {
             try {
               if (totalQuantity==0)
-                  totalQuantity = 1;  
+                  totalQuantity = 1;
                 const precioRes = await fetch(`https://quimex.sistemataup.online/productos/calcular_precio/${productoId}`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
@@ -236,7 +310,7 @@ export default function RegistrarPedidoPuertaPage() {
                     precio: precioData.precio_venta_unitario_ars || 0,
                     indices,
                 };
-              //eslint-disable-next-line
+                // eslint-disable-next-line
             } catch (error: any) {
                 console.error(`Error al obtener precio para producto ID ${productoId}:`, error);
                 setErrorMessage(error.message || `Error al obtener precio del producto ID ${productoId}.`);
@@ -246,7 +320,7 @@ export default function RegistrarPedidoPuertaPage() {
     );
 
     const priceResults = await Promise.all(pricePromises);
-    
+
     const updatedProducts = [...currentProducts];
 
     priceResults.forEach(result => {
@@ -256,7 +330,7 @@ export default function RegistrarPedidoPuertaPage() {
             item.precio = precio;
             if (item.qx < 1)
               item.total = item.precio;
-            else 
+            else
               item.total = item.precio * item.qx;
         });
     });
@@ -267,7 +341,7 @@ export default function RegistrarPedidoPuertaPage() {
             item.total = 0;
         }
     });
-    
+
     setProductos(updatedProducts);
   }, [setErrorMessage]);
 
@@ -287,7 +361,7 @@ export default function RegistrarPedidoPuertaPage() {
   const handleVendedorInputChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setNombreVendedor(e.target.value);
   };
-  
+
   const handleProductSelectChange = async (
     index: number,
     selectedOption: { value: number; label: string } | null
@@ -301,7 +375,7 @@ export default function RegistrarPedidoPuertaPage() {
     } else {
         nuevosProductos[index] = { ...initialProductos[0] };
     }
-    
+
     setProductos(nuevosProductos);
     await recalculatePricesForProducts(nuevosProductos);
   };
@@ -319,13 +393,13 @@ export default function RegistrarPedidoPuertaPage() {
     } else if (name === "observacion") {
         currentProductItem.observacion = value;
     }
-    
+
     setProductos(nuevosProductos);
     await recalculatePricesForProducts(nuevosProductos);
   };
 
   const agregarProducto = () => setProductos([...productos, { producto: 0, qx: 0, precio: 0, total: 0, observacion: "" }]);
-  
+
   const eliminarProducto = async (index: number) => {
     const nuevosProductos = [...productos];
     nuevosProductos.splice(index, 1);
@@ -342,31 +416,29 @@ export default function RegistrarPedidoPuertaPage() {
   };
 
   const handleSubmit = async (e: React.FormEvent ) => {
-    e.preventDefault(); 
-    setIsSubmitting(true); 
-    setSuccessMessage(''); 
+    e.preventDefault();
+    setIsSubmitting(true);
+    setSuccessMessage('');
     setErrorMessage('');
 
-    // <--- CAMBIO: Se calcula el total aquí para usarlo en la validación.
     const totalDelPedido = totalCalculadoApi ? totalCalculadoApi.monto_final_con_recargos : montoBaseProductos;
 
-    if (!nombreVendedor.trim()) { 
+    if (!nombreVendedor.trim()) {
         setErrorMessage("Por favor, seleccione un vendedor.");
         setIsSubmitting(false);
         return;
     }
     if (productos.every(p=>p.producto===0||p.qx===0)) {
-        setErrorMessage("Añada al menos un producto."); 
-        setIsSubmitting(false); 
+        setErrorMessage("Añada al menos un producto.");
+        setIsSubmitting(false);
         return;
     }
     if (!totalCalculadoApi && montoBaseProductos > 0) {
-        setErrorMessage("Error calculando el total final. Verifique forma de pago."); 
-        setIsSubmitting(false); 
+        setErrorMessage("Error calculando el total final. Verifique forma de pago.");
+        setIsSubmitting(false);
         return;
     }
 
-    // <--- CAMBIO: Nueva validación de monto pagado vs total.
     if (totalDelPedido > 0 && formData.montoPagado < totalDelPedido) {
         setErrorMessage(`El monto pagado ($${formData.montoPagado.toFixed(2)}) no puede ser menor al total del pedido ($${totalDelPedido.toFixed(2)}).`);
         setIsSubmitting(false);
@@ -376,15 +448,15 @@ export default function RegistrarPedidoPuertaPage() {
     const token = localStorage.getItem("token");
     const usuarioId = localStorage.getItem("usuario_id");
 
-    if (!token) { 
-        setErrorMessage("No autenticado."); 
-        setIsSubmitting(false); 
-        return; 
+    if (!token) {
+        setErrorMessage("No autenticado.");
+        setIsSubmitting(false);
+        return;
     }
-    if (!usuarioId) { 
-        setErrorMessage("ID de usuario no encontrado. Por favor, vuelva a iniciar sesión."); 
-        setIsSubmitting(false); 
-        return; 
+    if (!usuarioId) {
+        setErrorMessage("ID de usuario no encontrado. Por favor, vuelva a iniciar sesión.");
+        setIsSubmitting(false);
+        return;
     }
 
     const dataPayload = {
@@ -395,17 +467,17 @@ export default function RegistrarPedidoPuertaPage() {
         cantidad: i.qx,
         observacion_item: i.observacion || ""
       })),
-      cliente_id:17, 
+      cliente_id:17,
       fecha_emision: formData.fechaEmision || new Date().toISOString().slice(0,16),
       fecha_pedido: formData.fechaEmision || new Date().toISOString().slice(0,16),
-      direccion_entrega: "", 
+      direccion_entrega: "",
       cuit_cliente: formData.cuit,
       monto_pagado_cliente: formData.montoPagado,
       forma_pago: formData.formaPago,
       vuelto: formData.vuelto,
       requiere_factura: formData.requiereFactura,
       monto_total_base: montoBaseProductos,
-      monto_total_final_con_recargos: totalDelPedido, // <--- CAMBIO: Usamos la variable ya calculada
+      monto_total_final_con_recargos: totalDelPedido,
       observaciones: formData.observaciones || "",
     };
 
@@ -418,9 +490,9 @@ export default function RegistrarPedidoPuertaPage() {
       const result = await response.json();
       if (response.ok) {
         setSuccessMessage("¡Pedido registrado exitosamente!");
-        resetearFormulario(); // <--- CAMBIO: Llamada a la función de reseteo
+        resetearFormulario();
         if (result.venta_id){
-          handleImprimirPresupuesto(result.venta_id); 
+          handleImprimirPresupuesto(result.venta_id);
           alert("PEDIDO REGISTRADO CON EXITO");
           setTimeout(() => {
               irAccionesPuerta();
@@ -429,7 +501,7 @@ export default function RegistrarPedidoPuertaPage() {
       } else {
         setErrorMessage(result.message || result.detail || result.error || `Error ${response.status}`);
       }
-      //eslint-disable-next-line
+      // eslint-disable-next-line
     } catch (err: any) {
       setErrorMessage(err.message || "Error de red.");
     } finally {
@@ -444,7 +516,6 @@ export default function RegistrarPedidoPuertaPage() {
     const originalTitle = document.title;
     document.title = `Presupuesto QuiMex - Pedido ${numPedido} - (${fechaFormateada})`;
     window.print();
-    window.print();
     setTimeout(() => {document.title = originalTitle;}, 1000);
   };
 
@@ -458,13 +529,23 @@ export default function RegistrarPedidoPuertaPage() {
     </div>;
   }
 
-  const selectedClienteInfo = formData.clienteId ? clientes.find(c => String(c.id) === formData.clienteId) : null;
   const displayTotal = totalCalculadoApi ? totalCalculadoApi.monto_final_con_recargos : montoBaseProductos;
+
+  const ticketProps = {
+    formData,
+    montoBaseProductos,
+    totalCalculadoApi,
+    displayTotal,
+    nombreVendedor,
+    productos,
+    productosContext
+  };
 
   return (
     <>
       <div className="flex items-center justify-center min-h-screen bg-indigo-900 py-10 px-4 print:hidden">
         <div className="bg-white p-6 md:p-8 rounded-lg shadow-md w-full max-w-5xl">
+          <BotonVolver className="ml-0" />
           <h2 className="text-3xl font-bold text-center text-indigo-800 mb-4">
             Registrar Pedido en Puerta
           </h2>
@@ -491,7 +572,7 @@ export default function RegistrarPedidoPuertaPage() {
 
           {errorMessage && <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4"><p>{errorMessage}</p></div>}
           {successMessage && <div className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4"><p>{successMessage}</p></div>}
-          
+
           <form onSubmit={handleSubmit} className="space-y-6">
             <fieldset className="border p-4 rounded-md">
               <legend className="text-lg font-medium text-gray-700 px-2">Datos Cliente/Pedido</legend>
@@ -501,13 +582,13 @@ export default function RegistrarPedidoPuertaPage() {
                   <input type="text" name="cuit" id="cuit" value="Cliente puerta"
                     className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 bg-gray-100" readOnly />
                 </div>
-                
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="fechaEmision">Fecha Emisión*</label>
                   <input type="datetime-local" name="fechaEmision" id="fechaEmision" disabled value={formData.fechaEmision} onChange={handleFormChange} required
                     className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"/>
                 </div>
-                <div className="md:col-span-3"> 
+                <div className="md:col-span-3">
                   <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="observaciones">Observaciones</label>
                   <textarea id="observaciones" name="observaciones" value={formData.observaciones || ''} onChange={handleFormChange} rows={2}
                     className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"/>
@@ -517,7 +598,6 @@ export default function RegistrarPedidoPuertaPage() {
 
             <fieldset className="border p-4 rounded-md">
               <legend className="text-lg font-medium text-gray-700 px-2">Productos</legend>
-              {/* <--- CAMBIO: Se ajustó el orden y tamaño de las columnas en la grilla */}
               <div className="mb-2 hidden md:grid md:grid-cols-[minmax(0,1fr)_90px_minmax(0,1fr)_100px_100px_32px] items-center gap-2 font-semibold text-sm text-gray-600 px-3">
                 <span>Producto*</span>
                 <span className="text-center">Cantidad*</span>
@@ -528,9 +608,8 @@ export default function RegistrarPedidoPuertaPage() {
               </div>
               <div className="space-y-3">
                 {productos.map((item, index) => (
-                  // <--- CAMBIO: Se ajustó el orden y tamaño de las columnas para que coincida con el encabezado
                   <div key={index} className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_90px_minmax(0,1fr)_100px_100px_32px] items-center gap-2 border-b pb-2 last:border-b-0 md:border-none md:pb-0">
-                    
+
                     <Select
                       name={`producto-${index}`}
                       options={opcionesDeProductoParaSelect}
@@ -546,11 +625,9 @@ export default function RegistrarPedidoPuertaPage() {
                       classNamePrefix="react-select"
                     />
 
-                    {/* <--- CAMBIO: Campo de Cantidad movido aquí */}
                     <input type="number" name="qx" placeholder="Cant." value={item.qx === 0 ? '' : item.qx} onChange={(e) => handleProductRowInputChange(index, e)} min="0" step="any" required
                       className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-center focus:outline-none focus:ring-1 focus:ring-indigo-500 no-spinners"/>
 
-                    {/* <--- CAMBIO: Campo de Observación movido aquí */}
                     <input
                       type="text"
                       name="observacion"
@@ -559,7 +636,7 @@ export default function RegistrarPedidoPuertaPage() {
                       onChange={(e) => handleProductRowInputChange(index, e)}
                       className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
                     />
-                    
+
                     <input type="text" value={`$ ${item.precio.toFixed(2)}`} readOnly className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-right bg-gray-100"/>
                     <input type="text" value={`$ ${item.total.toFixed(2)}`} readOnly className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-right bg-gray-100"/>
                     <div className="flex justify-end md:justify-center items-center">
@@ -595,7 +672,7 @@ export default function RegistrarPedidoPuertaPage() {
                     className="w-full bg-white shadow-sm border rounded py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 no-spinners"
                     value={formData.montoPagado === 0 ? '' : formData.montoPagado}
                     onChange={handleMontoPagadoChange}
-                    placeholder="0.00" 
+                    placeholder="0.00"
                     step="0.01"
                     min="0"
                   />
@@ -633,47 +710,19 @@ export default function RegistrarPedidoPuertaPage() {
         </div>
       </div>
 
-      <div id="presupuesto-imprimible" className="hidden print:block presupuesto-container">
-        <header className="presupuesto-header">
-          <div className="logo-container"><img src="/logo.png" alt="QuiMex" className="logo" /><p className="sub-logo-text">PRESUPUESTO NO VALIDO COMO FACTURA</p></div>
-          <div className="info-empresa"><p>📱 11 2395 1494</p><p>📞 4261 3605</p><p>📸 quimex_berazategui</p></div>
-        </header>
-        <section className="datos-pedido">
-          <table className="tabla-datos-principales"><tbody>
-            <tr><td>PEDIDO</td><td>NUEVO</td></tr>
-            <tr><td>FECHA</td><td>{formData.fechaEmision ? new Date(formData.fechaEmision).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'}) : ''}</td></tr>
-            <tr><td>CLIENTE</td><td>{selectedClienteInfo?.nombre_razon_social || (formData.clienteId ? `Cliente ID: ${formData.clienteId}` : 'CONSUMIDOR FINAL')}</td></tr>
-            <tr><td>VENDEDOR</td><td>{nombreVendedor ? nombreVendedor.charAt(0).toUpperCase() + nombreVendedor.slice(1) : '-'}</td></tr>
-            <tr><td>SUBTOTAL (Productos)</td><td className="text-right">$ {montoBaseProductos.toFixed(2)}</td></tr>
-          </tbody></table>
-          <table className="tabla-datos-secundarios"><tbody>
-            <tr><td>DIRECCIÓN</td><td>{selectedClienteInfo?.direccion || '-'}</td></tr>
-            {totalCalculadoApi && totalCalculadoApi.recargos.transferencia > 0 && <tr><td>RECARGO ({totalCalculadoApi.forma_pago_aplicada})</td><td className="text-right">$ {totalCalculadoApi.recargos.transferencia.toFixed(2)}</td></tr>}
-            {totalCalculadoApi && totalCalculadoApi.recargos.factura_iva > 0 && <tr><td>{formData.requiereFactura ? "IVA (Factura)" : "Recargo (Factura)"}</td><td className="text-right">$ {totalCalculadoApi.recargos.factura_iva.toFixed(2)}</td></tr>}
-            <tr><td>TOTAL FINAL</td><td className="text-right">$ {displayTotal.toFixed(2)}</td></tr>
-          </tbody></table>
-        </section>
-        <section className="detalle-productos">
-          <table className="tabla-items">
-            <thead><tr><th>ITEM</th><th>PRODUCTO</th><th>OBSERV.</th><th>CANTIDAD</th><th>SUBTOTAL</th></tr></thead>
-            <tbody>
-              {productos.filter(p => p.producto && p.qx > 0).map((item, index) => {
-                const pInfo = productosContext?.productos.find(p => p.id === item.producto);
-                return (
-                <tr key={`print-item-${index}`}>
-                    <td>{index + 1}</td>
-                    <td>{pInfo?.nombre || `ID: ${item.producto}`}</td>
-                    <td>{item.observacion || '-'}</td>
-                    <td className="text-center">{item.qx}</td>
-                    <td className="text-right">$ {item.total.toFixed(2)}</td>
-                </tr>);
-              })}
-              {Array.from({ length: Math.max(0, 12 - productos.filter(p => p.producto && p.qx > 0).length) }).map((_, i) => 
-                <tr key={`empty-row-${i}`} className="empty-row"><td> </td><td> </td><td> </td><td> </td><td> </td></tr>)}
-            </tbody>
-          </table>
-        </section>
+      <div id="presupuesto-imprimible" className="hidden print:block">
+        <TicketPuertaComponent {...ticketProps} isOriginal={true} />
+        <div
+            className="ticket-separator"
+            style={{
+                borderTop: '3px dashed #888',
+                margin: '20mm 0',
+                width: '100%'
+            }}
+        ></div>
+        <TicketPuertaComponent {...ticketProps} isOriginal={false} />
       </div>
+
       <style jsx global>{`
         .no-spinners::-webkit-outer-spin-button,
         .no-spinners::-webkit-inner-spin-button {
@@ -681,7 +730,7 @@ export default function RegistrarPedidoPuertaPage() {
           margin: 0;
         }
         .no-spinners {
-          -moz-appearance: textfield; /* Firefox */
+          -moz-appearance: textfield;
         }
         .react-select__control {
             border-color: rgb(209 213 219) !important;

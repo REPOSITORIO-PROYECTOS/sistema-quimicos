@@ -4,6 +4,7 @@ import { useState, ChangeEvent, FormEvent } from 'react';
 // Importa tu hook y el tipo Producto desde la ubicación correcta
 
 import { useProductsContext, Producto } from "@/context/ProductsContext"; // <-- Asegúrate que incluya , Producto
+import BotonVolver from '@/components/BotonVolver';
 
 
 // Interfaz para un item de producto en el estado del formulario
@@ -195,7 +196,8 @@ export default function RegistrarCliente() {
   return (
     <main className="min-h-screen bg-[#312b81] text-white p-8">
       <div className="max-w-xl mx-auto bg-white text-black p-6 rounded-lg shadow-md">
-        <h1 className="text-2xl font-bold mb-6">Registrar Cliente</h1>
+        <BotonVolver className="ml-0" />
+        <h1 className="text-2xl font-bold mb-8 text-center">Registrar Cliente</h1>
         <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-4">
           {/* --- Campos del Cliente (sin cambios) --- */}
            {/* ... (todos los <label> e <input> para nombre, cuit, etc. van aquí) ... */}

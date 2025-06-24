@@ -716,6 +716,7 @@ export default function ProductPriceTable() {
             </div>
           </div>
         </div>
+        
       )}
     </div>
   );

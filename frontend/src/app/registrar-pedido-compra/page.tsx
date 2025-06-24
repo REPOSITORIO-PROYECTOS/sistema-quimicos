@@ -1,4 +1,5 @@
 'use client';
+import BotonVolver from '@/components/BotonVolver';
 import { useProductsContext } from '@/context/ProductsContext';
 import { useProveedoresContext, Proveedor } from '@/context/ProveedoresContext'; // 1. IMPORTAR
 import { useRouter } from 'next/navigation';
@@ -249,6 +250,7 @@ export default function RegistrarIngreso() {
 
         {/* Botones */}
         <div className="flex flex-col sm:flex-row gap-4 justify-center mt-6">
+           <BotonVolver />
           <button
             onClick={handleAgregar}
             disabled={isLoading || proveedoresLoading || productsLoading} // Deshabilitar si alguna data esencial está cargando
@@ -256,7 +258,7 @@ export default function RegistrarIngreso() {
           >
             {isLoading ? 'Agregando...' : 'Agregar Pedido'}
           </button>
-
+           
         </div>
       </div>
 

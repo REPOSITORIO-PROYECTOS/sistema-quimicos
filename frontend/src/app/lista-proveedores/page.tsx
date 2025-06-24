@@ -3,6 +3,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import FormularioProveedorModal from '@/components/FormularioProveedorModal'; // Asegúrate que la ruta sea correcta
+import BotonVolver from '@/components/BotonVolver';
 const API_BASE_URL = 'https://quimex.sistemataup.online'; // Tu URL base de la API
 
 // Interfaz para los datos del proveedor como vienen de la API de listar y de detalle
@@ -264,7 +265,7 @@ export default function ListaProveedoresPage() {
           </tbody>
         </table>
       </div>
-
+    <BotonVolver />
       {isModalOpen && proveedorAEditar && ( // Asegurarse que proveedorAEditar no sea null
         <FormularioProveedorModal
           proveedorToEdit={proveedorAEditar}

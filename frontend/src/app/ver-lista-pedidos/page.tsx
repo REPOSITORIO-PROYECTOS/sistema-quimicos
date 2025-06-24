@@ -1,5 +1,6 @@
 "use client";
 
+import BotonVolver from '@/components/BotonVolver';
 import SolicitudIngresoPage from '@/components/solicitudIngresoPage'; // Asumo que es para ver/procesar
 import { useState, useEffect } from 'react';
 
@@ -165,6 +166,7 @@ export default function ListaOrdenesCompra() { // Renombrado el componente
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-indigo-900 py-10 px-4">
       <div className="bg-white p-6 md:p-8 rounded-lg shadow-xl w-full max-w-4xl lg:max-w-5xl">
+        <BotonVolver />
         <h2 className="text-2xl md:text-3xl font-semibold mb-8 text-center text-indigo-800">
           Lista de Órdenes de Compra
         </h2>
@@ -243,7 +245,9 @@ export default function ListaOrdenesCompra() { // Renombrado el componente
                           </>
                         )}
                       </div>
+                       
                     </li>
+                    
                   );
                 }) : (
                   <li className="text-center py-8 text-gray-500 col-span-4"> {/* Ajustar col-span */}
@@ -252,7 +256,7 @@ export default function ListaOrdenesCompra() { // Renombrado el componente
                 )}
               </ul>
             </div>
-
+                
             {pagination && pagination.total_pages > 1 && (
               <div className="flex justify-center mt-6 gap-4">
                 <button onClick={() => setPage(p => Math.max(1,p-1))} disabled={!pagination.has_prev||loading} className="btn-pag">Anterior</button>

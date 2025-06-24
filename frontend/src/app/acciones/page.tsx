@@ -53,7 +53,9 @@ export default function AccionesPage() {
           >
             👤 Clientes
           </button>
+
         </div>
+        
       </div>
     </div>
   );

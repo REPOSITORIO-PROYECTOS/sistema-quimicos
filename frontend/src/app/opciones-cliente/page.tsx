@@ -1,5 +1,6 @@
 "use client";
 
+import BotonVolver from '@/components/BotonVolver';
 import { useRouter } from 'next/navigation';
 
 export default function OpcionesCliente() {
@@ -17,7 +18,9 @@ export default function OpcionesCliente() {
 
 
     return (
+      
       <main className="min-h-screen flex flex-col items-center bg-[#312b81] text-white pt-24">
+        
         <h1 className="text-4xl font-bold mb-10">Acciones Posibles Clientes</h1>
         
         <div className="space-y-4 w-full max-w-md">
@@ -33,6 +36,7 @@ export default function OpcionesCliente() {
             <span>📋</span>
             Ver Clientes
           </button>
+          <BotonVolver className="ml-0" />
         </div>
       </main>
     );

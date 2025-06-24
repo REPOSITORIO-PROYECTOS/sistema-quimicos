@@ -30,7 +30,10 @@ export default function AccionesPedidos() {
           <FaFileInvoice className="text-xl" />
           Lista de Pedidos
         </button>
+
       </div>
+      
     </div>
+    
   );
 }

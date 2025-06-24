@@ -1,25 +1,23 @@
 "use client";
 
+import BotonVolver from '@/components/BotonVolver';
 import FormularioActualizacionCliente from '@/components/formularioActualizacionCliente';
 import { useState, useEffect } from 'react';
-import { FaTrash, FaPencilAlt, FaDownload } from 'react-icons/fa'; 
+import { FaTrash, FaPencilAlt, FaDownload, FaArrowUp, FaArrowDown } from 'react-icons/fa';
 import * as XLSX from 'xlsx';
 
-// Define la estructura de datos para un Cliente
 type Cliente = {
   id: number;
-  nombre_razon_social: string; 
+  nombre_razon_social: string;
   telefono: string;
   email: string;
 };
 
-// Tipo actualizado para coincidir exactamente con la respuesta de la API de precios
 type PrecioEspecial = {
   producto_nombre: string;
   precio_unitario_fijo_ars: number;
 };
 
-// La estructura de paginación parece genérica, así que la mantenemos
 type Pagination = {
   total_items: number;
   total_pages: number;
@@ -38,6 +36,11 @@ export default function ListaClientes() {
   const [page, setPage] = useState(1);
   const [isDownloading, setIsDownloading] = useState(false);
 
+  const [porcentaje, setPorcentaje] = useState('');
+  const [isUpdatingPrices, setIsUpdatingPrices] = useState(false);
+  const [priceUpdateError, setPriceUpdateError] = useState<string | null>(null);
+  const [priceUpdateSuccess, setPriceUpdateSuccess] = useState<string | null>(null);
+
   useEffect(() => {
     const fetchClientes = async () => {
       try {
@@ -55,8 +58,7 @@ export default function ListaClientes() {
         
         setClientes(data.clientes);
         setPagination(data.pagination);
-
-      //eslint-disable-next-line
+        // eslint-disable-next-line
       } catch (err: any) {
         console.error("Error en fetchClientes:", err);
         setError(err.message || 'Error desconocido al cargar los clientes.');
@@ -66,7 +68,7 @@ export default function ListaClientes() {
     };
 
     fetchClientes();
-  }, [page]); 
+  }, [page]);
 
   const handleDownloadExcel = async () => {
     setIsDownloading(true);
@@ -91,10 +93,9 @@ export default function ListaClientes() {
           }
           
           const dataPrecios = await resPrecios.json();
-          // La API devuelve un array directamente
           return { ...cliente, preciosEspeciales: dataPrecios || [] };
-          // eslint-disable-next-line
-        } catch (any) {
+        } catch (error ) {
+            console.log(error);
             return { ...cliente, preciosEspeciales: [] };
         }
       });
@@ -102,10 +103,9 @@ export default function ListaClientes() {
       const clientesConPrecios = await Promise.all(promesasClientesConPrecios);
 
       const datosParaExcel = clientesConPrecios.map(cliente => {
-        // Se usa la clave correcta 'precio_unitario_fijo_ars'
         const listaDeProductosStr = cliente.preciosEspeciales
           .map((p: PrecioEspecial) => `${p.producto_nombre}: $${p.precio_unitario_fijo_ars.toFixed(2)}`)
-          .join(', \n'); // Usar salto de línea para mejor visualización en Excel
+          .join(', \n');
 
         return {
           'ID': cliente.id,
@@ -120,13 +120,12 @@ export default function ListaClientes() {
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, "Clientes");
 
-      // Ajustar anchos de columnas para mejor visualización
       worksheet['!cols'] = [
-        { wch: 5 },  // ID
-        { wch: 40 }, // Nombre
-        { wch: 20 }, // Teléfono
-        { wch: 30 }, // Email
-        { wch: 50 }, // Lista de Productos
+        { wch: 5 },
+        { wch: 40 },
+        { wch: 20 },
+        { wch: 30 },
+        { wch: 50 },
       ];
       
       XLSX.writeFile(workbook, "Lista_Clientes_Con_Precios.xlsx");
@@ -150,7 +149,7 @@ export default function ListaClientes() {
         if (!response.ok) throw new Error(`Error al eliminar cliente: ${response.statusText}`);
         setClientes(prevClientes => prevClientes.filter(cliente => cliente.id !== id));
         alert('Cliente eliminado correctamente.');
-        // eslint-disable-next-line
+        // eslint-disable-next-line 
       } catch (err: any) {
         setError(`Error al eliminar cliente: ${err.message}`);
         alert(`Error al eliminar cliente: ${err.message}`);
@@ -162,6 +161,56 @@ export default function ListaClientes() {
     setIdClienteEditar(id);
   };
 
+  const handleUpdatePrices = async (type: 'increase' | 'decrease') => {
+    const percentageValue = parseFloat(porcentaje);
+    if (isNaN(percentageValue) || percentageValue <= 0) {
+      setPriceUpdateError('Por favor, ingresa un número de porcentaje válido y positivo.');
+      setPriceUpdateSuccess(null);
+      return;
+    }
+
+    const actionText = type === 'increase' ? 'aumentar' : 'bajar';
+    if (!window.confirm(`¿Estás seguro de que deseas ${actionText} TODOS los precios especiales en un ${percentageValue}%? Esta acción es irreversible.`)) {
+      return;
+    }
+
+    setIsUpdatingPrices(true);
+    setPriceUpdateError(null);
+    setPriceUpdateSuccess(null);
+    const token = localStorage.getItem("token");
+
+    let finalPercentage = percentageValue;
+    if (type === 'decrease') {
+      finalPercentage = -percentageValue;
+    }
+
+    try {
+      const response = await fetch('https://quimex.sistemataup.online/precios_especiales/actualizar-global', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ porcentaje: finalPercentage })
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || result.detail || `Error ${response.status}`);
+      }
+      
+      setPriceUpdateSuccess(result.message || '¡Precios actualizados correctamente!');
+      setPorcentaje('');
+      alert('¡Precios actualizados correctamente!');
+      // eslint-disable-next-line
+    } catch (err: any) {
+      setPriceUpdateError(err.message || 'Ocurrió un error al actualizar los precios.');
+    } finally {
+      setIsUpdatingPrices(false);
+    }
+  };
+
   return (
     <>
       {id_cliente === undefined ? (
@@ -170,7 +219,47 @@ export default function ListaClientes() {
             <h2 className="text-2xl md:text-3xl font-semibold mb-6 text-center text-indigo-700">
               Lista de Clientes
             </h2>
-
+            <BotonVolver className="ml-0 mb-4" />
+            
+            <div className="mb-6 p-4 border border-gray-200 rounded-lg bg-gray-50">
+              <h3 className="text-lg font-medium text-gray-800 mb-3">Actualización Global de Precios Especiales</h3>
+              <div className="flex flex-col sm:flex-row items-center gap-4">
+                <div className="flex-grow w-full sm:w-auto">
+                    <label htmlFor="porcentaje" className="block text-sm font-medium text-gray-700 mb-1">
+                      Porcentaje (%)
+                    </label>
+                    <input
+                      type="number"
+                      id="porcentaje"
+                      value={porcentaje}
+                      onChange={(e) => setPorcentaje(e.target.value)}
+                      placeholder="Ej: 5"
+                      disabled={isUpdatingPrices}
+                      className="px-3 py-2 border border-gray-300 rounded-md shadow-sm w-full focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                    />
+                </div>
+                <button
+                  onClick={() => handleUpdatePrices('increase')}
+                  disabled={!porcentaje || isUpdatingPrices}
+                  className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-wait"
+                >
+                  <FaArrowUp />
+                  Aumentar Precios
+                </button>
+                <button
+                  onClick={() => handleUpdatePrices('decrease')}
+                  disabled={!porcentaje || isUpdatingPrices}
+                  className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-wait"
+                >
+                  <FaArrowDown />
+                  Bajar Precios
+                </button>
+              </div>
+              {isUpdatingPrices && <p className="text-center text-blue-600 mt-3 animate-pulse">Actualizando precios...</p>}
+              {priceUpdateError && <p className="text-center text-red-600 mt-3 font-medium">{priceUpdateError}</p>}
+              {priceUpdateSuccess && <p className="text-center text-green-600 mt-3 font-medium">{priceUpdateSuccess}</p>}
+            </div>
+            
             <div className="mb-4 flex justify-end">
               <button
                 onClick={handleDownloadExcel}
@@ -252,26 +341,26 @@ export default function ListaClientes() {
                 </div>
 
                 {pagination && (
-              <div className="flex justify-center mt-6 gap-4">
-                <button
-                  onClick={() => setPage((prev) => Math.max(prev - 1, 1))}
-                  disabled={!pagination.has_prev || loading}
-                  className="px-4 py-2 rounded bg-indigo-700 text-white hover:bg-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Anterior
-                </button>
-                <span className="text-indigo-700 font-medium self-center">
-                  Página {pagination.current_page} de {pagination.total_pages}
-                </span>
-                <button
-                  onClick={() => setPage((prev) => prev + 1)}
-                  disabled={!pagination.has_next || loading}
-                  className="px-4 py-2 rounded bg-indigo-700 text-white hover:bg-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Siguiente
-                </button>
-              </div>
-              )}
+                  <div className="flex justify-center mt-6 gap-4">
+                    <button
+                      onClick={() => setPage((prev) => Math.max(prev - 1, 1))}
+                      disabled={!pagination.has_prev || loading}
+                      className="px-4 py-2 rounded bg-indigo-700 text-white hover:bg-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Anterior
+                    </button>
+                    <span className="text-indigo-700 font-medium self-center">
+                      Página {pagination.current_page} de {pagination.total_pages}
+                    </span>
+                    <button
+                      onClick={() => setPage((prev) => prev + 1)}
+                      disabled={!pagination.has_next || loading}
+                      className="px-4 py-2 rounded bg-indigo-700 text-white hover:bg-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Siguiente
+                    </button>
+                  </div>
+                )}
               </>
             )}
           </div>

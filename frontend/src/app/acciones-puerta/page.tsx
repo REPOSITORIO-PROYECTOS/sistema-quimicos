@@ -16,6 +16,7 @@ export default function AccionesPuertaPage() {
   return (
     <div className="min-h-screen flex items-start justify-center pt-20 bg-indigo-900">
       <div className="text-center">
+        
         <h2 className="text-white text-5xl font-semibold mb-12 mt-0">
           Acciones Ventas en Puerta
         </h2> 
@@ -33,8 +34,11 @@ export default function AccionesPuertaPage() {
           >
             🧾 Ver Boletas
           </button>
+
         </div>
-      </div>
+¿      </div>
+      
     </div>
+    
   );
 }

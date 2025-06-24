@@ -128,7 +128,7 @@ export default function RegistrarProveedorPage() {
 
         {!isLoading && !successMessage && ( // Mostrar solo si no está cargando ni hay mensaje de éxito
             <div className="text-center mt-8">
-                <Link href="/proveedores/lista" className="font-medium text-indigo-600 hover:text-indigo-500">
+                <Link href="/lista-proveedores" className="font-medium text-indigo-600 hover:text-indigo-500">
                     Ir a la lista de proveedores
                 </Link>
             </div>

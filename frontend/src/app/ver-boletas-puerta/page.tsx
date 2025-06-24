@@ -1,5 +1,6 @@
 "use client";
 
+import BotonVolver from '@/components/BotonVolver';
 import FormularioActualizarPedidoPuerta from '@/components/formularioActualizarPedidoPuerta';
 import { useState, useEffect } from 'react';
 
@@ -149,6 +150,7 @@ export default function ListaBoletasPuerta() {
       {idBoleta === undefined ? (
         <div className="flex flex-col items-center justify-center min-h-screen bg-indigo-900 py-10">
           <div className="bg-white p-6 md:p-8 rounded-lg shadow-xl w-full max-w-5xl lg:max-w-6xl">
+            <BotonVolver className="ml-0" />
             <h2 className="text-3xl font-semibold mb-8 text-center text-indigo-800">
               Lista de Pedidos (Retiro en Puerta)
             </h2>

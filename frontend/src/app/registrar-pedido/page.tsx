@@ -2,16 +2,19 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useProductsContext, Producto as ProductoContextType } from "@/context/ProductsContext";
-import { useClientesContext, Cliente } from "@/context/ClientesContext"; 
+import { useClientesContext, Cliente } from "@/context/ClientesContext";
 import Select from 'react-select';
 import { useRouter } from 'next/navigation';
-let idClient = 0
+import BotonVolver from "@/components/BotonVolver";
+
+let idClient = 0;
+
 type ProductoPedido = {
   producto: number;
   qx: number;
-  precio: number; 
-  descuento: number; 
-  total: number; 
+  precio: number;
+  descuento: number;
+  total: number;
   observacion?: string;
 };
 
@@ -24,21 +27,21 @@ interface IFormData {
   fechaEntrega: string;
   formaPago: string;
   montoPagado: number;
-  descuentoTotal: number; 
+  descuentoTotal: number;
   vuelto: number;
   requiereFactura: boolean;
   observaciones?: string;
 }
 
 interface TotalCalculadoAPI {
-  monto_base: number; 
+  monto_base: number;
   forma_pago_aplicada: string;
   requiere_factura_aplicada: boolean;
   recargos: {
     transferencia: number;
     factura_iva: number;
   };
-  monto_final_con_recargos: number; 
+  monto_final_con_recargos: number;
 }
 
 const initialFormData: IFormData = {
@@ -46,7 +49,7 @@ const initialFormData: IFormData = {
   cuit: "",
   nombre: "",
   direccion: "",
-  fechaEmision: "", 
+  fechaEmision: "",
   fechaEntrega: "",
   formaPago: "efectivo",
   montoPagado: 0,
@@ -58,7 +61,87 @@ const initialFormData: IFormData = {
 
 const initialProductos: ProductoPedido[] = [{ producto: 0, qx: 0, precio: 0, descuento: 0, total: 0, observacion: "" }];
 
-export default function RegistrarPedidoPage() { 
+const TicketComponent: React.FC<{
+    formData: IFormData;
+    montoBaseProductos: number;
+    totalCalculadoApi: TotalCalculadoAPI | null;
+    displayTotal: number;
+    baseTotalConRecargos: number;
+    productos: ProductoPedido[];
+    // eslint-disable-next-line
+    productosContext: any;
+    isOriginal: boolean;
+}> = ({
+    formData,
+    montoBaseProductos,
+    totalCalculadoApi,
+    displayTotal,
+    baseTotalConRecargos,
+    productos,
+    productosContext,
+    isOriginal
+}) => {
+    return (
+        <div className="presupuesto-container">
+            <header className="presupuesto-header">
+                <div className="logo-container">
+                    <img src="/logo.png" alt="QuiMex" className="logo" />
+                    <p className="sub-logo-text">PRESUPUESTO NO VALIDO COMO FACTURA</p>
+                </div>
+                <div className="info-empresa">
+                    <p>📱 11 2395 1494</p>
+                    <p>📞 4261 3605</p>
+                    <p>📸 quimex_berazategui</p>
+                </div>
+                <div className="copia-info" style={{ fontWeight: 'bold', fontSize: '0.8em', textAlign: 'center', marginTop: '5px' }}>
+                    {isOriginal ? 'ORIGINAL' : 'DUPLICADO'}
+                </div>
+            </header>
+            <section className="datos-pedido">
+                <table className="tabla-datos-principales"><tbody>
+                    <tr><td>PEDIDO</td><td>NUEVO</td></tr>
+                    <tr><td>FECHA</td><td>{formData.fechaEmision ? new Date(formData.fechaEmision).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'}) : ''}</td></tr>
+                    <tr><td>CLIENTE</td><td>{formData.nombre || (formData.clienteId ? `Cliente ID: ${formData.clienteId}` : 'CONSUMIDOR FINAL')}</td></tr>
+                    <tr><td>SUBTOTAL (Productos)</td><td className="text-right">$ {montoBaseProductos.toFixed(2)}</td></tr>
+                </tbody></table>
+                <table className="tabla-datos-secundarios"><tbody>
+                    <tr><td>DIRECCIÓN</td><td>{formData.direccion || '-'}</td></tr>
+                    {totalCalculadoApi && totalCalculadoApi.recargos.transferencia > 0 && <tr><td>RECARGO ({totalCalculadoApi.forma_pago_aplicada})</td><td className="text-right">$ {totalCalculadoApi.recargos.transferencia.toFixed(2)}</td></tr>}
+                    {totalCalculadoApi && totalCalculadoApi.recargos.factura_iva > 0 && <tr><td>{formData.requiereFactura ? "IVA (Factura)" : "Recargo (Factura)"}</td><td className="text-right">$ {totalCalculadoApi.recargos.factura_iva.toFixed(2)}</td></tr>}
+                    {formData.descuentoTotal > 0 && <tr><td>DESCUENTO TOTAL ({formData.descuentoTotal}%)</td><td className="text-right text-red-600 print:text-red-600">- $ {(baseTotalConRecargos * (formData.descuentoTotal / 100)).toFixed(2)}</td></tr>}
+                    <tr><td>TOTAL FINAL</td><td className="text-right font-bold">$ {displayTotal.toFixed(2)}</td></tr>
+                </tbody></table>
+            </section>
+            <section className="detalle-productos">
+                <table className="tabla-items">
+                    <thead><tr><th>ITEM</th><th>PRODUCTO</th><th>OBSERV.</th><th>CANT.</th><th>DESC.%</th><th>SUBTOTAL</th></tr></thead>
+                    <tbody>
+                        {productos.filter(p => p.producto && p.qx > 0).map((item, index) => {
+                          // eslint-disable-next-line
+                            const pInfo = productosContext?.productos.find((p: any) => p.id === item.producto);
+                            return (
+                                <tr key={`print-item-${index}`}>
+                                    <td>{index + 1}</td>
+                                    <td>{pInfo?.nombre || `ID: ${item.producto}`}</td>
+                                    <td>{item.observacion || '-'}</td>
+                                    <td className="text-center">{item.qx}</td>
+                                    <td className="text-center">{item.descuento > 0 ? `${item.descuento}%` : '-'}</td>
+                                    <td className="text-right">$ {item.total.toFixed(2)}</td>
+                                </tr>);
+                        })}
+                        {Array.from({ length: Math.max(0, 12 - productos.filter(p => p.producto && p.qx > 0).length) }).map((_, i) =>
+                            <tr key={`empty-row-${i}`} className="empty-row"><td> </td><td> </td><td> </td><td> </td><td> </td><td> </td></tr>)}
+                    </tbody>
+                </table>
+            </section>
+            <footer className="presupuesto-footer">
+                <p>Precios sujetos a modificaciones sin previo aviso. Presupuesto válido por 7 días.</p>
+            </footer>
+        </div>
+    );
+};
+
+export default function RegistrarPedidoPage() {
   const {
     clientes,
     loading: loadingClientes,
@@ -73,10 +156,10 @@ export default function RegistrarPedidoPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
-  
+
   const productosContext = useProductsContext();
 
-  const opcionesDeProductoParaSelect = useMemo(() => 
+  const opcionesDeProductoParaSelect = useMemo(() =>
     productosContext?.productos.map((prod: ProductoContextType) => ({
       value: prod.id,
       label: prod.nombre,
@@ -86,13 +169,13 @@ export default function RegistrarPedidoPage() {
   const resetearFormulario = () => {
       const now = new Date();
       now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-      
+
       setFormData({
         clienteId: null,
         cuit: "",
         nombre: "",
         direccion: "",
-        fechaEmision: now.toISOString().slice(0, 16), 
+        fechaEmision: now.toISOString().slice(0, 16),
         fechaEntrega: "",
         formaPago: "efectivo",
         montoPagado: 0,
@@ -101,17 +184,17 @@ export default function RegistrarPedidoPage() {
         requiereFactura: false,
         observaciones: "",
       });
-      
+
       setProductos([
        { producto: 0, qx: 0, precio: 0, descuento: 0, total: 0, observacion: "" }
       ]);
-      
+
       setTotalCalculadoApi(null);
       setSuccessMessage('');
       setErrorMessage('');
     };
-  
-  
+
+
      useEffect(() => {
       resetearFormulario();
     }, []);
@@ -128,7 +211,7 @@ export default function RegistrarPedidoPage() {
         return;
       }
       if (montoBaseProductos <= 0 && formData.montoPagado > 0) {
-        setTotalCalculadoApi(null); 
+        setTotalCalculadoApi(null);
         if(formData.montoPagado > 0) {
           setFormData(prev => ({ ...prev, vuelto: formData.montoPagado }));
         } else {
@@ -138,7 +221,7 @@ export default function RegistrarPedidoPage() {
       }
 
       setIsCalculatingTotal(true);
-      setErrorMessage(''); 
+      setErrorMessage('');
       const token = localStorage.getItem("token");
       if (!token) {
         setErrorMessage("No autenticado para calcular total.");
@@ -146,14 +229,14 @@ export default function RegistrarPedidoPage() {
         return;
       }
 
-      let montoFinalParaVueltoNeto = montoBaseProductos; 
+      let montoFinalParaVueltoNeto = montoBaseProductos;
 
       try {
         const resTotal = await fetch("https://quimex.sistemataup.online/ventas/calcular_total", {
           method: "POST",
           headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
           body: JSON.stringify({
-            monto_base: montoBaseProductos, 
+            monto_base: montoBaseProductos,
             forma_pago: formData.formaPago,
             requiere_factura: formData.requiereFactura,
           }),
@@ -163,15 +246,15 @@ export default function RegistrarPedidoPage() {
           throw new Error(errDataTotal.error || `Error ${resTotal.status} al calcular total.`);
         }
         const dataTotal: TotalCalculadoAPI = await resTotal.json();
-        
+
         if (JSON.stringify(totalCalculadoApi) !== JSON.stringify(dataTotal)) {
             setTotalCalculadoApi(dataTotal);
         }
-        
+
         const montoConRecargosBruto = dataTotal.monto_final_con_recargos;
         const descuentoTotalPorcentaje = formData.descuentoTotal || 0;
         montoFinalParaVueltoNeto = montoConRecargosBruto * (1 - (descuentoTotalPorcentaje / 100));
-        montoFinalParaVueltoNeto = Math.max(0, montoFinalParaVueltoNeto); 
+        montoFinalParaVueltoNeto = Math.max(0, montoFinalParaVueltoNeto);
 
         if (formData.montoPagado >= montoFinalParaVueltoNeto && montoFinalParaVueltoNeto > 0) {
             const resVuelto = await fetch("https://quimex.sistemataup.online/ventas/calcular_vuelto", {
@@ -179,7 +262,7 @@ export default function RegistrarPedidoPage() {
                 headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
                 body: JSON.stringify({
                     monto_pagado: formData.montoPagado,
-                    monto_total_final: montoFinalParaVueltoNeto, 
+                    monto_total_final: montoFinalParaVueltoNeto,
                 }),
             });
             if(!resVuelto.ok){
@@ -196,12 +279,12 @@ export default function RegistrarPedidoPage() {
                 setFormData(prev => ({ ...prev, vuelto: 0 }));
             }
         }
-        //eslint-disable-next-line
+        // eslint-disable-next-line
       } catch (error: any) {
         console.error("Error en recalcularTodo:", error);
         setErrorMessage(error.message || "Error al recalcular totales/vuelto.");
         if (totalCalculadoApi !== null) {
-            setTotalCalculadoApi(null); 
+            setTotalCalculadoApi(null);
         }
         const descuentoTotalPorcentaje = formData.descuentoTotal || 0;
         const montoBaseNeto = montoBaseProductos * (1 - (descuentoTotalPorcentaje / 100));
@@ -214,15 +297,14 @@ export default function RegistrarPedidoPage() {
         setIsCalculatingTotal(false);
       }
     };
-    
+
     if (montoBaseProductos > 0 || formData.montoPagado > 0 || formData.descuentoTotal > 0 || (totalCalculadoApi && (formData.formaPago !== totalCalculadoApi.forma_pago_aplicada || formData.requiereFactura !== totalCalculadoApi.requiere_factura_aplicada ))) {
         recalcularTodo();
-    } else if (montoBaseProductos === 0 && formData.montoPagado === 0 && formData.descuentoTotal === 0) { 
+    } else if (montoBaseProductos === 0 && formData.montoPagado === 0 && formData.descuentoTotal === 0) {
         if (totalCalculadoApi !== null) setTotalCalculadoApi(null);
         if (formData.vuelto !== 0) setFormData(prev => ({ ...prev, vuelto: 0 }));
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [montoBaseProductos, formData.formaPago, formData.requiereFactura, formData.montoPagado, formData.descuentoTotal]);
+  }, [montoBaseProductos, formData.formaPago, formData.requiereFactura, formData.montoPagado, formData.descuentoTotal, totalCalculadoApi, formData.vuelto]);
 
 
   const recalculatePricesForProducts = useCallback(async (currentProducts: ProductoPedido[]) => {
@@ -252,7 +334,7 @@ export default function RegistrarPedidoPage() {
         async ([productoId, { totalQuantity, indices }]) => {
             try {
               if (totalQuantity==0)
-                  totalQuantity = 1;  
+                  totalQuantity = 1;
                 const precioRes = await fetch(`https://quimex.sistemataup.online/productos/calcular_precio/${productoId}`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
@@ -267,7 +349,7 @@ export default function RegistrarPedidoPage() {
                     precio: precioData.precio_venta_unitario_ars || 0,
                     indices,
                 };
-              //eslint-disable-next-line
+                // eslint-disable-next-line
             } catch (error: any) {
                 console.error(`Error al obtener precio para producto ID ${productoId}:`, error);
                 setErrorMessage(error.message);
@@ -277,7 +359,7 @@ export default function RegistrarPedidoPage() {
     );
 
     const priceResults = await Promise.all(pricePromises);
-    
+
     const updatedProducts = [...currentProducts];
 
     priceResults.forEach(result => {
@@ -289,9 +371,9 @@ export default function RegistrarPedidoPage() {
             console.log(item.qx)
             if (item.qx < 1)
                totalBruto = item.precio;
-            else 
+            else
               totalBruto = item.precio * item.qx;
-            
+
             item.total = totalBruto * (1 - (item.descuento / 100));
         });
     });
@@ -302,7 +384,7 @@ export default function RegistrarPedidoPage() {
             item.total = 0;
         }
     });
-    
+
     setProductos(updatedProducts);
   }, [setErrorMessage]);
 
@@ -312,18 +394,18 @@ export default function RegistrarPedidoPage() {
   ) => {
     const nuevosProductos = [...productos];
     const currentProductItem = nuevosProductos[index];
-    
+
     if (selectedOption) {
         currentProductItem.producto = selectedOption.value;
         currentProductItem.qx = currentProductItem.qx > 0 ? currentProductItem.qx : 0;
     } else {
         nuevosProductos[index] = { ...initialProductos[0] };
     }
-    
-    setProductos(nuevosProductos); 
+
+    setProductos(nuevosProductos);
     await recalculatePricesForProducts(nuevosProductos);
   };
-  
+
   const handleProductRowInputChange = async (
     index: number,
     e: React.ChangeEvent<HTMLInputElement>
@@ -337,16 +419,16 @@ export default function RegistrarPedidoPage() {
     } else if (name === "descuento") {
         const descVal = parseFloat(value) || 0;
         currentProductItem.descuento = Math.max(0, Math.min(100, descVal));
-    } else if (name === "observacion") { 
+    } else if (name === "observacion") {
         currentProductItem.observacion = value;
     }
-    
+
     setProductos(nuevosProductos);
     await recalculatePricesForProducts(nuevosProductos);
   };
 
   const agregarProducto = () => setProductos([...productos, { producto: 0, qx: 0, precio: 0, descuento: 0, total: 0, observacion: "" }]);
-  
+
   const eliminarProducto = async (index: number) => {
     const nuevosProductos = [...productos];
     nuevosProductos.splice(index, 1);
@@ -356,7 +438,7 @@ export default function RegistrarPedidoPage() {
     setProductos(nuevosProductos);
     await recalculatePricesForProducts(nuevosProductos);
   };
-  
+
   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
     let val: string | number | boolean = value;
@@ -365,14 +447,14 @@ export default function RegistrarPedidoPage() {
       val = (e.target as HTMLInputElement).checked;
     } else if (type === 'number') {
       val = parseFloat(value);
-      if (isNaN(val)) { 
-        val = (name === 'montoPagado' || name === 'descuentoTotal') ? 0 : value; 
+      if (isNaN(val)) {
+        val = (name === 'montoPagado' || name === 'descuentoTotal') ? 0 : value;
       }
       if (name === 'descuentoTotal') {
         val = Math.max(0, Math.min(100, Number(val)));
       }
     }
-  
+
     setFormData((prev) => {
       const newState = { ...prev, [name]: val };
       if (name === 'formaPago') {
@@ -395,21 +477,19 @@ export default function RegistrarPedidoPage() {
     }));
   };
 
-
-
   const handleSubmit = async (e: React.FormEvent ) => {
     e.preventDefault();
     setIsSubmitting(true);
     setSuccessMessage('');
     setErrorMessage('');
-   
+
     if (!formData.clienteId) {
         setErrorMessage("Seleccione un cliente."); setIsSubmitting(false); return;
     }
     if (productos.every(p => p.producto === 0 || p.qx === 0)) {
         setErrorMessage("Añada al menos un producto."); setIsSubmitting(false); return;
     }
-    if (!totalCalculadoApi && montoBaseProductos > 0) { 
+    if (!totalCalculadoApi && montoBaseProductos > 0) {
         setErrorMessage("Error calculando el total final. Verifique la forma de pago o intente de nuevo."); setIsSubmitting(false); return;
     }
 
@@ -429,7 +509,7 @@ export default function RegistrarPedidoPage() {
     const montoTotalFinalNeto = Math.max(0, montoConRecargosBruto * (1 - (descuentoTotalAplicar / 100)));
 
     const dataPayload = {
-      usuario_interno_id: parseInt(usuarioId, 10), 
+      usuario_interno_id: parseInt(usuarioId, 10),
       items: productos.filter(item => item.producto !== 0 && item.qx > 0).map(item => ({
         producto_id: item.producto,
         cantidad: item.qx,
@@ -441,17 +521,17 @@ export default function RegistrarPedidoPage() {
       fecha_pedido: formData.fechaEntrega || formData.fechaEmision || new Date().toISOString().slice(0,16),
       direccion_entrega: formData.direccion,
       cuit_cliente: formData.cuit,
-      nombre_vendedor:"vendedor", 
+      nombre_vendedor:"vendedor",
       monto_pagado_cliente: formData.montoPagado,
       forma_pago: formData.formaPago,
       vuelto: formData.vuelto,
       requiere_factura: formData.requiereFactura,
-      monto_total_base: montoBaseProductos, 
+      monto_total_base: montoBaseProductos,
       descuento_total_global_porcentaje: descuentoTotalAplicar,
-      monto_final_con_recargos: parseFloat(montoTotalFinalNeto.toFixed(2)), 
+      monto_final_con_recargos: parseFloat(montoTotalFinalNeto.toFixed(2)),
       observaciones: formData.observaciones || "",
     };
-    
+
     const endpoint = "https://quimex.sistemataup.online/ventas/registrar";
     const method = "POST";
 
@@ -467,20 +547,19 @@ export default function RegistrarPedidoPage() {
       if (response.ok) {
         setSuccessMessage(`¡Pedido registrado exitosamente!`);
         resetearFormulario();
-        
-        if (result.venta_id) { 
+
+        if (result.venta_id) {
            handleImprimirPresupuesto(result.venta_id);
            alert("PEDIDO REGISTRADO CON EXITO");
            setTimeout(() => {
              irAccionesPedidos();
-           }, 1500); // Espera 1.5s antes de redirigir
+           }, 1500);
         }
-        
+
       } else {
         setErrorMessage(result.message || result.detail || result.error || `Error ${response.status} al registrar el pedido.`);
       }
-      
-      //eslint-disable-next-line
+      // eslint-disable-next-line
     } catch (err: any) {
       setErrorMessage(err.message || "Error de red al intentar registrar el pedido.");
     } finally {
@@ -496,40 +575,49 @@ export default function RegistrarPedidoPage() {
             fechaFormateada = new Date(formData.fechaEmision).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'});
         } catch(e){ console.error("Error formateando fecha para título:", e); }
     }
-    const numPedido = pedidoIdParaImprimir || "NUEVO"; 
+    const numPedido = pedidoIdParaImprimir || "NUEVO";
 
     const originalTitle = document.title;
     document.title = `Presupuesto QuiMex - Pedido ${numPedido} - ${nombreCliente} (${fechaFormateada})`;
     window.print();
-    window.print();
     setTimeout(() => { document.title = originalTitle; }, 1000);
   };
 
-  if (loadingClientes) { 
+  if (loadingClientes) {
     return <div className="flex items-center justify-center min-h-screen bg-indigo-900"><p className="text-white text-xl">Cargando clientes...</p></div>;
   }
-  if (errorClientes) { 
+  if (errorClientes) {
       return <div className="flex flex-col items-center justify-center min-h-screen bg-red-900 text-white p-4">
              <h2 className="text-2xl font-bold mb-4">Error al Cargar Clientes</h2> <p className="bg-red-700 p-2 rounded mb-4 text-sm">{errorClientes}</p>
              <button onClick={() => window.location.reload()} className="bg-white text-red-900 px-4 py-2 rounded hover:bg-gray-200">Reintentar</button>
          </div>;
   }
-  
+
   const baseTotalConRecargos = totalCalculadoApi ? totalCalculadoApi.monto_final_con_recargos : montoBaseProductos;
   const displayTotal = Math.max(0, baseTotalConRecargos * (1 - (formData.descuentoTotal || 0) / 100));
+
+  const ticketProps = {
+      formData,
+      montoBaseProductos,
+      totalCalculadoApi,
+      displayTotal,
+      baseTotalConRecargos,
+      productos,
+      productosContext
+  };
 
   return (
     <>
       <div className="flex items-center justify-center min-h-screen bg-indigo-900 py-10 px-4 print:hidden">
         <div className="bg-white p-6 md:p-8 rounded-lg shadow-md w-full max-w-5xl">
-          
+          <BotonVolver className="ml-0" />
           <h2 className="text-3xl font-bold text-center text-indigo-800 mb-4">
-            Registrar Pedido 
+            Registrar Pedido
           </h2>
-         
+
           {errorMessage && <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4"><p>{errorMessage}</p></div>}
           {successMessage && <div className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4"><p>{successMessage}</p></div>}
-          
+
           <form onSubmit={handleSubmit} className="space-y-6">
             <fieldset className="border p-4 rounded-md">
               <legend className="text-lg font-medium text-gray-700 px-2">Datos Cliente/Pedido</legend>
@@ -573,19 +661,17 @@ export default function RegistrarPedidoPage() {
 
             <fieldset className="border p-4 rounded-md">
               <legend className="text-lg font-medium text-gray-700 px-2">Productos</legend>
-              {/* <--- CAMBIO: Se ajustó el orden y tamaño de las columnas en la grilla */}
               <div className="mb-2 hidden md:grid md:grid-cols-[minmax(0,0.7fr)_70px_minmax(0,0.5fr)_70px_90px_90px_32px] items-center gap-x-2 font-semibold text-sm text-gray-600 px-1 md:px-3">
                 <span>Producto*</span>
                 <span className="text-center">Cant*</span>
                 <span>Observ. Prod.</span>
-                <span className="text-center">Desc%</span> 
+                <span className="text-center">Desc%</span>
                 <span className="text-right">P.Unit</span>
                 <span className="text-right">Total</span>
                 <span />
               </div>
               <div className="space-y-3">
                 {productos.map((item, index) => (
-                  // <--- CAMBIO: Se ajustó el orden y tamaño de las columnas para que coincida con el encabezado
                   <div key={index} className="grid grid-cols-1 md:grid-cols-[minmax(0,0.7fr)_70px_minmax(0,0.5fr)_70px_90px_90px_32px] items-center gap-x-2 gap-y-1 border-b pb-2 last:border-b-0 md:border-none md:pb-0">
                     <div className="w-full">
                       <Select
@@ -603,14 +689,10 @@ export default function RegistrarPedidoPage() {
                         classNamePrefix="react-select"
                       />
                     </div>
-
-                    {/* <--- CAMBIO: Campo de Cantidad movido aquí */}
                     <div className="w-full">
                       <input type="number" name="qx" placeholder="Cant." value={item.qx === 0 ? '' : item.qx} onChange={(e) => handleProductRowInputChange(index, e)} min="0" required step="any"
                         className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-sm text-center focus:outline-none focus:ring-1 focus:ring-indigo-500 no-spinners"/>
                     </div>
-
-                    {/* <--- CAMBIO: Campo de Observación movido aquí */}
                     <div className="w-full">
                         <input
                         type="text"
@@ -621,14 +703,13 @@ export default function RegistrarPedidoPage() {
                         className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
                         />
                     </div>
-
                     <div className="w-full">
-                      <input 
-                        type="number" 
-                        name="descuento" 
-                        placeholder="0%" 
-                        value={item.descuento === 0 ? '' : item.descuento} 
-                        onChange={(e) => handleProductRowInputChange(index, e)} 
+                      <input
+                        type="number"
+                        name="descuento"
+                        placeholder="0%"
+                        value={item.descuento === 0 ? '' : item.descuento}
+                        onChange={(e) => handleProductRowInputChange(index, e)}
                         min="0" max="100"
                         className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-sm text-center focus:outline-none focus:ring-1 focus:ring-indigo-500 no-spinners"/>
                     </div>
@@ -667,7 +748,7 @@ export default function RegistrarPedidoPage() {
                       className="w-full bg-white shadow-sm border rounded py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 no-spinners"
                       value={formData.descuentoTotal === 0 ? '' : formData.descuentoTotal}
                       onChange={handleFormChange}
-                      placeholder="0" 
+                      placeholder="0"
                       step="1"
                       min="0"
                       max="100"
@@ -707,55 +788,24 @@ export default function RegistrarPedidoPage() {
                 {isSubmitting ? 'Registrando...' : 'Registrar'}
               </button>
             </div>
+
           </form>
         </div>
       </div>
 
-      <div id="presupuesto-imprimible" className="hidden print:block presupuesto-container">
-        <header className="presupuesto-header">
-          <div className="logo-container"><img src="/logo.png" alt="QuiMex" className="logo" /><p className="sub-logo-text">PRESUPUESTO NO VALIDO COMO FACTURA</p></div>
-          <div className="info-empresa"><p>📱 11 2395 1494</p><p>📞 4261 3605</p><p>📸 quimex_berazategui</p></div>
-        </header>
-        <section className="datos-pedido">
-          <table className="tabla-datos-principales"><tbody>
-            <tr><td>PEDIDO</td><td>NUEVO</td></tr> 
-            <tr><td>FECHA</td><td>{formData.fechaEmision ? new Date(formData.fechaEmision).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'}) : ''}</td></tr>
-            <tr><td>CLIENTE</td><td>{formData.nombre || (formData.clienteId ? `Cliente ID: ${formData.clienteId}` : 'CONSUMIDOR FINAL')}</td></tr>
-            <tr><td>SUBTOTAL (Productos)</td><td className="text-right">$ {montoBaseProductos.toFixed(2)}</td></tr>
-          </tbody></table>
-          <table className="tabla-datos-secundarios"><tbody>
-            <tr><td>DIRECCIÓN</td><td>{formData.direccion || '-'}</td></tr>
-            {totalCalculadoApi && totalCalculadoApi.recargos.transferencia > 0 && <tr><td>RECARGO ({totalCalculadoApi.forma_pago_aplicada})</td><td className="text-right">$ {totalCalculadoApi.recargos.transferencia.toFixed(2)}</td></tr>}
-            {totalCalculadoApi && totalCalculadoApi.recargos.factura_iva > 0 && <tr><td>{formData.requiereFactura ? "IVA (Factura)" : "Recargo (Factura)"}</td><td className="text-right">$ {totalCalculadoApi.recargos.factura_iva.toFixed(2)}</td></tr>}
-            {formData.descuentoTotal > 0 && <tr><td>DESCUENTO TOTAL ({formData.descuentoTotal}%)</td><td className="text-right text-red-600 print:text-red-600">- $ {(baseTotalConRecargos * (formData.descuentoTotal / 100)).toFixed(2)}</td></tr>}
-            <tr><td>TOTAL FINAL</td><td className="text-right font-bold">$ {displayTotal.toFixed(2)}</td></tr>
-          </tbody></table>
-        </section>
-        <section className="detalle-productos">
-          <table className="tabla-items">
-            <thead><tr><th>ITEM</th><th>PRODUCTO</th><th>OBSERV.</th><th>CANT.</th><th>DESC.%</th><th>SUBTOTAL</th></tr></thead>
-            <tbody>
-              {productos.filter(p => p.producto && p.qx > 0).map((item, index) => {
-                const pInfo = productosContext?.productos.find(p => p.id === item.producto);
-                return (
-                <tr key={`print-item-${index}`}>
-                    <td>{index + 1}</td>
-                    <td>{pInfo?.nombre || `ID: ${item.producto}`}</td>
-                    <td>{item.observacion || '-'}</td>
-                    <td className="text-center">{item.qx}</td>
-                    <td className="text-center">{item.descuento > 0 ? `${item.descuento}%` : '-'}</td>
-                    <td className="text-right">$ {item.total.toFixed(2)}</td>
-                </tr>);
-              })}
-              {Array.from({ length: Math.max(0, 12 - productos.filter(p => p.producto && p.qx > 0).length) }).map((_, i) => 
-                <tr key={`empty-row-${i}`} className="empty-row"><td> </td><td> </td><td> </td><td> </td><td> </td><td> </td></tr>)}
-            </tbody>
-          </table>
-        </section>
-         <footer className="presupuesto-footer">
-            <p>Precios sujetos a modificaciones sin previo aviso. Presupuesto válido por 7 días.</p>
-        </footer>
+      <div id="presupuesto-imprimible" className="hidden print:block">
+        <TicketComponent {...ticketProps} isOriginal={true} />
+        <div
+          className="ticket-separator"
+          style={{
+            borderTop: '3px dashed #888',
+            margin: '20mm 0',
+            width: '100%'
+          }}
+        ></div>
+        <TicketComponent {...ticketProps} isOriginal={false} />
       </div>
+      
       <style jsx global>{`
         .no-spinners::-webkit-outer-spin-button,
         .no-spinners::-webkit-inner-spin-button {
@@ -763,9 +813,8 @@ export default function RegistrarPedidoPage() {
           margin: 0;
         }
         .no-spinners {
-          -moz-appearance: textfield; /* Firefox */
+          -moz-appearance: textfield;
         }
-         /* Estilos opcionales para react-select para que coincida con Tailwind */
          .react-select__control {
             border-color: rgb(209 213 219) !important;
             box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05) !important;

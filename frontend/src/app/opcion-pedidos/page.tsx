@@ -5,6 +5,7 @@ import FormularioActualizarPedido from '@/components/formularioActualizacionPedi
 import React, { useState, useEffect } from 'react';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import BotonVolver from '@/components/BotonVolver';
 
 // Tipos definidos fuera del componente
 type DetalleItem = {
@@ -416,7 +417,9 @@ export default function TotalPedidos() {
     <>
       {idBoleta === undefined ? (
         <div className="flex flex-col items-center justify-center min-h-screen bg-indigo-900 py-10 px-4">
+          
           <div className="bg-white p-6 md:p-8 rounded-lg shadow-md w-full max-w-6xl">
+            <BotonVolver className="ml-0" />
             <div className="flex flex-col sm:flex-row justify-between items-center mb-6">
                 <h2 className="text-2xl md:text-3xl font-semibold text-indigo-800">
                 Pedidos para Entregar Mañana

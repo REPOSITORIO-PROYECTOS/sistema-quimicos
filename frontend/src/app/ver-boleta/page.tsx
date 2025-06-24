@@ -1,5 +1,6 @@
 "use client";
 
+import BotonVolver from '@/components/BotonVolver';
 import FormularioActualizarPedido from '@/components/formularioActualizacionPedido';
 import { useState, useEffect } from 'react';
 
@@ -161,9 +162,11 @@ export default function ListaBoletas() {
 
   return (
     <>
+    
       {idBoleta === undefined ? (
         <div className="flex flex-col items-center justify-center min-h-screen bg-indigo-900 py-10">
           <div className="bg-white p-6 md:p-8 rounded-lg shadow-xl w-full max-w-5xl lg:max-w-6xl">
+            <BotonVolver className="ml-0" />
             <h2 className="text-3xl font-semibold mb-8 text-center text-indigo-800">
               Lista de Pedidos (Entrega a Domicilio)
             </h2>
@@ -177,6 +180,7 @@ export default function ListaBoletas() {
             {!loading && !error && (
               <>
                 <div className="overflow-x-auto">
+                  
                   <ul className="space-y-3 min-w-[900px]"> {/* Puedes ajustar min-w si es necesario con grid-cols-6 */}
                     {/* Encabezado (6 columnas equitativas + Acción) */}
                     {/* Para 6 columnas de datos + 1 de acción, serían 7 columnas en total */}
