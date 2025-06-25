@@ -43,7 +43,7 @@ const navItemsConfig: NavItemConfig[] = [
         ],
     },
     { href: "/lista", label: "Lista", roles: ["ADMIN"] },
-    { href: "/compras", label: "Compras", roles: ["ADMIN", "ALMACEN"] },
+    { href: "/compras", label: "Compras", roles: ["ADMIN", "ALMACEN","CONTABLE" ] },
     { href: "/movimientos", label: "Movimientos", roles: ["ADMIN", "CONTABLE"] },
     { href: "/proveedores-acciones", label: "Proveedores", roles: ["ADMIN", "ALMACEN"] },
 ];

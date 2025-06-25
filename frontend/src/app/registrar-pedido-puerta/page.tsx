@@ -477,7 +477,7 @@ export default function RegistrarPedidoPuertaPage() {
       vuelto: formData.vuelto,
       requiere_factura: formData.requiereFactura,
       monto_total_base: montoBaseProductos,
-      monto_total_final_con_recargos: totalDelPedido,
+      monto_final_con_recargos: totalDelPedido,
       observaciones: formData.observaciones || "",
     };
 

@@ -260,7 +260,7 @@ body.modal-open .z-50 {
   .tabla-items {
     width: 100% !important;
     border-collapse: collapse !important;
-    font-size: 2em !important;
+    font-size: 1.2em !important;
   }
   
   /* Encabezados de la tabla de items */

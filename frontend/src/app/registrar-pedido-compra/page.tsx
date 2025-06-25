@@ -1,54 +1,55 @@
 'use client';
 import BotonVolver from '@/components/BotonVolver';
 import { useProductsContext } from '@/context/ProductsContext';
-import { useProveedoresContext, Proveedor } from '@/context/ProveedoresContext'; // 1. IMPORTAR
 import { useRouter } from 'next/navigation';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
-// Definimos el tipo para un solo pedido para usar en el estado
+// Se simplifica la interface local, ya que el componente no maneja estos estados
 interface IPedido {
   fecha: string;
   producto: string; // ID del producto
-  proveedor_id: string; // ID del proveedor
   cantidad: string;
-  precioSinIva: string;
-  cuenta: string;
-  iibb: string;
   importeTotal: string;
   importeAbonado: string;
   chequePerteneciente: string;
+  fecha_limite: string;
 }
-
 
 export default function RegistrarIngreso() {
 
-  // --- Estados ---
+  // --- Estados Reducidos ---
   const [fecha, setFecha] = useState('');
+  const [fechaLimite, setFechaLimite] = useState('');
   const [producto, setProducto] = useState('');
-  const [proveedor_id, setProveedorId] = useState(''); // Cambiado el nombre del setter para claridad
   const [cantidad, setCantidad] = useState('');
-  const [precioSinIva, setPrecioSinIva] = useState('');
-  const [cuenta, setCuenta] = useState('');
-  const [iibb, setIibb] = useState('');
+  // Se eliminaron los estados de proveedor, precioSinIva, cuenta, iibb
   const [importeTotal, setImporteTotal] = useState('');
   const [importeAbonado, setImporteAbonado] = useState('');
   const [chequePerteneciente, setChequePerteneciente] = useState('');
   const irAccionesPuerta = () => router.push('/compras');
-  const { productos, loading: productsLoading, error: productsError } = useProductsContext(); // Renombrar loading/error para evitar colisiones
-  const { 
-    proveedores, 
-    loading: proveedoresLoading, 
-    error: proveedoresError 
-  } = useProveedoresContext(); // 2. OBTENER PROVEEDORES DEL CONTEXTO
+  const { productos, loading: productsLoading, error: productsError } = useProductsContext();
+  // Se eliminó el contexto de proveedores
   const router = useRouter();
   const [pedidos, setPedidos] = useState<IPedido[]>([]);
   const [errorApi, setErrorApi] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const token = typeof window !== 'undefined' ? localStorage.getItem("token") : null; // Mover dentro del componente si no se usa en el scope global
+  const token = typeof window !== 'undefined' ? localStorage.getItem("token") : null;
+
+  useEffect(() => {
+    const obtenerFechaActual = () => {
+      const hoy = new Date();
+      const anio = hoy.getFullYear();
+      const mes = String(hoy.getMonth() + 1).padStart(2, '0');
+      const dia = String(hoy.getDate()).padStart(2, '0');
+      return `${anio}-${mes}-${dia}`;
+    };
+    setFecha(obtenerFechaActual());
+  }, []);
 
   const handleAgregar = async () => {
-    if (!fecha || !producto || !proveedor_id || !cantidad) {
-        setErrorApi("Por favor, completa los campos obligatorios: Fecha, Producto, Proveedor, Cantidad.");
+    // Se elimina proveedor_id de la validación
+    if (!fecha || !producto || !cantidad) {
+        setErrorApi("Por favor, completa los campos obligatorios: Fecha, Producto, Cantidad.");
         return;
     }
 
@@ -56,14 +57,14 @@ export default function RegistrarIngreso() {
     setErrorApi(null);
     console.log("Agregando pedido...");
 
+    // Objeto local para la lista de la UI, ya no contiene los campos eliminados
     const nuevoPedido: IPedido = {
-      fecha, producto, proveedor_id, cantidad, precioSinIva,
-      cuenta, iibb, importeTotal, importeAbonado, chequePerteneciente,
+      fecha, producto, cantidad, importeTotal, importeAbonado, chequePerteneciente,
+      fecha_limite: fechaLimite,
     };
-    
-    //eslint-disable-next-line
+    // eslint-disable-next-line
     const userItem:any = sessionStorage.getItem("user");
-    const user = userItem ? JSON.parse(userItem) : null; // Parsear el JSON del usuario
+    const user = userItem ? JSON.parse(userItem) : null;
 
     if (!user || !user.id) {
         setErrorApi("No se pudo obtener la información del usuario. Por favor, inicie sesión de nuevo.");
@@ -71,21 +72,30 @@ export default function RegistrarIngreso() {
         return;
     }
 
+    // --- Payload para la API (Clave) ---
+    // Se mantienen los campos que la API espera, pero con valores por defecto/fijos.
     const ventaPayload = {
-      usuario_interno_id: user.id, 
-      items: [ { codigo_interno: parseInt(producto), cantidad: parseInt(cantidad),precio_unitario_estimado: parseFloat(precioSinIva) } ], // Asegurar que cantidad sea número
+      usuario_interno_id: user.id,
+      forma_pago: "",
+      observaciones_solicitud: "",
+      items: [ {
+          codigo_interno: parseInt(producto),
+          cantidad: parseInt(cantidad),
+          precio_unitario_estimado: 0 // Se envía 0 como valor por defecto
+      } ],
       fecha_pedido: fecha,
-      proveedor_id: parseInt(proveedor_id), 
-      iibb: iibb,
+      proveedor_id: 1, // Se envía un ID de proveedor fijo (Ej: 1 para "Varios" o "Interno"). ¡Ajustar si es necesario!
+      iibb: '', // Se envía un string vacío
+      fecha_limite: fechaLimite,
     };
-    console.log("Payload:", ventaPayload);
+    console.log("Payload enviado a la API:", ventaPayload);
 
     try {
       const response = await fetch('https://quimex.sistemataup.online/ordenes_compra/crear', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-User-Role' : user.role, // Usar el rol del usuario o un default
+          'X-User-Role' : user.role,
           'X-User-Id' : user.id,
           "Authorization": `Bearer ${token}`,
         },
@@ -112,11 +122,15 @@ export default function RegistrarIngreso() {
 
       setPedidos((prev) => [...prev, nuevoPedido]);
 
-      setFecha(''); setProducto(''); setProveedorId(''); setCantidad('');
-      setPrecioSinIva(''); setCuenta(''); setIibb('');
-      setImporteTotal(''); setImporteAbonado(''); ; setChequePerteneciente('');
+      // Se limpia el estado de los campos restantes
+      setProducto('');
+      setCantidad('');
+      setImporteTotal('');
+      setImporteAbonado('');
+      setChequePerteneciente('');
+      setFechaLimite('');
       irAccionesPuerta();
-      //eslint-disable-next-line
+      // eslint-disable-next-line
     } catch (error: any) {
       console.error('Error al registrar compra:', error);
       setErrorApi(error.message || "Ocurrió un error al registrar el pedido.");
@@ -125,9 +139,8 @@ export default function RegistrarIngreso() {
     }
   };
 
-
-
   const baseInputClass = "w-full px-3 py-2 rounded bg-white text-black border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent placeholder-gray-500 transition duration-150 ease-in-out";
+  const disabledInputClass = "disabled:bg-gray-200 disabled:text-gray-500 disabled:cursor-not-allowed";
   const labelClass = "block text-sm font-medium mb-1 text-gray-200";
 
   return (
@@ -151,23 +164,40 @@ export default function RegistrarIngreso() {
             </div>
         )}
 
-        {/* Campo Fecha */}
         <div className="mb-4">
           <label htmlFor="fecha" className={labelClass}>Fecha *</label>
           <input
-            id="fecha" value={fecha} onChange={(e) => setFecha(e.target.value)}
-            type="date" required className={baseInputClass}
+            id="fecha"
+            value={fecha}
+            type="date"
+            required
+            className={`${baseInputClass} ${disabledInputClass}`}
+            disabled
           />
         </div>
 
-        {/* Campo Producto */}
+        <div className="mb-4">
+          <label htmlFor="fechaLimite" className={labelClass}>Fecha Límite de Recepción</label>
+          <input
+            id="fechaLimite"
+            value={fechaLimite}
+            onChange={(e) => setFechaLimite(e.target.value)}
+            type="date"
+            className={baseInputClass}
+            min={fecha}
+          />
+        </div>
+
         <div className="mb-4">
           <label htmlFor="producto" className={labelClass}>Producto *</label>
             <select
-                id="producto" name="producto" required value={producto}
+                id="producto"
+                name="producto"
+                required
+                value={producto}
                 onChange={(e) => setProducto(e.target.value)}
                 className={baseInputClass}
-                disabled={productsLoading} // Deshabilitar mientras cargan productos
+                disabled={productsLoading}
               >
                 <option value="" disabled>
                     {productsLoading ? "Cargando productos..." : "Seleccionar producto"}
@@ -182,87 +212,37 @@ export default function RegistrarIngreso() {
           {productsError && <p className="text-xs text-red-400 mt-1">{productsError}</p>}
         </div>
 
-        {/* 3. Campo Proveedor MODIFICADO */}
-        <div className="mb-4">
-          <label htmlFor="proveedor" className={labelClass}>Proveedor *</label>
-          <select
-            id="proveedor"
-            name="proveedor_id" // El name es importante si usaras FormData, pero con estado no tanto
-            value={proveedor_id}
-            onChange={(e) => setProveedorId(e.target.value)}
-            required
-            className={baseInputClass}
-            disabled={proveedoresLoading} // Deshabilitar mientras cargan proveedores
-          >
-            <option value="" disabled>
-              {proveedoresLoading ? "Cargando proveedores..." : "Seleccionar proveedor"}
-            </option>
-            {/* Opcional: Mostrar error de carga de proveedores aquí si lo deseas */}
-            {proveedoresError && <option value="" disabled>Error al cargar proveedores</option>}
-            {!proveedoresLoading && !proveedoresError && proveedores
-              .filter(prov => prov.activo) // Opcional: Filtrar solo proveedores activos
-              .map((prov: Proveedor) => (
-              <option value={prov.id.toString()} key={prov.id}> {/* Asegurar que el value sea string si el estado lo es */}
-                {prov.nombre} {prov.cuit ? `(${prov.cuit})` : ''}
-              </option>
-            ))}
-          </select>
-          {/* Opcional: Mostrar mensaje de error si la carga de proveedores falló */}
-          {proveedoresError && <p className="text-xs text-red-400 mt-1">{proveedoresError}</p>}
-        </div>
+        {/* CAMPO PROVEEDOR ELIMINADO */}
 
-        {/* Campo Cantidad */}
         <div className="mb-4">
           <label htmlFor="cantidad" className={labelClass}>Cantidad *</label>
           <input
-            id="cantidad" value={cantidad} onChange={(e) => setCantidad(e.target.value)}
-            type="number" required min="0" placeholder="Ej: 10" className={baseInputClass}
-          />
-        </div>
-        {/* Campo Precio Sin IVA */}
-        <div className="mb-4">
-          <label htmlFor="precioSinIva" className={labelClass}>Precio Unitario (Sin IVA)</label>
-          <input
-            id="precioSinIva" value={precioSinIva} onChange={(e) => setPrecioSinIva(e.target.value)}
-            type="number" step="0.01" min="0" placeholder="Ej: 150.75" className={baseInputClass}
-          />
-        </div>
-
-        {/* Campo Cuenta */}
-        <div className="mb-4">
-          <label htmlFor="cuenta" className={labelClass}>Cuenta</label>
-          <input
-            id="cuenta" value={cuenta} onChange={(e) => setCuenta(e.target.value)}
-            type="text" placeholder="Ej: 411001" className={baseInputClass}
+            id="cantidad"
+            value={cantidad}
+            onChange={(e) => setCantidad(e.target.value)}
+            type="number"
+            required
+            min="0"
+            placeholder="Ej: 10"
+            className={baseInputClass}
           />
         </div>
 
-        {/* Campo IIBB */}
-        <div className="mb-4">
-          <label htmlFor="iibb" className={labelClass}>IIBB (%)</label>
-          <input
-            id="iibb" value={iibb} onChange={(e) => setIibb(e.target.value)}
-            type="number" step="0.01" min="0" placeholder="Ej: 3.5" className={baseInputClass}
-          />
-        </div>
+        {/* CAMPOS PRECIO, CUENTA, IIBB ELIMINADOS */}
 
-    
-
-        {/* Botones */}
         <div className="flex flex-col sm:flex-row gap-4 justify-center mt-6">
            <BotonVolver />
           <button
             onClick={handleAgregar}
-            disabled={isLoading || proveedoresLoading || productsLoading} // Deshabilitar si alguna data esencial está cargando
+            disabled={isLoading || productsLoading}
             className="bg-indigo-500 text-white font-semibold px-6 py-2 rounded-md hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-opacity-75 transition duration-150 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isLoading ? 'Agregando...' : 'Agregar Pedido'}
           </button>
-           
+
         </div>
       </div>
 
-      {/* Lista de Pedidos Agregados */}
       {pedidos.length > 0 && (
         <div className="mt-10 w-full max-w-lg bg-white p-4 md:p-6 rounded-lg shadow-md text-black">
           <h2 className="text-lg font-semibold mb-3 text-gray-800">Pedidos Agregados:</h2>
@@ -270,15 +250,11 @@ export default function RegistrarIngreso() {
             {pedidos.map((pedido, idx) => {
               const productoInfo = productos.find(p => p.id.toString() === pedido.producto);
               const nombreProducto = productoInfo ? productoInfo.nombre : `ID Producto: ${pedido.producto}`;
-              
-              // Buscar nombre del proveedor para mostrarlo
-              const proveedorInfo = proveedores.find(p => p.id.toString() === pedido.proveedor_id);
-              const nombreProveedor = proveedorInfo ? proveedorInfo.nombre : `ID Proveedor: ${pedido.proveedor_id}`;
 
+              // Se elimina la búsqueda del proveedor
               return (
                 <li key={idx} className="py-2">
-                   <strong>{nombreProducto}</strong> - Cant: {pedido.cantidad} <br />
-                   Prov: {nombreProveedor} ({pedido.fecha})
+                   <strong>{nombreProducto}</strong> - Cant: {pedido.cantidad} ({pedido.fecha})
                 </li>
               );
             })}
