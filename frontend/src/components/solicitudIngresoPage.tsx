@@ -5,47 +5,10 @@ import { useProveedoresContext } from "@/context/ProveedoresContext";
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import jsPDF from 'jspdf';
-
-// La interface se mantiene igual para manejar el estado del formulario
-/*interface ISolicitudes {
-  fecha: string;
-  proveedor: string;
-  proveedor_id: string;
-  producto: string;
-  codigo: string;
-  moneda: string;
-  cantidad: string;
-  precioUnitario: string;
-  cuenta: string;
-  iibb: string;
-  tipo: string;
-  importeTotal: string;
-  estado_recepcion: string;
-  cantidad_recepcionada: string;
-  items_recibidos: [
-    {
-     "id_linea": string | number;
-     "cantidad_recibida": number;
-     "costo_unitario_ars": number;
-     "notas_item": string;
-     "producto_codigo": string | number;
-     },
-  ];
-  ajusteTC: string;
-  cantidadAcumulada: string;
-  ajusteXTC: string;
-  diferenciaCambio: string;
-  importeAbonado: string;
-  formaPago: string;
-  chequePerteneceA: string;
-  nro_remito_proveedor : string;
-  tipo_caja: string;
-}*/
 // eslint-disable-next-line
 export default function SolicitudIngresoPage({ id }: any) {
-  // Todos tus estados se mantienen igual
+  // Estados originales
   const [fecha, setFecha] = useState('');
-  const [proveedor, setProveedor] = useState('');
   const [proveedorId, setProveedorId] = useState('');
   const [producto, setProducto] = useState('0');
   const [codigo, setCodigo] = useState('');
@@ -58,12 +21,13 @@ export default function SolicitudIngresoPage({ id }: any) {
   const [estado_recepcion, setEstadoRecepcion] = useState('Completa');
   const [cantidad_recepcionada, setCantidadRecepcionada] = useState('');
   const [nro_remito_proveedor, setNroRemitoProveedor] = useState('');
-  const [ajusteTC, setAjusteTC] = useState('false');
+  const [ajusteTC, setAjusteTC] = useState('False');
   const [importeAbonado, setImporteAbonado] = useState('');
   const [formaPago, setFormaPago] = useState('Efectivo');
   const [chequePerteneceA, setChequePerteneceA] = useState('');
   const [tipoCaja, setTipoCaja] = useState('caja diaria');
   
+  // Contextos y estados de UI
   const { productos: productosDelContexto } = useProductsContext();
   const { proveedores, loading: proveedoresLoading } = useProveedoresContext();
   const [errorMensaje, setErrorMensaje] = useState('');
@@ -71,11 +35,13 @@ export default function SolicitudIngresoPage({ id }: any) {
   const [montoYaAbonadoOC, setMontoYaAbonadoOC] = useState<number>(0);
   const [idLineaOCOriginal, setIdLineaOCOriginal] = useState<string | number>('');
 
+  // --- NUEVO ESTADO PARA CANTIDAD RECIBIDA PREVIAMENTE ---
+  const [cantidadYaRecibida, setCantidadYaRecibida] = useState<number>(0);
+
   let problema = false;
   const token = typeof window !== 'undefined' ? localStorage.getItem("token") : null;
   const router = useRouter();
 
-  // El resto de tus funciones (useEffect, cargarFormulario, etc.) se mantienen EXACTAMENTE IGUAL.
   useEffect(() => {
     if (id && token) {
       cargarFormulario();
@@ -101,9 +67,9 @@ export default function SolicitudIngresoPage({ id }: any) {
       
       const itemPrincipal = data.items[0];
 
+      // Seteo de estados desde la API
       setMontoYaAbonadoOC(parseFloat(data.importe_abonado) || 0);
       setFecha(formatearFecha(data.fecha_creacion));
-      setProveedor(data.proveedor_nombre || 'N/A');
       setProveedorId(data.proveedor_id?.toString() ?? '');
       setProducto(itemPrincipal.producto_id?.toString() ?? '0');
       setCodigo(itemPrincipal.producto_codigo || '');
@@ -113,19 +79,24 @@ export default function SolicitudIngresoPage({ id }: any) {
       setIibb(data.iibb?.toString() ?? '');
       setImporteTotal(itemPrincipal.importe_linea_estimado?.toString() ?? '0');
       setEstadoOC(data.estado || '');
-      setIdLineaOCOriginal(itemPrincipal.id_linea_oc || '');
-      setAjusteTC(data.ajuste_tc === true ? 'true' : 'false');
+      setIdLineaOCOriginal(itemPrincipal.id_linea || '');
+      setAjusteTC(data.ajuste_tc === true ? 'True' : 'False');
       setNroRemitoProveedor(data.nro_remito_proveedor || '');
+      setChequePerteneceA(data.cheque_perteneciente_a?.toString() ?? '');
+      setTipoCaja(data.tipo_caja);
+      // --- NUEVA LÍNEA PARA GUARDAR CANTIDAD PREVIAMENTE RECIBIDA ---
+      setCantidadYaRecibida(parseFloat(itemPrincipal.cantidad_recibida) || 0);
       
+      // Reseteo de campos de acción
       setEstadoRecepcion('Completa');
       setCantidadRecepcionada('');
       setImporteAbonado('');
-      setFormaPago('Efectivo');
-      setChequePerteneceA('');
+      setFormaPago(data.forma_pago || 'Efectivo');
       
       if (itemPrincipal.producto_id) {
         await cargarCamposProducto(itemPrincipal.producto_id);
       }
+
       // eslint-disable-next-line
     } catch (err: any) {
       setErrorMensaje(err.message);
@@ -155,43 +126,37 @@ export default function SolicitudIngresoPage({ id }: any) {
         return '';
     }
   };
-
-  // =========================================================================
-  // FUNCIÓN CORREGIDA
-  // =========================================================================
   // eslint-disable-next-line
   const enviarSolicitudAPI = async (solicitud: any) => {
     try {
       problema = false;
       setErrorMensaje('');
       const nuevoAbonoFloat = parseFloat(solicitud.importeAbonado) || 0;
-      const totalAbonadoParaEnviar = montoYaAbonadoOC + nuevoAbonoFloat;
-
-      // Construimos el payload EXACTAMENTE como la API lo espera
+      
       const payload = {
-        // Los campos de costo/cantidad generales se eliminan del nivel superior
-        
-        // El array de items ahora incluye el costo unitario
-        // eslint-disable-next-line
-        items_recibidos: solicitud.items_recibidos.map((item: any) => ({
-            id_linea: Number(item.id_linea),
-            cantidad_recibida: item.cantidad_recibida,
-            producto_codigo: String(item.producto_codigo),
-            costo_unitario_ars: parseFloat(solicitud.precioUnitario) || 0 // <-- ¡AQUÍ ESTÁ LA CORRECCIÓN CLAVE!
-        })),
-
-        // El resto de los campos que la API sí espera en el nivel superior
+        proveedor_id: Number(solicitud.proveedor_id),
+        cantidad: Number(solicitud.cantidad),
+        precio_unitario: parseFloat(solicitud.precioUnitario),
+        importe_total: parseFloat(solicitud.importeTotal),
+        cuenta: solicitud.cuenta,
+        iibb: solicitud.iibb,
+        ajuste_tc: solicitud.ajusteTC,
         nro_remito_proveedor: solicitud.nro_remito_proveedor,
         estado_recepcion: solicitud.estado_recepcion,
-        importe_abonado: totalAbonadoParaEnviar,
-        ajuste_tc: solicitud.ajusteTC === 'true',
+        importe_abonado: nuevoAbonoFloat,
         forma_pago: solicitud.formaPago,
         cheque_perteneciente_a: solicitud.chequePerteneceA,
         tipo_caja: solicitud.tipo_caja,
-        // Los campos 'cuenta' e 'iibb' no son leídos por este endpoint, así que no es necesario enviarlos.
+        // eslint-disable-next-line
+        items_recibidos: solicitud.items_recibidos.map((item: any) => ({
+            id_linea: Number(item.id_linea),
+            cantidad_recibida: parseFloat(item.cantidad_recibida) || 0,
+            producto_codigo: String(item.producto_codigo),
+            costo_unitario_ars: parseFloat(solicitud.precioUnitario) || 0
+        })),
       };
-      // eslint-disable-next-line
-      const userItem:any = sessionStorage.getItem("user");
+
+      const userItem = sessionStorage.getItem("user");
       const user = userItem ? JSON.parse(userItem) : null;
       if (!user || !token) throw new Error("Error de autenticación.");
       
@@ -207,41 +172,23 @@ export default function SolicitudIngresoPage({ id }: any) {
       });
 
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data?.mensaje || `Error ${response.status}`);
-    }
-    // eslint-disable-next-line
-    catch (error: any) {
-      problema = true;
-      setErrorMensaje(error.message);
+      if (!response.ok) throw new Error(data?.error || data?.mensaje || `Error ${response.status}`);
+      // eslint-disable-next-line
+    } catch (error: any) {
+        problema = true;
+        setErrorMensaje(error.message || "Ocurrió un error desconocido.");
     }
   };
 
   const handleAgregar = async () => {
-    // Esta función se mantiene igual, ya que `nuevaSolicitud` contiene todos los datos del form
-    // y la corrección se hace dentro de `enviarSolicitudAPI`.
     setErrorMensaje('');
-    
-    const nuevoAbonoNum = parseFloat(importeAbonado) || 0;
-    if (nuevoAbonoNum < 0) {
-        setErrorMensaje("El importe a abonar no puede ser negativo.");
-        return;
-    }
-    const totalDeLaOC = parseFloat(importeTotal) || 0;
-    const maximoAbonoPermitido = totalDeLaOC - montoYaAbonadoOC;
-    if (nuevoAbonoNum > maximoAbonoPermitido + 0.001) {
-        setErrorMensaje(`El importe a abonar ($${nuevoAbonoNum.toFixed(2)}) no puede superar la deuda pendiente ($${maximoAbonoPermitido.toFixed(2)}).`);
-        return;
-    }
-    /*if (!idLineaOCOriginal) {
-        setErrorMensaje("Error: No se pudo identificar la línea de la orden de compra.");
-        return;
-    }*/
+  
 
     const nuevaSolicitud = {
-      fecha, proveedor, proveedor_id: proveedorId, producto, codigo, cantidad, precioUnitario, cuenta, iibb, tipo, importeTotal,
+      proveedor_id: proveedorId, producto, codigo, cantidad, precioUnitario, cuenta, iibb, tipo, importeTotal,
       estado_recepcion, cantidad_recepcionada,
       items_recibidos: [{
-         "id_linea": idLineaOCOriginal, "cantidad_recibida": parseFloat(cantidad_recepcionada),
+         "id_linea": idLineaOCOriginal, "cantidad_recibida": parseFloat(cantidad_recepcionada) || 0,
          "costo_unitario_ars": 0, "notas_item": "", "producto_codigo": codigo,
       }],
       ajusteTC, importeAbonado, formaPago, chequePerteneceA,
@@ -255,8 +202,8 @@ export default function SolicitudIngresoPage({ id }: any) {
     }
   };
 
-  // La función del PDF y el JSX se mantienen igual que en la respuesta anterior.
   const handleDescargarPDF = () => {
+    // La lógica del PDF se mantiene igual
     const doc = new jsPDF();
     const productoInfo = productosDelContexto.find(p => p.id.toString() === producto);
     const proveedorInfo = proveedores.find(p => p.id.toString() === proveedorId);
@@ -289,20 +236,8 @@ export default function SolicitudIngresoPage({ id }: any) {
 
     doc.setFontSize(14); doc.text('Información de Recepción:', 20, y); y += 8; doc.setFontSize(12);
     agregarCampo('Estado Recepción:', estado_recepcion);
-    agregarCampo('Cantidad Recepcionada:', cantidad_recepcionada);
+    agregarCampo('Cantidad Recepcionada (Total):', `${cantidadYaRecibida + parseFloat(cantidad_recepcionada || '0')} ${tipo}`);
     agregarCampo('N° Remito Proveedor:', nro_remito_proveedor);
-
-    if(parseFloat(importeAbonado) > 0) {
-      y += 5; doc.line(20, y, 190, y); y += 10;
-      doc.setFontSize(14); doc.text('Detalles del Pago:', 20, y); y += 8; doc.setFontSize(12);
-      agregarCampo('Importe Abonado (Nuevo):', `$${parseFloat(importeAbonado).toFixed(2)}`);
-      agregarCampo('Forma de Pago:', formaPago);
-      if(formaPago === 'Cheque') {
-        agregarCampo('Cheque Perteneciente a:', chequePerteneceA);
-      }
-      agregarCampo('Tipo de Caja:', tipoCaja);
-    }
-    
     doc.save(`Orden_de_Compra_${id}.pdf`);
   };
 
@@ -319,6 +254,11 @@ export default function SolicitudIngresoPage({ id }: any) {
       placeholderParaImporteAbonado = `Deuda pendiente: $${deudaActual.toFixed(2)}`;
     }
   }
+
+  // --- LÓGICA PARA EL PLACEHOLDER DE CANTIDAD ---
+  const cantidadSolicitadaNum = parseFloat(cantidad) || 0;
+  const cantidadPendiente = cantidadSolicitadaNum - cantidadYaRecibida;
+  const placeholderParaCantidad = `Pendiente: ${cantidadPendiente.toFixed(2)} ${tipo}`;
 
   return (
     <div className="min-h-screen flex flex-col items-center bg-[#20119d] px-4 py-10">
@@ -370,10 +310,27 @@ export default function SolicitudIngresoPage({ id }: any) {
               <option value="Completa">Completa</option> <option value="Parcial">Parcial</option> <option value="Extra">Extra</option> <option value="Con Daños">Con Daños</option>
             </select>
           </div>
+          
+          {/* --- CAMPO MODIFICADO --- */}
           <div>
             <label htmlFor="cantidad_recepcionada" className={labelClass}>Cantidad Recepcionada *</label>
-            <input id="cantidad_recepcionada" type="number" min="0" value={cantidad_recepcionada} onChange={(e) => setCantidadRecepcionada(e.target.value)} className={baseInputClass} required/>
+            <input 
+                id="cantidad_recepcionada" 
+                type="number" 
+                min="0" 
+                value={cantidad_recepcionada} 
+                onChange={(e) => setCantidadRecepcionada(e.target.value)} 
+                className={baseInputClass} 
+                placeholder={placeholderParaCantidad}
+                required
+            />
+            {cantidadYaRecibida > 0 && (
+                <p className="text-xs text-gray-300 mt-1">
+                    Ya recibido: {cantidadYaRecibida.toFixed(2)} {tipo}
+                </p>
+            )}
           </div>
+          
           <div>
             <label htmlFor="nro_remito_proveedor" className={labelClass}>N° Remito Proveedor *</label>
             <input id="nro_remito_proveedor" type="text" value={nro_remito_proveedor} onChange={(e) => setNroRemitoProveedor(e.target.value)} className={baseInputClass} required />
@@ -404,8 +361,8 @@ export default function SolicitudIngresoPage({ id }: any) {
            <div className="md:col-span-1">
             <label htmlFor="ajusteTC" className={labelClass}>Ajuste x TC</label>
             <select id="ajusteTC" value={ajusteTC} onChange={(e) => setAjusteTC(e.target.value)} className={`${baseInputClass}`}>
-              <option value="true">Sí</option>
-              <option value="false">No</option>
+              <option value="True">Sí</option>
+              <option value="False">No</option>
             </select>
           </div>
 
@@ -423,7 +380,7 @@ export default function SolicitudIngresoPage({ id }: any) {
         <div className="flex items-center justify-between mt-8">
             <button onClick={handleDescargarPDF} type="button" className="bg-blue-500 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-600 transition">Descargar</button>
             <div className="flex gap-4">
-              <button onClick={handleAgregar} disabled={(estadoOC !== 'Aprobado' && estadoOC !== 'Con Deuda' && estadoOC !== 'Pendiente') || !cantidad_recepcionada || !nro_remito_proveedor.trim()} className="bg-green-500 text-white px-6 py-3 rounded-lg font-semibold hover:bg-green-600 disabled:opacity-50">Registrar ingreso</button>
+              <button onClick={handleAgregar} className="bg-green-500 text-white px-6 py-3 rounded-lg font-semibold hover:bg-green-600">Registrar ingreso</button>
                <button onClick={() => router.back()} type="button" className="bg-gray-500 text-white px-6 py-3 rounded-lg font-semibold hover:bg-gray-600 transition">Volver</button>
             </div>
         </div>

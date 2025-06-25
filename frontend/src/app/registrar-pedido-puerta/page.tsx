@@ -71,7 +71,6 @@ const TicketPuertaComponent: React.FC<{
     nombreVendedor,
     productos,
     productosContext,
-    isOriginal
 }) => {
     return (
         <div className="presupuesto-container">
@@ -85,9 +84,7 @@ const TicketPuertaComponent: React.FC<{
                     <p>📞 4261 3605</p>
                     <p>📸 quimex_berazategui</p>
                 </div>
-                <div className="copia-info" style={{ fontWeight: 'bold', fontSize: '0.8em', textAlign: 'center', marginTop: '5px' }}>
-                    {isOriginal ? 'ORIGINAL' : 'DUPLICADO'}
-                </div>
+            
             </header>
             <section className="datos-pedido">
                 <table className="tabla-datos-principales"><tbody>
@@ -95,17 +92,19 @@ const TicketPuertaComponent: React.FC<{
                     <tr><td>FECHA</td><td>{formData.fechaEmision ? new Date(formData.fechaEmision).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'}) : ''}</td></tr>
                     <tr><td>CLIENTE</td><td>CONSUMIDOR FINAL</td></tr>
                     <tr><td>VENDEDOR</td><td>{nombreVendedor ? nombreVendedor.charAt(0).toUpperCase() + nombreVendedor.slice(1) : '-'}</td></tr>
-                    <tr><td>SUBTOTAL (Productos)</td><td className="text-right">$ {montoBaseProductos.toFixed(2)}</td></tr>
+                    <tr><td>SUBTOTAL (Productos)</td><td>$ {montoBaseProductos.toFixed(2)}</td></tr>
+                    <tr><td>TOTAL FINAL</td><td className= "font-bold">$ {displayTotal.toFixed(2)}</td></tr>
                 </tbody></table>
                 <table className="tabla-datos-secundarios"><tbody>
                     {totalCalculadoApi && totalCalculadoApi.recargos.transferencia > 0 && <tr><td>RECARGO ({totalCalculadoApi.forma_pago_aplicada})</td><td className="text-right">$ {totalCalculadoApi.recargos.transferencia.toFixed(2)}</td></tr>}
                     {totalCalculadoApi && totalCalculadoApi.recargos.factura_iva > 0 && <tr><td>{formData.requiereFactura ? "IVA (Factura)" : "Recargo (Factura)"}</td><td className="text-right">$ {totalCalculadoApi.recargos.factura_iva.toFixed(2)}</td></tr>}
-                    <tr><td>TOTAL FINAL</td><td className="text-right font-bold">$ {displayTotal.toFixed(2)}</td></tr>
+                    
                 </tbody></table>
             </section>
             <section className="detalle-productos">
                 <table className="tabla-items">
-                    <thead><tr><th>ITEM</th><th>PRODUCTO</th><th>OBSERV.</th><th>CANTIDAD</th><th>SUBTOTAL</th></tr></thead>
+                    {/* // <-- CAMBIO: Se eliminó el <th> de Observaciones. */}
+                    <thead><tr><th>ITEM</th><th>PRODUCTO</th><th>CANTIDAD</th><th>SUBTOTAL</th></tr></thead>
                     <tbody>
                         {productos.filter(p => p.producto && p.qx > 0).map((item, index) => {
                           // eslint-disable-next-line
@@ -114,13 +113,14 @@ const TicketPuertaComponent: React.FC<{
                                 <tr key={`print-item-${index}`}>
                                     <td>{index + 1}</td>
                                     <td>{pInfo?.nombre || `ID: ${item.producto}`}</td>
-                                    <td>{item.observacion || '-'}</td>
+                                    {/* // <-- CAMBIO: Se eliminó la celda <td> de Observaciones. */}
                                     <td className="text-center">{item.qx}</td>
                                     <td className="text-right">$ {item.total.toFixed(2)}</td>
                                 </tr>);
                         })}
+                        {/* // <-- CAMBIO: Se ajustaron las celdas vacías a 4 columnas. */}
                         {Array.from({ length: Math.max(0, 12 - productos.filter(p => p.producto && p.qx > 0).length) }).map((_, i) =>
-                            <tr key={`empty-row-${i}`} className="empty-row"><td> </td><td> </td><td> </td><td> </td><td> </td></tr>)}
+                            <tr key={`empty-row-${i}`} className="empty-row"><td> </td><td> </td><td> </td><td> </td></tr>)}
                     </tbody>
                 </table>
             </section>

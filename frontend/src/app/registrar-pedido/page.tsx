@@ -79,7 +79,6 @@ const TicketComponent: React.FC<{
     baseTotalConRecargos,
     productos,
     productosContext,
-    isOriginal
 }) => {
     return (
         <div className="presupuesto-container">
@@ -93,28 +92,26 @@ const TicketComponent: React.FC<{
                     <p>📞 4261 3605</p>
                     <p>📸 quimex_berazategui</p>
                 </div>
-                <div className="copia-info" style={{ fontWeight: 'bold', fontSize: '0.8em', textAlign: 'center', marginTop: '5px' }}>
-                    {isOriginal ? 'ORIGINAL' : 'DUPLICADO'}
-                </div>
+                {/* // <-- CAMBIO: Se eliminó el div que mostraba "ORIGINAL" o "DUPLICADO". */}
             </header>
             <section className="datos-pedido">
                 <table className="tabla-datos-principales"><tbody>
                     <tr><td>PEDIDO</td><td>NUEVO</td></tr>
                     <tr><td>FECHA</td><td>{formData.fechaEmision ? new Date(formData.fechaEmision).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'}) : ''}</td></tr>
                     <tr><td>CLIENTE</td><td>{formData.nombre || (formData.clienteId ? `Cliente ID: ${formData.clienteId}` : 'CONSUMIDOR FINAL')}</td></tr>
-                    <tr><td>SUBTOTAL (Productos)</td><td className="text-right">$ {montoBaseProductos.toFixed(2)}</td></tr>
-                </tbody></table>
-                <table className="tabla-datos-secundarios"><tbody>
+                    <tr><td>SUBTOTAL (Productos)</td><td>$ {montoBaseProductos.toFixed(2)}</td></tr>
                     <tr><td>DIRECCIÓN</td><td>{formData.direccion || '-'}</td></tr>
                     {totalCalculadoApi && totalCalculadoApi.recargos.transferencia > 0 && <tr><td>RECARGO ({totalCalculadoApi.forma_pago_aplicada})</td><td className="text-right">$ {totalCalculadoApi.recargos.transferencia.toFixed(2)}</td></tr>}
                     {totalCalculadoApi && totalCalculadoApi.recargos.factura_iva > 0 && <tr><td>{formData.requiereFactura ? "IVA (Factura)" : "Recargo (Factura)"}</td><td className="text-right">$ {totalCalculadoApi.recargos.factura_iva.toFixed(2)}</td></tr>}
-                    {formData.descuentoTotal > 0 && <tr><td>DESCUENTO TOTAL ({formData.descuentoTotal}%)</td><td className="text-right text-red-600 print:text-red-600">- $ {(baseTotalConRecargos * (formData.descuentoTotal / 100)).toFixed(2)}</td></tr>}
-                    <tr><td>TOTAL FINAL</td><td className="text-right font-bold">$ {displayTotal.toFixed(2)}</td></tr>
+                    {formData.descuentoTotal > 0 && <tr><td>DESCUENTO TOTAL ({formData.descuentoTotal}%)</td><td className="text-red-600 print:text-red-600">- $ {(baseTotalConRecargos * (formData.descuentoTotal / 100)).toFixed(2)}</td></tr>}
+                    <tr><td>TOTAL FINAL</td><td className="font-bold">$ {displayTotal.toFixed(2)}</td></tr>
                 </tbody></table>
+                
             </section>
             <section className="detalle-productos">
                 <table className="tabla-items">
-                    <thead><tr><th>ITEM</th><th>PRODUCTO</th><th>OBSERV.</th><th>CANT.</th><th>DESC.%</th><th>SUBTOTAL</th></tr></thead>
+                    {/* // <-- CAMBIO: Se eliminó la cabecera <th> de Observaciones. */}
+                    <thead><tr><th>ITEM</th><th>PRODUCTO</th><th>CANT.</th><th>DESC.%</th><th>SUBTOTAL</th></tr></thead>
                     <tbody>
                         {productos.filter(p => p.producto && p.qx > 0).map((item, index) => {
                           // eslint-disable-next-line
@@ -123,19 +120,19 @@ const TicketComponent: React.FC<{
                                 <tr key={`print-item-${index}`}>
                                     <td>{index + 1}</td>
                                     <td>{pInfo?.nombre || `ID: ${item.producto}`}</td>
-                                    <td>{item.observacion || '-'}</td>
+                                    {/* // <-- CAMBIO: Se eliminó la celda <td> de Observaciones. */}
                                     <td className="text-center">{item.qx}</td>
                                     <td className="text-center">{item.descuento > 0 ? `${item.descuento}%` : '-'}</td>
                                     <td className="text-right">$ {item.total.toFixed(2)}</td>
                                 </tr>);
                         })}
+                        {/* // <-- CAMBIO: Se ajustaron las celdas vacías a 5 columnas. */}
                         {Array.from({ length: Math.max(0, 12 - productos.filter(p => p.producto && p.qx > 0).length) }).map((_, i) =>
-                            <tr key={`empty-row-${i}`} className="empty-row"><td> </td><td> </td><td> </td><td> </td><td> </td><td> </td></tr>)}
+                            <tr key={`empty-row-${i}`} className="empty-row"><td> </td><td> </td><td> </td><td> </td><td> </td></tr>)}
                     </tbody>
                 </table>
             </section>
             <footer className="presupuesto-footer">
-                <p>Precios sujetos a modificaciones sin previo aviso. Presupuesto válido por 7 días.</p>
             </footer>
         </div>
     );

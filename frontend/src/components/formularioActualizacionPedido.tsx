@@ -55,7 +55,7 @@ const TicketActualizarComponent: React.FC<{
     productos: ProductoPedido[];
     // eslint-disable-next-line
     productosContext: any;
-    isOriginal: boolean;
+    isOriginal: boolean; // Aunque no se use, lo mantenemos por si la prop es requerida
 }> = ({
     id,
     formData,
@@ -64,7 +64,6 @@ const TicketActualizarComponent: React.FC<{
     displayTotalToShow,
     productos,
     productosContext,
-    isOriginal
 }) => {
     return (
         <div className="presupuesto-container">
@@ -78,28 +77,25 @@ const TicketActualizarComponent: React.FC<{
                     <p>📞 4261 3605</p>
                     <p>📸 quimex_berazategui</p>
                 </div>
-                <div className="copia-info" style={{ fontWeight: 'bold', fontSize: '0.8em', textAlign: 'center', marginTop: '5px' }}>
-                    {isOriginal ? 'ORIGINAL' : 'DUPLICADO'}
-                </div>
             </header>
             <section className="datos-pedido">
                 <table className="tabla-datos-principales"><tbody>
-                    <tr><td>PEDIDO</td><td>{id || 'N/A'}</td></tr>
-                    <tr><td>FECHA</td><td>{formData.fechaEmision ? new Date(formData.fechaEmision).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'}) : ''}</td></tr>
-                    <tr><td>CLIENTE</td><td>{formData.nombre || 'CONSUMIDOR FINAL'}</td></tr>
-                    <tr><td>SUBTOTAL (Productos c/desc. ítem)</td><td className="text-right">$ {montoBaseProductos.toFixed(2)}</td></tr>
+                    <tr><td className="font-bold">PEDIDO</td><td>{id || 'N/A'}</td></tr>
+                    <tr><td className="font-bold">FECHA</td><td>{formData.fechaEmision ? new Date(formData.fechaEmision).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'}) : ''}</td></tr>
+                    <tr><td className="font-bold">CLIENTE</td><td>{formData.nombre || 'CONSUMIDOR FINAL'}</td></tr>
+                    <tr><td className="font-bold">SUBTOTAL </td><td>$ {montoBaseProductos.toFixed(2)}</td></tr>
+                    {/* // <-- CAMBIO: Se añadió la clase font-bold para unificar el estilo. */}
+                    <tr><td className="font-bold">DIRECCIÓN</td><td>{formData.direccion || '-'}</td></tr>
+                    {totalCalculadoApi && totalCalculadoApi.recargos.transferencia > 0 && <tr><td className="font-bold">RECARGO ({totalCalculadoApi.forma_pago_aplicada})</td><td className="text-right">$ {totalCalculadoApi.recargos.transferencia.toFixed(2)}</td></tr>}
+                    {totalCalculadoApi && totalCalculadoApi.recargos.factura_iva > 0 && <tr><td className="font-bold">{formData.requiereFactura ? "IVA (Factura)" : "Recargo (Factura)"}</td><td className="text-right">$ {totalCalculadoApi.recargos.factura_iva.toFixed(2)}</td></tr>}
+                    {formData.descuentoTotal > 0 && <tr><td className="font-bold">DESCUENTO GLOBAL ({formData.descuentoTotal}%)</td><td className="text-red-600 print:text-red-600">- $ {( (totalCalculadoApi ? totalCalculadoApi.monto_final_con_recargos : montoBaseProductos) * (formData.descuentoTotal / 100)).toFixed(2)}</td></tr>}
+                    <tr><td className="font-bold">TOTAL FINAL</td><td className="font-bold">$ {displayTotalToShow.toFixed(2)}</td></tr>
                 </tbody></table>
-                <table className="tabla-datos-secundarios"><tbody>
-                    <tr><td>DIRECCIÓN</td><td>{formData.direccion || '-'}</td></tr>
-                    {totalCalculadoApi && totalCalculadoApi.recargos.transferencia > 0 && <tr><td>RECARGO ({totalCalculadoApi.forma_pago_aplicada})</td><td className="text-right">$ {totalCalculadoApi.recargos.transferencia.toFixed(2)}</td></tr>}
-                    {totalCalculadoApi && totalCalculadoApi.recargos.factura_iva > 0 && <tr><td>{formData.requiereFactura ? "IVA (Factura)" : "Recargo (Factura)"}</td><td className="text-right">$ {totalCalculadoApi.recargos.factura_iva.toFixed(2)}</td></tr>}
-                    {formData.descuentoTotal > 0 && <tr><td>DESCUENTO GLOBAL ({formData.descuentoTotal}%)</td><td className="text-right text-red-600 print:text-red-600">- $ {( (totalCalculadoApi ? totalCalculadoApi.monto_final_con_recargos : montoBaseProductos) * (formData.descuentoTotal / 100)).toFixed(2)}</td></tr>}
-                    <tr><td>TOTAL FINAL</td><td className="text-right font-bold">$ {displayTotalToShow.toFixed(2)}</td></tr>
-                </tbody></table>
+             
             </section>
             <section className="detalle-productos">
                 <table className="tabla-items">
-                    <thead><tr><th>ITEM</th><th>PRODUCTO</th><th>OBSERV.</th><th>CANT.</th><th>DESC.%</th><th>SUBTOTAL</th></tr></thead>
+                    <thead><tr><th>ITEM</th><th>PRODUCTO</th><th>CANT.</th><th>DESC.%</th><th>SUBTOTAL</th></tr></thead>
                     <tbody>
                     {productos.filter(p => p.producto && p.qx > 0).map((item, index) => {
                       // eslint-disable-next-line
@@ -108,19 +104,17 @@ const TicketActualizarComponent: React.FC<{
                         <tr key={`print-item-${index}`}>
                             <td>{index + 1}</td>
                             <td>{pInfo?.nombre || `ID: ${item.producto}`}</td>
-                            <td>{item.observacion || '-'}</td>
                             <td className="text-center">{item.qx}</td>
                             <td className="text-center">{item.descuento > 0 ? `${item.descuento}%` : '-'}</td>
                             <td className="text-right">$ {item.total.toFixed(2)}</td>
                         </tr>);
                     })}
                     {Array.from({ length: Math.max(0, 12 - productos.filter(p => p.producto && p.qx > 0).length) }).map((_, i) =>
-                        <tr key={`empty-row-${i}`} className="empty-row"><td> </td><td> </td><td> </td><td> </td><td> </td><td> </td></tr>)}
+                        <tr key={`empty-row-${i}`} className="empty-row"><td> </td><td> </td><td> </td><td> </td><td> </td></tr>)}
                     </tbody>
                 </table>
             </section>
             <footer className="presupuesto-footer">
-                <p>Precios sujetos a modificaciones sin previo aviso. Presupuesto válido por 7 días.</p>
                  {formData.observaciones && <p className="observaciones-generales"><strong>Observaciones Generales:</strong> {formData.observaciones}</p>}
             </footer>
         </div>
@@ -196,9 +190,9 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         id_detalle: detalle.id,
         producto: detalle.producto_id,
         qx: detalle.cantidad,
-        precio: detalle.precio_unitario_base_ars || detalle.precio_unitario_venta_ars || 0,
+        precio: detalle.precio_unitario_venta_ars || 0,
         descuento: detalle.descuento_item_porcentaje || 0,
-        total: detalle.precio_total_item_ars || 0,
+        total: detalle.cantidad < 1 ? detalle.precio_unitario_venta_ars : (detalle.precio_total_item_ars || 0),
         observacion: detalle.observacion_item || "",
       })) || [];
       setProductos(productosCargados.length > 0 ? productosCargados : [initialProductoItem]);
@@ -651,7 +645,8 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
                       className="text-sm react-select-container"
                       classNamePrefix="react-select"
                     />
-                    <input type="number" name="qx" placeholder="Cant." min="0" step="any" value={getNumericInputValue(item.qx)} onChange={(e) => handleProductRowInputChange(index, e)}  required className={`${inputBaseClasses} text-sm text-center no-spinners`}/>
+                    <input type="number" name="qx" placeholder="Cant." value={item.qx === 0 ? '' : item.qx} onChange={(e) => handleProductRowInputChange(index, e)} min="0" required step="any"
+                        className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-sm text-center focus:outline-none focus:ring-1 focus:ring-indigo-500 no-spinners"/>
                     <input type="text" name="observacion" placeholder="Obs. ítem" value={item.observacion || ''} onChange={(e) => handleProductRowInputChange(index, e)} className={`${inputBaseClasses} text-sm`}/>
                     <input type="number" name="descuento" placeholder="0%" value={getNumericInputValue(item.descuento)} onChange={(e) => handleProductRowInputChange(index, e)} min="0" max="100" className={`${inputBaseClasses} text-sm text-center no-spinners`}/>
                     <input type="text" value={`$ ${item.precio.toFixed(2)}`} readOnly title="Precio unitario con descuento por volumen" className={`${inputReadOnlyClasses} text-sm text-right`}/>
@@ -717,7 +712,8 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         .no-spinners {
           -moz-appearance: textfield;
         }
-        .presupuesto-container { font-family: Arial, sans-serif; color: #333; margin: 20px; }
+        /* // <-- CAMBIO: Se cambió el color principal a negro (#000) */
+        .presupuesto-container { font-family: Arial, sans-serif; color: #000; margin: 20px; }
         .presupuesto-header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom:15px;}
         .logo-container { display:flex; flex-direction:column; align-items:center;}
         .logo { max-height: 70px; margin-bottom: 5px; }
@@ -727,7 +723,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         .datos-pedido { display: flex; justify-content: space-between; margin-bottom: 15px; font-size: 0.9em; }
         .tabla-datos-principales, .tabla-datos-secundarios { width: 48%; border-collapse: collapse; }
         .tabla-datos-principales td, .tabla-datos-secundarios td { padding: 3px 5px; border: 1px solid #ccc;}
-        .tabla-datos-principales td:first-child, .tabla-datos-secundarios td:first-child { font-weight: bold; background-color: #f0f0f0; width:40%;}
+        .tabla-datos-principales td:first-child, .tabla-datos-secundarios td:first-child { background-color: #f0f0f0; width:40%;}
         .tabla-items { width: 100%; border-collapse: collapse; font-size: 0.9em; margin-bottom: 15px; }
         .tabla-items th, .tabla-items td { border: 1px solid #ccc; padding: 4px; text-align: left; }
         .tabla-items th { background-color: #e0e0e0; font-weight: bold; }
@@ -738,6 +734,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         .presupuesto-footer .observaciones-generales { margin-top: 10px; text-align: left; font-style: italic;}
         .text-red-600 { color: #E53E3E; }
         .print\\:text-red-600 { color: #E53E3E !important; }
+        .font-bold { font-weight: bold; }
 
         .react-select__control {
             border-color: rgb(209 213 219) !important;

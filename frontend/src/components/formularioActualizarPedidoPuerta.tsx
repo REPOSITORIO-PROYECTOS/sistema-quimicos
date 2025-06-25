@@ -115,7 +115,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         producto: detalle.producto_id,
         qx: detalle.cantidad,
         precio: detalle.precio_unitario_venta_ars || 0,
-        total: detalle.precio_total_item_ars || 0,
+        total: detalle.cantidad < 1 ? detalle.precio_unitario_venta_ars : (detalle.precio_total_item_ars || 0),
         observacion: detalle.observacion_item || "",
       })) || [];
       
@@ -289,7 +289,6 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     setErrorMensaje(''); 
     setSuccessMensaje('');
 
-    // --- Validaciones ---
     if (!id) {
       setErrorMensaje("ID de pedido no válido para actualizar.");
       return;
@@ -303,14 +302,12 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         return;
     }
 
-    // <--- CAMBIO: Nueva validación de pago completo
     const totalDelPedido = totalCalculadoApi ? totalCalculadoApi.monto_final_con_recargos : montoBaseProductos;
     if (totalDelPedido > 0 && formData.montoPagado < totalDelPedido) {
         setErrorMensaje(`El monto pagado ($${formData.montoPagado.toFixed(2)}) es menor al total del pedido ($${totalDelPedido.toFixed(2)}).`);
         return;
     }
 
-    // Si todas las validaciones pasan, se procede con el envío
     setIsSubmitting(true);
     const token = localStorage.getItem("token");
     if (!token) { 
@@ -329,7 +326,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
       observaciones: formData.observaciones || "",
       requiere_factura: formData.requiereFactura,
       monto_total_base: montoBaseProductos,
-      monto_total_final_con_recargos: totalDelPedido, // <--- CAMBIO: Usamos la variable ya calculada
+      monto_total_final_con_recargos: totalDelPedido,
     };
  
     try {
@@ -344,7 +341,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
       } else {
         setSuccessMensaje("¡Pedido actualizado con éxito!");
         handleImprimirPresupuesto();
-        setTimeout(() => irAccionesPuerta(), 1500); // Dar tiempo para ver el mensaje
+        setTimeout(() => irAccionesPuerta(), 1500);
       }
       //eslint-disable-next-line
     } catch (err: any) {
@@ -366,7 +363,6 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     const numPedido = id || "Desconocido";
     const originalTitle = document.title;
     document.title = `Presupuesto QuiMex - Pedido ${numPedido} - ${nombreCliente} (${fechaFormateada})`;
-    window.print();
     window.print();
     setTimeout(() => {document.title = originalTitle;}, 1000);
   };
@@ -421,7 +417,6 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
 
             <fieldset className="border p-4 rounded-md">
               <legend className="text-lg font-medium text-gray-700 px-2">Productos del Pedido</legend>
-              {/* <--- CAMBIO: Se ajustó el orden y tamaño de las columnas en la grilla */}
               <div className="mb-2 hidden md:grid md:grid-cols-[1fr_90px_1fr_100px_100px] items-center gap-2 font-semibold text-sm text-gray-600 px-3">
                 <span>Producto</span>
                 <span className="text-center">Cant.</span>
@@ -431,16 +426,10 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
               </div>
               <div className="space-y-2">
                 {productos.map((item, index) => (
-                  // <--- CAMBIO: Se ajustó el orden y tamaño de las columnas para que coincida con el encabezado
                   <div key={index} className="grid grid-cols-1 md:grid-cols-[1fr_90px_1fr_100px_100px] items-center gap-2 border-b pb-1 last:border-b-0">
                     <input type="text" readOnly disabled value={productosContext.productos.find(p=>p.id===item.producto)?.nombre||`ID:${item.producto}`} className="shadow-sm border rounded w-full py-1 px-3 text-gray-700 bg-gray-100"/>
-                    
-                    {/* <--- CAMBIO: Campo de Cantidad movido aquí */}
                     <input type="number" readOnly disabled value={item.qx===0?'':item.qx} className="shadow-sm border rounded w-full py-1 px-2 text-gray-700 text-center bg-gray-100"/>
-                    
-                    {/* <--- CAMBIO: Campo de Observación movido aquí */}
                     <input type="text" readOnly disabled value={item.observacion || ''} className="shadow-sm border rounded w-full py-1 px-3 text-gray-700 bg-gray-100 text-sm"/>
-                    
                     <input type="text" readOnly disabled value={`$ ${item.precio.toFixed(2)}`} className="shadow-sm border rounded w-full py-1 px-2 text-gray-700 text-right bg-gray-100"/>
                     <input type="text" readOnly disabled value={`$ ${item.total.toFixed(2)}`} className="shadow-sm border rounded w-full py-1 px-2 text-gray-700 text-right bg-gray-100"/>
                   </div>
@@ -482,51 +471,106 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         </div>
       </div>
       
-      <div id="presupuesto-imprimible" className="hidden print:block presupuesto-container">
-        <header className="presupuesto-header">
-          <div className="logo-container"><img src="/logo.png" alt="QuiMex" className="logo" /><p className="sub-logo-text">PRESUPUESTO NO VALIDO COMO FACTURA</p></div>
-          <div className="info-empresa"><p>📱 11 2395 1494</p><p>📞 4261 3605</p><p>📸 quimex_berazategui</p></div>
-        </header>
-        <section className="datos-pedido">
-          <table className="tabla-datos-principales"><tbody>
-            <tr><td>PEDIDO</td><td>{id || 'N/A'}</td></tr>
-            <tr><td>FECHA</td><td>{formData.fechaEmision ? new Date(formData.fechaEmision).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'}) : ''}</td></tr>
-            <tr><td>CLIENTE</td><td>{formData.nombre || 'CONSUMIDOR FINAL'}</td></tr>
-            <tr><td>VENDEDOR</td><td>{nombreVendedor ? nombreVendedor.charAt(0).toUpperCase() + nombreVendedor.slice(1) : '-'}</td></tr> 
-            <tr><td>SUBTOTAL (Productos)</td><td className="text-right">$ {montoBaseProductos.toFixed(2)}</td></tr>
-          </tbody></table>
-          <table className="tabla-datos-secundarios"><tbody>
-            <tr><td>DIRECCIÓN</td><td>{formData.direccion || '-'}</td></tr>
-            {totalCalculadoApi && totalCalculadoApi.recargos.transferencia > 0 && <tr><td>RECARGO ({totalCalculadoApi.forma_pago_aplicada})</td><td className="text-right">$ {totalCalculadoApi.recargos.transferencia.toFixed(2)}</td></tr>}
-            {totalCalculadoApi && totalCalculadoApi.recargos.factura_iva > 0 && <tr><td>{formData.requiereFactura ? "IVA (Factura)" : "Recargo (Factura)"}</td><td className="text-right">$ {totalCalculadoApi.recargos.factura_iva.toFixed(2)}</td></tr>}
-            <tr><td>TOTAL FINAL</td><td className="text-right">$ {displayTotal.toFixed(2)}</td></tr>
-          </tbody></table>
-        </section>
-        <section className="detalle-productos">
-          <table className="tabla-items">
-            {/* <--- CAMBIO: Cabecera con la nueva columna */}
-            <thead><tr><th>ITEM</th><th>PRODUCTO</th><th>CANTIDAD</th><th>OBSERV.</th><th>SUBTOTAL</th></tr></thead>
-            <tbody>
-              {productos.filter(p => p.producto && p.qx > 0).map((item, index) => {
-                const pInfo = productosContext.productos.find(p => p.id === item.producto);
-                return (
-                  <tr key={`print-item-${index}`}>
-                    <td>{index + 1}</td>
-                    <td>{pInfo?.nombre || `ID: ${item.producto}`}</td>
-                    {/* <--- CAMBIO: Celdas intercambiadas */}
-                    <td className="text-center">{item.qx}</td>
-                    <td>{item.observacion || '-'}</td>
-                    <td className="text-right">$ {item.total.toFixed(2)}</td>
-                  </tr>
-                );
-              })}
-              {/* <--- CAMBIO: Ajuste de celdas vacías */}
-              {Array.from({ length: Math.max(0, 12 - productos.filter(p => p.producto && p.qx > 0).length) }).map((_, i) => 
-                <tr key={`empty-row-${i}`} className="empty-row"><td> </td><td> </td><td> </td><td> </td><td> </td></tr>)}
-            </tbody>
-          </table>
-        </section>
+      {/* // <-- CAMBIO: El contenedor principal ahora envuelve ambos tickets */}
+      <div id="presupuesto-imprimible" className="hidden print:block">
+        {/* --- INICIO DEL PRIMER TICKET --- */}
+        <div className="presupuesto-container">
+          <header className="presupuesto-header">
+            <div className="logo-container"><img src="/logo.png" alt="QuiMex" className="logo" /><p className="sub-logo-text">PRESUPUESTO NO VALIDO COMO FACTURA</p></div>
+            <div className="info-empresa"><p>📱 11 2395 1494</p><p>📞 4261 3605</p><p>📸 quimex_berazategui</p></div>
+          </header>
+          <section className="datos-pedido">
+            <table className="tabla-datos-principales"><tbody>
+              <tr><td className="font-bold">PEDIDO</td><td>{id || 'N/A'}</td></tr>
+              <tr><td className="font-bold">FECHA</td><td>{formData.fechaEmision ? new Date(formData.fechaEmision).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'}) : ''}</td></tr>
+              <tr><td className="font-bold">CLIENTE</td><td>{formData.nombre || 'CONSUMIDOR FINAL'}</td></tr>
+              <tr><td className="font-bold">VENDEDOR</td><td>{nombreVendedor ? nombreVendedor.charAt(0).toUpperCase() + nombreVendedor.slice(1) : '-'}</td></tr> 
+              <tr><td className="font-bold">SUBTOTAL (Productos)</td><td>$ {montoBaseProductos.toFixed(2)}</td></tr>
+              <tr><td className="font-bold">TOTAL FINAL</td><td>$ {displayTotal.toFixed(2)}</td></tr>
+            </tbody></table>
+            <table className="tabla-datos-secundarios"><tbody>
+              {totalCalculadoApi && totalCalculadoApi.recargos.transferencia > 0 && <tr><td>RECARGO ({totalCalculadoApi.forma_pago_aplicada})</td><td className="text-right">$ {totalCalculadoApi.recargos.transferencia.toFixed(2)}</td></tr>}
+              {totalCalculadoApi && totalCalculadoApi.recargos.factura_iva > 0 && <tr><td>{formData.requiereFactura ? "IVA (Factura)" : "Recargo (Factura)"}</td><td className="text-right">$ {totalCalculadoApi.recargos.factura_iva.toFixed(2)}</td></tr>}
+              
+            </tbody></table>
+          </section>
+          <section className="detalle-productos">
+            <table className="tabla-items">
+              {/* // <-- CAMBIO: Se quitó la cabecera de Observaciones */}
+              <thead><tr><th>ITEM</th><th>PRODUCTO</th><th>CANTIDAD</th><th>SUBTOTAL</th></tr></thead>
+              <tbody>
+                {productos.filter(p => p.producto && p.qx > 0).map((item, index) => {
+                  const pInfo = productosContext.productos.find(p => p.id === item.producto);
+                  return (
+                    <tr key={`print-item-1-${index}`}>
+                      <td>{index + 1}</td>
+                      <td>{pInfo?.nombre || `ID: ${item.producto}`}</td>
+                      <td className="text-center">{item.qx}</td>
+                      {/* // <-- CAMBIO: Se quitó la celda de Observaciones */}
+                      <td className="text-right">$ {item.total.toFixed(2)}</td>
+                    </tr>
+                  );
+                })}
+                {/* // <-- CAMBIO: Ajuste de celdas vacías para que coincida con 4 columnas */}
+                {Array.from({ length: Math.max(0, 12 - productos.filter(p => p.producto && p.qx > 0).length) }).map((_, i) => 
+                  <tr key={`empty-row-1-${i}`} className="empty-row"><td> </td><td> </td><td> </td><td> </td></tr>)}
+              </tbody>
+            </table>
+          </section>
+        </div>
+        {/* --- FIN DEL PRIMER TICKET --- */}
+
+        {/* // <-- CAMBIO: Separador de línea de puntos entre los tickets */}
+        <div style={{ borderTop: '3px dotted #888', margin: '40px 0', width: '100%' }}></div>
+
+        {/* --- INICIO DEL SEGUNDO TICKET (COPIA EXACTA) --- */}
+        <div className="presupuesto-container">
+          <header className="presupuesto-header">
+            <div className="logo-container"><img src="/logo.png" alt="QuiMex" className="logo" /><p className="sub-logo-text">PRESUPUESTO NO VALIDO COMO FACTURA</p></div>
+            <div className="info-empresa"><p>📱 11 2395 1494</p><p>📞 4261 3605</p><p>📸 quimex_berazategui</p></div>
+          </header>
+          <section className="datos-pedido">
+            <table className="tabla-datos-principales"><tbody>
+              <tr><td>PEDIDO</td><td>{id || 'N/A'}</td></tr>
+              <tr><td>FECHA</td><td>{formData.fechaEmision ? new Date(formData.fechaEmision).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'}) : ''}</td></tr>
+              <tr><td>CLIENTE</td><td>{formData.nombre || 'CONSUMIDOR FINAL'}</td></tr>
+              <tr><td>VENDEDOR</td><td>{nombreVendedor ? nombreVendedor.charAt(0).toUpperCase() + nombreVendedor.slice(1) : '-'}</td></tr> 
+              <tr><td>SUBTOTAL (Productos)</td><td>$ {montoBaseProductos.toFixed(2)}</td></tr>
+              <tr><td>TOTAL FINAL</td><td>$ {displayTotal.toFixed(2)}</td></tr>
+            </tbody></table>
+            <table className="tabla-datos-secundarios"><tbody>
+              {totalCalculadoApi && totalCalculadoApi.recargos.transferencia > 0 && <tr><td>RECARGO ({totalCalculadoApi.forma_pago_aplicada})</td><td className="text-right">$ {totalCalculadoApi.recargos.transferencia.toFixed(2)}</td></tr>}
+              {totalCalculadoApi && totalCalculadoApi.recargos.factura_iva > 0 && <tr><td>{formData.requiereFactura ? "IVA (Factura)" : "Recargo (Factura)"}</td><td className="text-right">$ {totalCalculadoApi.recargos.factura_iva.toFixed(2)}</td></tr>}
+              
+            </tbody></table>
+          </section>
+          <section className="detalle-productos">
+            <table className="tabla-items">
+              {/* // <-- CAMBIO: Se quitó la cabecera de Observaciones */}
+              <thead><tr><th>ITEM</th><th>PRODUCTO</th><th>CANTIDAD</th><th>SUBTOTAL</th></tr></thead>
+              <tbody>
+                {productos.filter(p => p.producto && p.qx > 0).map((item, index) => {
+                  const pInfo = productosContext.productos.find(p => p.id === item.producto);
+                  return (
+                    <tr key={`print-item-2-${index}`}>
+                      <td>{index + 1}</td>
+                      <td>{pInfo?.nombre || `ID: ${item.producto}`}</td>
+                      <td className="text-center">{item.qx}</td>
+                       {/* // <-- CAMBIO: Se quitó la celda de Observaciones */}
+                      <td className="text-right">$ {item.total.toFixed(2)}</td>
+                    </tr>
+                  );
+                })}
+                {/* // <-- CAMBIO: Ajuste de celdas vacías para que coincida con 4 columnas */}
+                {Array.from({ length: Math.max(0, 12 - productos.filter(p => p.producto && p.qx > 0).length) }).map((_, i) => 
+                  <tr key={`empty-row-2-${i}`} className="empty-row"><td> </td><td> </td><td> </td><td> </td></tr>)}
+              </tbody>
+            </table>
+          </section>
+        </div>
+        {/* --- FIN DEL SEGUNDO TICKET --- */}
       </div>
+
       <style jsx global>{`
         .inputD { @apply shadow-sm border rounded w-full py-2 px-3 text-gray-700 bg-gray-100 cursor-not-allowed focus:outline-none; }
         .inputE { @apply shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500; }
