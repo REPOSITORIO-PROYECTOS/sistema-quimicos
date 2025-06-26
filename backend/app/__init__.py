@@ -139,7 +139,8 @@ def create_app(config_object='config.Config'):
             from .blueprints.ventas import ventas_bp
             from .blueprints.costos import costos_bp
             from .blueprints.precios_especiales import precios_especiales_bp # <<<--- NUEVO
-
+            from .blueprints.reportes import reportes_bp
+            
             app.register_blueprint(auth_bp)
             app.register_blueprint(clientes_bp)
             app.register_blueprint(productos_bp)
@@ -151,6 +152,7 @@ def create_app(config_object='config.Config'):
             app.register_blueprint(ventas_bp)
             app.register_blueprint(costos_bp)
             app.register_blueprint(precios_especiales_bp)
+            app.register_blueprint(reportes_bp)
             print("--- INFO [app/__init__.py]: Todos los blueprints registrados.")
 
         except Exception as bp_err:

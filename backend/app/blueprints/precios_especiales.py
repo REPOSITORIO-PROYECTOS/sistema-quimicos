@@ -233,3 +233,87 @@ def eliminar_precio_especial(current_user, precio_id):
         print(f"ERROR [eliminar_precio_especial]: Excepción {e}")
         traceback.print_exc()
         return jsonify({"error": "Error interno al eliminar el precio especial"}), 500
+
+
+@precios_especiales_bp.route('/actualizar-masivamente', methods=['POST'])
+@token_required
+@roles_required(ROLES['ADMIN'])
+def actualizar_precios_masivamente(current_user):
+    """
+    Actualiza TODOS los precios especiales activos aplicando un ajuste porcentual.
+    El payload debe ser un JSON como:
+    {
+        "porcentaje": "5.5",  // El porcentaje a ajustar, como string para precisión
+        "direccion": "subida" // "subida" o "bajada"
+    }
+    """
+    data = request.get_json()
+
+    # --- 1. Validación del Payload ---
+    if not data or 'porcentaje' not in data or 'direccion' not in data:
+        return jsonify({"error": "Faltan datos requeridos: 'porcentaje' y 'direccion'."}), 400
+
+    porcentaje_str = str(data['porcentaje']).strip()
+    direccion = data['direccion'].lower()
+
+    if direccion not in ['subida', 'bajada']:
+        return jsonify({"error": "El campo 'direccion' debe ser 'subida' o 'bajada'."}), 400
+
+    try:
+        porcentaje_decimal = Decimal(porcentaje_str)
+        if porcentaje_decimal < 0:
+            raise ValueError("El porcentaje no puede ser negativo.")
+    except (InvalidOperation, ValueError):
+        return jsonify({"error": "El 'porcentaje' debe ser un número válido y no negativo."}), 400
+
+    # --- 2. Preparación del multiplicador ---
+    # Convertimos el porcentaje (ej. 5.5) a un factor (ej. 1.055)
+    factor_ajuste = Decimal('1') + (porcentaje_decimal / Decimal('100'))
+
+    if direccion == 'bajada':
+        if factor_ajuste == 0: # Evitar división por cero
+             return jsonify({"error": "Un ajuste de bajada del 100% no es posible."}), 400
+        # Para bajar un X%, dividimos por 1 + (X/100)
+        # Ejemplo: bajar 10% es dividir por 1.10
+        factor_multiplicador = Decimal('1') / factor_ajuste
+    else: # subida
+        factor_multiplicador = factor_ajuste
+        
+    try:
+        # --- 3. Consulta y Actualización ---
+        # Seleccionamos todos los precios especiales que están activos
+        precios_a_actualizar = PrecioEspecialCliente.query.filter_by(activo=True).all()
+
+        if not precios_a_actualizar:
+            return jsonify({"message": "No hay precios especiales activos para actualizar."}), 200
+
+        updated_count = 0
+        for precio_esp in precios_a_actualizar:
+            if precio_esp.precio_unitario_fijo_ars is not None and precio_esp.precio_unitario_fijo_ars > 0:
+                # Calculamos el nuevo precio
+                precio_original = precio_esp.precio_unitario_fijo_ars
+                nuevo_precio = precio_original * factor_multiplicador
+                
+                # Opcional: Redondear a una cantidad específica de decimales (ej. 2)
+                # nuevo_precio = round(nuevo_precio, 2) 
+
+                precio_esp.precio_unitario_fijo_ars = nuevo_precio
+                updated_count += 1
+        
+        # --- 4. Confirmación y Respuesta ---
+        if updated_count > 0:
+            db.session.commit()
+            return jsonify({
+                "message": "Actualización masiva completada exitosamente.",
+                "total_precios_actualizados": updated_count,
+                "porcentaje_ajuste": f"{porcentaje_decimal}%",
+                "direccion": direccion
+            }), 200
+        else:
+            return jsonify({"message": "No se realizaron cambios. Ningún precio cumplía los criterios para ser actualizado."}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"ERROR [actualizar_precios_masivamente]: Excepción {e}")
+        traceback.print_exc()
+        return jsonify({"error": "Error interno durante la actualización masiva. No se guardaron los cambios."}), 500

@@ -707,3 +707,118 @@ def detalle_venta_a_dict(detalle):
         # Opcional: añadir el flag si lo incluiste en el modelo
         # "es_precio_especial": detalle.es_precio_especial
     }
+
+# --- Endpoint: Actualizar Venta (Lógica de Recálculo Completo) ---
+@ventas_bp.route('/actualizar/<int:venta_id>', methods=['PUT'])
+@token_required
+@roles_required(ROLES['ADMIN'], ROLES['VENTAS_PEDIDOS'], ROLES['VENTAS_LOCAL']) # O los roles apropiados
+def actualizar_venta(current_user, venta_id):
+    """
+    Actualiza una venta existente recalculando todos sus detalles y totales.
+    Permite cambiar productos, cantidades, cliente, etc.
+    El payload debe ser similar al de 'registrar_venta', incluyendo la lista de 'items'.
+    """
+    venta_db = db.session.get(Venta, venta_id)
+    if not venta_db:
+        return jsonify({"error": "Venta no encontrada"}), 404
+
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Payload JSON vacío"}), 400
+
+    items_payload = data.get('items')
+    if not items_payload or not isinstance(items_payload, list):
+        return jsonify({"error": "El payload debe contener una lista de 'items', incluso si está vacía."}), 400
+
+    try:
+        # --- 1. Borrar todos los detalles de venta antiguos ---
+        DetalleVenta.query.filter_by(venta_id=venta_id).delete()
+        venta_db.detalles = [] # Vaciar la relación en el objeto de la sesión
+        
+        print(f"DEBUG [recalcular_venta]: Detalles antiguos de venta ID {venta_id} eliminados.")
+
+        # --- 2. Recalcular todo desde cero (como en 'registrar_venta') ---
+        detalles_venta_nuevos = []
+        monto_total_base_nuevo = Decimal("0.00")
+        
+        cliente_id_nuevo = data.get('cliente_id', venta_db.cliente_id)
+        if cliente_id_nuevo and not db.session.get(Cliente, cliente_id_nuevo):
+             return jsonify({"error": f"Cliente ID {cliente_id_nuevo} no encontrado."}), 404
+
+        print(f"DEBUG [recalcular_venta]: Procesando {len(items_payload)} nuevos items...")
+        for idx, item_data in enumerate(items_payload):
+            producto_id = item_data.get("producto_id")
+            cantidad_str = str(item_data.get("cantidad", "")).strip().replace(',', '.')
+            if not producto_id or not isinstance(producto_id, int):
+                return jsonify({"error": f"Nuevo Item #{idx+1}: falta/inválido 'producto_id'"}), 400
+            try:
+                cantidad = Decimal(cantidad_str)
+                if cantidad <= 0: raise ValueError("Cantidad debe ser positiva")
+            except (InvalidOperation, ValueError):
+                return jsonify({"error": f"Nuevo Item #{idx+1}: cantidad inválida"}), 400
+
+            precio_u, precio_t, costo_u, coef, error_msg, fue_especial = calcular_precio_item_venta(
+                producto_id, cantidad, cliente_id_nuevo
+            )
+            if error_msg:
+                db.session.rollback()
+                return jsonify({"error": f"Error en nuevo Item #{idx+1} (ProdID:{producto_id}): {error_msg}"}), 400
+            
+            producto_db = db.session.get(Producto, producto_id)
+            detalle_nuevo = DetalleVenta(
+                producto_id=producto_id,
+                cantidad=cantidad,
+                margen_aplicado=producto_db.margen if not fue_especial and producto_db.margen is not None else None,
+                observacion_item=item_data.get("observacion_item"),
+                coeficiente_usado=coef if not fue_especial and coef is not None else None,
+                costo_unitario_momento_ars=costo_u,
+                precio_unitario_venta_ars=precio_u,
+                precio_total_item_ars=precio_t
+            )
+            detalles_venta_nuevos.append(detalle_nuevo)
+            monto_total_base_nuevo += precio_t
+
+        monto_total_base_nuevo = monto_total_base_nuevo.quantize(Decimal("0.01"), ROUND_HALF_UP)
+        print(f"DEBUG [recalcular_venta]: Nuevo monto base calculado: {monto_total_base_nuevo}")
+        
+        # --- 3. Actualizar la cabecera de la venta ---
+        forma_pago_nueva = data.get('forma_pago', venta_db.forma_pago)
+        requiere_factura_nueva = data.get('requiere_factura', venta_db.requiere_factura)
+        monto_pagado_nuevo_str = data.get('monto_pagado_cliente', str(venta_db.monto_pagado_cliente) if venta_db.monto_pagado_cliente is not None else None)
+        
+        monto_final_nuevo, recargo_t_nuevo, recargo_f_nuevo, vuelto_nuevo, error_final = calcular_monto_final_y_vuelto(
+            monto_total_base_nuevo, forma_pago_nueva, requiere_factura_nueva, monto_pagado_nuevo_str
+        )
+        if error_final:
+            db.session.rollback()
+            return jsonify({"error": error_final, "monto_total_base": float(monto_total_base_nuevo)}), 400
+
+        # Asignar todos los nuevos valores a la venta existente
+        venta_db.cliente_id = cliente_id_nuevo
+        venta_db.direccion_entrega = data.get('direccion_entrega', venta_db.direccion_entrega)
+        venta_db.cuit_cliente = data.get('cuit_cliente', venta_db.cuit_cliente)
+        venta_db.observaciones = data.get('observaciones', venta_db.observaciones)
+        venta_db.monto_total = monto_total_base_nuevo
+        venta_db.forma_pago = forma_pago_nueva
+        venta_db.requiere_factura = requiere_factura_nueva
+        venta_db.recargo_transferencia = recargo_t_nuevo if recargo_t_nuevo > 0 else None
+        venta_db.recargo_factura = recargo_f_nuevo if recargo_f_nuevo > 0 else None
+        venta_db.monto_final_con_recargos = monto_final_nuevo
+        venta_db.monto_pagado_cliente = Decimal(monto_pagado_nuevo_str).quantize(Decimal("0.01")) if monto_pagado_nuevo_str is not None else None
+        venta_db.vuelto_calculado = vuelto_nuevo
+        
+        venta_db.detalles = detalles_venta_nuevos
+        
+        # --- 4. Guardar todo en la base de datos ---
+        db.session.commit()
+        print(f"INFO [recalcular_venta]: Venta ID {venta_id} actualizada y recalculada exitosamente.")
+
+        # --- 5. Devolver la venta completa y actualizada ---
+        venta_actualizada = db.session.get(Venta, venta_id)
+        return jsonify(venta_a_dict_completo(venta_actualizada)), 200
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"ERROR [actualizar_venta]: Excepción para venta {venta_id}: {type(e).__name__}")
+        traceback.print_exc()
+        return jsonify({"error": "Error interno al recalcular y actualizar la venta."}), 500
