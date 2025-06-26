@@ -52,6 +52,8 @@ const initialProductos: ProductoPedido[] = [
 ];
 
 const VENDEDORES = ["martin", "moises", "sergio", "gabriel", "mauricio", "elias", "ardiles", "redonedo"];
+ 
+let auxPrecio = 0;
 
 const TicketPuertaComponent: React.FC<{
     formData: IFormData;
@@ -65,7 +67,6 @@ const TicketPuertaComponent: React.FC<{
     isOriginal: boolean;
 }> = ({
     formData,
-    montoBaseProductos,
     totalCalculadoApi,
     displayTotal,
     nombreVendedor,
@@ -92,19 +93,22 @@ const TicketPuertaComponent: React.FC<{
                     <tr><td>FECHA</td><td>{formData.fechaEmision ? new Date(formData.fechaEmision).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'}) : ''}</td></tr>
                     <tr><td>CLIENTE</td><td>CONSUMIDOR FINAL</td></tr>
                     <tr><td>VENDEDOR</td><td>{nombreVendedor ? nombreVendedor.charAt(0).toUpperCase() + nombreVendedor.slice(1) : '-'}</td></tr>
-                    <tr><td>SUBTOTAL (Productos)</td><td>$ {montoBaseProductos.toFixed(2)}</td></tr>
+                    
                     <tr><td>TOTAL FINAL</td><td className= "font-bold">$ {displayTotal.toFixed(2)}</td></tr>
                 </tbody></table>
-                <table className="tabla-datos-secundarios"><tbody>
-                    {totalCalculadoApi && totalCalculadoApi.recargos.transferencia > 0 && <tr><td>RECARGO ({totalCalculadoApi.forma_pago_aplicada})</td><td className="text-right">$ {totalCalculadoApi.recargos.transferencia.toFixed(2)}</td></tr>}
-                    {totalCalculadoApi && totalCalculadoApi.recargos.factura_iva > 0 && <tr><td>{formData.requiereFactura ? "IVA (Factura)" : "Recargo (Factura)"}</td><td className="text-right">$ {totalCalculadoApi.recargos.factura_iva.toFixed(2)}</td></tr>}
-                    
-                </tbody></table>
+                
             </section>
             <section className="detalle-productos">
                 <table className="tabla-items">
-                    {/* // <-- CAMBIO: Se eliminó el <th> de Observaciones. */}
-                    <thead><tr><th>ITEM</th><th>PRODUCTO</th><th>CANTIDAD</th><th>SUBTOTAL</th></tr></thead>
+                    {/* // <-- CAMBIO CLAVE: Se elimina la condición y se deja el thead fijo --> */}
+                    <thead>
+                        <tr>
+                            <th>ITEM</th>
+                            <th>PRODUCTO</th>
+                            <th>CANTIDAD</th>
+                            <th>SUBTOTAL</th>
+                        </tr>
+                    </thead>
                     <tbody>
                         {productos.filter(p => p.producto && p.qx > 0).map((item, index) => {
                           // eslint-disable-next-line
@@ -113,12 +117,19 @@ const TicketPuertaComponent: React.FC<{
                                 <tr key={`print-item-${index}`}>
                                     <td>{index + 1}</td>
                                     <td>{pInfo?.nombre || `ID: ${item.producto}`}</td>
-                                    {/* // <-- CAMBIO: Se eliminó la celda <td> de Observaciones. */}
                                     <td className="text-center">{item.qx}</td>
-                                    <td className="text-right">$ {item.total.toFixed(2)}</td>
+                                    <td className="text-right">
+                                    $ {(
+                                      item.total *
+                                      (totalCalculadoApi?.forma_pago_aplicada === "transferencia"
+                                        ? 1.105
+                                        : totalCalculadoApi?.forma_pago_aplicada === "factura"
+                                        ? 1.21
+                                        : 1)
+                                    ).toFixed(2)}
+                                  </td>
                                 </tr>);
                         })}
-                        {/* // <-- CAMBIO: Se ajustaron las celdas vacías a 4 columnas. */}
                         {Array.from({ length: Math.max(0, 12 - productos.filter(p => p.producto && p.qx > 0).length) }).map((_, i) =>
                             <tr key={`empty-row-${i}`} className="empty-row"><td> </td><td> </td><td> </td><td> </td></tr>)}
                     </tbody>
@@ -306,6 +317,8 @@ export default function RegistrarPedidoPuertaPage() {
                     throw new Error(errData.message || "Error al calcular precio.");
                 }
                 const precioData = await precioRes.json();
+                if (totalQuantity < 1)
+                  auxPrecio = precioData.precio_total_calculado_ars;
                 return {
                     precio: precioData.precio_venta_unitario_ars || 0,
                     indices,
@@ -329,7 +342,7 @@ export default function RegistrarPedidoPuertaPage() {
             const item = updatedProducts[index];
             item.precio = precio;
             if (item.qx < 1)
-              item.total = item.precio;
+              item.total = auxPrecio;
             else
               item.total = item.precio * item.qx;
         });

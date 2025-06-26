@@ -8,7 +8,7 @@ import {
     CardTitle,
 } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { DollarSign, ShoppingCart, TrendingUp } from "lucide-react"; // Info para la card de contexto
+import { DollarSign, ShoppingCart, TrendingUp, Download } from "lucide-react"; // --- NUEVO: Se añade ícono Download
 import { useEffect, useState, useMemo } from "react";
 import {
     XAxis,
@@ -23,6 +23,9 @@ import {
     BarChart,
     Bar,
 } from "recharts";
+import { Button } from "@/components/ui/button"; // --- NUEVO: Importamos el botón
+import { Input } from "@/components/ui/input";   // --- NUEVO: Importamos el input para fechas
+import { Label } from "@/components/ui/label";   // --- NUEVO: Importamos el label para accesibilidad
 
 // --- INICIO: Definición de Tipos (sin cambios) ---
 type VentaTipo = "puerta" | "pedido";
@@ -37,14 +40,11 @@ interface OrdenCompraApi { id: number; nro_solicitud_interno: string | null; fec
 interface PaginatedOrdenesCompraResponse { ordenes: OrdenCompraApi[]; pagination: { total_pages: number; }; }
 
 const ESTADOS_API_A_EN_ESPERA: string[] = [ "PENDIENTE_APROBACION", "APROBADO","CON DEUDA", "EN_ESPERA_RECEPCION", "RECIBIDA_PARCIAL"];
-const ESTADOS_API_A_PAGADO: string[] = [ "PAGADA_PARCIAL", "PAGADA_TOTAL", "RECIBIDO"];
+const ESTADOS_API_A_PAGADO: string[] = [ "PAGADA_TOTAL", "RECIBIDO"];
 // --- FIN: Definición de Tipos ---
 
 
-// --- INICIO: Funciones de Fetching y Procesamiento ---
-
-// fetchOrdenesDeCompra: Intenta usar filtros de fecha en API, pero si no, se filtra en cliente.
-// Asumimos que la API *podría* no soportar filtros de fecha, así que traemos todo y filtramos en cliente si es necesario.
+// --- INICIO: Funciones de Fetching y Procesamiento (sin cambios) ---
 async function fetchTodasLasOrdenesDeCompraHistoricas(): Promise<OrdenCompraApi[]> {
     const currentToken = typeof window !== "undefined" ? localStorage.getItem("token") : null;
     if (!currentToken) { console.error("Token no encontrado para API Compras"); throw new Error("Token no disponible");}
@@ -60,7 +60,6 @@ async function fetchTodasLasOrdenesDeCompraHistoricas(): Promise<OrdenCompraApi[
         });
         
         const url = `${baseUrl}?${params.toString()}`;
-        // console.log("Fetching todas las compras URL:", url);
 
         const response = await fetch(url, {
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${currentToken}` } });
@@ -98,18 +97,13 @@ const obtenerDatosComprasDashboard = async (mes: number, anio: number): Promise<
         const fechaDesdeStr = primerDiaDelMes.toISOString().split('T')[0];
         const fechaHastaStr = ultimoDiaDelMes.toISOString().split('T')[0];
 
-        // console.log(`Filtrando compras para el mes: ${mes+1}/${anio} (Desde: ${fechaDesdeStr}, Hasta: ${fechaHastaStr})`);
-
         todasLasOrdenesHistoricas.forEach(orden => {
-            // Para statusCounts (históricos)
             const estadoUpper = orden.estado?.toUpperCase() || "";
             if (ESTADOS_API_A_EN_ESPERA.map(s => s.toUpperCase()).includes(estadoUpper)) enEsperaCount++;
             else if (ESTADOS_API_A_PAGADO.map(s => s.toUpperCase()).includes(estadoUpper)) pagadosCount++;
 
-            // Para totalGastadoEnComprasDelMes (filtrado en cliente)
-            // Asegúrate que `orden.fecha_creacion` exista y sea un string de fecha comparable
             if (orden.fecha_creacion) {
-                const fechaOrden = orden.fecha_creacion.split('T')[0]; // Asume formato YYYY-MM-DD o YYYY-MM-DDTHH:mm:ss
+                const fechaOrden = orden.fecha_creacion.split('T')[0];
                 if (fechaOrden >= fechaDesdeStr && fechaOrden <= fechaHastaStr) {
                     totalGastadoMesCalculadoCliente += orden.items[0].importe_linea_estimado || 0;
                 }
@@ -133,7 +127,6 @@ const obtenerDatosComprasDashboard = async (mes: number, anio: number): Promise<
     }
 };
 
-// --- Funciones de Ventas (sin cambios) ---
 async function fetchListaVentasResumenDelMes(mes: number, anio: number): Promise<VentaApi[]> {
     const currentToken = typeof window !== "undefined" ? localStorage.getItem("token") : null;
     if (!currentToken) { console.error("Token no encontrado para API Ventas (Lista)"); throw new Error("Token no disponible");}
@@ -208,7 +201,7 @@ const obtenerDatosVentasParaDashboard = async (mes: number, anio: number): Promi
                 const esDireccionNula = vResumen.direccion_entrega === null || vResumen.direccion_entrega === undefined || vResumen.direccion_entrega.trim() === "";
                 const tipoVenta: VentaTipo = esDireccionNula ? "puerta" : "pedido";
                 
-                let totalCostoVenta = 0; // COGS para esta venta
+                let totalCostoVenta = 0;
                 const itemsTransformados: VentaDetalle[] = (ventaConDetallesFull.detalles || []).map((dApi, index) => {
                     const cantidad = typeof dApi.cantidad === 'number' ? dApi.cantidad: 0;
                     const costoUnitario = typeof dApi.costo_unitario_momento_ars === 'number' ? dApi.costo_unitario_momento_ars : 0;
@@ -231,7 +224,7 @@ const obtenerDatosVentasParaDashboard = async (mes: number, anio: number): Promi
                     tipo: tipoVenta,
                     items: itemsTransformados,
                     totalVenta: typeof ventaConDetallesFull.monto_final_con_recargos === 'number' ? ventaConDetallesFull.monto_final_con_recargos : 0,
-                    totalCosto: parseFloat(totalCostoVenta.toFixed(2)), // COGS
+                    totalCosto: parseFloat(totalCostoVenta.toFixed(2)),
                 };
 
             } catch (errorDetalle) {
@@ -270,6 +263,12 @@ export default function Dashboard() {
     const [isLoading, setIsLoading] = useState(true);
     const [currentMonthName, setCurrentMonthName] = useState("");
     const [error, setError] = useState<string | null>(null);
+
+    // --- NUEVO: Estado para los inputs de fecha y el proceso de descarga ---
+    const [fechaDesde, setFechaDesde] = useState('');
+    const [fechaHasta, setFechaHasta] = useState('');
+    const [isDownloading, setIsDownloading] = useState(false);
+    const [downloadError, setDownloadError] = useState<string | null>(null);
 
     useEffect(() => {
         const loadData = async () => {
@@ -323,34 +322,30 @@ export default function Dashboard() {
 
     const metricasMes = useMemo(() => {
         let totalVentasMes = 0;
-        let totalCostoMercaderiaVendidaMes_COGS = 0; // COGS, para el margen bruto opcional
+        let totalCostoMercaderiaVendidaMes_COGS = 0;
         let ventasPuerta = 0;
         let ventasPedidos = 0;
 
         ventas.forEach(venta => {
             totalVentasMes += venta.totalVenta;
-            totalCostoMercaderiaVendidaMes_COGS += venta.totalCosto; // Suma el COGS de cada venta
+            totalCostoMercaderiaVendidaMes_COGS += venta.totalCosto;
             if (venta.tipo === "puerta") ventasPuerta += venta.totalVenta;
             else ventasPedidos += venta.totalVenta;
         });
         
-        // Ganancia según tu definición
         const gananciaNetaDefinidaUsuario = totalVentasMes - totalGastadoComprasDelMes;
-        // Margen Bruto (opcional, para contexto)
         const margenGananciaBruta = totalVentasMes - totalCostoMercaderiaVendidaMes_COGS;
-
 
         return { 
             totalVentasMes: parseFloat(totalVentasMes.toFixed(2)), 
             totalGastadoComprasDelMes: parseFloat(totalGastadoComprasDelMes.toFixed(2)),
             gananciaNetaDefinidaUsuario: parseFloat(gananciaNetaDefinidaUsuario.toFixed(2)),
-            margenGananciaBruta: parseFloat(margenGananciaBruta.toFixed(2)), // Para la card de contexto
-            totalCostoMercaderiaVendidaMes_COGS: parseFloat(totalCostoMercaderiaVendidaMes_COGS.toFixed(2)), // Para la card de contexto
+            margenGananciaBruta: parseFloat(margenGananciaBruta.toFixed(2)),
+            totalCostoMercaderiaVendidaMes_COGS: parseFloat(totalCostoMercaderiaVendidaMes_COGS.toFixed(2)),
             ventasPuerta: parseFloat(ventasPuerta.toFixed(2)),
             ventasPedidos: parseFloat(ventasPedidos.toFixed(2)),
         };
     }, [ventas, totalGastadoComprasDelMes]);
-
 
     const tipoVentasPieData = useMemo(() => [
         { name: "Ventas Puerta", value: metricasMes.ventasPuerta },
@@ -360,6 +355,64 @@ export default function Dashboard() {
     const formatCurrency = (value: number) => {
         return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(value);
     }
+    
+    // --- NUEVO: Función para manejar la descarga del reporte Excel ---
+    const handleDownloadReport = async () => {
+        setDownloadError(null);
+        if (!fechaDesde || !fechaHasta) {
+            setDownloadError("Por favor, seleccione ambas fechas, 'Desde' y 'Hasta'.");
+            return;
+        }
+
+        const token = localStorage.getItem("token");
+        if (!token) {
+            setDownloadError("Error de autenticación. Por favor, inicie sesión de nuevo.");
+            return;
+        }
+
+        setIsDownloading(true);
+        try {
+            const params = new URLSearchParams({
+                fecha_desde: fechaDesde,
+                fecha_hasta: fechaHasta,
+            });
+            const url = `https://quimex.sistemataup.online/reportes/movimientos-excel?${params.toString()}`;
+
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (!response.ok) {
+                // Si la API devuelve un error (ej. 400, 500), intenta leerlo como JSON
+                const errorData = await response.json().catch(() => ({ message: 'Error desconocido del servidor.' }));
+                throw new Error(errorData.message || `Error ${response.status} al generar el reporte.`);
+            }
+
+            // Esperamos un archivo, así que usamos .blob()
+            const blob = await response.blob();
+            
+            // Crear un enlace temporal para descargar el archivo
+            const downloadUrl = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = downloadUrl;
+            // Define el nombre del archivo
+            link.setAttribute('download', `reporte-movimientos-${fechaDesde}-al-${fechaHasta}.xlsx`);
+            document.body.appendChild(link);
+            link.click();
+
+            // Limpieza
+            link.parentNode?.removeChild(link);
+            window.URL.revokeObjectURL(downloadUrl);
+            // eslint-disable-next-line
+        } catch (error: any) {
+            console.error("Error al descargar el reporte:", error);
+            setDownloadError(error.message || "Un error inesperado ocurrió durante la descarga.");
+        } finally {
+            setIsDownloading(false);
+        }
+    };
+
 
     if (isLoading) {
         return <div className="flex-1 space-y-4 p-4 md:p-8 text-center">Cargando dashboard...</div>;
@@ -373,6 +426,59 @@ export default function Dashboard() {
             <div className="flex items-center justify-between mb-6">
                 <h2 className="text-3xl font-bold tracking-tight">Dashboard de Administración</h2>
             </div>
+            
+            {/* --- NUEVO: Card para la funcionalidad de descarga de reportes --- */}
+            <Card className="mb-6">
+                <CardHeader>
+                    <CardTitle>Generar Reporte de Movimientos</CardTitle>
+                    <CardDescription>
+                        Seleccione un rango de fechas para descargar el reporte completo en formato Excel.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="grid gap-4 md:grid-cols-3 md:items-end">
+                        <div className="space-y-1">
+                            <Label htmlFor="fecha_desde">Desde</Label>
+                            <Input
+                                id="fecha_desde"
+                                type="date"
+                                value={fechaDesde}
+                                onChange={(e) => setFechaDesde(e.target.value)}
+                                disabled={isDownloading}
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <Label htmlFor="fecha_hasta">Hasta</Label>
+                            <Input
+                                id="fecha_hasta"
+                                type="date"
+                                value={fechaHasta}
+                                onChange={(e) => setFechaHasta(e.target.value)}
+                                disabled={isDownloading}
+                            />
+                        </div>
+                        <Button onClick={handleDownloadReport} disabled={isDownloading}>
+                            {isDownloading ? (
+                                <>
+                                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                    Descargando...
+                                </>
+                            ) : (
+                                <>
+                                    <Download className="mr-2 h-4 w-4" />
+                                    Descargar Reporte
+                                </>
+                            )}
+                        </Button>
+                    </div>
+                    {downloadError && (
+                        <p className="text-sm font-medium text-red-600">{downloadError}</p>
+                    )}
+                </CardContent>
+            </Card>
 
             <Tabs defaultValue="overview" className="space-y-4">
                 <TabsList>

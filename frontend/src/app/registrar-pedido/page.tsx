@@ -7,8 +7,9 @@ import Select from 'react-select';
 import { useRouter } from 'next/navigation';
 import BotonVolver from "@/components/BotonVolver";
 
+// --- Tipos y Constantes (Sin cambios) ---
 let idClient = 0;
-
+let auxPrecio = 0;
 type ProductoPedido = {
   producto: number;
   qx: number;
@@ -17,7 +18,6 @@ type ProductoPedido = {
   total: number;
   observacion?: string;
 };
-
 interface IFormData {
   clienteId: string | null;
   cuit: string;
@@ -32,7 +32,6 @@ interface IFormData {
   requiereFactura: boolean;
   observaciones?: string;
 }
-
 interface TotalCalculadoAPI {
   monto_base: number;
   forma_pago_aplicada: string;
@@ -43,7 +42,6 @@ interface TotalCalculadoAPI {
   };
   monto_final_con_recargos: number;
 }
-
 const initialFormData: IFormData = {
   clienteId: null,
   cuit: "",
@@ -58,9 +56,9 @@ const initialFormData: IFormData = {
   requiereFactura: false,
   observaciones: "",
 };
-
 const initialProductos: ProductoPedido[] = [{ producto: 0, qx: 0, precio: 0, descuento: 0, total: 0, observacion: "" }];
 
+// --- INICIO: COMPONENTE DE TICKET MODIFICADO ---
 const TicketComponent: React.FC<{
     formData: IFormData;
     montoBaseProductos: number;
@@ -73,16 +71,16 @@ const TicketComponent: React.FC<{
     isOriginal: boolean;
 }> = ({
     formData,
-    montoBaseProductos,
     totalCalculadoApi,
     displayTotal,
     baseTotalConRecargos,
     productos,
     productosContext,
+    isOriginal,
 }) => {
     return (
         <div className="presupuesto-container">
-            <header className="presupuesto-header">
+            <header className="presupuesto-header">   
                 <div className="logo-container">
                     <img src="/logo.png" alt="QuiMex" className="logo" />
                     <p className="sub-logo-text">PRESUPUESTO NO VALIDO COMO FACTURA</p>
@@ -92,51 +90,84 @@ const TicketComponent: React.FC<{
                     <p>📞 4261 3605</p>
                     <p>📸 quimex_berazategui</p>
                 </div>
-                {/* // <-- CAMBIO: Se eliminó el div que mostraba "ORIGINAL" o "DUPLICADO". */}
             </header>
             <section className="datos-pedido">
                 <table className="tabla-datos-principales"><tbody>
                     <tr><td>PEDIDO</td><td>NUEVO</td></tr>
                     <tr><td>FECHA</td><td>{formData.fechaEmision ? new Date(formData.fechaEmision).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'}) : ''}</td></tr>
                     <tr><td>CLIENTE</td><td>{formData.nombre || (formData.clienteId ? `Cliente ID: ${formData.clienteId}` : 'CONSUMIDOR FINAL')}</td></tr>
-                    <tr><td>SUBTOTAL (Productos)</td><td>$ {montoBaseProductos.toFixed(2)}</td></tr>
                     <tr><td>DIRECCIÓN</td><td>{formData.direccion || '-'}</td></tr>
-                    {totalCalculadoApi && totalCalculadoApi.recargos.transferencia > 0 && <tr><td>RECARGO ({totalCalculadoApi.forma_pago_aplicada})</td><td className="text-right">$ {totalCalculadoApi.recargos.transferencia.toFixed(2)}</td></tr>}
-                    {totalCalculadoApi && totalCalculadoApi.recargos.factura_iva > 0 && <tr><td>{formData.requiereFactura ? "IVA (Factura)" : "Recargo (Factura)"}</td><td className="text-right">$ {totalCalculadoApi.recargos.factura_iva.toFixed(2)}</td></tr>}
-                    {formData.descuentoTotal > 0 && <tr><td>DESCUENTO TOTAL ({formData.descuentoTotal}%)</td><td className="text-red-600 print:text-red-600">- $ {(baseTotalConRecargos * (formData.descuentoTotal / 100)).toFixed(2)}</td></tr>}
-                    <tr><td>TOTAL FINAL</td><td className="font-bold">$ {displayTotal.toFixed(2)}</td></tr>
+                    {/* // <-- CAMBIO: Mostrar descuentos y total final solo si es el ticket original --> */}
+                    {isOriginal && formData.descuentoTotal > 0 && (
+                        <tr><td>DESCUENTO TOTAL ({formData.descuentoTotal}%)</td><td className="text-red-600 print:text-red-600">- $ {(baseTotalConRecargos * (formData.descuentoTotal / 100)).toFixed(2)}</td></tr>
+                    )}
+                    {isOriginal && (
+                        <tr><td>TOTAL FINAL</td><td className="font-bold">$ {displayTotal.toFixed(2)}</td></tr>
+                    )}
                 </tbody></table>
-                
             </section>
             <section className="detalle-productos">
                 <table className="tabla-items">
-                    {/* // <-- CAMBIO: Se eliminó la cabecera <th> de Observaciones. */}
-                    <thead><tr><th>ITEM</th><th>PRODUCTO</th><th>CANT.</th><th>DESC.%</th><th>SUBTOTAL</th></tr></thead>
+                    {/* // <-- CAMBIO: Renderizar una cabecera diferente según si es original o no --> */}
+                    <thead>
+                        {isOriginal ? (
+                            <tr>
+                                <th>ITEM</th>
+                                <th>PRODUCTO</th>
+                                <th>CANT.</th>
+                                <th>DESC.%</th>
+                                <th>SUBTOTAL</th>
+                            </tr>
+                        ) : (
+                            <tr>
+                                <th>ITEM</th>
+                                <th>PRODUCTO</th>
+                                <th>CANT.</th>
+                            </tr>
+                        )}
+                    </thead>
                     <tbody>
                         {productos.filter(p => p.producto && p.qx > 0).map((item, index) => {
+
                           // eslint-disable-next-line
                             const pInfo = productosContext?.productos.find((p: any) => p.id === item.producto);
                             return (
                                 <tr key={`print-item-${index}`}>
                                     <td>{index + 1}</td>
                                     <td>{pInfo?.nombre || `ID: ${item.producto}`}</td>
-                                    {/* // <-- CAMBIO: Se eliminó la celda <td> de Observaciones. */}
                                     <td className="text-center">{item.qx}</td>
-                                    <td className="text-center">{item.descuento > 0 ? `${item.descuento}%` : '-'}</td>
-                                    <td className="text-right">$ {item.total.toFixed(2)}</td>
-                                </tr>);
+                                    {/* // <-- CAMBIO: Mostrar celdas de descuento y subtotal solo si es original --> */}
+                                    {isOriginal && (
+                                        <>
+                                            <td className="text-center">{item.descuento > 0 ? `${item.descuento}%` : '-'}</td>
+                                            <td className="text-right">
+                                                $ {(
+                                                  item.total *
+                                                  (totalCalculadoApi?.forma_pago_aplicada === "transferencia" ? 1.105 :
+                                                   totalCalculadoApi?.forma_pago_aplicada === "factura" ? 1.21 : 1)
+                                                ).toFixed(2)}
+                                            </td>
+                                        </>
+                                    )}
+                                </tr>
+                            );
                         })}
-                        {/* // <-- CAMBIO: Se ajustaron las celdas vacías a 5 columnas. */}
+                        {/* // <-- CAMBIO: Ajustar número de celdas vacías según el tipo de ticket --> */}
                         {Array.from({ length: Math.max(0, 12 - productos.filter(p => p.producto && p.qx > 0).length) }).map((_, i) =>
-                            <tr key={`empty-row-${i}`} className="empty-row"><td> </td><td> </td><td> </td><td> </td><td> </td></tr>)}
+                            isOriginal ? (
+                                <tr key={`empty-row-${i}`} className="empty-row"><td> </td><td> </td><td> </td><td> </td><td> </td></tr>
+                            ) : (
+                                <tr key={`empty-row-${i}`} className="empty-row"><td> </td><td> </td><td> </td></tr>
+                            )
+                        )}
                     </tbody>
                 </table>
             </section>
-            <footer className="presupuesto-footer">
-            </footer>
+            <footer className="presupuesto-footer"></footer>
         </div>
     );
 };
+// --- FIN: COMPONENTE DE TICKET MODIFICADO ---
 
 export default function RegistrarPedidoPage() {
   const {
@@ -342,6 +373,9 @@ export default function RegistrarPedidoPage() {
                     throw new Error(errData.message || "Error al calcular precio.");
                 }
                 const precioData = await precioRes.json();
+                
+                if (totalQuantity < 1)
+                  auxPrecio = precioData.precio_total_calculado_ars;
                 return {
                     precio: precioData.precio_venta_unitario_ars || 0,
                     indices,
@@ -365,9 +399,8 @@ export default function RegistrarPedidoPage() {
             const item = updatedProducts[index];
             item.precio = precio;
             let totalBruto;
-            console.log(item.qx)
             if (item.qx < 1)
-               totalBruto = item.precio;
+               totalBruto = auxPrecio;
             else
               totalBruto = item.precio * item.qx;
 
@@ -727,6 +760,7 @@ export default function RegistrarPedidoPage() {
 
              <fieldset className="border p-4 rounded-md">
               <legend className="text-lg font-medium text-gray-700 px-2">Pago y Totales</legend>
+              {/* --- INICIO: SECCIÓN RESTAURADA DEL FORMULARIO --- */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="formaPago">Forma de Pago</label>
@@ -751,6 +785,21 @@ export default function RegistrarPedidoPage() {
                       max="100"
                     />
                 </div>
+                {/* --- CAMPO 'Monto Pagado' RESTAURADO --- */}
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="montoPagado">Monto Pagado</label>
+                    <input
+                        id="montoPagado"
+                        type="number"
+                        name="montoPagado"
+                        className="w-full bg-white shadow-sm border rounded py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 no-spinners"
+                        value={formData.montoPagado === 0 ? '' : formData.montoPagado}
+                        onChange={handleFormChange}
+                        placeholder="0.00"
+                        step="0.01"
+                        min="0"
+                    />
+                </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="vuelto">Vuelto</label>
                   <input id="vuelto" type="text" name="vuelto" readOnly
@@ -758,6 +807,7 @@ export default function RegistrarPedidoPage() {
                     value={`$ ${formData.vuelto.toFixed(2)}`}/>
                 </div>
               </div>
+              {/* --- FIN: SECCIÓN RESTAURADA DEL FORMULARIO --- */}
               <div className="mt-4 text-right">
                 {isCalculatingTotal && <p className="text-sm text-blue-600 italic">Calculando total...</p>}
                 {totalCalculadoApi && (

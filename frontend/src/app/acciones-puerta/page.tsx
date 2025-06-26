@@ -36,7 +36,7 @@ export default function AccionesPuertaPage() {
           </button>
 
         </div>
-¿      </div>
+      </div>
       
     </div>
     

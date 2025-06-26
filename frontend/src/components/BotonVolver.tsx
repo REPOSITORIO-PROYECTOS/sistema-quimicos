@@ -17,12 +17,12 @@ const BotonVolver: React.FC<BotonVolverProps> = ({
   const router = useRouter();
 
   const handleGoBack = () => {
-    router.back(); // Esta es la magia. Navega a la página anterior en el historial.
+    router.back(); 
   };
 
   return (
     <button
-      type="button" // Importante para que no envíe el formulario por defecto
+      type="button"
       onClick={handleGoBack}
       className={`flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 ${className}`}
     >

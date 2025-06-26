@@ -6,8 +6,9 @@ import Select from 'react-select';
 import { useRouter } from 'next/navigation';
 import BotonVolver from './BotonVolver';
 
+// --- Tipos y Constantes (Sin cambios) ---
 let idClient = 0;
-
+let auxPrecio = 0;
 type ProductoPedido = {
   id_detalle?: number;
   producto: number;
@@ -17,7 +18,6 @@ type ProductoPedido = {
   total: number;
   observacion?: string;
 };
-
 interface IFormData {
   nombre: string;
   cuit: string;
@@ -32,7 +32,6 @@ interface IFormData {
   requiereFactura: boolean;
   observaciones?: string;
 }
-
 interface TotalCalculadoAPI {
   monto_base: number;
   forma_pago_aplicada: string;
@@ -43,9 +42,10 @@ interface TotalCalculadoAPI {
   };
   monto_final_con_recargos: number;
 }
-
 const initialProductoItem: ProductoPedido = { producto: 0, qx: 0, precio: 0, descuento: 0, total: 0, observacion: "" };
 
+
+// --- INICIO: COMPONENTE DE TICKET MODIFICADO ---
 const TicketActualizarComponent: React.FC<{
     id: number | undefined;
     formData: IFormData;
@@ -55,7 +55,7 @@ const TicketActualizarComponent: React.FC<{
     productos: ProductoPedido[];
     // eslint-disable-next-line
     productosContext: any;
-    isOriginal: boolean; // Aunque no se use, lo mantenemos por si la prop es requerida
+    isOriginal: boolean;
 }> = ({
     id,
     formData,
@@ -64,6 +64,7 @@ const TicketActualizarComponent: React.FC<{
     displayTotalToShow,
     productos,
     productosContext,
+    isOriginal,
 }) => {
     return (
         <div className="presupuesto-container">
@@ -83,19 +84,36 @@ const TicketActualizarComponent: React.FC<{
                     <tr><td className="font-bold">PEDIDO</td><td>{id || 'N/A'}</td></tr>
                     <tr><td className="font-bold">FECHA</td><td>{formData.fechaEmision ? new Date(formData.fechaEmision).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'}) : ''}</td></tr>
                     <tr><td className="font-bold">CLIENTE</td><td>{formData.nombre || 'CONSUMIDOR FINAL'}</td></tr>
-                    <tr><td className="font-bold">SUBTOTAL </td><td>$ {montoBaseProductos.toFixed(2)}</td></tr>
-                    {/* // <-- CAMBIO: Se añadió la clase font-bold para unificar el estilo. */}
                     <tr><td className="font-bold">DIRECCIÓN</td><td>{formData.direccion || '-'}</td></tr>
-                    {totalCalculadoApi && totalCalculadoApi.recargos.transferencia > 0 && <tr><td className="font-bold">RECARGO ({totalCalculadoApi.forma_pago_aplicada})</td><td className="text-right">$ {totalCalculadoApi.recargos.transferencia.toFixed(2)}</td></tr>}
-                    {totalCalculadoApi && totalCalculadoApi.recargos.factura_iva > 0 && <tr><td className="font-bold">{formData.requiereFactura ? "IVA (Factura)" : "Recargo (Factura)"}</td><td className="text-right">$ {totalCalculadoApi.recargos.factura_iva.toFixed(2)}</td></tr>}
-                    {formData.descuentoTotal > 0 && <tr><td className="font-bold">DESCUENTO GLOBAL ({formData.descuentoTotal}%)</td><td className="text-red-600 print:text-red-600">- $ {( (totalCalculadoApi ? totalCalculadoApi.monto_final_con_recargos : montoBaseProductos) * (formData.descuentoTotal / 100)).toFixed(2)}</td></tr>}
-                    <tr><td className="font-bold">TOTAL FINAL</td><td className="font-bold">$ {displayTotalToShow.toFixed(2)}</td></tr>
+                    {/* // <-- CAMBIO: Mostrar descuentos y total final solo en el original --> */}
+                    {isOriginal && formData.descuentoTotal > 0 && (
+                        <tr><td className="font-bold">DESCUENTO GLOBAL ({formData.descuentoTotal}%)</td><td className="text-red-600 print:text-red-600">- $ {( (totalCalculadoApi ? totalCalculadoApi.monto_final_con_recargos : montoBaseProductos) * (formData.descuentoTotal / 100)).toFixed(2)}</td></tr>
+                    )}
+                    {isOriginal && (
+                        <tr><td className="font-bold">TOTAL FINAL</td><td className="font-bold">$ {displayTotalToShow.toFixed(2)}</td></tr>
+                    )}
                 </tbody></table>
-             
             </section>
             <section className="detalle-productos">
                 <table className="tabla-items">
-                    <thead><tr><th>ITEM</th><th>PRODUCTO</th><th>CANT.</th><th>DESC.%</th><th>SUBTOTAL</th></tr></thead>
+                    {/* // <-- CAMBIO: Renderizar una cabecera diferente según si es original o no --> */}
+                    <thead>
+                        {isOriginal ? (
+                            <tr>
+                                <th>ITEM</th>
+                                <th>PRODUCTO</th>
+                                <th>CANT.</th>
+                                <th>DESC.%</th>
+                                <th>SUBTOTAL</th>
+                            </tr>
+                        ) : (
+                            <tr>
+                                <th>ITEM</th>
+                                <th>PRODUCTO</th>
+                                <th>CANT.</th>
+                            </tr>
+                        )}
+                    </thead>
                     <tbody>
                     {productos.filter(p => p.producto && p.qx > 0).map((item, index) => {
                       // eslint-disable-next-line
@@ -105,12 +123,25 @@ const TicketActualizarComponent: React.FC<{
                             <td>{index + 1}</td>
                             <td>{pInfo?.nombre || `ID: ${item.producto}`}</td>
                             <td className="text-center">{item.qx}</td>
-                            <td className="text-center">{item.descuento > 0 ? `${item.descuento}%` : '-'}</td>
-                            <td className="text-right">$ {item.total.toFixed(2)}</td>
+                            {/* // <-- CAMBIO: Mostrar celdas de descuento y subtotal solo si es original --> */}
+                            {isOriginal && (
+                                <>
+                                    <td className="text-center">{item.descuento > 0 ? `${item.descuento}%` : '-'}</td>
+                                    <td className="text-right">
+                                        $ {(item.total * (formData.formaPago === "transferencia" ? 1.105 : formData.formaPago === "factura" ? 1.21 : 1)).toFixed(2)}
+                                    </td>
+                                </>
+                            )}
                         </tr>);
                     })}
+                    {/* // <-- CAMBIO: Ajustar número de celdas vacías según el tipo de ticket --> */}
                     {Array.from({ length: Math.max(0, 12 - productos.filter(p => p.producto && p.qx > 0).length) }).map((_, i) =>
-                        <tr key={`empty-row-${i}`} className="empty-row"><td> </td><td> </td><td> </td><td> </td><td> </td></tr>)}
+                        isOriginal ? (
+                            <tr key={`empty-row-${i}`} className="empty-row"><td> </td><td> </td><td> </td><td> </td><td> </td></tr>
+                        ) : (
+                            <tr key={`empty-row-${i}`} className="empty-row"><td> </td><td> </td><td> </td></tr>
+                        )
+                    )}
                     </tbody>
                 </table>
             </section>
@@ -120,6 +151,8 @@ const TicketActualizarComponent: React.FC<{
         </div>
     );
 };
+// --- FIN: COMPONENTE DE TICKET MODIFICADO ---
+
 
 export default function DetalleActualizarPedidoPage({ id }: { id: number | undefined }) {
   const [formData, setFormData] = useState<IFormData>({
@@ -355,6 +388,8 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
                     throw new Error(errData.message || "Error al calcular precio.");
                 }
                 const precioData = await precioRes.json();
+                if (totalQuantity < 1)
+                  auxPrecio = precioData.precio_total_calculado_ars;
                 return {
                     precio: precioData.precio_venta_unitario_ars || 0,
                     indices,
@@ -379,7 +414,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
             item.precio = precio;
             let totalBruto;
              if (item.qx < 1)
-                totalBruto = item.precio;
+                totalBruto = auxPrecio;
             else
                totalBruto = item.precio * item.qx;
             item.total = totalBruto * (1 - (item.descuento / 100));

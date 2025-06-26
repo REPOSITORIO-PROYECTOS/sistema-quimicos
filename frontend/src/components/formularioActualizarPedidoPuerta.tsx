@@ -5,6 +5,7 @@ import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import BotonVolver from "./BotonVolver";
 
+// --- Tipos y Constantes (Sin cambios) ---
 type ProductoPedido = {
   producto: number;
   qx: number;
@@ -12,7 +13,6 @@ type ProductoPedido = {
   total: number;
   observacion?: string;
 };
-
 interface IFormData {
   nombre: string;          
   cuit: string;
@@ -26,7 +26,6 @@ interface IFormData {
   requiereFactura: boolean;  
   observaciones?: string;    
 }
-
 interface TotalCalculadoAPI {
   monto_base: number;
   forma_pago_aplicada: string;
@@ -37,8 +36,81 @@ interface TotalCalculadoAPI {
   };
   monto_final_con_recargos: number;
 }
-
 const VENDEDORES = ["martin", "moises", "sergio", "gabriel", "mauricio", "elias", "ardiles", "redonedo"];
+
+// --- PASO 1: CREAR UN ÚNICO COMPONENTE REUTILIZABLE PARA EL TICKET ---
+const TicketComponent: React.FC<{
+    id: number | undefined;
+    formData: IFormData;
+    displayTotal: number;
+    nombreVendedor: string;
+    productos: ProductoPedido[];
+    // eslint-disable-next-line
+    productosContext: any;
+}> = ({ id, formData, displayTotal, nombreVendedor, productos, productosContext }) => {
+    return (
+        <div className="presupuesto-container">
+            {/* Encabezado completo del ticket */}
+            <header className="presupuesto-header">
+                <div className="logo-container">
+                    <img src="/logo.png" alt="QuiMex" className="logo" />
+                    <p className="sub-logo-text">PRESUPUESTO NO VALIDO COMO FACTURA</p>
+                </div>
+                <div className="info-empresa">
+                    <p>📱 11 2395 1494</p>
+                    <p>📞 4261 3605</p>
+                    <p>📸 quimex_berazategui</p>
+                </div>
+            </header>
+            
+            {/* Datos del pedido */}
+            <section className="datos-pedido">
+                <table className="tabla-datos-principales">
+                    <tbody>
+                        <tr><td className="font-bold">PEDIDO</td><td>{id || 'N/A'}</td></tr>
+                        <tr><td className="font-bold">FECHA</td><td>{formData.fechaEmision ? new Date(formData.fechaEmision).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : ''}</td></tr>
+                        <tr><td className="font-bold">CLIENTE</td><td>{formData.nombre || 'CONSUMIDOR FINAL'}</td></tr>
+                        <tr><td className="font-bold">VENDEDOR</td><td>{nombreVendedor ? nombreVendedor.charAt(0).toUpperCase() + nombreVendedor.slice(1) : '-'}</td></tr>
+                        <tr><td className="font-bold">TOTAL FINAL</td><td>$ {displayTotal.toFixed(2)}</td></tr>
+                    </tbody>
+                </table>
+            </section>
+            
+            {/* Detalle de productos */}
+            <section className="detalle-productos">
+                <table className="tabla-items">
+                    <thead>
+                        <tr>
+                            <th>ITEM</th>
+                            <th>PRODUCTO</th>
+                            <th>CANTIDAD</th>
+                            <th>SUBTOTAL</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {productos.filter(p => p.producto && p.qx > 0).map((item, index) => {
+                          // eslint-disable-next-line
+                            const pInfo = productosContext.productos.find((p: any) => p.id === item.producto);
+                            return (
+                                <tr key={`item-${index}`}>
+                                    <td>{index + 1}</td>
+                                    <td>{pInfo?.nombre || `ID: ${item.producto}`}</td>
+                                    <td className="text-center">{item.qx}</td>
+                                    <td className="text-right">
+                                        $ {(item.total * (formData.formaPago === "transferencia" ? 1.105 : formData.formaPago === "factura" ? 1.21 : 1)).toFixed(2)}
+                                    </td>
+                                </tr>
+                            );
+                        })}
+                        {Array.from({ length: Math.max(0, 12 - productos.filter(p => p.producto && p.qx > 0).length) }).map((_, i) =>
+                            <tr key={`empty-row-${i}`} className="empty-row"><td> </td><td> </td><td> </td><td> </td></tr>)}
+                    </tbody>
+                </table>
+            </section>
+        </div>
+    );
+};
+
 
 export default function DetalleActualizarPedidoPage({ id }: { id: number | undefined }) {
   const [formData, setFormData] = useState<IFormData>({
@@ -323,6 +395,11 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
       monto_pagado_cliente: formData.montoPagado,
       forma_pago: formData.formaPago,
       vuelto: formData.vuelto,
+      items: productos.filter(item => item.producto !== 0 && item.qx > 0).map(item => ({
+          producto_id: item.producto,
+          cantidad: item.qx,
+          observacion_item: item.observacion || "",
+        })),
       observaciones: formData.observaciones || "",
       requiere_factura: formData.requiereFactura,
       monto_total_base: montoBaseProductos,
@@ -372,6 +449,16 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
   }
 
   const displayTotal = totalCalculadoApi ? totalCalculadoApi.monto_final_con_recargos : montoBaseProductos;
+
+  const ticketProps = {
+    id,
+    formData,
+    displayTotal,
+    nombreVendedor,
+    productos,
+    productosContext,
+  };
+
 
   return (
     <>
@@ -471,104 +558,23 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         </div>
       </div>
       
-      {/* // <-- CAMBIO: El contenedor principal ahora envuelve ambos tickets */}
+      {/* PASO 2: REEMPLAZAR EL CÓDIGO DUPLICADO CON EL NUEVO COMPONENTE */}
       <div id="presupuesto-imprimible" className="hidden print:block">
-        {/* --- INICIO DEL PRIMER TICKET --- */}
-        <div className="presupuesto-container">
-          <header className="presupuesto-header">
-            <div className="logo-container"><img src="/logo.png" alt="QuiMex" className="logo" /><p className="sub-logo-text">PRESUPUESTO NO VALIDO COMO FACTURA</p></div>
-            <div className="info-empresa"><p>📱 11 2395 1494</p><p>📞 4261 3605</p><p>📸 quimex_berazategui</p></div>
-          </header>
-          <section className="datos-pedido">
-            <table className="tabla-datos-principales"><tbody>
-              <tr><td className="font-bold">PEDIDO</td><td>{id || 'N/A'}</td></tr>
-              <tr><td className="font-bold">FECHA</td><td>{formData.fechaEmision ? new Date(formData.fechaEmision).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'}) : ''}</td></tr>
-              <tr><td className="font-bold">CLIENTE</td><td>{formData.nombre || 'CONSUMIDOR FINAL'}</td></tr>
-              <tr><td className="font-bold">VENDEDOR</td><td>{nombreVendedor ? nombreVendedor.charAt(0).toUpperCase() + nombreVendedor.slice(1) : '-'}</td></tr> 
-              <tr><td className="font-bold">SUBTOTAL (Productos)</td><td>$ {montoBaseProductos.toFixed(2)}</td></tr>
-              <tr><td className="font-bold">TOTAL FINAL</td><td>$ {displayTotal.toFixed(2)}</td></tr>
-            </tbody></table>
-            <table className="tabla-datos-secundarios"><tbody>
-              {totalCalculadoApi && totalCalculadoApi.recargos.transferencia > 0 && <tr><td>RECARGO ({totalCalculadoApi.forma_pago_aplicada})</td><td className="text-right">$ {totalCalculadoApi.recargos.transferencia.toFixed(2)}</td></tr>}
-              {totalCalculadoApi && totalCalculadoApi.recargos.factura_iva > 0 && <tr><td>{formData.requiereFactura ? "IVA (Factura)" : "Recargo (Factura)"}</td><td className="text-right">$ {totalCalculadoApi.recargos.factura_iva.toFixed(2)}</td></tr>}
-              
-            </tbody></table>
-          </section>
-          <section className="detalle-productos">
-            <table className="tabla-items">
-              {/* // <-- CAMBIO: Se quitó la cabecera de Observaciones */}
-              <thead><tr><th>ITEM</th><th>PRODUCTO</th><th>CANTIDAD</th><th>SUBTOTAL</th></tr></thead>
-              <tbody>
-                {productos.filter(p => p.producto && p.qx > 0).map((item, index) => {
-                  const pInfo = productosContext.productos.find(p => p.id === item.producto);
-                  return (
-                    <tr key={`print-item-1-${index}`}>
-                      <td>{index + 1}</td>
-                      <td>{pInfo?.nombre || `ID: ${item.producto}`}</td>
-                      <td className="text-center">{item.qx}</td>
-                      {/* // <-- CAMBIO: Se quitó la celda de Observaciones */}
-                      <td className="text-right">$ {item.total.toFixed(2)}</td>
-                    </tr>
-                  );
-                })}
-                {/* // <-- CAMBIO: Ajuste de celdas vacías para que coincida con 4 columnas */}
-                {Array.from({ length: Math.max(0, 12 - productos.filter(p => p.producto && p.qx > 0).length) }).map((_, i) => 
-                  <tr key={`empty-row-1-${i}`} className="empty-row"><td> </td><td> </td><td> </td><td> </td></tr>)}
-              </tbody>
-            </table>
-          </section>
-        </div>
-        {/* --- FIN DEL PRIMER TICKET --- */}
-
-        {/* // <-- CAMBIO: Separador de línea de puntos entre los tickets */}
-        <div style={{ borderTop: '3px dotted #888', margin: '40px 0', width: '100%' }}></div>
-
-        {/* --- INICIO DEL SEGUNDO TICKET (COPIA EXACTA) --- */}
-        <div className="presupuesto-container">
-          <header className="presupuesto-header">
-            <div className="logo-container"><img src="/logo.png" alt="QuiMex" className="logo" /><p className="sub-logo-text">PRESUPUESTO NO VALIDO COMO FACTURA</p></div>
-            <div className="info-empresa"><p>📱 11 2395 1494</p><p>📞 4261 3605</p><p>📸 quimex_berazategui</p></div>
-          </header>
-          <section className="datos-pedido">
-            <table className="tabla-datos-principales"><tbody>
-              <tr><td>PEDIDO</td><td>{id || 'N/A'}</td></tr>
-              <tr><td>FECHA</td><td>{formData.fechaEmision ? new Date(formData.fechaEmision).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'}) : ''}</td></tr>
-              <tr><td>CLIENTE</td><td>{formData.nombre || 'CONSUMIDOR FINAL'}</td></tr>
-              <tr><td>VENDEDOR</td><td>{nombreVendedor ? nombreVendedor.charAt(0).toUpperCase() + nombreVendedor.slice(1) : '-'}</td></tr> 
-              <tr><td>SUBTOTAL (Productos)</td><td>$ {montoBaseProductos.toFixed(2)}</td></tr>
-              <tr><td>TOTAL FINAL</td><td>$ {displayTotal.toFixed(2)}</td></tr>
-            </tbody></table>
-            <table className="tabla-datos-secundarios"><tbody>
-              {totalCalculadoApi && totalCalculadoApi.recargos.transferencia > 0 && <tr><td>RECARGO ({totalCalculadoApi.forma_pago_aplicada})</td><td className="text-right">$ {totalCalculadoApi.recargos.transferencia.toFixed(2)}</td></tr>}
-              {totalCalculadoApi && totalCalculadoApi.recargos.factura_iva > 0 && <tr><td>{formData.requiereFactura ? "IVA (Factura)" : "Recargo (Factura)"}</td><td className="text-right">$ {totalCalculadoApi.recargos.factura_iva.toFixed(2)}</td></tr>}
-              
-            </tbody></table>
-          </section>
-          <section className="detalle-productos">
-            <table className="tabla-items">
-              {/* // <-- CAMBIO: Se quitó la cabecera de Observaciones */}
-              <thead><tr><th>ITEM</th><th>PRODUCTO</th><th>CANTIDAD</th><th>SUBTOTAL</th></tr></thead>
-              <tbody>
-                {productos.filter(p => p.producto && p.qx > 0).map((item, index) => {
-                  const pInfo = productosContext.productos.find(p => p.id === item.producto);
-                  return (
-                    <tr key={`print-item-2-${index}`}>
-                      <td>{index + 1}</td>
-                      <td>{pInfo?.nombre || `ID: ${item.producto}`}</td>
-                      <td className="text-center">{item.qx}</td>
-                       {/* // <-- CAMBIO: Se quitó la celda de Observaciones */}
-                      <td className="text-right">$ {item.total.toFixed(2)}</td>
-                    </tr>
-                  );
-                })}
-                {/* // <-- CAMBIO: Ajuste de celdas vacías para que coincida con 4 columnas */}
-                {Array.from({ length: Math.max(0, 12 - productos.filter(p => p.producto && p.qx > 0).length) }).map((_, i) => 
-                  <tr key={`empty-row-2-${i}`} className="empty-row"><td> </td><td> </td><td> </td><td> </td></tr>)}
-              </tbody>
-            </table>
-          </section>
-        </div>
-        {/* --- FIN DEL SEGUNDO TICKET --- */}
+        {/* Se llama al primer ticket */}
+        <TicketComponent {...ticketProps} />
+        
+        {/* Separador */}
+        <div
+            className="ticket-separator"
+            style={{
+                borderTop: '3px dotted #888',
+                margin: '20mm 0',
+                width: '100%'
+            }}
+        ></div>
+        
+        {/* Se llama al segundo ticket (la copia) */}
+        <TicketComponent {...ticketProps} />
       </div>
 
       <style jsx global>{`
@@ -583,6 +589,13 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         }
         .no-spinners {
           -moz-appearance: textfield; 
+        }
+        @media print {
+            .ticket-separator {
+                page-break-before: always;
+                border-top: 3px dashed #888;
+                margin: 0; /* Ajusta el margen para la impresión */
+            }
         }
       `}</style>
     </>

@@ -178,20 +178,22 @@ export default function ListaClientes() {
     setPriceUpdateError(null);
     setPriceUpdateSuccess(null);
     const token = localStorage.getItem("token");
-
-    let finalPercentage = percentageValue;
+    
+    let direccion;
     if (type === 'decrease') {
-      finalPercentage = -percentageValue;
+       direccion = "bajada";
     }
+    else 
+       direccion = "subida";
 
     try {
       const response = await fetch('https://quimex.sistemataup.online/precios_especiales/actualizar-global', {
-        method: 'PUT',
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ porcentaje: finalPercentage })
+        body: JSON.stringify({ porcentaje: percentageValue, direccion:direccion })
       });
 
       const result = await response.json();
