@@ -45,7 +45,7 @@ interface TotalCalculadoAPI {
 const initialProductoItem: ProductoPedido = { producto: 0, qx: 0, precio: 0, descuento: 0, total: 0, observacion: "" };
 
 
-// --- INICIO: COMPONENTE DE TICKET MODIFICADO ---
+// --- INICIO: COMPONENTE DE TICKET MODIFICADO (Sin cambios en este componente) ---
 const TicketActualizarComponent: React.FC<{
     id: number | undefined;
     formData: IFormData;
@@ -85,7 +85,6 @@ const TicketActualizarComponent: React.FC<{
                     <tr><td className="font-bold">FECHA</td><td>{formData.fechaEmision ? new Date(formData.fechaEmision).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'}) : ''}</td></tr>
                     <tr><td className="font-bold">CLIENTE</td><td>{formData.nombre || 'CONSUMIDOR FINAL'}</td></tr>
                     <tr><td className="font-bold">DIRECCIÓN</td><td>{formData.direccion || '-'}</td></tr>
-                    {/* // <-- CAMBIO: Mostrar descuentos y total final solo en el original --> */}
                     {isOriginal && formData.descuentoTotal > 0 && (
                         <tr><td className="font-bold">DESCUENTO GLOBAL ({formData.descuentoTotal}%)</td><td className="text-red-600 print:text-red-600">- $ {( (totalCalculadoApi ? totalCalculadoApi.monto_final_con_recargos : montoBaseProductos) * (formData.descuentoTotal / 100)).toFixed(2)}</td></tr>
                     )}
@@ -96,7 +95,6 @@ const TicketActualizarComponent: React.FC<{
             </section>
             <section className="detalle-productos">
                 <table className="tabla-items">
-                    {/* // <-- CAMBIO: Renderizar una cabecera diferente según si es original o no --> */}
                     <thead>
                         {isOriginal ? (
                             <tr>
@@ -123,7 +121,6 @@ const TicketActualizarComponent: React.FC<{
                             <td>{index + 1}</td>
                             <td>{pInfo?.nombre || `ID: ${item.producto}`}</td>
                             <td className="text-center">{item.qx}</td>
-                            {/* // <-- CAMBIO: Mostrar celdas de descuento y subtotal solo si es original --> */}
                             {isOriginal && (
                                 <>
                                     <td className="text-center">{item.descuento > 0 ? `${item.descuento}%` : '-'}</td>
@@ -134,7 +131,6 @@ const TicketActualizarComponent: React.FC<{
                             )}
                         </tr>);
                     })}
-                    {/* // <-- CAMBIO: Ajustar número de celdas vacías según el tipo de ticket --> */}
                     {Array.from({ length: Math.max(0, 12 - productos.filter(p => p.producto && p.qx > 0).length) }).map((_, i) =>
                         isOriginal ? (
                             <tr key={`empty-row-${i}`} className="empty-row"><td> </td><td> </td><td> </td><td> </td><td> </td></tr>
@@ -725,18 +721,18 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         </div>
       </div>
 
+      {/* --- INICIO: SECCIÓN DE IMPRESIÓN MODIFICADA --- */}
       <div id="presupuesto-imprimible" className="hidden print:block">
+        {/* Ticket 1 (con precios) - se imprimirá en la primera hoja */}
         <TicketActualizarComponent {...ticketProps} isOriginal={true} />
-        <div
-          className="ticket-separator"
-          style={{
-            borderTop: '3px dashed #888',
-            margin: '20mm 0',
-            width: '100%'
-          }}
-        ></div>
-        <TicketActualizarComponent {...ticketProps} isOriginal={false} />
+
+        {/* Este div fuerza un salto de página antes de imprimir su contenido */}
+        <div style={{ pageBreakBefore: 'always' }}>
+          {/* Ticket 2 (sin precios) - se imprimirá en la segunda hoja */}
+          <TicketActualizarComponent {...ticketProps} isOriginal={false} />
+        </div>
       </div>
+      {/* --- FIN: SECCIÓN DE IMPRESIÓN MODIFICADA --- */}
 
       <style jsx global>{`
         .no-spinners::-webkit-outer-spin-button,
@@ -747,7 +743,6 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         .no-spinners {
           -moz-appearance: textfield;
         }
-        /* // <-- CAMBIO: Se cambió el color principal a negro (#000) */
         .presupuesto-container { font-family: Arial, sans-serif; color: #000; margin: 20px; }
         .presupuesto-header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom:15px;}
         .logo-container { display:flex; flex-direction:column; align-items:center;}

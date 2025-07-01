@@ -29,148 +29,194 @@ export default function ListaBoletas() {
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
 
-  // ... (Estados de eliminación sin cambios) ...
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleteSuccess, setDeleteSuccess] = useState<string | null>(null);
 
-  // --- FUNCIÓN MODIFICADA ---
-  const fetchBoletas = async (currentPage: number) => {
-    // No reseteamos el loading aquí para que el estado de carga persista entre llamadas recursivas
+  // --- FUNCIÓN DE CARGA SIMPLIFICADA ---
+  const fetchBoletas = async (pageToFetch: number) => {
+    setLoading(true);
+    setError(null);
     try {
-      setError(null);
-      // Limpiamos mensajes de éxito/error de eliminación al iniciar una nueva búsqueda
-      if (currentPage === page) {
-         setDeleteError(null);
-         setDeleteSuccess(null);
-      }
-
       const token = localStorage.getItem("token");
-      if (!token) {
-        throw new Error("Usuario no autenticado. Por favor, inicie sesión.");
-      }
-      
-      const response = await fetch(`https://quimex.sistemataup.online/ventas/obtener_todas?page=${currentPage}&per_page=20`, {
+      if (!token) throw new Error("Usuario no autenticado.");
+
+      const response = await fetch(`https://quimex.sistemataup.online/ventas/con_entrega?page=${pageToFetch}&per_page=20`, {
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ message: `Error ${response.status}: ${response.statusText}` }));
+        const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.message || `Error al traer boletas: ${response.statusText}`);
       }
-      
+
       const data = await response.json();
-      
-      // Mantenemos el filtrado en el cliente
       const filtrados = data.ventas.filter(
-        (item: { direccion_entrega: string | null }) =>
-          item.direccion_entrega && item.direccion_entrega.trim() !== ""
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (item: any) => item.direccion_entrega && item.direccion_entrega.trim() !== ""
       );
 
-      // --- LÓGICA CLAVE AÑADIDA ---
-      // Si la página actual filtrada está vacía Y hay más páginas por revisar...
-      if (filtrados.length === 0 && data.pagination.has_next) {
-        // ...entonces llamamos a esta misma función para buscar en la siguiente página.
-        console.log(`Página ${currentPage} vacía, buscando en la página ${currentPage + 1}...`);
-        await fetchBoletas(currentPage + 1);
+      // Si la página que pedimos está vacía (post-filtro) y no es la primera,
+      // podría ser que el usuario llegó aquí desde una URL o después de borrar todo.
+      // Mostramos el estado vacío para que la lógica de búsqueda se active si el usuario hace clic.
+      if (filtrados.length === 0 && pageToFetch > 1 && !data.pagination.has_next) {
+         setBoletas([]);
       } else {
-        // ...de lo contrario (si encontramos boletas o si es la última página)...
-        // formateamos las fechas de las boletas encontradas.
-        // eslint-disable-next-line
-        const boletasConFechaFormateada = filtrados.map((item: any) => {
-          const fechaFormateada = item.fecha_pedido
-            ? new Date(item.fecha_pedido).toLocaleDateString("es-AR", {
-                day: "2-digit", month: "2-digit", year: "numeric",
-              })
-            : "";
-          return { ...item, fecha_pedido: fechaFormateada };
-        });
-
-        // Actualizamos el estado con los resultados encontrados
-        setBoletas(boletasConFechaFormateada);
-        // Actualizamos la paginación, asegurándonos de que la página actual
-        // sea la que realmente estamos mostrando.
-        setPagination({
-          ...data.pagination,
-          current_page: currentPage // ¡Importante!
-        });
-        // Y sincronizamos el estado 'page' por si el usuario navega desde ahí
-        setPage(currentPage);
-        
-        // Finalmente, detenemos el indicador de carga
-        setLoading(false);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const boletasConFechaFormateada = filtrados.map((item: any) => ({
+          ...item,
+          fecha_pedido: new Date(item.fecha_pedido).toLocaleDateString("es-AR", {
+            day: "2-digit", month: "2-digit", year: "numeric",
+          }),
+        }));
+         setBoletas(boletasConFechaFormateada);
       }
-      // eslint-disable-next-line
-    } catch (err: any) {
-      setError(err.message || 'Error desconocido al cargar boletas.');
-      console.error("FetchBoletas Error:", err);
-      setLoading(false); // Detenemos la carga también si hay un error
+      
+      setPagination(data.pagination);
+      setPage(pageToFetch);
+
+    } catch (err) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      setError((err as any).message || 'Error desconocido al cargar boletas.');
+    } finally {
+      setLoading(false);
     }
   };
 
   useEffect(() => {
-    setLoading(true); // Iniciar la carga aquí
     fetchBoletas(page);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page]); // Solo se ejecuta cuando el usuario cambia de página manualmente
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Cargar solo en el montaje inicial
 
-  // ... (El resto de tu componente, como handleEliminarPedido y el JSX, se mantiene igual) ...
-  const handleEliminarPedido = async (ventaId: number) => {
-    if (deletingId) return;
+  // --- NUEVAS FUNCIONES DE BÚSQUEDA PARA LOS BOTONES ---
+  const buscarSiguientePaginaConContenido = async () => {
+    if (!pagination || loading) return;
 
-    const confirmacion = window.confirm(`¿Está seguro de que desea eliminar el pedido Nº ${ventaId.toString().padStart(4, '0')}? Esta acción no se puede deshacer.`);
-    if (!confirmacion) {
-      return;
+    setLoading(true);
+    setError(null);
+    let paginaDeBusqueda = pagination.current_page;
+
+    while (true) {
+      paginaDeBusqueda++;
+      try {
+        const token = localStorage.getItem("token");
+        if (!token) throw new Error("Usuario no autenticado.");
+        const response = await fetch(`https://quimex.sistemataup.online/ventas/con_entrega?page=${paginaDeBusqueda}&per_page=20`, {
+            headers: { "Authorization": `Bearer ${token}` }
+        });
+        if (!response.ok) throw new Error("Error en la búsqueda");
+        
+        const data = await response.json();
+        const filtrados = data.ventas.filter(
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (item: any) => item.direccion_entrega && item.direccion_entrega.trim() !== ""
+        );
+
+        if (filtrados.length > 0) {
+            // ¡Encontrada! Actualizamos el estado y salimos del bucle.
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            setBoletas(filtrados.map((item: any) => ({
+                ...item,
+                fecha_pedido: new Date(item.fecha_pedido).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" }),
+            })));
+            setPagination(data.pagination);
+            setPage(paginaDeBusqueda);
+            break;
+        }
+
+        if (!data.pagination.has_next) {
+            // Llegamos al final sin encontrar nada. Salimos del bucle.
+            alert("No hay más pedidos con entrega a domicilio.");
+            break;
+        }
+      } catch (err) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          setError((err as any).message);
+          break;
+      }
     }
-
-    setDeletingId(ventaId);
-    setDeleteError(null);
-    setDeleteSuccess(null);
-
-    try {
-      const token = localStorage.getItem("token");
-      if (!token) {
-        throw new Error("Usuario no autenticado.");
-      }
-
-      const response = await fetch(`https://quimex.sistemataup.online/ventas/eliminar/${ventaId}`, {
-        method: 'DELETE',
-        headers: {
-          "Authorization": `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: `Error ${response.status} al eliminar.` }));
-        throw new Error(errorData.error || `Error al eliminar el pedido: ${response.statusText}`);
-      }
-
-      const result = await response.json();
-      setDeleteSuccess(result.message || `Pedido Nº ${ventaId} eliminado con éxito.`);
-      
-      const boletasActualizadas = boletas.filter(b => b.venta_id !== ventaId);
-      setBoletas(boletasActualizadas);
-      
-      if (boletasActualizadas.length === 0 && pagination && pagination.has_next) {
-        // Si la página queda vacía, intenta recargar desde la página siguiente
-        fetchBoletas(page + 1);
-      } else if (boletasActualizadas.length === 0 && page > 1) {
-         // Si era la última página, vuelve a la anterior
-        setPage(page - 1);
-      }
-      // eslint-disable-next-line
-    } catch (err: any) {
-      console.error("Error al eliminar pedido:", err);
-      setDeleteError(err.message || "Ocurrió un error al intentar eliminar el pedido.");
-    } finally {
-      setDeletingId(null);
-      setTimeout(() => {
-        setDeleteSuccess(null);
-        setDeleteError(null);
-      }, 5000);
-    }
+    setLoading(false);
   };
 
+  const buscarAnteriorPaginaConContenido = async () => {
+    if (!pagination || loading) return;
+    
+    setLoading(true);
+    setError(null);
+    let paginaDeBusqueda = page;
+
+    while (paginaDeBusqueda > 1) {
+        paginaDeBusqueda--;
+        // Misma lógica que la búsqueda siguiente, pero hacia atrás
+         try {
+            const token = localStorage.getItem("token");
+            if (!token) throw new Error("Usuario no autenticado.");
+            const response = await fetch(`https://quimex.sistemataup.online/ventascon_entrega?page=${paginaDeBusqueda}&per_page=20`, {
+                headers: { "Authorization": `Bearer ${token}` }
+            });
+            if (!response.ok) throw new Error("Error en la búsqueda");
+            
+            const data = await response.json();
+            const filtrados = data.ventas.filter(
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                (item: any) => item.direccion_entrega && item.direccion_entrega.trim() !== ""
+            );
+
+            if (filtrados.length > 0) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                setBoletas(filtrados.map((item: any) => ({
+                    ...item,
+                    fecha_pedido: new Date(item.fecha_pedido).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" }),
+                })));
+                setPagination(data.pagination);
+                setPage(paginaDeBusqueda);
+                setLoading(false);
+                return; // Salir de la función
+            }
+        } catch (err) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            setError((err as any).message);
+            break;
+        }
+    }
+    // Si el bucle termina, es que no encontró nada, recargamos la página 1
+    if(page !== 1) await fetchBoletas(1);
+    setLoading(false);
+  };
+
+  const handleEliminarPedido = async (ventaId: number) => {
+    if (deletingId) return;
+    if (!window.confirm(`¿Está seguro de que desea eliminar el pedido Nº ${ventaId.toString().padStart(4, '0')}?`)) return;
+
+    setDeletingId(ventaId);
+    try {
+        const token = localStorage.getItem("token");
+        if (!token) throw new Error("Usuario no autenticado.");
+        const response = await fetch(`https://quimex.sistemataup.online/ventas/eliminar/${ventaId}`, {
+            method: 'DELETE',
+            headers: { "Authorization": `Bearer ${token}` },
+        });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || `Error al eliminar el pedido.`);
+        }
+        setDeleteSuccess(`Pedido Nº ${ventaId} eliminado.`);
+        
+        // Si al borrar el último item la página queda vacía, recargamos la página actual.
+        // Si esa página ahora está vacía y no es la primera, la lógica de búsqueda se activará.
+        if (boletas.length === 1) {
+            await fetchBoletas(page);
+        } else {
+            setBoletas(boletas.filter(b => b.venta_id !== ventaId));
+        }
+    } catch (err) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        setDeleteError((err as any).message);
+    } finally {
+        setDeletingId(null);
+        setTimeout(() => { setDeleteSuccess(null); setDeleteError(null); }, 4000);
+    }
+  };
 
   return (
     <>
@@ -192,7 +238,7 @@ export default function ListaBoletas() {
                 <div className="overflow-x-auto">
                   <ul className="space-y-3 min-w-[900px]">
                     <li className="grid grid-cols-6 gap-x-4 items-center bg-indigo-100 p-3 rounded-md font-semibold text-indigo-700 text-xs uppercase tracking-wider">
-                      <span className="text-center" >Nº Boleta</span>
+                      <span className="text-center">Nº Boleta</span>
                       <span className="text-center">Monto</span>
                       <span className="text-center">Fecha Pedido</span>
                       <span className="text-center">Dirección</span>
@@ -212,7 +258,7 @@ export default function ListaBoletas() {
                             title="Editar Pedido"
                             className="text-indigo-600 hover:text-indigo-800 text-xl transition-colors"
                             onClick={() => setIdBoleta(boleta.venta_id)}
-                            disabled={!!deletingId}
+                            disabled={!!deletingId || loading}
                           >
                             ⚙️
                           </button>
@@ -220,7 +266,7 @@ export default function ListaBoletas() {
                             title="Eliminar Pedido"
                             className={`text-red-500 hover:text-red-700 text-xl transition-colors ${deletingId === boleta.venta_id ? 'opacity-50 cursor-wait' : ''}`}
                             onClick={() => handleEliminarPedido(boleta.venta_id)}
-                            disabled={!!deletingId}
+                            disabled={!!deletingId || loading}
                           >
                             🗑️
                           </button>
@@ -228,7 +274,7 @@ export default function ListaBoletas() {
                       </li>
                     )) : (
                         <li className="text-center py-8 text-gray-500 col-span-6">
-                            No hay pedidos para mostrar con los filtros actuales.
+                            No se encontraron pedidos con entrega a domicilio.
                         </li>
                     )}
                   </ul>
@@ -237,18 +283,18 @@ export default function ListaBoletas() {
                 {pagination && pagination.total_pages > 1 && (
                   <div className="flex flex-col sm:flex-row justify-center items-center mt-8 gap-3">
                     <button
-                      onClick={() => setPage((prev) => Math.max(prev - 1, 1))}
-                      disabled={page <= 1 || loading} // Deshabilitado si es la primera página o si está cargando
+                      onClick={buscarAnteriorPaginaConContenido}
+                      disabled={page <= 1 || loading}
                       className="px-4 py-2 rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
                     >
                       Anterior
                     </button>
                     <span className="text-indigo-700 font-medium text-sm">
-                      Página {pagination.current_page} de {pagination.total_pages}
+                      Página {page} de {pagination.total_pages}
                     </span>
                     <button
-                      onClick={() => setPage((prev) => prev + 1)}
-                      disabled={page >= pagination.total_pages || loading} // Deshabilitado si es la última o si está cargando
+                      onClick={buscarSiguientePaginaConContenido}
+                      disabled={!pagination.has_next || loading}
                       className="px-4 py-2 rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
                     >
                       Siguiente

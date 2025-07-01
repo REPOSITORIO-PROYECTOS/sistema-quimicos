@@ -58,7 +58,7 @@ const initialFormData: IFormData = {
 };
 const initialProductos: ProductoPedido[] = [{ producto: 0, qx: 0, precio: 0, descuento: 0, total: 0, observacion: "" }];
 
-// --- INICIO: COMPONENTE DE TICKET MODIFICADO ---
+// --- INICIO: COMPONENTE DE TICKET MODIFICADO (Sin cambios en este componente) ---
 const TicketComponent: React.FC<{
     formData: IFormData;
     montoBaseProductos: number;
@@ -97,7 +97,6 @@ const TicketComponent: React.FC<{
                     <tr><td>FECHA</td><td>{formData.fechaEmision ? new Date(formData.fechaEmision).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'}) : ''}</td></tr>
                     <tr><td>CLIENTE</td><td>{formData.nombre || (formData.clienteId ? `Cliente ID: ${formData.clienteId}` : 'CONSUMIDOR FINAL')}</td></tr>
                     <tr><td>DIRECCIÓN</td><td>{formData.direccion || '-'}</td></tr>
-                    {/* // <-- CAMBIO: Mostrar descuentos y total final solo si es el ticket original --> */}
                     {isOriginal && formData.descuentoTotal > 0 && (
                         <tr><td>DESCUENTO TOTAL ({formData.descuentoTotal}%)</td><td className="text-red-600 print:text-red-600">- $ {(baseTotalConRecargos * (formData.descuentoTotal / 100)).toFixed(2)}</td></tr>
                     )}
@@ -108,7 +107,6 @@ const TicketComponent: React.FC<{
             </section>
             <section className="detalle-productos">
                 <table className="tabla-items">
-                    {/* // <-- CAMBIO: Renderizar una cabecera diferente según si es original o no --> */}
                     <thead>
                         {isOriginal ? (
                             <tr>
@@ -136,7 +134,6 @@ const TicketComponent: React.FC<{
                                     <td>{index + 1}</td>
                                     <td>{pInfo?.nombre || `ID: ${item.producto}`}</td>
                                     <td className="text-center">{item.qx}</td>
-                                    {/* // <-- CAMBIO: Mostrar celdas de descuento y subtotal solo si es original --> */}
                                     {isOriginal && (
                                         <>
                                             <td className="text-center">{item.descuento > 0 ? `${item.descuento}%` : '-'}</td>
@@ -152,7 +149,6 @@ const TicketComponent: React.FC<{
                                 </tr>
                             );
                         })}
-                        {/* // <-- CAMBIO: Ajustar número de celdas vacías según el tipo de ticket --> */}
                         {Array.from({ length: Math.max(0, 12 - productos.filter(p => p.producto && p.qx > 0).length) }).map((_, i) =>
                             isOriginal ? (
                                 <tr key={`empty-row-${i}`} className="empty-row"><td> </td><td> </td><td> </td><td> </td><td> </td></tr>
@@ -760,7 +756,6 @@ export default function RegistrarPedidoPage() {
 
              <fieldset className="border p-4 rounded-md">
               <legend className="text-lg font-medium text-gray-700 px-2">Pago y Totales</legend>
-              {/* --- INICIO: SECCIÓN RESTAURADA DEL FORMULARIO --- */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="formaPago">Forma de Pago</label>
@@ -785,7 +780,6 @@ export default function RegistrarPedidoPage() {
                       max="100"
                     />
                 </div>
-                {/* --- CAMPO 'Monto Pagado' RESTAURADO --- */}
                 <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="montoPagado">Monto Pagado</label>
                     <input
@@ -807,7 +801,6 @@ export default function RegistrarPedidoPage() {
                     value={`$ ${formData.vuelto.toFixed(2)}`}/>
                 </div>
               </div>
-              {/* --- FIN: SECCIÓN RESTAURADA DEL FORMULARIO --- */}
               <div className="mt-4 text-right">
                 {isCalculatingTotal && <p className="text-sm text-blue-600 italic">Calculando total...</p>}
                 {totalCalculadoApi && (
@@ -840,18 +833,18 @@ export default function RegistrarPedidoPage() {
         </div>
       </div>
 
+      {/* --- INICIO: SECCIÓN DE IMPRESIÓN MODIFICADA --- */}
       <div id="presupuesto-imprimible" className="hidden print:block">
+        {/* Ticket 1 (con precios) - se imprimirá en la primera hoja */}
         <TicketComponent {...ticketProps} isOriginal={true} />
-        <div
-          className="ticket-separator"
-          style={{
-            borderTop: '3px dashed #888',
-            margin: '20mm 0',
-            width: '100%'
-          }}
-        ></div>
-        <TicketComponent {...ticketProps} isOriginal={false} />
+
+        {/* Este div fuerza un salto de página antes de imprimir su contenido */}
+        <div style={{ pageBreakBefore: 'always' }}>
+          {/* Ticket 2 (sin precios) - se imprimirá en la segunda hoja */}
+          <TicketComponent {...ticketProps} isOriginal={false} />
+        </div>
       </div>
+      {/* --- FIN: SECCIÓN DE IMPRESIÓN MODIFICADA --- */}
       
       <style jsx global>{`
         .no-spinners::-webkit-outer-spin-button,

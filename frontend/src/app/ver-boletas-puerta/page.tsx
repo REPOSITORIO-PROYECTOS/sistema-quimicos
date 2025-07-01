@@ -46,7 +46,7 @@ export default function ListaBoletasPuerta() {
         throw new Error("Usuario no autenticado. Por favor, inicie sesión.");
       }
       // Si tu API soporta paginación:
-      const response = await fetch(`https://quimex.sistemataup.online/ventas/obtener_todas?page=${currentPage}&per_page=20`, {
+      const response = await fetch(`https://quimex.sistemataup.online/ventas/sin_entrega?page=${currentPage}&per_page=20`, {
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }
       });
       // Si no soporta paginación y la haces en cliente (no recomendado para grandes datasets):
