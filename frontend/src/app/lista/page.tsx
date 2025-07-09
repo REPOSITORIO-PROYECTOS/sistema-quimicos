@@ -4,8 +4,9 @@
 import React, { useState, useEffect, useCallback, ChangeEvent } from 'react';
 import CreateProductModal from '@/components/CreateProductModal';
 import * as XLSX from 'xlsx';
+import Select from 'react-select'; // Importar Select
 
-// --- Tipos de Datos (sin cambios, omitidos por brevedad en la explicación pero incluidos en el código final) ---
+// --- Tipos de Datos (sin cambios) ---
 type ProductDataRaw = {
   ajusta_por_tc: boolean;
   costo_referencia_usd: number | null;
@@ -49,7 +50,6 @@ interface ApiComboComponente {
     id: number;
 }
 
-
 export type DisplayItem = {
   id: number;
   displayId: string;
@@ -67,8 +67,94 @@ export type DisplayItem = {
   priceError: boolean;
   es_combo_proxy?: boolean;
   combo_id_original?: number | null;
-  ajusta_por_tc: boolean; // Propiedad ya existente
+  ajusta_por_tc: boolean;
 };
+
+// --- INICIO: NUEVO COMPONENTE DE MODAL ---
+const IncreaseCostModal: React.FC<{
+  isOpen: boolean;
+  onClose: () => void;
+  products: DisplayItem[];
+  onApply: (productId: number, percentage: number) => Promise<void>;
+  isApplying: boolean;
+  error: string | null;
+}> = ({ isOpen, onClose, products, onApply, isApplying, error }) => {
+  const [selectedProduct, setSelectedProduct] = useState<{ value: number; label: string } | null>(null);
+  const [percentage, setPercentage] = useState<string>('');
+
+  const productOptions = products
+    .filter(p => p.type === 'product' && !p.es_combo_proxy)
+    .map(p => ({ value: p.id, label: `${p.nombre} (${p.codigo})` }));
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (selectedProduct && percentage) {
+      onApply(selectedProduct.value, parseFloat(percentage));
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-gray-600 bg-opacity-75 overflow-y-auto h-full w-full z-50 flex justify-center items-center px-4">
+      <div className="relative mx-auto p-5 border w-full max-w-lg shadow-lg rounded-md bg-white">
+        <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">Aplicar Aumento/Disminución en Cascada</h3>
+        <form onSubmit={handleSubmit}>
+          <div className="space-y-4">
+            <div>
+              <label htmlFor="product-select" className="block text-sm font-medium text-gray-700 mb-1">
+                Producto Base (Materia Prima)*
+              </label>
+              <Select
+                id="product-select"
+                options={productOptions}
+                value={selectedProduct}
+                onChange={setSelectedProduct}
+                placeholder="Seleccionar producto base..."
+                isClearable
+                isSearchable
+              />
+            </div>
+            <div>
+              <label htmlFor="percentage-input" className="block text-sm font-medium text-gray-700 mb-1">
+                Porcentaje de Aumento/Disminución*
+              </label>
+              <input
+                id="percentage-input"
+                type="number"
+                step="0.01"
+                value={percentage}
+                onChange={(e) => setPercentage(e.target.value)}
+                placeholder="Ej: 10 para 10% de aumento, -5 para 5% de baja"
+                className="w-full px-3 py-2 border rounded-md"
+                required
+              />
+            </div>
+            {error && <p className="text-sm text-red-600 bg-red-100 p-2 rounded">{error}</p>}
+          </div>
+          <div className="items-center px-4 py-3 gap-2 flex flex-col sm:flex-row sm:justify-end border-t mt-6 pt-4">
+            <button
+              type="submit"
+              disabled={!selectedProduct || !percentage || isApplying}
+              className="w-full sm:w-auto px-4 py-2 bg-rose-500 text-white rounded-md shadow-sm hover:bg-rose-600 disabled:bg-gray-300 flex items-center justify-center gap-2"
+            >
+              {isApplying ? 'Aplicando...' : 'Aplicar Aumento'}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isApplying}
+              className="w-full sm:w-auto mt-2 sm:mt-0 px-4 py-2 bg-gray-200 text-gray-800 rounded-md shadow-sm hover:bg-gray-300 disabled:bg-gray-100"
+            >
+              Cancelar
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+// --- FIN: NUEVO COMPONENTE DE MODAL ---
 
 const ITEMS_PER_PAGE = 15;
 
@@ -98,7 +184,7 @@ export default function ProductPriceTable() {
   const [editingItemType, setEditingItemType] = useState<'product' | 'combo' | null>(null);
 
   const [deletingItem, setDeletingItem] = useState<DisplayItem | null>(null);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
+
   const token = typeof window !== 'undefined' ? localStorage.getItem("token") : null;
 
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -108,26 +194,42 @@ export default function ProductPriceTable() {
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
 
   const [isPreparingDownload, setIsPreparingDownload] = useState(false);
-  const [downloadError, setDownloadError] = useState<string | null>(null);
+
 
   const [isPreparingPriceList, setIsPreparingPriceList] = useState(false);
-  const [priceListError, setPriceListError] = useState<string | null>(null);
+
+  const [isIncreaseModalOpen, setIsIncreaseModalOpen] = useState(false);
+  const [isApplyingIncrease, setIsApplyingIncrease] = useState(false);
+  const [increaseError, setIncreaseError] = useState<string | null>(null);
 
 
+  // --- USEEFFECT CORREGIDO PARA MANEJAR MODALES Y EL STICKY HEADER ---
  useEffect(() => {
-    if (isProductModalOpen) {
+    const header = document.getElementById('product-table-header');
+    const isAnyModalOpen = isProductModalOpen || isUploadModalOpen || isIncreaseModalOpen;
+    
+    if (isAnyModalOpen) {
       document.body.classList.add('modal-open');
       document.body.style.overflow = 'hidden';
+      if (header) {
+        header.classList.remove('sticky', 'z-10');
+      }
     } else {
       document.body.classList.remove('modal-open');
       document.body.style.overflow = 'auto';
+      if (header) {
+        header.classList.add('sticky', 'z-10');
+      }
     }
 
     return () => {
       document.body.classList.remove('modal-open');
       document.body.style.overflow = 'auto';
+      if (header) {
+        header.classList.add('sticky', 'z-10');
+      }
     };
-  }, [isProductModalOpen]);
+  }, [isProductModalOpen, isUploadModalOpen, isIncreaseModalOpen]);
 
   const generateAndDownloadExcel = (itemsToExport: DisplayItem[]) => {
     const dataForExcel = itemsToExport.map((item) => {
@@ -150,7 +252,7 @@ export default function ProductPriceTable() {
         'Ref. Cálculo': item.ref_calculo || 'N/A',
         'Costo USD': typeof item.costo_referencia_usd === 'number' ? item.costo_referencia_usd : 'N/A',
         'Precio Venta ARS': precioFinal,
-        'Ajusta por TC': item.ajusta_por_tc ? 'Sí' : 'No', // Columna añadida para claridad en Excel
+        'Ajusta por TC': item.ajusta_por_tc ? 'Sí' : 'No',
       };
     });
 
@@ -185,7 +287,7 @@ export default function ProductPriceTable() {
       return;
     }
     setIsPreparingDownload(true);
-    setDownloadError(null);
+
 
     try {
       const itemsToCalculate = allItems.filter(item => item.precio === undefined);
@@ -222,7 +324,7 @@ export default function ProductPriceTable() {
       //eslint-disable-next-line
     } catch (err: any) {
       console.error("Error durante la preparación de la descarga:", err);
-      setDownloadError("Ocurrió un error al calcular los precios. Inténtalo de nuevo.");
+     
     } finally {
       setIsPreparingDownload(false);
     }
@@ -232,14 +334,8 @@ export default function ProductPriceTable() {
     if (!token) throw new Error("Token no disponible.");
     try {
       const quantity = quantityOverride !== undefined ? quantityOverride : (parseFloat(item.ref_calculo || '1') || 1);
-
-      const body = { 
-        quantity: quantity,
-        producto_id: item.id 
-      };
-      
+      const body = { quantity: quantity, producto_id: item.id };
       const calculateUrl = `https://quimex.sistemataup.online/productos/calcular_precio/${item.id}`;
-      
       const response = await fetch(calculateUrl, { 
         method: "POST", 
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }, 
@@ -253,7 +349,6 @@ export default function ProductPriceTable() {
       const data = await response.json();
       const unitPrice = data.precio_venta_unitario_ars;
       const totalPrice = data.precio_venta_unitario_ars;
-      
       if (typeof unitPrice !== 'number' || typeof totalPrice !== 'number') { 
         throw new Error('Formato de precio inválido desde la API'); 
       }
@@ -269,13 +364,10 @@ export default function ProductPriceTable() {
       return;
     }
     setIsPreparingPriceList(true);
-    setPriceListError(null);
 
     const quantities = [0.250, 0.500, 1, 5, 10, 25, 50, 100];
-
     try {
       const productsToProcess = allItems.filter(item => item.type === 'product');
-
       const pricePromises = productsToProcess.map(product =>
         calculatePrice(product, 1)
           .then(result => ({
@@ -284,36 +376,21 @@ export default function ProductPriceTable() {
           }))
           .catch(error => {
             console.error(`No se pudo calcular el precio para ${product.nombre}:`, error);
-            return {
-              nombre: product.nombre,
-              unitPrice: null,
-            };
+            return { nombre: product.nombre, unitPrice: null };
           })
       );
-
       const priceResults = await Promise.all(pricePromises);
-
-      // --- CORRECCIÓN EN LA GENERACIÓN DEL EXCEL ---
       const headers = ['Producto', ...quantities.map(String)];
       const excelData = priceResults.map(result => {
-        const row: { [key: string]: string | number } = {
-          'Producto': result.nombre,
-        };
-
+        const row: { [key: string]: string | number } = { 'Producto': result.nombre };
         if (result.unitPrice === null) {
-          quantities.forEach(q => {
-            row[String(q)] = "Error";
-          });
+          quantities.forEach(q => { row[String(q)] = "Error"; });
         } else {
-          quantities.forEach(q => {
-            row[String(q)] = result.unitPrice! * q;
-          });
+          quantities.forEach(q => { row[String(q)] = result.unitPrice! * q; });
         }
         return row;
       });
-
       const worksheet = XLSX.utils.json_to_sheet(excelData, { header: headers });
-      
       worksheet['!cols'] = [{ wch: 45 }, ...quantities.map(() => ({ wch: 15 }))];
       const range = XLSX.utils.decode_range(worksheet['!ref']!);
       for (let R = range.s.r + 1; R <= range.e.r; ++R) {
@@ -326,14 +403,13 @@ export default function ProductPriceTable() {
             }
         }
       }
-
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, "Lista de Precios por Volumen");
       XLSX.writeFile(workbook, "Lista_Precios_Volumen_Quimex.xlsx");
       //eslint-disable-next-line
     } catch (err: any) {
       console.error("Error generando la lista de precios por volumen:", err);
-      setPriceListError("Ocurrió un error general. Inténtalo de nuevo.");
+    
     } finally {
       setIsPreparingPriceList(false);
     }
@@ -390,7 +466,7 @@ export default function ProductPriceTable() {
         margen: c.margen_combo ? c.margen_combo * 100 : undefined, ref_calculo: "-",
         costo_referencia_usd: c.costo_referencia_usd, es_combo_proxy: false, combo_id_original: c.id,
         precio: c.costo_referencia_ars, isLoadingPrice: c.costo_referencia_ars === undefined, priceError: false,
-        ajusta_por_tc: false, // Los combos directos no tienen esta propiedad
+        ajusta_por_tc: false,
       }));
 
       const combined = [...displayProducts, ...displayCombos].sort((a, b) => a.nombre.localeCompare(b.nombre));
@@ -403,6 +479,47 @@ export default function ProductPriceTable() {
       setLoadingInitial(false);
     }
   }, [token]);
+  
+  const handleApplyIncrease = async (productId: number, percentage: number) => {
+    if (!token) {
+      setIncreaseError("Token no disponible. Inicie sesión.");
+      return;
+    }
+    setIsApplyingIncrease(true);
+    setIncreaseError(null);
+
+    try {
+      const response = await fetch('https://quimex.sistemataup.online/productos/actualizar_costos_por_aumento', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          producto_base_id: productId,
+          porcentaje_aumento: percentage
+        })
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || `Error ${response.status} al aplicar aumento.`);
+      }
+      //eslint-disable-next-line
+      const details = result.detalles_actualizacion.map((d: any) => 
+        `\n- ${d.nombre} (ID: ${d.producto_id}): $${d.costo_anterior_usd.toFixed(4)} -> $${d.costo_nuevo_usd.toFixed(4)}`
+      ).join('');
+      alert(`${result.message}\n${details}`);
+      
+      setIsIncreaseModalOpen(false);
+      await fetchAndCombineData(); 
+      //eslint-disable-next-line
+    } catch (error: any) {
+      setIncreaseError(error.message || "Ocurrió un error desconocido.");
+    } finally {
+      setIsApplyingIncrease(false);
+    }
+  };
 
   useEffect(() => {
     if (token) {
@@ -501,9 +618,9 @@ export default function ProductPriceTable() {
   const handleDolarInputChange = (e: ChangeEvent<HTMLInputElement>) => { const { name, value } = e.target; const s = value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1'); if (name === 'dolarOficial') setEditDolarOficial(s); else if (name === 'dolarQuimex') setEditDolarQuimex(s); };
 
   const handleDeleteProduct = async (itemToDelete: DisplayItem) => {
-     if (!token) { setDeleteError("Token no disponible."); return; }
+     if (!token) { return; }
      if (!window.confirm(`¿Seguro de eliminar "${itemToDelete.nombre}" (ID: ${itemToDelete.id}, Tipo: ${itemToDelete.type})?`)) return;
-     setDeletingItem(itemToDelete); setDeleteError(null);
+     setDeletingItem(itemToDelete); 
      try {
         const comboIdParaBorrar = itemToDelete.type === 'combo' ? itemToDelete.id : itemToDelete.combo_id_original;
         if (comboIdParaBorrar) {
@@ -519,7 +636,7 @@ export default function ProductPriceTable() {
         alert(`"${itemToDelete.nombre}" eliminado.`);
         fetchAndCombineData();
         //eslint-disable-next-line
-     } catch (err: any) { setDeleteError(err.message); alert(`Error: ${err.message}`); }
+     } catch (err: any) {  alert(`Error: ${err.message}`); }
      finally { setDeletingItem(null); }
   };
 
@@ -563,15 +680,12 @@ export default function ProductPriceTable() {
     tableBodyContent = displayedItems.map((item) => {
         const isDeletingCurrent = deletingItem?.displayId === item.displayId;
         return (
-            // ==========================================================
-            // =====> INICIO DE LA MODIFICACIÓN <=====
-            // ==========================================================
             <tr 
                 key={item.displayId} 
                 className={`transition duration-150 ease-in-out ${
                     isDeletingCurrent 
                         ? 'opacity-50 bg-red-50' 
-                        : item.ajusta_por_tc // Nueva condición con alta prioridad
+                        : item.ajusta_por_tc
                             ? 'bg-amber-100 hover:bg-amber-200' 
                             : item.type === 'combo' 
                                 ? 'bg-lime-50 hover:bg-lime-100' 
@@ -585,12 +699,8 @@ export default function ProductPriceTable() {
                     {item.nombre}
                     {item.type === 'combo' && <span className="ml-2 text-xs bg-lime-200 text-lime-800 px-1.5 py-0.5 rounded-full font-semibold">COMBO</span>}
                     {item.type === 'product' && item.es_combo_proxy && <span className="ml-2 text-xs bg-yellow-200 text-yellow-800 px-1.5 py-0.5 rounded-full font-semibold">P-COMBO</span>}
-                    {/* Indicador visual para saber POR QUÉ la fila está de otro color */}
                     {item.ajusta_por_tc && <span className="ml-2 text-xs bg-amber-200 text-amber-800 px-1.5 py-0.5 rounded-full font-semibold">TC</span>}
                 </td>
-                {/* ==========================================================
-                // =====> FIN DE LA MODIFICACIÓN <=====
-                // ========================================================== */}
                 <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{item.fecha_actualizacion}</td>
                 <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{item.tipo_calculo}</td>
                 <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-left">{typeof item.margen === 'number' ? `${item.margen.toFixed(2)}%` : 'N/A'}</td>
@@ -612,57 +722,50 @@ export default function ProductPriceTable() {
 
   return (
     <div className="p-4 md:p-6 bg-gray-100 min-h-screen">
-      {/* El resto del componente permanece sin cambios... */}
       <div className="max-w-7xl mx-auto bg-white shadow-md rounded-lg p-4 md:p-6">
         <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
           <input type="text" placeholder="Buscar por nombre o código..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="px-4 py-2 border rounded-md w-full md:w-auto"/>
-          
           <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto flex-wrap justify-end">
-            
             <div className="flex items-center gap-x-4 gap-y-2 flex-wrap border p-2 rounded-md">
                 <div className="text-sm flex items-center gap-1"> <label htmlFor="dolarOficialInput" className="font-medium">Dólar Oficial:</label> {loadingDolar ? "..." : isEditingDolar ? <input id="dolarOficialInput" type="text" name="dolarOficial" value={editDolarOficial} onChange={handleDolarInputChange} className="px-2 py-1 border rounded text-sm w-24" disabled={loadingDolarSave} inputMode="decimal" /> : dolarOficial !== null ? <span className="font-semibold">${dolarOficial.toFixed(2)}</span> : <span className="text-red-500 text-xs">{errorDolar || 'Error'}</span>} </div>
                 <div className="text-sm flex items-center gap-1"> <label htmlFor="dolarQuimexInput" className="font-medium">Dólar Empresa:</label> {loadingDolar ? "..." : isEditingDolar ? <input id="dolarQuimexInput" type="text" name="dolarQuimex" value={editDolarQuimex} onChange={handleDolarInputChange} className="px-2 py-1 border rounded text-sm w-24" disabled={loadingDolarSave} inputMode="decimal" /> : dolarQuimex !== null ? <span className="font-semibold">${dolarQuimex.toFixed(2)}</span> : <span className="text-red-500 text-xs">{errorDolar || 'Error'}</span>} </div>
                 <div className="flex items-center gap-2"> {isEditingDolar ? (<> <button onClick={handleSaveDolarValues} disabled={loadingDolarSave || loadingDolar} className={`px-3 py-1 text-xs rounded flex items-center gap-1 ${ loadingDolarSave || loadingDolar ? 'bg-gray-300 cursor-not-allowed' : 'bg-green-100 text-green-700 hover:bg-green-200' }`}> <svg className={`h-3 w-3 ${loadingDolarSave ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg> {loadingDolarSave ? '...' : 'Guardar'} </button> <button onClick={handleCancelDolarEdit} disabled={loadingDolarSave} className="px-3 py-1 text-xs bg-gray-100 rounded hover:bg-gray-200"> Cancelar </button> </> ) : (<button onClick={handleEditDolarClick} disabled={loadingDolar || dolarOficial === null || dolarQuimex === null} className={`px-3 py-1 text-xs rounded flex items-center gap-1 ${ loadingDolar || dolarOficial === null || dolarQuimex === null ? 'bg-gray-300 cursor-not-allowed' : 'bg-blue-100 text-blue-700 hover:bg-blue-200' }`}> <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg> Editar Dólar </button> )} </div>
                 {errorDolarSave && ( <p className="text-xs text-red-600 mt-1 w-full text-right sm:text-left sm:w-auto">{errorDolarSave}</p> )}
             </div>
-
             <div className="flex flex-col sm:flex-row items-center gap-2 flex-wrap">
                  <button
+                    onClick={() => setIsIncreaseModalOpen(true)}
+                    disabled={!token || allItems.length === 0}
+                    className="w-full sm:w-auto bg-rose-600 text-white px-4 py-2 rounded-md shadow-sm hover:bg-rose-700 disabled:bg-gray-400 flex items-center justify-center gap-2"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" clipRule="evenodd" /></svg>
+                    Aumento en Cascada
+                </button>
+                <button
                     onClick={handleDownloadPriceList}
                     disabled={!token || allItems.length === 0 || isPreparingPriceList}
-                    className="w-full sm:w-auto bg-cyan-600 text-white px-4 py-2 rounded-md shadow-sm hover:bg-cyan-700 disabled:bg-gray-400 disabled:cursor-wait flex items-center justify-center gap-2"
+                    className="w-full sm:w-auto bg-cyan-600 text-white px-4 py-2 rounded-md shadow-sm hover:bg-cyan-700 disabled:bg-gray-400 flex items-center justify-center gap-2"
                 >
-                    {isPreparingPriceList ? ( <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25"></circle><path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" className="opacity-75" fill="currentColor"></path></svg> ) : ( <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a6 6 0 00-6 6v3.586l-1.293 1.293a1 1 0 001.414 1.414L6 13.586V16h8v-2.414l2.293 2.293a1 1 0 001.414-1.414L14 11.586V8a6 6 0 00-6-6zM4 18a1 1 0 01-1-1v-1h14v1a1 1 0 01-1 1H4z" /></svg> )}
-                    {isPreparingPriceList ? 'Preparando...' : 'Precios (Kg/Lt)'}
+                    {isPreparingPriceList ? '...' : 'Precios (Kg/Lt)'}
                 </button>
                 <button
                     onClick={handleDownloadExcel}
                     disabled={!token || allItems.length === 0 || isPreparingDownload}
-                    className="w-full sm:w-auto bg-green-600 text-white px-4 py-2 rounded-md shadow-sm hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-wait flex items-center justify-center gap-2"
+                    className="w-full sm:w-auto bg-green-600 text-white px-4 py-2 rounded-md shadow-sm hover:bg-green-700 disabled:bg-gray-400 flex items-center justify-center gap-2"
                 >
-                    {isPreparingDownload ? ( <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25"></circle><path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" className="opacity-75" fill="currentColor"></path></svg> ) : ( <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 9.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 7.414V13a1 1 0 11-2 0V7.414L7.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" /></svg> )}
-                    {isPreparingDownload ? 'Preparando...' : 'Lista General'}
+                    {isPreparingDownload ? '...' : 'Lista General'}
                 </button>
                 <button onClick={handleOpenUploadModal} disabled={!token} className="w-full sm:w-auto bg-teal-500 text-white px-4 py-2 rounded-md shadow-sm hover:bg-teal-600 disabled:bg-gray-400 flex items-center justify-center gap-1"> <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg> Actualizar Costos </button>
                 <button onClick={handleOpenCreateProductModal} disabled={!token} className="w-full sm:w-auto bg-indigo-600 text-white px-4 py-2 rounded-md shadow-sm hover:bg-indigo-700 disabled:bg-gray-400 flex items-center justify-center gap-1"> <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"> <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" /> </svg> Crear Item </button>
             </div>
-
           </div>
         </div>
-
-        {!token && <p className="text-center text-orange-600 my-6 bg-orange-50 p-3 rounded-md border">Inicie sesión.</p>}
-        {loadingInitial && token && <p className="text-center text-gray-600 my-6">Cargando...</p>}
-        {errorInitial && token && <p className="text-center text-red-600 my-6">Error: {errorInitial}</p>}
-        {deleteError && token && <p className="text-center text-red-600 my-2 bg-red-50 p-2 rounded border text-sm">Error al eliminar: {deleteError}</p>}
-        {downloadError && <p className="text-center text-red-600 my-2 bg-red-50 p-2 rounded border text-sm">{downloadError}</p>}
-        {priceListError && <p className="text-center text-red-600 my-2 bg-red-50 p-2 rounded border text-sm">{priceListError}</p>}
-
 
         {!loadingInitial && !errorInitial && token && (
           <>
             <div className="overflow-x-auto border rounded-md">
               <table className="min-w-full bg-white table-fixed">
-                <thead className="bg-indigo-700 text-white sticky top-0 z-10">
+                <thead id="product-table-header" className="bg-indigo-700 text-white sticky top-0 z-10">
                  <tr>
                     <th className="w-[10%] px-4 py-2 text-left text-xs font-bold uppercase tracking-wider">ID/Cód.</th>
                     <th className="w-[25%] px-4 py-2 text-left text-xs font-bold uppercase tracking-wider">Nombre</th>
@@ -675,21 +778,21 @@ export default function ProductPriceTable() {
                     <th className="w-[13%] px-4 py-2 text-center text-xs font-bold uppercase tracking-wider">Acciones</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {tableBodyContent}
-                </tbody>
+                <tbody className="divide-y divide-gray-200">{tableBodyContent}</tbody>
               </table>
             </div>
             {totalPages > 1 && (
               <div className="flex justify-between items-center mt-4 px-1 py-2 border-t">
-                 <button onClick={goToPreviousPage} disabled={currentPage === 1} className={`px-4 py-2 text-sm rounded ${ currentPage === 1 ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-indigo-100 hover:bg-indigo-200 text-indigo-700' }`}> Anterior </button>
+                 <button onClick={goToPreviousPage} disabled={currentPage === 1} className={`px-4 py-2 text-sm rounded ${ currentPage === 1 ? 'bg-gray-200' : 'bg-indigo-100 hover:bg-indigo-200' }`}> Anterior </button>
                  <span className="text-sm text-gray-700"> Página {currentPage} de {totalPages} (Total: {totalFilteredItems})</span>
-                 <button onClick={goToNextPage} disabled={currentPage === totalPages} className={`px-4 py-2 text-sm rounded ${ currentPage === totalPages ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-indigo-100 hover:bg-indigo-200 text-indigo-700' }`}> Siguiente </button>
+                 <button onClick={goToNextPage} disabled={currentPage === totalPages} className={`px-4 py-2 text-sm rounded ${ currentPage === totalPages ? 'bg-gray-200' : 'bg-indigo-100 hover:bg-indigo-200' }`}> Siguiente </button>
               </div>
             )}
           </>
         )}
       </div>
+
+      <IncreaseCostModal isOpen={isIncreaseModalOpen} onClose={() => setIsIncreaseModalOpen(false)} products={allItems} onApply={handleApplyIncrease} isApplying={isApplyingIncrease} error={increaseError} />
       {isProductModalOpen && (<CreateProductModal onClose={handleCloseProductModal} onProductCreatedOrUpdated={handleProductCreatedOrUpdated} productIdToEdit={editingItemType === 'product' ? editingItemId : null} comboIdToEdit={editingItemType === 'combo' ? editingItemId : (editingItemType === 'product' && displayedItems.find(it => it.id === editingItemId && it.type === 'product')?.es_combo_proxy ? displayedItems.find(it => it.id === editingItemId && it.type === 'product')?.combo_id_original : null) } isInitiallyCombo={editingItemType === 'combo' || (editingItemType === 'product' && displayedItems.find(it => it.id === editingItemId && it.type === 'product')?.es_combo_proxy)} /> )}
       {isUploadModalOpen && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-75 overflow-y-auto h-full w-full z-50 flex justify-center items-center px-4">
@@ -702,7 +805,7 @@ export default function ProductPriceTable() {
                   <label htmlFor="csv-upload-input" className={`w-full flex flex-col items-center px-4 py-6 bg-white text-blue-500 rounded-lg shadow border-2 ${selectedFile ? 'border-green-400' : 'border-blue-300 border-dashed'} cursor-pointer hover:bg-blue-50 hover:text-blue-600`}>
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" /></svg>
                     <span className="text-sm font-medium">{selectedFile ? selectedFile.name : "Seleccionar CSV"}</span>
-                    <input id="csv-upload-input" type="file" className="hidden" accept=".csv, text/csv, application/vnd.ms-excel" onChange={handleFileChange} disabled={isUploading}/>
+                    <input id="csv-upload-input" type="file" className="hidden" accept=".csv" onChange={handleFileChange} disabled={isUploading}/>
                   </label>
                   {selectedFile && (<button onClick={() => { setSelectedFile(null); const el = document.getElementById('csv-upload-input') as HTMLInputElement; if(el) el.value = '';}} className="mt-2 text-xs text-red-500 hover:text-red-700" disabled={isUploading}>Quitar</button>)}
                 </div>
@@ -710,13 +813,12 @@ export default function ProductPriceTable() {
                 {uploadSuccess && (<p className="text-sm text-green-600 bg-green-100 p-3 rounded-md my-3 text-left">{uploadSuccess}</p>)}
               </div>
               <div className="items-center px-4 py-3 gap-2 flex flex-col sm:flex-row sm:justify-end border-t pt-4">
-                <button onClick={handleUploadFile} disabled={!selectedFile || isUploading} className="w-full sm:w-auto px-4 py-2 bg-teal-500 text-white rounded-md shadow-sm hover:bg-teal-600 disabled:bg-gray-300 flex items-center justify-center gap-2">{isUploading ? (<><svg className="animate-spin -ml-1 mr-2 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25"></circle><path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" className="opacity-75" fill="currentColor"></path></svg>Procesando...</>) : "Subir y Procesar"}</button>
-                <button onClick={handleCloseUploadModal} disabled={isUploading} className="w-full sm:w-auto mt-2 sm:mt-0 px-4 py-2 bg-gray-200 text-gray-800 rounded-md shadow-sm hover:bg-gray-300 disabled:bg-gray-100">Cancelar</button>
+                <button onClick={handleUploadFile} disabled={!selectedFile || isUploading} className="w-full sm:w-auto px-4 py-2 bg-teal-500 text-white rounded-md">{isUploading ? 'Procesando...' : "Subir y Procesar"}</button>
+                <button onClick={handleCloseUploadModal} disabled={isUploading} className="w-full sm:w-auto mt-2 sm:mt-0 px-4 py-2 bg-gray-200 rounded-md">Cancelar</button>
               </div>
             </div>
           </div>
         </div>
-        
       )}
     </div>
   );
