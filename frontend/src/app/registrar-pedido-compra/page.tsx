@@ -30,6 +30,8 @@ export default function RegistrarIngreso() {
   const { productos, loading: productsLoading, error: productsError } = useProductsContext();
   // Se eliminó el contexto de proveedores
   const router = useRouter();
+  const [observaciones_solicitud, setObservacionesSolicitud] = useState('');
+  
   const [pedidos, setPedidos] = useState<IPedido[]>([]);
   const [errorApi, setErrorApi] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -77,7 +79,7 @@ export default function RegistrarIngreso() {
     const ventaPayload = {
       usuario_interno_id: user.id,
       forma_pago: "",
-      observaciones_solicitud: "",
+      observaciones_solicitud: observaciones_solicitud,
       items: [ {
           codigo_interno: parseInt(producto),
           cantidad: parseInt(cantidad),
@@ -227,8 +229,20 @@ export default function RegistrarIngreso() {
             className={baseInputClass}
           />
         </div>
+        
 
-        {/* CAMPOS PRECIO, CUENTA, IIBB ELIMINADOS */}
+        <div className="mb-4">
+          <label htmlFor="clasificacion" className={labelClass}>Clasificacion *</label>
+          <input
+            id="clasificacion"
+            value={observaciones_solicitud}
+            onChange={(e) => setObservacionesSolicitud(e.target.value)}
+            type="text"
+            required
+            className={baseInputClass}
+          />
+        </div>
+
 
         <div className="flex flex-col sm:flex-row gap-4 justify-center mt-6">
            <BotonVolver />

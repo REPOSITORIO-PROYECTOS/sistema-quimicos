@@ -5,9 +5,8 @@ import { useProveedoresContext } from "@/context/ProveedoresContext";
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import jsPDF from 'jspdf';
-// eslint-disable-next-line
+//eslint-disable-next-line
 export default function SolicitudIngresoPage({ id }: any) {
-  // Estados originales
   const [fecha, setFecha] = useState('');
   const [proveedorId, setProveedorId] = useState('');
   const [producto, setProducto] = useState('0');
@@ -27,15 +26,12 @@ export default function SolicitudIngresoPage({ id }: any) {
   const [chequePerteneceA, setChequePerteneceA] = useState('');
   const [tipoCaja, setTipoCaja] = useState('caja diaria');
   
-  // Contextos y estados de UI
   const { productos: productosDelContexto } = useProductsContext();
   const { proveedores, loading: proveedoresLoading } = useProveedoresContext();
   const [errorMensaje, setErrorMensaje] = useState('');
   const [estadoOC, setEstadoOC] = useState('');
   const [montoYaAbonadoOC, setMontoYaAbonadoOC] = useState<number>(0);
   const [idLineaOCOriginal, setIdLineaOCOriginal] = useState<string | number>('');
-
-  // --- NUEVO ESTADO PARA CANTIDAD RECIBIDA PREVIAMENTE ---
   const [cantidadYaRecibida, setCantidadYaRecibida] = useState<number>(0);
 
   let problema = false;
@@ -67,7 +63,6 @@ export default function SolicitudIngresoPage({ id }: any) {
       
       const itemPrincipal = data.items[0];
 
-      // Seteo de estados desde la API
       setMontoYaAbonadoOC(parseFloat(data.importe_abonado) || 0);
       setFecha(formatearFecha(data.fecha_creacion));
       setProveedorId(data.proveedor_id?.toString() ?? '');
@@ -84,10 +79,8 @@ export default function SolicitudIngresoPage({ id }: any) {
       setNroRemitoProveedor(data.nro_remito_proveedor || '');
       setChequePerteneceA(data.cheque_perteneciente_a?.toString() ?? '');
       setTipoCaja(data.tipo_caja);
-      // --- NUEVA LÍNEA PARA GUARDAR CANTIDAD PREVIAMENTE RECIBIDA ---
       setCantidadYaRecibida(parseFloat(itemPrincipal.cantidad_recibida) || 0);
       
-      // Reseteo de campos de acción
       setEstadoRecepcion('Completa');
       setCantidadRecepcionada('');
       setImporteAbonado('');
@@ -96,8 +89,7 @@ export default function SolicitudIngresoPage({ id }: any) {
       if (itemPrincipal.producto_id) {
         await cargarCamposProducto(itemPrincipal.producto_id);
       }
-
-      // eslint-disable-next-line
+      //eslint-disable-next-line
     } catch (err: any) {
       setErrorMensaje(err.message);
     }
@@ -126,7 +118,7 @@ export default function SolicitudIngresoPage({ id }: any) {
         return '';
     }
   };
-  // eslint-disable-next-line
+  //eslint-disable-next-line
   const enviarSolicitudAPI = async (solicitud: any) => {
     try {
       problema = false;
@@ -140,14 +132,14 @@ export default function SolicitudIngresoPage({ id }: any) {
         importe_total: parseFloat(solicitud.importeTotal),
         cuenta: solicitud.cuenta,
         iibb: solicitud.iibb,
-        ajuste_tc: solicitud.ajusteTC,
+        ajuste_tc: solicitud.ajusteTC === 'True',
         nro_remito_proveedor: solicitud.nro_remito_proveedor,
         estado_recepcion: solicitud.estado_recepcion,
         importe_abonado: nuevoAbonoFloat,
         forma_pago: solicitud.formaPago,
         cheque_perteneciente_a: solicitud.chequePerteneceA,
         tipo_caja: solicitud.tipo_caja,
-        // eslint-disable-next-line
+        //eslint-disable-next-line
         items_recibidos: solicitud.items_recibidos.map((item: any) => ({
             id_linea: Number(item.id_linea),
             cantidad_recibida: parseFloat(item.cantidad_recibida) || 0,
@@ -173,7 +165,7 @@ export default function SolicitudIngresoPage({ id }: any) {
 
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data?.error || data?.mensaje || `Error ${response.status}`);
-      // eslint-disable-next-line
+      //eslint-disable-next-line
     } catch (error: any) {
         problema = true;
         setErrorMensaje(error.message || "Ocurrió un error desconocido.");
@@ -182,7 +174,18 @@ export default function SolicitudIngresoPage({ id }: any) {
 
   const handleAgregar = async () => {
     setErrorMensaje('');
-  
+
+    // --- INICIO DE LA VALIDACIÓN ---
+    const cantRecepcionadaNum = parseFloat(cantidad_recepcionada);
+    if (!cantidad_recepcionada || isNaN(cantRecepcionadaNum) ) {
+        setErrorMensaje("La 'Cantidad Recepcionada' es obligatoria");
+        return; // Detiene la ejecución si el campo no es válido
+    }
+    if (!nro_remito_proveedor.trim()) {
+        setErrorMensaje("El 'N° Remito Proveedor' es un campo obligatorio.");
+        return; // Detiene la ejecución si el campo está vacío
+    }
+    // --- FIN DE LA VALIDACIÓN ---
 
     const nuevaSolicitud = {
       proveedor_id: proveedorId, producto, codigo, cantidad, precioUnitario, cuenta, iibb, tipo, importeTotal,
@@ -203,7 +206,6 @@ export default function SolicitudIngresoPage({ id }: any) {
   };
 
   const handleDescargarPDF = () => {
-    // La lógica del PDF se mantiene igual
     const doc = new jsPDF();
     const productoInfo = productosDelContexto.find(p => p.id.toString() === producto);
     const proveedorInfo = proveedores.find(p => p.id.toString() === proveedorId);
@@ -255,7 +257,6 @@ export default function SolicitudIngresoPage({ id }: any) {
     }
   }
 
-  // --- LÓGICA PARA EL PLACEHOLDER DE CANTIDAD ---
   const cantidadSolicitadaNum = parseFloat(cantidad) || 0;
   const cantidadPendiente = cantidadSolicitadaNum - cantidadYaRecibida;
   const placeholderParaCantidad = `Pendiente: ${cantidadPendiente.toFixed(2)} ${tipo}`;
@@ -311,7 +312,6 @@ export default function SolicitudIngresoPage({ id }: any) {
             </select>
           </div>
           
-          {/* --- CAMPO MODIFICADO --- */}
           <div>
             <label htmlFor="cantidad_recepcionada" className={labelClass}>Cantidad Recepcionada *</label>
             <input 

@@ -1,19 +1,14 @@
 "use client";
 
 import BotonVolver from '@/components/BotonVolver';
-import SolicitudIngresoPage from '@/components/solicitudIngresoPage'; // Asumo que es para ver/procesar
+import SolicitudIngresoPage from '@/components/solicitudIngresoPage';
 import { useState, useEffect } from 'react';
 
-type Boleta = { // Cambiaré el nombre a OrdenCompra para claridad
+type OrdenCompra = {
   id: number;
   fecha_creacion: string;
   estado: string;
-  // Podrías añadir más campos si los necesitas o los devuelve la API
-  // aprobado_por?: string;
-  // fecha_aprobacion?: string;
-  // rechazado_por?: string;
-  // fecha_rechazo?: string;
-  // motivo_rechazo?: string;
+  motivo_rechazo?: string;
 };
 
 type Pagination = {
@@ -25,28 +20,37 @@ type Pagination = {
   has_prev: boolean;
 };
 
-export default function ListaOrdenesCompra() { // Renombrado el componente
-  const [ordenes, setOrdenes] = useState<Boleta[]>([]); // Cambiado nombre de estado
+export default function ListaOrdenesCompra() {
+  const [ordenes, setOrdenes] = useState<OrdenCompra[]>([]);
   const [pagination, setPagination] = useState<Pagination | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
-  const [idOrdenSeleccionada, setIdOrdenSeleccionada] = useState<number | null>(null); // Para ver/procesar
+  const [idOrdenSeleccionada, setIdOrdenSeleccionada] = useState<number | null>(null);
+  const [filtroEstado, setFiltroEstado] = useState<string>('todos'); // Estado para el filtro
   //eslint-disable-next-line
   const userItem:any = sessionStorage.getItem("user");
-    const user = userItem ? JSON.parse(userItem) : null; 
-  // Estados para acciones de aprobar/rechazar
-  const [processingId, setProcessingId] = useState<number | null>(null); // ID de la orden en proceso
+  const user = userItem ? JSON.parse(userItem) : null; 
+  
+  const [processingId, setProcessingId] = useState<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
-  const fetchOrdenes = async (currentPage = page) => {
-    setLoading(true); setError(null); setActionError(null); setActionSuccess(null);
+  const fetchOrdenes = async (currentPage = page, filtro = filtroEstado) => {
+    setLoading(true); 
+    setError(null); 
+    setActionError(null); 
+    setActionSuccess(null);
     try {
       const token = localStorage.getItem("token");
       if (!token) throw new Error("Usuario no autenticado.");
       
-      const response = await fetch(`https://quimex.sistemataup.online/ordenes_compra/obtener_todas?page=${currentPage}&per_page=20`, {
+      let url = `https://quimex.sistemataup.online/ordenes_compra/obtener_todas?page=${currentPage}&per_page=20`;
+      if (filtro !== 'todos') {
+        url += `&estado=${filtro}`;
+      }
+
+      const response = await fetch(url, {
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }
       });
       if (!response.ok) {
@@ -66,12 +70,17 @@ export default function ListaOrdenesCompra() { // Renombrado el componente
   };
 
   useEffect(() => {
-    fetchOrdenes(page);
+    fetchOrdenes(page, filtroEstado);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page]);
+  }, [page, filtroEstado]);
+
+  const handleFiltroChange = (nuevoFiltro: string) => {
+    setFiltroEstado(nuevoFiltro);
+    setPage(1);
+  };
 
   const handleAprobarOrden = async (ordenId: number) => {
-    if (processingId) return; // Evitar múltiples acciones simultáneas
+    if (processingId) return;
 
     const confirmacion = window.confirm(`¿Está seguro de que desea APROBAR la orden de compra Nº ${ordenId.toString().padStart(4, '0')}?`);
     if (!confirmacion) return;
@@ -85,11 +94,10 @@ export default function ListaOrdenesCompra() { // Renombrado el componente
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'X-User-Role' : user.role, // Usar el rol del usuario o un default
+          'X-User-Role' : user.role,
           'X-User-Name' : user.name,
           "Authorization": `Bearer ${token}`,
         },
-        // El endpoint de aprobar no necesita body según tu API
       });
 
       const result = await response.json();
@@ -98,10 +106,9 @@ export default function ListaOrdenesCompra() { // Renombrado el componente
       }
       
       setActionSuccess(result.message || `Orden Nº ${ordenId} aprobada con éxito.`);
-      // Actualizar el estado de la orden en la UI
       setOrdenes(prevOrdenes => prevOrdenes.map(o => 
-        o.id === ordenId ? { ...o, estado: result.orden?.estado || 'Aprobado' /* , ...result.orden (si quieres más campos) */ } : o
-      ));
+        o.id === ordenId ? { ...o, estado: result.orden?.estado || 'Aprobado' } : o
+      ).filter(o => filtroEstado === 'todos' || o.estado === filtroEstado));
       //eslint-disable-next-line
     } catch (err: any) {
       setActionError(err.message || "Ocurrió un error al aprobar la orden.");
@@ -116,7 +123,7 @@ export default function ListaOrdenesCompra() { // Renombrado el componente
     if (processingId) return;
 
     const motivoRechazo = window.prompt(`Por favor, ingrese el motivo para RECHAZAR la orden de compra Nº ${ordenId.toString().padStart(4, '0')}:`);
-    if (motivoRechazo === null) return; // Usuario canceló el prompt
+    if (motivoRechazo === null) return;
     if (!motivoRechazo.trim()) {
       alert("El motivo de rechazo no puede estar vacío.");
       return;
@@ -131,7 +138,7 @@ export default function ListaOrdenesCompra() { // Renombrado el componente
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'X-User-Role' : user.role, // Usar el rol del usuario o un default
+          'X-User-Role' : user.role,
           'X-User-Name' : user.name,
           "Authorization": `Bearer ${token}`,
         },
@@ -145,8 +152,8 @@ export default function ListaOrdenesCompra() { // Renombrado el componente
 
       setActionSuccess(result.message || `Orden Nº ${ordenId} rechazada con éxito.`);
       setOrdenes(prevOrdenes => prevOrdenes.map(o => 
-        o.id === ordenId ? { ...o, estado: result.orden?.estado || 'Rechazado', motivo_rechazo: motivoRechazo /* , ...result.orden */ } : o
-      ));
+        o.id === ordenId ? { ...o, estado: result.orden?.estado || 'Rechazado', motivo_rechazo: motivoRechazo } : o
+      ).filter(o => filtroEstado === 'todos' || o.estado === filtroEstado));
       //eslint-disable-next-line
     } catch (err: any) {
       setActionError(err.message || "Ocurrió un error al rechazar la orden.");
@@ -159,7 +166,6 @@ export default function ListaOrdenesCompra() { // Renombrado el componente
 
 
   if (idOrdenSeleccionada) {
-    // Asegúrate de que SolicitudIngresoPage reciba 'id' y no 'id_boleta' si cambiaste el nombre
     return <SolicitudIngresoPage id={idOrdenSeleccionada} />;
   }
 
@@ -167,9 +173,46 @@ export default function ListaOrdenesCompra() { // Renombrado el componente
     <div className="flex flex-col items-center justify-center min-h-screen bg-indigo-900 py-10 px-4">
       <div className="bg-white p-6 md:p-8 rounded-lg shadow-xl w-full max-w-4xl lg:max-w-5xl">
         <BotonVolver />
-        <h2 className="text-2xl md:text-3xl font-semibold mb-8 text-center text-indigo-800">
+        <h2 className="text-2xl md:text-3xl font-semibold mb-6 text-center text-indigo-800">
           Lista de Órdenes de Compra
         </h2>
+
+        <div className="flex justify-center items-center gap-2 mb-6 border-b pb-4">
+            <span className="text-sm font-medium text-gray-600">Filtrar por estado:</span>
+            <button
+                onClick={() => handleFiltroChange('todos')}
+                disabled={loading}
+                className={`px-4 py-2 text-sm font-semibold rounded-full transition-all duration-200 ${
+                    filtroEstado === 'todos'
+                    ? 'bg-indigo-600 text-white shadow-md'
+                    : 'bg-gray-200 text-gray-800 hover:bg-indigo-100'
+                }`}
+            >
+                Todas
+            </button>
+            <button
+                onClick={() => handleFiltroChange('Aprobado')}
+                disabled={loading}
+                className={`px-4 py-2 text-sm font-semibold rounded-full transition-all duration-200 ${
+                    filtroEstado === 'Aprobado'
+                    ? 'bg-green-600 text-white shadow-md'
+                    : 'bg-gray-200 text-gray-800 hover:bg-green-100'
+                }`}
+            >
+                Aprobadas
+            </button>
+            <button
+                onClick={() => handleFiltroChange('Solicitado')}
+                disabled={loading}
+                className={`px-4 py-2 text-sm font-semibold rounded-full transition-all duration-200 ${
+                    filtroEstado === 'Solicitado'
+                    ? 'bg-yellow-500 text-white shadow-md'
+                    : 'bg-gray-200 text-gray-800 hover:bg-yellow-100'
+                }`}
+            >
+                Solicitadas
+            </button>
+        </div>
 
         {loading && <p className="text-center text-gray-600 my-4 text-sm">Cargando órdenes...</p>}
         {error && <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4" role="alert"><p>{error}</p></div>}
@@ -192,12 +235,11 @@ export default function ListaOrdenesCompra() { // Renombrado el componente
                   try {
                     fechaFormateada = new Date(orden.fecha_creacion).toLocaleDateString("es-AR", {
                       day: "2-digit", month: "2-digit", year: "numeric",
-                      // hour: "2-digit", minute: "2-digit" // Si quieres hora también
                     });
                   } catch (e) { console.error("Error formateando fecha:", orden.fecha_creacion, e); }
 
                   const isProcessingCurrent = processingId === orden.id;
-                  const puedeActuar = orden.estado === 'Solicitado' && !processingId; // Solo actuar si está Solicitado y nada se está procesando
+                  const puedeActuar = orden.estado === 'Solicitado' && !processingId;
 
                   return (
                     <li key={orden.id} className="grid grid-cols-[1fr_2fr_2fr_2fr] gap-x-3 items-center bg-white hover:bg-gray-50 p-3 text-sm">
@@ -206,7 +248,8 @@ export default function ListaOrdenesCompra() { // Renombrado el componente
                       <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full 
                         ${orden.estado === 'Aprobado' ? 'bg-green-100 text-green-800' : 
                           orden.estado === 'Rechazado' ? 'bg-red-100 text-red-800' : 
-                          orden.estado === 'Solicitado' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800'}`}>
+                          orden.estado === 'Solicitado' ? 'bg-yellow-100 text-yellow-800' : 
+                          orden.estado === 'Con Deuda' ? 'bg-orange-100 text-orange-800' : 'bg-gray-100 text-gray-800'}`}>
                         {orden.estado}
                       </span>
                       <div className="flex items-center justify-center gap-2">
@@ -220,7 +263,7 @@ export default function ListaOrdenesCompra() { // Renombrado el componente
                             <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                           </svg>
                         </button>
-                        {orden.estado === 'Solicitado' && ( // Solo mostrar si el estado es 'Solicitado'
+                        {orden.estado === 'Solicitado' && (
                           <>
                             <button
                               title="Aprobar Orden"
@@ -250,8 +293,8 @@ export default function ListaOrdenesCompra() { // Renombrado el componente
                     
                   );
                 }) : (
-                  <li className="text-center py-8 text-gray-500 col-span-4"> {/* Ajustar col-span */}
-                    No hay órdenes de compra para mostrar.
+                  <li className="text-center py-8 text-gray-500 col-span-4">
+                    No hay órdenes de compra para el filtro seleccionado.
                   </li>
                 )}
               </ul>
@@ -267,7 +310,6 @@ export default function ListaOrdenesCompra() { // Renombrado el componente
           </>
         )}
       </div>
-      {/* Estilos para botones de paginación (puedes moverlos a tu CSS global) */}
       <style jsx>{`
         .btn-pag { @apply px-4 py-2 rounded bg-indigo-700 text-white hover:bg-indigo-800 disabled:opacity-50 text-sm transition-colors; }
       `}</style>
