@@ -359,61 +359,40 @@ export default function ProductPriceTable() {
     }
   }, [token]);
 
+ 
   const handleDownloadPriceList = async () => {
-    if (!window.confirm("Se calculará el precio base de todos los productos para generar la lista. Esto puede tomar varios segundos. ¿Deseas continuar?")) {
-      return;
-    }
-    setIsPreparingPriceList(true);
+  const confirmar = window.confirm(
+    "Se generará y descargará la lista de precios completa desde el servidor. Esto puede tomar varios segundos. ¿Deseas continuar?"
+  );
+  if (!confirmar) return;
 
-    const quantities = [0.250, 0.500, 1, 5, 10, 25, 50, 100];
-    try {
-      const productsToProcess = allItems.filter(item => item.type === 'product');
-      const pricePromises = productsToProcess.map(product =>
-        calculatePrice(product, 1)
-          .then(result => ({
-            nombre: product.nombre,
-            unitPrice: result.unitPrice,
-          }))
-          .catch(error => {
-            console.error(`No se pudo calcular el precio para ${product.nombre}:`, error);
-            return { nombre: product.nombre, unitPrice: null };
-          })
-      );
-      const priceResults = await Promise.all(pricePromises);
-      const headers = ['Producto', ...quantities.map(String)];
-      const excelData = priceResults.map(result => {
-        const row: { [key: string]: string | number } = { 'Producto': result.nombre };
-        if (result.unitPrice === null) {
-          quantities.forEach(q => { row[String(q)] = "Error"; });
-        } else {
-          quantities.forEach(q => { row[String(q)] = result.unitPrice! * q; });
-        }
-        return row;
-      });
-      const worksheet = XLSX.utils.json_to_sheet(excelData, { header: headers });
-      worksheet['!cols'] = [{ wch: 45 }, ...quantities.map(() => ({ wch: 15 }))];
-      const range = XLSX.utils.decode_range(worksheet['!ref']!);
-      for (let R = range.s.r + 1; R <= range.e.r; ++R) {
-        for (let C = 1; C <= range.e.c; ++C) {
-            const cell_address = { c: C, r: R };
-            const cell_ref = XLSX.utils.encode_cell(cell_address);
-            if (worksheet[cell_ref] && typeof worksheet[cell_ref].v === 'number') {
-                worksheet[cell_ref].t = 'n';
-                worksheet[cell_ref].z = '$#,##0.00';
-            }
-        }
-      }
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, "Lista de Precios por Volumen");
-      XLSX.writeFile(workbook, "Lista_Precios_Volumen_Quimex.xlsx");
-      //eslint-disable-next-line
-    } catch (err: any) {
-      console.error("Error generando la lista de precios por volumen:", err);
-    
-    } finally {
-      setIsPreparingPriceList(false);
+  setIsPreparingPriceList(true);
+
+  try {
+    const response = await fetch("https://quimex.sistemataup.online/reportes/lista_precios/excel",{ headers: { "Authorization": `Bearer ${token}` } });
+
+    if (!response.ok) {
+      throw new Error("Error al generar o descargar el archivo Excel");
     }
-  };
+
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", "lista_de_precios_quimex_Kg/Lt.xlsx");
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    window.URL.revokeObjectURL(url);
+  } catch (error) {
+    console.error("Error descargando la lista de precios:", error);
+    alert("Ocurrió un error al descargar la lista de precios.");
+  } finally {
+    setIsPreparingPriceList(false);
+  }
+};
 
   const fetchDolarValues = useCallback(async () => {
     if (!token) { setErrorDolar("Token no disponible."); setLoadingDolar(false); return; }
