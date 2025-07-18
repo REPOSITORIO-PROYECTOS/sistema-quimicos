@@ -3,7 +3,8 @@ import React, { useState, useEffect, ChangeEvent, useCallback } from 'react';
 import { useProductsContext } from '@/context/ProductsContext';
 
 // --- Interfaces ---
-interface IngredientItem { id: string; ingrediente_id: string | number; porcentaje: number; }
+// --- CAMBIO: 'porcentaje' ahora es un string para manejar inputs decimales correctamente ---
+interface IngredientItem { id: string; ingrediente_id: string | number; porcentaje: string; }
 interface ComboComponentItem { id: string; producto_id: string | number; cantidad: number | string; }
 interface ProductOption { id: string | number; nombre: string; }
 
@@ -24,7 +25,7 @@ interface ProductDataForEditAPI {
 }
 interface RecipeItemForEditAPI { ingrediente_id: number | string; porcentaje: number; }
 
-interface ApiComboComponente { // Definición que coincide con tu API
+interface ApiComboComponente {
     cantidad: number;
     componente: {
         es_receta: boolean;
@@ -177,7 +178,8 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({
                         if (recipeRes.ok) {
                             const recipeData: { id?: number, items: RecipeItemForEditAPI[] } = await recipeRes.json();
                             setRecetaIdOriginal(recipeData.id || null);
-                            setIngredients(recipeData.items?.map(item => ({ id: crypto.randomUUID(), ingrediente_id: item.ingrediente_id.toString(), porcentaje: item.porcentaje })) || []);
+                            // --- CAMBIO: Se convierte `porcentaje` a string al cargar los datos ---
+                            setIngredients(recipeData.items?.map(item => ({ id: crypto.randomUUID(), ingrediente_id: item.ingrediente_id.toString(), porcentaje: item.porcentaje.toString() })) || []);
                         }
                     }
                 }
@@ -188,12 +190,34 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({
         if (isEditMode) fetchDetails();
     }, [isEditMode, productIdToEdit, comboIdToEdit, isInitiallyCombo, token, getComboIdFromProductId]);
 
-    const addIngredientRow = useCallback(() => setIngredients(prev => [...prev, { id: crypto.randomUUID(), ingrediente_id: '', porcentaje: 0 }]), []);
+    // --- CAMBIO: 'porcentaje' se inicializa como string vacío ('') en lugar de 0 ---
+    const addIngredientRow = useCallback(() => setIngredients(prev => [...prev, { id: crypto.randomUUID(), ingrediente_id: '', porcentaje: '' }]), []);
     const removeIngredientRow = (index: number) => setIngredients(prev => prev.filter((_, i) => i !== index));
+
+    // --- CAMBIO: Función reemplazada para manejar correctamente la entrada de decimales ---
     const handleIngredientChange = (index: number, e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-        const { name, value } = e.target; setSaveError(null);
-        setIngredients(prev => prev.map((item, i) => i === index ? { ...item, [name]: name === 'porcentaje' ? (parseFloat(value.replace(/[^0-9.]/g, '')) || 0) : value } : item));
+        const { name, value } = e.target;
+        setSaveError(null);
+
+        setIngredients(prev =>
+            prev.map((item, i) => {
+                if (i !== index) {
+                    return item;
+                }
+
+                if (name === 'porcentaje') {
+                    const decimalRegex = /^\d*\.?\d*$/;
+                    if (decimalRegex.test(value)) {
+                        return { ...item, [name]: value }; // Guarda como string
+                    }
+                    return item; 
+                } else {
+                    return { ...item, [name]: value };
+                }
+            })
+        );
     };
+    
     const addComboComponentRow = useCallback(() => setComboComponents(prev => [...prev, { id: crypto.randomUUID(), producto_id: '', cantidad: 1 }]), []);
     const removeComboComponentRow = (index: number) => setComboComponents(prev => prev.filter((_, i) => i !== index));
     const handleComboComponentChange = (index: number, e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -257,12 +281,11 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({
                     margen_combo: margenComboNum, activo: true,
                     componentes: comboComponents.map(c => ({ producto_id: Number(c.producto_id), cantidad: parseInt(c.cantidad.toString(), 10) })),
                 };
-                let effectiveComboIdForEdit = comboIdOriginal; // ID original del combo que se está editando
-                if(isEditMode && productIdToEdit && !comboIdOriginal && !comboIdToEdit){ // Si estábamos editando un producto que AHORA es combo
+                let effectiveComboIdForEdit = comboIdOriginal;
+                if(isEditMode && productIdToEdit && !comboIdOriginal && !comboIdToEdit){
                     const existingComboIdFromProduct = await getComboIdFromProductId(productIdToEdit);
                     if(existingComboIdFromProduct) effectiveComboIdForEdit = existingComboIdFromProduct;
                 }
-
 
                 const comboApiUrl = (isEditMode && effectiveComboIdForEdit) ? `https://quimex.sistemataup.online/combos/editar/${effectiveComboIdForEdit}` : 'https://quimex.sistemataup.online/combos/crear';
                 const comboApiMethod = (isEditMode && effectiveComboIdForEdit) ? 'PUT' : 'POST';
@@ -291,7 +314,7 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({
                 }
                 alert(`Combo "${nombre}" ${isEditMode && effectiveComboIdForEdit ? 'actualizado' : 'creado'}.`);
 
-            } else { // No es combo
+            } else {
                 //eslint-disable-next-line
                 const productPayload: any = {
                     id: productCode.trim() || null, nombre: nombre.trim(), descripcion: descripcionProducto.trim() || null,
@@ -308,8 +331,9 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({
                 const effectiveProductId = productResult.id || productIdToEdit;
 
                 if (esReceta && effectiveProductId) {
-                    if (ingredients.some(item => !item.ingrediente_id || parseFloat(item.porcentaje.toString()) <= 0)) throw new Error("Ingredientes de receta incompletos.");
-                    const recipePayload = { producto_final_id: effectiveProductId, items: ingredients.map(item => ({ ingrediente_id: Number(item.ingrediente_id), porcentaje: parseFloat(item.porcentaje.toString()) })) };
+                    // --- CAMBIO: Limpieza de la lógica de validación y conversión a número ---
+                    if (ingredients.some(item => !item.ingrediente_id || !item.porcentaje || parseFloat(item.porcentaje) <= 0)) throw new Error("Ingredientes de receta incompletos.");
+                    const recipePayload = { producto_final_id: effectiveProductId, items: ingredients.map(item => ({ ingrediente_id: Number(item.ingrediente_id), porcentaje: parseFloat(item.porcentaje) || 0 })) };
                     const recipeApiUrl = (isEditMode && recetaIdOriginal) ? `https://quimex.sistemataup.online/recetas/actualizar/por-producto/${effectiveProductId}` : 'https://quimex.sistemataup.online/recetas/crear';
                     const recipeApiMethod = (isEditMode && recetaIdOriginal) ? 'PUT' : 'POST';
                     const recipeResponse = await fetch(recipeApiUrl, { method: recipeApiMethod, headers: { 'Content-Type': 'application/json', "Authorization": `Bearer ${token}` }, body: JSON.stringify(recipePayload) });
@@ -317,7 +341,7 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({
                 } else if (!esReceta && isEditMode && recetaIdOriginal) {
                     // console.log("Receta a eliminar/desactivar:", recetaIdOriginal);
                 }
-                if (isEditMode && comboIdOriginal) { // Si antes era combo (y ahora no lo es porque esCombo es false)
+                if (isEditMode && comboIdOriginal) {
                     await fetch(`https://quimex.sistemataup.online/combos/editar/${comboIdOriginal}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', "Authorization": `Bearer ${token}` }, body: JSON.stringify({ activo: false }) });
                 }
                 alert(`Producto "${nombre}" ${isEditMode ? 'actualizado' : 'creado'}.`);
@@ -361,7 +385,19 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({
                                 <h3 className="text-md font-semibold text-gray-700 border-b pb-2">Ingredientes de la Receta</h3>
                                 <div className={`hidden md:grid md:grid-cols-[minmax(0,1fr)_100px_50px] gap-2 items-center px-1 text-xs font-medium text-gray-500`}><span>Ingrediente</span><span className="text-right">Porcentaje (%)</span><span/></div>
                                 <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
-                                    {ingredients.map((item, index) => (<div key={item.id} className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_100px_50px] gap-2 items-center border-b pb-1"><div><select name="ingrediente_id" value={item.ingrediente_id} onChange={(e) => handleIngredientChange(index, e)} required className={`w-full p-2 border rounded text-sm bg-white`}>{availableProducts.length === 0 ? <option value="" disabled>Cargando productos...</option> : <option value="" disabled>-- Seleccionar --</option>}{availableProducts.map(p => (<option key={p.id} value={p.id.toString()}>{p.nombre}</option>))}</select></div><div><input type="text" inputMode='decimal' name="porcentaje" value={item.porcentaje === 0 && !isEditMode ? '' : item.porcentaje.toString()} onChange={(e) => handleIngredientChange(index, e)} required min="0.01" step="0.01" className={`w-full p-2 border rounded text-sm text-right`} /></div><div className="flex justify-end md:justify-center">{(<button type="button" onClick={() => removeIngredientRow(index)} className={`text-xl p-1 text-red-500 hover:text-red-700`} title="Eliminar">×</button>)}</div></div>))}
+                                    {ingredients.map((item, index) => (<div key={item.id} className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_100px_50px] gap-2 items-center border-b pb-1"><div><select name="ingrediente_id" value={item.ingrediente_id} onChange={(e) => handleIngredientChange(index, e)} required className={`w-full p-2 border rounded text-sm bg-white`}>{availableProducts.length === 0 ? <option value="" disabled>Cargando productos...</option> : <option value="" disabled>-- Seleccionar --</option>}{availableProducts.map(p => (<option key={p.id} value={p.id.toString()}>{p.nombre}</option>))}</select></div><div>
+                                        {/* --- CAMBIO: Simplificación del input de porcentaje --- */}
+                                        <input 
+                                            type="text" 
+                                            inputMode='decimal' 
+                                            name="porcentaje" 
+                                            value={item.porcentaje} 
+                                            onChange={(e) => handleIngredientChange(index, e)} 
+                                            required 
+                                            placeholder="0.00"
+                                            className={`w-full p-2 border rounded text-sm text-right`} 
+                                        />
+                                    </div><div className="flex justify-end md:justify-center">{(<button type="button" onClick={() => removeIngredientRow(index)} className={`text-xl p-1 text-red-500 hover:text-red-700`} title="Eliminar">×</button>)}</div></div>))}
                                     {ingredients.length === 0 && <p className="text-xs text-gray-500 text-center py-2">Añada ingredientes.</p>}
                                 </div>
                                 <button type="button" onClick={addIngredientRow} className={`mt-2 text-sm px-3 py-1.5 rounded font-medium bg-blue-50 text-blue-600 hover:bg-blue-100`}>+ Agregar Ingrediente</button>
