@@ -42,17 +42,14 @@ export const ClientesProvider = ({ children }: ClientesProviderProps) => {
   const [error, setError] = useState<string | null>(null);
 
   const fetchClientes = async () => {
-    // console.log("Fetching clientes..."); // Log para depurar
     setLoading(true); // Inicia carga
     setError(null);   // Limpia error anterior
     try {
       const res = await fetch(`https://quimex.sistemataup.online/clientes/obtener_todos`);
-      // console.log("Fetch response status:", res.status); // Log para depurar
       if (!res.ok) {
         throw new Error(`Error ${res.status}: ${res.statusText}`);
       }
       const data = await res.json();
-      // console.log("Clientes data received:", data); // Log para depurar
       if (!Array.isArray(data.clientes)) { // Validación extra
           throw new Error("La respuesta de la API no es un array de clientes");
       }
@@ -65,7 +62,6 @@ export const ClientesProvider = ({ children }: ClientesProviderProps) => {
       setClientes([]); // Asegura que clientes sea un array vacío en caso de error
     } finally {
       setLoading(false);
-      // console.log("Fetching clientes finished."); // Log para depurar
     }
   };
 

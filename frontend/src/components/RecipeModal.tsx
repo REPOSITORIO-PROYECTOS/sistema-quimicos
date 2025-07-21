@@ -93,42 +93,17 @@ const RecipeModal: React.FC<RecipeModalProps> = ({ productId, productName, onClo
          setSaveError("Añade al menos un ingrediente.");
          return;
     }
-    // Opcional: Validar suma de porcentajes si es necesario
-    // if (Math.abs(totalPercentage - 100) > 0.01) { // Permite pequeña imprecisión decimal
-    //    setSaveError(`La suma de porcentajes debe ser 100% (actual: ${totalPercentage.toFixed(2)}%)`);
-    //    return;
-    // }
 
     setIsSaving(true);
 
-    // Preparar datos para la API (quitar el 'id' temporal si no lo usa el backend)
-    const payload = {
-        //producto_id: productId,
-        ingredientes: ingredients.map(({ ...rest }) => rest) 
-    };
+ 
 
-    console.log("Simulando guardado de receta:", JSON.stringify(payload, null, 2));
 
-    // --- SIMULACIÓN DE LLAMADA API (Reemplazar con fetch real) ---
     await new Promise(resolve => setTimeout(resolve, 1500)); // Simular delay
-    // const response = await fetch('/api/recetas/guardar', { method: 'POST', ... });
-    // if (!response.ok) { throw new Error('Error al guardar'); }
-    // ---------------------------------------------------------
 
     setIsSaving(false);
     alert(`Receta para "${productName}" guardada (simulado).`);
-    onClose(); // Cerrar modal después de guardar
-
-    // try {
-    //   // ... (Llamada API real) ...
-    //   setIsSaving(false);
-    //   alert(`Receta para "${productName}" guardada.`);
-    //   onClose();
-    // } catch (err: any) {
-    //   console.error("Error guardando receta:", err);
-    //   setSaveError(err.message || "Error al guardar la receta.");
-    //   setIsSaving(false);
-    // }
+    onClose(); 
   };
 
 

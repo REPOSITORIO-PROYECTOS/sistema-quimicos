@@ -339,7 +339,7 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({
                     const recipeResponse = await fetch(recipeApiUrl, { method: recipeApiMethod, headers: { 'Content-Type': 'application/json', "Authorization": `Bearer ${token}` }, body: JSON.stringify(recipePayload) });
                     if (!recipeResponse.ok) { const recipeError = await recipeResponse.json(); throw new Error(recipeError.detalle || recipeError.error || `Error receta`);}
                 } else if (!esReceta && isEditMode && recetaIdOriginal) {
-                    // console.log("Receta a eliminar/desactivar:", recetaIdOriginal);
+                    
                 }
                 if (isEditMode && comboIdOriginal) {
                     await fetch(`https://quimex.sistemataup.online/combos/editar/${comboIdOriginal}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', "Authorization": `Bearer ${token}` }, body: JSON.stringify({ activo: false }) });

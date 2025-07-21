@@ -561,7 +561,7 @@ export default function RegistrarPedidoPage() {
     const endpoint = "https://quimex.sistemataup.online/ventas/registrar";
     const method = "POST";
 
-    console.log(`Enviando datos (${method}) a ${endpoint}:`, dataPayload);
+  
 
     try {
       const response = await fetch(endpoint, {

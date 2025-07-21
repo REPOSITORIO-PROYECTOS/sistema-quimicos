@@ -57,7 +57,6 @@ export default function RegistrarIngreso() {
 
     setIsLoading(true);
     setErrorApi(null);
-    console.log("Agregando pedido...");
 
     // Objeto local para la lista de la UI, ya no contiene los campos eliminados
     const nuevoPedido: IPedido = {
@@ -90,7 +89,6 @@ export default function RegistrarIngreso() {
       iibb: '', // Se envía un string vacío
       fecha_limite: fechaLimite,
     };
-    console.log("Payload enviado a la API:", ventaPayload);
 
     try {
       const response = await fetch('https://quimex.sistemataup.online/ordenes_compra/crear', {
@@ -104,7 +102,6 @@ export default function RegistrarIngreso() {
         body: JSON.stringify(ventaPayload),
       });
 
-      console.log("Respuesta recibida:", response.status, response.ok);
 
       if (!response.ok) {
         let errorMsg = `Error ${response.status}: ${response.statusText}`;
@@ -118,8 +115,6 @@ export default function RegistrarIngreso() {
         throw new Error(errorMsg);
       }
 
-      const data = await response.json();
-      console.log('Compra registrada con éxito:', data);
       alert('Pedido agregado con éxito!');
 
       setPedidos((prev) => [...prev, nuevoPedido]);

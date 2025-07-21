@@ -54,16 +54,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         const storedAuth = localStorage.getItem('isLoggedInFlag');
         // const storedRole = localStorage.getItem('userRole') as UserRole | null; // Ejemplo
         if (storedAuth === 'true') {
-          console.log("AuthProvider: Usuario encontrado en localStorage.");
+          
           setIsAuthenticated(true);
           // setUserRole(storedRole); // Ejemplo
         } else {
-          console.log("AuthProvider: No hay usuario en localStorage.");
           setIsAuthenticated(false);
           // setUserRole(null);
         }
       } catch (error) {
-        console.error("AuthProvider: Error accediendo a localStorage", error);
+        console.log(error)
         setIsAuthenticated(false);
         // setUserRole(null);
       } finally {
@@ -76,7 +75,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   // --- Función Login (Actualizada para usar rol y devolver boolean) ---
   // << CAMBIO: Firma actualizada
   const login = async (usuario: string, contrasena: string, role: UserRole): Promise<boolean> => {
-    console.log("AuthContext: Intentando login con", { usuario, role }); // No loguear contraseña real
 
     // --- REEMPLAZA ESTO CON TU LÓGICA DE API REAL ---
     return new Promise((resolve) => {
@@ -88,42 +86,34 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         let success = false;
         // << CAMBIO: Lógica de simulación ahora considera el rol
         if (role === 'admin' && usuario === 'admin' && contrasena === '123') {
-          console.log("AuthContext: Login simulado exitoso como admin.");
           success = true;
         } else if (role === 'empleado' && usuario === 'empleado' && contrasena === 'pass') { // Ejemplo para empleado
-           console.log("AuthContext: Login simulado exitoso como empleado.");
            success = true;
         } else {
-          console.log("AuthContext: Login simulado fallido - Usuario, contraseña o rol incorrectos.");
           success = false;
         }
 
         setIsAuthenticated(success);
-        // setUserRole(success ? role : null); // Opcional: guardar rol
 
-        // Guarda o borra el estado en localStorage
         try {
             if (success) {
                 localStorage.setItem('isLoggedInFlag', 'true');
-                // localStorage.setItem('userRole', role); // Ejemplo
             } else {
                 localStorage.removeItem('isLoggedInFlag');
-                // localStorage.removeItem('userRole'); // Ejemplo
             }
         } catch(error) {
             console.error("Error actualizando localStorage", error);
         }
 
-        resolve(success); // << CAMBIO: Resuelve con true o false
+        resolve(success); 
 
-      }, 1000); // Simula retraso de red
+      }, 1000);
     });
-    // --- FIN DE LA SIMULACIÓN ---
+    
   };
 
   // --- Función Logout ---
   const logout = () => {
-    console.log("AuthContext: Cerrando sesión.");
     setIsAuthenticated(false);
     // setUserRole(null); // Opcional: limpiar rol
     try {

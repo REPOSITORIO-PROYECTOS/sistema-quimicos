@@ -119,7 +119,6 @@ export default function RegistrarCliente() {
       })),
   };
 
-  console.log("Enviando datos del cliente y precios especiales:", JSON.stringify(datosCliente, null, 2));
 
   try {
     // Petición para crear el cliente Y sus precios especiales asociados
@@ -140,7 +139,6 @@ export default function RegistrarCliente() {
     }
 
     const clienteCreado = await resCliente.json();
-    console.log('Cliente registrado con éxito:', clienteCreado);
 
  
     if (clienteCreado.id && form.productos.length > 0) {
@@ -153,7 +151,6 @@ export default function RegistrarCliente() {
             precio_unitario_fijo_ars: item.valor,
             activo: true, // O como lo manejes
           };
-          console.log("Enviando precio especial:", payloadPrecioEspecial);
           return fetch(`https://quimex.sistemataup.online/precios_especiales/crear`, { 
             method: 'POST',
             headers: {"Content-Type":"application/json","Authorization":`Bearer ${token}`},

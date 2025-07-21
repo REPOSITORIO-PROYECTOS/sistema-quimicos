@@ -36,7 +36,6 @@ const RegisterForm: React.FC = () => {
         event.preventDefault();
         setError(null);
         setSuccess(null);
-        console.log("RegisterForm: Iniciando submit de registro...");
 
         if (contrasena !== confirmContrasena) {
             setError("Las contraseñas no coinciden.");
@@ -68,7 +67,6 @@ const RegisterForm: React.FC = () => {
             rol: role,
         };
 
-        console.log("RegisterForm: Enviando datos a API:", registrationData);
 
         try {
             const response = await fetch(`${API_BASE_URL}/auth/register`, {
@@ -80,7 +78,6 @@ const RegisterForm: React.FC = () => {
             });
 
             const responseData = await response.json();
-            console.log("RegisterForm: Respuesta de API:", responseData);
 
             if (!response.ok) {
                 setError(responseData.message || `Error ${response.status}: No se pudo completar el registro.`);
@@ -93,7 +90,6 @@ const RegisterForm: React.FC = () => {
             // Opcional: Limpiar campos después del éxito si no se redirige inmediatamente
             // setUsuario(''); setNombre(''); setApellido(''); setEmail(''); /* ...etc */
 
-            console.log("RegisterForm: Programando redirección a /login en 2 segundos...");
             setTimeout(() => {
                 router.push('/login');
             }, 2000);

@@ -31,23 +31,19 @@ const LoginForm: React.FC = () => {
         event.preventDefault();
         setLoginIsLoading(true);
         setLoginError(null); // Limpiar errores previos
-        console.log("LoginForm: Iniciando submit...", { loginUsuario, loginRole });
 
         try {
             // La función `login` de AuthProvider espera 'usuario', 'password', y opcionalmente 'role'.
             // El backend determinará el rol real del usuario. El 'role' aquí
             // es más una formalidad si tu AuthProvider lo requiere en su firma.
             const loginSuccess = await login(loginUsuario, loginContrasena, loginRole);
-            console.log("LoginForm: login() retornó:", loginSuccess);
 
             if (!loginSuccess) {
                 // El AuthProvider ya debería manejar la lógica de mostrar errores si se comunica con el backend.
                 // Si AuthProvider no devuelve un mensaje específico, puedes poner uno genérico aquí.
                 setLoginError('Usuario, contraseña o rol incorrectos. Por favor, verifica los datos.');
                 alert('Usuario, contraseña o rol incorrectos. Por favor, verifica los datos.');
-                console.log("LoginForm: ¡Fallo detectado por loginSuccess false!");
             } else {
-                console.log("LoginForm: Login exitoso. AuthProvider debería haber manejado la redirección.");
                 // No es necesario redirigir desde aquí si AuthProvider ya lo hace.
             }
             setLoginIsLoading(false);
@@ -57,7 +53,6 @@ const LoginForm: React.FC = () => {
             const errorMessage = err.message || 'Ocurrió un error inesperado al intentar iniciar sesión.';
             setLoginError(`Error: ${errorMessage}`);
         } finally {
-            console.log("LoginForm: Finalizando submit, setLoading a false.");
             setLoginIsLoading(false);
         }
     };

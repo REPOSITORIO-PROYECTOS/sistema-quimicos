@@ -87,7 +87,6 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
     }
 
     try {
-      console.log("Cargando datos para cliente ID:", clienteId);
       // 1. Cargar datos del cliente
       const resCliente = await fetch(`https://quimex.sistemataup.online/clientes/obtener/${clienteId}`, {
         headers: { 'Authorization': `Bearer ${token}` }
@@ -97,7 +96,6 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
         throw new Error(errDataCliente.message || `Error al cargar datos del cliente: ${resCliente.statusText}`);
       }
       const datosCliente = await resCliente.json();
-      console.log("Datos del cliente recibidos:", datosCliente);
 
       // 2. Cargar precios especiales para este cliente
       const resPrecios = await fetch(`https://quimex.sistemataup.online/precios_especiales/obtener-por-cliente/${clienteId}`, {
@@ -108,7 +106,7 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
       if (resPrecios.ok) {
         // LA API DEVUELVE DIRECTAMENTE EL ARRAY
         preciosDelClienteApi = await resPrecios.json(); 
-        console.log("Precios especiales recibidos:", preciosDelClienteApi);
+       
       } else if (resPrecios.status !== 404) { 
         const errorDataPrecios = await resPrecios.json().catch(() => ({}));
         console.error("Error API al cargar precios especiales (status no 404):", errorDataPrecios);
@@ -242,7 +240,6 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
     };
 
     try {
-      console.log("Actualizando datos del cliente:", datosClienteActualizar);
       const resCliente = await fetch(`https://quimex.sistemataup.online/clientes/actualizar/${id_cliente}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
@@ -253,7 +250,7 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
         const errorData = await resCliente.json().catch(() => ({ message: "Error al actualizar el cliente." }));
         throw new Error(errorData.message || `Error ${resCliente.status} actualizando cliente`);
       }
-      console.log('Datos del cliente actualizados con éxito.');
+      
 
       // Sincronizar precios especiales
       const preciosFormActualValidos = form.precios_especiales_form.filter(
@@ -266,7 +263,6 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
       preciosEspecialesOriginales.forEach(original => {
         const encontradoEnForm = preciosFormActualValidos.find(p => p.id_precio_especial === original.id_precio_especial);
         if (!encontradoEnForm && original.id_precio_especial) { // Si era original y ya no está en el form, se elimina
-          console.log(`Preparando para eliminar precio especial ID: ${original.id_precio_especial}`);
           promesasPrecios.push(
             fetch(`https://quimex.sistemataup.online/precios_especiales/eliminar/${original.id_precio_especial}`, {
               method: 'DELETE',
@@ -284,9 +280,7 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
       // 2. Identificar precios a CREAR o ACTUALIZAR
       for (const actual of preciosFormActualValidos) {
         const original = preciosEspecialesOriginales.find(o => o.id_precio_especial === actual.id_precio_especial);
-        console.log(original)
         if (!actual.id_precio_especial || !original) { // Es NUEVO (no tiene id_precio_especial O no estaba en los originales con ese id_precio_especial)
-          console.log(`Preparando para crear nuevo precio especial para producto ID: ${actual.producto_id}`);
           const payloadCrear = {
             cliente_id: id_cliente,
             producto_id: Number(actual.producto_id),
@@ -305,7 +299,6 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
           );
         } else { // Existe (tiene id_precio_especial y estaba en los originales), verificar si hay cambios para ACTUALIZAR
           if (true) {
-            console.log(`Preparando para actualizar precio especial ID: ${actual.id_precio_especial}`);
             const payloadActualizar = {
               precio_unitario_fijo_ars: String(actual.valor), // API espera string
               activo: actual.activo,
@@ -328,7 +321,6 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
       let erroresEnPrecios = false;
       if (promesasPrecios.length > 0) {
         const resultados = await Promise.allSettled(promesasPrecios);
-        console.log("Resultados de sincronización de precios especiales:", resultados);
         resultados.forEach(r => {
             if (r.status === 'rejected') {
                 erroresEnPrecios = true;
