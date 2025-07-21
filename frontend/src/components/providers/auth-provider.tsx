@@ -42,7 +42,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     
     // Efecto para cargar desde sessionStorage al inicio
     useEffect(() => {
-        console.log("AuthProvider useEffect: Verificando sessionStorage...");
        
         try {
             const storedUser = sessionStorage.getItem("user");
@@ -59,7 +58,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 ) {
                     setUser(parsedUser as User);
                     //foundUser = true;
-                    console.log("AuthProvider useEffect: Usuario cargado desde sessionStorage", parsedUser);
                 } else {
                     console.warn(
                         "AuthProvider useEffect: Datos de usuario en sessionStorage no válidos o rol desconocido:",
@@ -77,17 +75,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             sessionStorage.removeItem("authToken");
         } finally {
             setIsLoading(false); // CRÍTICO: Asegurar que isLoading se ponga en false
-            console.log("AuthProvider useEffect: Carga inicial completada. isLoading: false");
         }
     }, []); // Se ejecuta solo una vez al montar el provider
 
     const login = async (
         usuario: string,
         password: string,
-        roleFromLoginForm?: UserRole
     ): Promise<boolean> => {
         setIsLoading(true); // Iniciar carga para la operación de login
-        console.log("AuthProvider login: Intentando...", { usuario, roleFromLoginForm });
 
         try {
             const response = await fetch(`${API_BASE_URL}/auth/login`, {
@@ -135,7 +130,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             localStorage.setItem("user_name", loggedInUser.name);
             localStorage.setItem("usuario_id", (loggedInUser.id ?? "").toString());
             setUser(loggedInUser);
-            console.log(`AuthProvider login: Éxito como ${loggedInUser}. Redirigiendo...`);
 
             // La redirección se maneja ahora. setIsLoading(false) se hará después o el componente se desmontará.
             // No necesitamos un setIsLoading(false) explícito aquí si la redirección ocurre.
@@ -161,7 +155,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     const logout = () => {
-        console.log("AuthProvider logout: Cerrando sesión...");
         setIsLoading(true); // Indicar que estamos procesando algo (opcional pero puede ser bueno para UI)
         try {
             sessionStorage.removeItem("user");
