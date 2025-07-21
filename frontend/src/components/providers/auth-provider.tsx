@@ -66,9 +66,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     sessionStorage.removeItem("user");
                     sessionStorage.removeItem("authToken");
                 }
-            } else {
-                 console.log("AuthProvider useEffect: No hay usuario o token en sessionStorage.");
-            }
+            } 
         } catch (error) {
             console.error("AuthProvider useEffect: Error al parsear usuario de sessionStorage", error);
             sessionStorage.removeItem("user");
@@ -95,7 +93,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             
             if (!response.ok) {
                 
-                console.error("AuthProvider login: Fallido -", data.message || `Error ${response.status}`);
                 sessionStorage.removeItem("user");
                 sessionStorage.removeItem("authToken");
                 setUser(null);
