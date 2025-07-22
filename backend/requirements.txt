@@ -1,27 +1,33 @@
-# requirements.txt
-
-# --- Core Framework ---
-Flask>=2.0 # O la versión específica que estés usando
-
-# --- Database & ORM ---
-Flask-SQLAlchemy>=3.0 # Para integrar SQLAlchemy con Flask
-SQLAlchemy>=1.4,<2.0 # El ORM principal (o >=2.0 si ya lo usas)
-PyMySQL>=1.0 # Driver para conectar a MySQL (si usas MySQL)
-python-dotenv>=0.15 # Si usas .env para variables de entorno (recomendado)
-
-# --- PDF/HTML Generation & Formatting (Si usas Opción 2 o 3 de comprobantes) ---
-Babel>=2.9 # Para formateo de números y fechas (filtros Jinja2)
-# reportlab>=3.6 # Descomenta si eliges ReportLab para generar PDF
-# WeasyPrint>=52 # Descomenta si eliges WeasyPrint para generar PDF (requiere dependencias externas!)
-# Flask-WeasyPrint # Extensión opcional para WeasyPrint
-
-# --- API Testing & Requests ---
-requests>=2.25 # Para hacer llamadas a tu propia API (en scripts de prueba)
-
-# --- WSGI Server (Para Producción - Opcional en requirements, pero necesario) ---
-# gunicorn>=20.0 # Popular servidor WSGI para Linux/macOS
-# waitress>=2.0 # Alternativa WSGI multi-plataforma
-
-# --- Database Migrations (Recomendado para producción) ---
-# Flask-Migrate>=4.0 # Para manejar cambios en el esquema de la DB con Alembic
-# Alembic>=1.7 # Dependencia de Flask-Migrate
+alembic==1.16.2
+babel==2.17.0
+blinker==1.9.0
+certifi==2025.1.31
+cffi==1.17.1
+charset-normalizer==3.4.1
+click==8.1.8
+cryptography==44.0.2
+et_xmlfile==2.0.0
+Flask==3.1.0
+flask-cors==5.0.1
+Flask-Login==0.6.3
+Flask-Migrate==4.1.0
+Flask-SQLAlchemy==3.0.5
+greenlet==3.2.0
+gunicorn==23.0.0
+idna==3.10
+itsdangerous==2.2.0
+Jinja2==3.1.6
+jwt==1.3.1
+Mako==1.3.10
+MarkupSafe==3.0.2
+openpyxl==3.1.5
+packaging==24.2
+pycparser==2.22
+PyJWT==2.10.1
+PyMySQL==1.1.1
+python-dotenv==1.1.0
+requests==2.32.3
+SQLAlchemy==1.4.54
+typing_extensions==4.14.0
+urllib3==2.4.0
+Werkzeug==3.1.3

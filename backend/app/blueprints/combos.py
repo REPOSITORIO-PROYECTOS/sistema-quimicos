@@ -2,8 +2,8 @@
 
 from flask import Blueprint, request, jsonify
 from decimal import Decimal
-from ..models import db, Combo, ComboComponente, Producto, Receta, TipoCambio
-from calculator.core import obtener_coeficiente_por_rango
+from ..models import db, Combo, ComboComponente, Producto, Receta, TipoCambio 
+from ..calculator.core import obtener_coeficiente_por_rango
 from sqlalchemy.exc import IntegrityError
 import traceback
 
