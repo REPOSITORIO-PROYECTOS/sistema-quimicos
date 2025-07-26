@@ -694,7 +694,6 @@ export default function ProductPriceTable() {
   const handleCancelDolarEdit = () => { setIsEditingDolar(false); setErrorDolarSave(null); };
   const handleDolarInputChange = (e: ChangeEvent<HTMLInputElement>) => { const { name, value } = e.target; const s = value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1'); if (name === 'dolarOficial') setEditDolarOficial(s); else if (name === 'dolarQuimex') setEditDolarQuimex(s); };
 
-<<<<<<< HEAD
 const handleDeleteProduct = async (itemToDelete: DisplayItem) => {
   if (!token) {
     alert("Error: Token no disponible. Por favor, inicie sesión de nuevo.");
