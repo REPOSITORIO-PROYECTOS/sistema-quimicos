@@ -1,85 +1,69 @@
 # app/blueprints/productos.py
 
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, make_response, current_app, send_file
 # Ajusta el import de db y modelos según tu estructura final.
 # Si __init__.py está en 'app/' y este archivo está en 'app/blueprints/', '..' es correcto.
-from .. import db
-from ..models import Producto, TipoCambio, Receta, RecetaItem # Importa TODOS los modelos necesarios
+from .. import db, models
+from ..models import Producto, TipoCambio, Receta, RecetaItem, Cliente, PrecioEspecialCliente # Importa TODOS los modelos necesarios
 # Ajusta la ruta a tu módulo core de calculadora
 from ..calculator.core import obtener_coeficiente_por_rango
-from decimal import Decimal, InvalidOperation, DivisionByZero
+from decimal import Decimal, InvalidOperation, DivisionByZero, ROUND_HALF_UP, ROUND_CEILING
 import traceback
 import datetime
+import math
+import jwt
+from openpyxl import Workbook
+from openpyxl.styles import Font, Alignment
+from io import BytesIO # Para
+from ..utils.decorators import token_required, roles_required
+from ..utils.permissions import ROLES
 
 # Crear el Blueprint para productos
 productos_bp = Blueprint('productos', __name__, url_prefix='/productos')
 
 # --- Función de Cálculo de Costo en Moneda de Referencia (USD) ---
-def calcular_costo_producto_referencia(producto_id, visited=None):
+# En app/blueprints/productos.py
+
+def calcular_costo_producto_referencia(producto_id: int, visited=None) -> Decimal:
     """
-    Calcula el costo de un producto en la moneda de REFERENCIA (ej: USD).
-    Si es receta, suma los costos de referencia ponderados de los ingredientes.
-    Si es materia prima, devuelve su 'costo_referencia_usd'.
-    Maneja detección de ciclos.
+    Calcula el costo en USD por UNIDAD DE VENTA (VERSIÓN CORREGIDA).
+    Esta versión asume que el 'costo_referencia_usd' de un producto base
+    YA ES un costo unitario y no lo divide por la referencia.
     """
-    if visited is None: visited = set()
+    if visited is None:
+        visited = set()
     if producto_id in visited:
-        # Evita recursión infinita si una receta se incluye a sí misma (directa o indirectamente)
-        raise ValueError(f"Ciclo detectado en recetas calculando costo ref para producto ID {producto_id}")
+        raise ValueError(f"Ciclo en recetas para ID {producto_id}")
     visited.add(producto_id)
 
-    # Usar .with_for_update() podría ser útil si hay escrituras concurrentes, pero aquí es solo lectura.
-    producto = db.session.get(Producto, producto_id) # .get es más eficiente para buscar por PK
+    producto = db.session.get(Producto, producto_id)
     if not producto:
-        raise ValueError(f"Producto con ID {producto_id} no encontrado")
+        raise ValueError(f"Producto ID {producto_id} no encontrado")
 
-    costo_calculado_ref = Decimal(0)
+    # 1. Inicializamos UNA SOLA variable para el resultado final.
+    costo_final_unitario_usd = Decimal('0.0')
 
-    if not producto.es_receta:
-        # Materia Prima o producto comprado directamente: usa su costo_referencia_usd
-        costo_calculado_ref = Decimal(producto.costo_referencia_usd) if producto.costo_referencia_usd is not None else Decimal(0)
+    # --- LÓGICA DEL "SWITCH" DE COSTO ---
+    if not producto.es_receta or getattr(producto, 'costo_manual_override', False):
+        # 2. Si no es receta, el costo final es directamente el valor guardado.
+        costo_final_unitario_usd = Decimal(producto.costo_referencia_usd or '0.0')
     else:
-        # Es una receta: calcular sumando costos de referencia de ingredientes ponderados
-        if False:
-            # Caso borde: Marcado como receta pero sin relación/items definidos
-            print(f"WARN: Producto {producto_id} ({producto.id}) está marcado como receta pero no tiene items asociados.")
-            costo_calculado_ref = Decimal(0) # O podrías lanzar un error si esto no debería pasar
-        else:
-            # Si la relación es lazy='dynamic', necesitamos .all() para iterar
-            # Si no es lazy='dynamic' (por defecto 'select'), podemos iterar directamente
-            receta = Receta.query.filter_by(producto_final_id=producto.id).first()
-            items_receta = receta.items # Asumiendo que no es lazy='dynamic' por defecto
-            if not items_receta:
-                 print(f"WARN: Receta para producto {producto_id} no tiene items.")
-                 costo_calculado_ref = Decimal(0)
-            else:
-                for item in items_receta:
-                    if item.ingrediente_id is None:
-                         print(f"WARN: Item de receta {item.id} no tiene ingrediente_id asociado.")
-                         continue # Saltar este item
+        # 3. Si es receta, calculamos y acumulamos en la MISMA variable.
+        receta = Receta.query.filter_by(producto_final_id=producto.id).first()
+        if receta and receta.items:
+            items_receta = receta.items.all() if hasattr(receta.items, 'all') else receta.items
+            for item in items_receta:
+                if item.ingrediente_id:
+                    costo_ingrediente_unitario = calcular_costo_producto_referencia(item.ingrediente_id, visited.copy())
+                    porcentaje_item = Decimal(item.porcentaje or '0.0')
+                    costo_final_unitario_usd += costo_ingrediente_unitario * (porcentaje_item / Decimal(100))
+    
+    # La lógica de división por 'ref_calculo' se omite intencionadamente.
 
-                    try:
-                        # Recursión para obtener costo de referencia del ingrediente
-                        costo_ingrediente_ref = calcular_costo_producto_referencia(
-                            item.ingrediente_id,
-                            visited.copy() # Pasar una COPIA del set para evitar interferencias entre ramas
-                        )
-                        porcentaje_item = Decimal(item.porcentaje) if item.porcentaje is not None else Decimal(0)
-                        # Acumular costo ponderado
-                        costo_calculado_ref += costo_ingrediente_ref * (porcentaje_item / Decimal(100))
-                    except ValueError as e:
-                        # Propagar error si un ingrediente no se encuentra o hay un ciclo más abajo
-                        raise ValueError(f"Error calculando costo ref para ingrediente ID {item.ingrediente_id} en receta de '{producto.id}': {e}")
-                    except Exception as e:
-                        # Capturar otros errores inesperados en la recursión
-                        print(f"ERROR inesperado calculando costo para ingrediente ID {item.ingrediente_id}")
-                        traceback.print_exc()
-                        raise Exception(f"Error inesperado calculando costo ingrediente {item.ingrediente_id}: {e}")
-
-
-    visited.remove(producto_id) # Importante: Quitar al salir de la rama de recursión
-    # Devolver con precisión adecuada (4 decimales es común para costos USD)
-    return costo_calculado_ref.quantize(Decimal("0.0001"))
+    visited.remove(producto_id)
+    
+    # 4. Devolvemos la variable única, que siempre tendrá el valor correcto.
+    return costo_final_unitario_usd.quantize(Decimal("0.0001"))
 
 # --- Función auxiliar para convertir Producto a Dict (Ajustada) ---
 def producto_a_dict(producto):
@@ -98,6 +82,91 @@ def producto_a_dict(producto):
         "fecha_actualizacion_costo": producto.fecha_actualizacion_costo.isoformat() if producto.fecha_actualizacion_costo else None,
     }
 
+
+@productos_bp.route('/actualizar_costos_por_aumento', methods=['POST'])
+@token_required 
+def actualizar_costos_por_aumento(current_user):
+    """
+    Actualiza el costo de un producto base y propaga ese mismo aumento porcentual
+    a todos los productos de receta que lo contienen como ingrediente.
+    Esta es una actualización en cascada basada en un aumento, no un recálculo desde cero.
+    
+    Payload:
+    {
+        "producto_base_id": <id_materia_prima>,
+        "porcentaje_aumento": <porcentaje>  // ej: 10 para 10%, -5 para -5%
+    }
+    """
+    data = request.get_json()
+    if not data or 'producto_base_id' not in data or 'porcentaje_aumento' not in data:
+        return jsonify({"error": "Faltan datos: 'producto_base_id' y 'porcentaje_aumento' son requeridos."}), 400
+
+    try:
+        producto_base_id = int(data['producto_base_id'])
+        porcentaje_aumento = Decimal(str(data['porcentaje_aumento']))
+    except (ValueError, TypeError, InvalidOperation):
+        return jsonify({"error": "Datos inválidos. 'producto_base_id' debe ser un entero y 'porcentaje_aumento' un número."}), 400
+
+    producto_base = db.session.get(Producto, producto_base_id)
+    if not producto_base:
+        return jsonify({"error": f"Producto base con ID {producto_base_id} no encontrado."}), 404
+
+    # El factor por el cual multiplicar (ej: 10% de aumento es 1.10, 5% de descenso es 0.95)
+    factor_multiplicador = Decimal('1') + (porcentaje_aumento / Decimal('100'))
+
+    # Lista para guardar la información de los productos actualizados
+    actualizaciones_realizadas = []
+    
+    try:
+        # 1. Actualizar el costo del producto base
+        costo_anterior_base = producto_base.costo_referencia_usd or Decimal('0.0')
+        nuevo_costo_base = costo_anterior_base * factor_multiplicador
+        producto_base.costo_referencia_usd = nuevo_costo_base.quantize(Decimal("0.0001"))
+        
+        actualizaciones_realizadas.append({
+            "tipo": "Materia Prima Base",
+            "producto_id": producto_base.id,
+            "nombre": producto_base.nombre,
+            "costo_anterior_usd": float(costo_anterior_base),
+            "costo_nuevo_usd": float(producto_base.costo_referencia_usd)
+        })
+
+        # 2. Encontrar y actualizar en cascada los productos de receta
+        recetas_afectadas_ids = set()
+        items_de_receta = RecetaItem.query.filter_by(ingrediente_id=producto_base_id).all()
+        for item in items_de_receta:
+            if item.receta and item.receta.producto_final:
+                recetas_afectadas_ids.add(item.receta.producto_final.id)
+
+        # 3. Aplicar el mismo aumento a cada producto de receta afectado
+        for receta_id in recetas_afectadas_ids:
+            producto_receta = db.session.get(Producto, receta_id)
+            if producto_receta:
+                costo_anterior_receta = producto_receta.costo_referencia_usd or Decimal('0.0')
+                nuevo_costo_receta = costo_anterior_receta * factor_multiplicador
+                producto_receta.costo_referencia_usd = nuevo_costo_receta.quantize(Decimal("0.0001"))
+                
+                actualizaciones_realizadas.append({
+                    "tipo": "Producto de Receta (Afectado)",
+                    "producto_id": producto_receta.id,
+                    "nombre": producto_receta.nombre,
+                    "costo_anterior_usd": float(costo_anterior_receta),
+                    "costo_nuevo_usd": float(producto_receta.costo_referencia_usd)
+                })
+
+        # 4. Guardar todos los cambios
+        db.session.commit()
+
+        return jsonify({
+            "message": f"Actualización por aumento del {porcentaje_aumento}% aplicada correctamente.",
+            "total_productos_actualizados": len(actualizaciones_realizadas),
+            "detalles_actualizacion": actualizaciones_realizadas
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        traceback.print_exc()
+        return jsonify({"error": "Error interno al procesar la actualización de costos."}), 500
 
 # --- Endpoints CRUD para Productos ---
 
@@ -212,57 +281,53 @@ def obtener_producto(producto_id):
 
 @productos_bp.route('/actualizar/<int:producto_id>', methods=['PUT'])
 def actualizar_producto(producto_id):
-    """Actualiza los datos de un producto existente."""
+    """
+    Actualiza un producto. Si se actualiza el costo de una receta,
+    se activa el flag 'costo_manual_override'.
+    """
     producto = db.session.get(Producto, producto_id)
-    if not producto:
-        return jsonify({"error": "Producto no encontrado"}), 404
-
+    if not producto: return jsonify({"error": "Producto no encontrado"}), 404
     data = request.get_json()
-    if not data:
-        return jsonify({"error": "No se recibieron datos JSON en el payload"}), 400
-
-    # Validar código interno único si se intenta cambiar
-    nuevo_codigo = data.get('id')
-    if nuevo_codigo and nuevo_codigo != producto.id:
-        if Producto.query.filter(Producto.id != producto_id, Producto.id == nuevo_codigo).first():
-            return jsonify({"error": f"El código interno '{nuevo_codigo}' ya está en uso por otro producto"}), 409 # Conflict
+    if not data: return jsonify({"error": "No se recibieron datos"}), 400
 
     try:
         # Actualizar campos básicos
-        producto.id = data.get('id', producto.id)
         producto.nombre = data.get('nombre', producto.nombre)
-        producto.unidad_venta = data.get('unidad_venta', producto.unidad_venta)
-        producto.tipo_calculo = data.get('tipo_calculo', producto.tipo_calculo)
-        producto.ref_calculo = data.get('ref_calculo', producto.ref_calculo)
-        producto.ajusta_por_tc = data.get('ajusta_por_tc', producto.ajusta_por_tc)
+        # ... otros campos que actualizas ...
 
-        # Actualizar campos numéricos con validación
-        if 'margen' in data:
-             producto.margen = Decimal(str(data['margen'])) if data['margen'] is not None else None
-
-        # Permitir actualizar costo manualmente SOLO si NO es receta
-        if not producto.es_receta and 'costo_referencia_usd' in data:
-             producto.costo_referencia_usd = Decimal(str(data['costo_referencia_usd'])) if data['costo_referencia_usd'] is not None else None
-             # onupdate=datetime... en el modelo debería manejar la fecha,
-             # pero se puede forzar si es necesario:
-             # producto.fecha_actualizacion_costo = datetime.datetime.utcnow()
-
-        # Nota: No se permite cambiar 'es_receta' directamente aquí.
-        # Debe hacerse a través de los endpoints de recetas (crear/eliminar receta).
+        # --- LÓGICA DE ACTUALIZACIÓN DE COSTO Y FLAGS (CORREGIDA Y EXPLÍCITA) ---
+        
+        # Primero, manejamos el flag 'es_receta' si viene en el payload
+        if 'es_receta' in data:
+            producto.es_receta = data['es_receta']
+        
+        # Luego, manejamos la actualización del costo
+        if 'costo_referencia_usd' in data:
+            nuevo_costo_str = data.get('costo_referencia_usd')
+            nuevo_costo = Decimal(str(nuevo_costo_str)) if nuevo_costo_str is not None else None
+            
+            # Siempre guardamos el costo que nos envían
+            producto.costo_referencia_usd = nuevo_costo
+            
+            # AHORA, decidimos el estado del flag 'costo_manual_override'
+            if producto.es_receta:
+                if nuevo_costo is not None:
+                    # Si es una receta y le estamos poniendo un costo, es un override.
+                    producto.costo_manual_override = True
+                else:
+                    # Si es una receta y le quitamos el costo, vuelve a modo automático.
+                    producto.costo_manual_override = False
+            else:
+                # Si no es una receta, el override no tiene sentido. Lo dejamos en False.
+                producto.costo_manual_override = False
 
         db.session.commit()
-        print(f"INFO: Producto actualizado: ID {producto_id}, Código: {producto.id}")
         return jsonify(producto_a_dict(producto))
 
-    except (ValueError, TypeError, InvalidOperation) as e:
-         db.session.rollback()
-         print(f"ERROR: Datos numéricos inválidos al actualizar producto {producto_id} - {e}")
-         return jsonify({"error": f"Error en los datos numéricos (margen, costo_referencia_usd): {e}"}), 400
     except Exception as e:
         db.session.rollback()
-        print(f"ERROR: Excepción inesperada al actualizar producto {producto_id}")
         traceback.print_exc()
-        return jsonify({"error": "Error interno del servidor al actualizar el producto"}), 500
+        return jsonify({"error": "Error interno al actualizar el producto"}), 500
 
 
 @productos_bp.route('/eliminar/<int:producto_id>', methods=['DELETE'])
@@ -408,105 +473,146 @@ def actualizar_costo_desde_compra(producto_id):
 
 
 # --- Endpoint para Calcular Precio de Venta Final ---
+def redondear_a_siguiente_decena(valor_decimal: Decimal) -> Decimal:
+    """
+    Redondea un valor Decimal hacia arriba al siguiente múltiplo de 10.
+    """
+    if not isinstance(valor_decimal, Decimal):
+        valor_decimal = Decimal(str(valor_decimal))
+    # Redondea hacia el techo al múltiplo de 10 más cercano
+    valor_redondeado = (valor_decimal / 10).quantize(Decimal('1'), rounding=ROUND_CEILING) * 10
+    # Asegura que el resultado final tenga 2 decimales para consistencia
+    return valor_redondeado.quantize(Decimal("0.01"))
+
+
 @productos_bp.route('/calcular_precio/<int:product_id>', methods=['POST'])
-def calculate_price(product_id):
+def calculate_price(product_id: int):
     """
-    Calcula el precio de venta final en ARS para un producto y cantidad dados.
-    Payload: {"quantity": "12.5"}
+    Versión final que combina:
+    - Búsqueda de coeficiente.
+    - Lógica híbrida de cantidad (<1 vs >=1) que usa el VALOR DEL ESCALÓN.
+    - Debugging completo.
     """
-    print(f"\n--- INFO: POST /productos/{product_id}/calculate_price ---")
-    producto = db.session.get(Producto, product_id)
-    if not producto:
-        return jsonify({"status": "error", "message": "Producto no encontrado"}), 404
-
-    data = request.get_json()
-    if not data or 'quantity' not in data:
-         return jsonify({"status": "error", "message": "Falta 'quantity' en el payload"}), 400
+    debug_info_response = {"etapas_calculo": []}
+    detalles_calculo_dinamico = {}
 
     try:
-        quantity_str = str(data['quantity']).strip()
-        quantity_float = float(quantity_str.replace(',', '.'))
-        if quantity_float <= 0:
-            return jsonify({"status": "error", "message": "La cantidad debe ser positiva."}), 400
-    except (ValueError, TypeError):
-        return jsonify({"status": "error", "message": "Cantidad inválida."}), 400
+        producto = db.session.get(Producto, product_id)
+        if not producto: return jsonify({"status": "error", "message": "Producto no encontrado"}), 404
+        
+        data = request.get_json()
+        if not data or 'quantity' not in data: return jsonify({"status": "error", "message": "Falta 'quantity'"}), 400
+        
+        quantity_str = str(data['quantity']).strip().replace(',', '.')
+        cantidad_decimal = Decimal(quantity_str)
+        if cantidad_decimal <= Decimal('0'): raise ValueError("La cantidad debe ser positiva.")
+        
+        # --- PRIORIDAD 1: PRECIO ESPECIAL ---
+        precio_venta_unitario_bruto = None
+        se_aplico_precio_especial = False
+        cliente_id_payload = data.get('cliente_id')
+        if cliente_id_payload:
+            try:
+                cliente_id = int(cliente_id_payload)
+                precio_especial_db = PrecioEspecialCliente.query.filter_by(cliente_id=cliente_id, producto_id=product_id, activo=True).first()
+                if precio_especial_db and precio_especial_db.precio_unitario_fijo_ars is not None:
+                    precio_venta_unitario_bruto = Decimal(str(precio_especial_db.precio_unitario_fijo_ars))
+                    se_aplico_precio_especial = True
+                    debug_info_response['etapas_calculo'].append("INICIO: LÓGICA DE PRECIO ESPECIAL APLICADA.")
+            except (ValueError, TypeError):
+                debug_info_response['etapas_calculo'].append("WARN: Cliente ID inválido, se ignora.")
 
-    try:
-        # 1. Calcular Costo Base en USD de Referencia
-        costo_ref_usd = calcular_costo_producto_referencia(product_id)
+        # --- CÁLCULO DINÁMICO ---
+        if not se_aplico_precio_especial:
+            debug_info_response['etapas_calculo'].append("INICIO: CÁLCULO DINÁMICO")
 
-        # 2. Obtener Tipo de Cambio correspondiente (Oficial/Empresa)
-        nombre_tc_aplicar = 'Oficial' if producto.ajusta_por_tc else 'Empresa'
-        tipo_cambio = TipoCambio.query.filter_by(nombre=nombre_tc_aplicar).first()
-        if not tipo_cambio or tipo_cambio.valor is None or tipo_cambio.valor <= 0:
-            raise ValueError(f"Tipo de cambio '{nombre_tc_aplicar}' no válido para calcular precio.")
+            # PASO 1 y 2: Obtener Precio Base Unitario en ARS (con margen)
+            costo_unitario_venta_usd = calcular_costo_producto_referencia(product_id)
+            nombre_tc = 'Oficial' if producto.ajusta_por_tc else 'Empresa'
+            tc_obj = TipoCambio.query.filter_by(nombre=nombre_tc).first()
+            if not tc_obj or tc_obj.valor <= 0: raise ValueError(f"TC '{nombre_tc}' inválido.")
+            costo_unitario_venta_ars = costo_unitario_venta_usd * tc_obj.valor
+            margen = Decimal(str(producto.margen or '0.0'))
+            if not (Decimal('0') <= margen < Decimal('1')): raise ValueError("Margen inválido.")
+            precio_base_ars = costo_unitario_venta_ars / (Decimal('1') - margen)
+            
+            detalles_calculo_dinamico['A_COSTO_UNITARIO_USD'] = f"{costo_unitario_venta_usd:.4f}"
+            detalles_calculo_dinamico['B_PRECIO_BASE_ARS_CON_MARGEN'] = f"{precio_base_ars:.4f}"
+            debug_info_response['etapas_calculo'].append(f"1. Precio Base ARS (unitario, con margen): {precio_base_ars.quantize(Decimal('0.01'))}")
 
-        # 3. Convertir Costo a ARS para Venta
-        costo_final_venta_ars = (costo_ref_usd * tipo_cambio.valor) # Mantener Decimal aquí
+            # PASO 3: Obtener Coeficiente y Límite del Escalón
+            resultado_tabla = obtener_coeficiente_por_rango(str(producto.ref_calculo or ''), quantity_str, producto.tipo_calculo)
+            if resultado_tabla is None: raise ValueError("No se encontró coeficiente en la matriz.")
+            coeficiente_str, escalon_cantidad_str = resultado_tabla
+            if not coeficiente_str or coeficiente_str.strip() == '': raise ValueError("Producto no disponible en esta cantidad.")
+            coeficiente_decimal = Decimal(coeficiente_str)
 
-        # 4. Obtener datos para fórmula de venta (margen, coeficiente)
-        margen = producto.margen if producto.margen is not None else Decimal(0)
-        margen_float = float(margen) # Convertir a float para el cálculo si es necesario
-        tipo_calculo = producto.tipo_calculo
-        ref_calculo_str = str(producto.ref_calculo) if producto.ref_calculo is not None else None
-        unidad_venta = producto.unidad_venta or "N/A"
+            detalles_calculo_dinamico['C_COEFICIENTE_DE_MATRIZ'] = f"{coeficiente_decimal}"
+            detalles_calculo_dinamico['D_ESCALON_CANTIDAD_MATRIZ'] = escalon_cantidad_str
+            debug_info_response['etapas_calculo'].append(f"2. Coeficiente para Qty {cantidad_decimal} es: {coeficiente_decimal} (del tier <= {escalon_cantidad_str})")
 
-        # Validar datos necesarios para cálculo de precio
-        if margen < 0 or margen >= 1: # Margen debe ser 0 <= margen < 1
-             raise ValueError("Margen del producto inválido (debe ser entre 0 y 0.99...).")
-        if not tipo_calculo or ref_calculo_str is None:
-            raise ValueError("Faltan datos del producto para calcular coeficiente (tipo_calculo, ref_calculo).")
+            # --- PASO 4: LÓGICA HÍBRIDA CON LA CORRECCIÓN FINAL ---
+            if cantidad_decimal >= Decimal('1.0'):
+                precio_venta_unitario_bruto = precio_base_ars * coeficiente_decimal
+                debug_info_response['etapas_calculo'].append(f"3. [Cant >= 1] P. Venta Unitario Bruto (P.Base * Coef): {precio_venta_unitario_bruto:.4f}")
+            else: # cantidad < 1.0
+                precio_para_la_fraccion = precio_base_ars * coeficiente_decimal
+                escalon_decimal = Decimal(escalon_cantidad_str)
+                if escalon_decimal == Decimal('0'): raise ValueError("El escalón de la matriz no puede ser cero.")
+                
+                # SE DIVIDE POR EL ESCALÓN, NO POR LA CANTIDAD SOLICITADA
+                precio_venta_unitario_bruto = precio_para_la_fraccion / escalon_decimal
+                debug_info_response['etapas_calculo'].append(f"3. [Cant < 1] P. Venta Unitario Bruto ((P.Base * Coef) / Escalón): {precio_venta_unitario_bruto:.4f}")
+            
+            detalles_calculo_dinamico['E_PRECIO_VENTA_UNITARIO_BRUTO'] = f"{precio_venta_unitario_bruto:.4f}"
 
-        # 5. Obtener Coeficiente de calculator.core
-        coeficiente = obtener_coeficiente_por_rango(ref_calculo_str, quantity_str, tipo_calculo)
-        print(f"--- DEBUG [calculate_price]: Coeficiente de tabla '{tipo_calculo}' para Qty '{quantity_str}', Ref '{ref_calculo_str}': {coeficiente}")
+        # --- PASO 5: REDONDEO Y TOTAL ---
+        if precio_venta_unitario_bruto is None: raise ValueError("Fallo en la lógica: no se pudo determinar un precio.")
 
-        if coeficiente is None:
-            # Coeficiente no encontrado para esa combinación
-            return jsonify({
-                "status": "not_found",
-                "reason": "coefficient_not_found",
-                "message": f"No se encontró coeficiente en tabla '{tipo_calculo}' para la cantidad '{quantity_str}' y referencia '{ref_calculo_str}'."
-            }), 404 # Not Found es apropiado aquí
+        precio_venta_unitario_redondeado = redondear_a_siguiente_decena(precio_venta_unitario_bruto)
+        precio_total_final_ars = redondear_a_siguiente_decena(precio_venta_unitario_redondeado * cantidad_decimal)
+        detalles_calculo_dinamico['F_PRECIO_UNITARIO_REDONDEADO'] = f"{precio_venta_unitario_redondeado:.2f}"
+        detalles_calculo_dinamico['G_PRECIO_TOTAL_FINAL_REDONDEADO'] = f"{precio_total_final_ars:.2f}"
+        debug_info_response['etapas_calculo'].append(f"4. Redondeo Final (Unitario): {precio_venta_unitario_bruto:.4f} -> {precio_venta_unitario_redondeado}")
+        debug_info_response['etapas_calculo'].append(f"5. Total Final: {precio_venta_unitario_redondeado * cantidad_decimal:.2f} -> {precio_total_final_ars}")
 
-        # 6. Calcular Precio de Venta Final
-        # Usar floats para el cálculo final es común, pero asegura precisión suficiente
-        denominador = 1.0 - margen_float
-        if denominador == 0: # Evitar división por cero si margen es 1 (aunque validamos antes)
-            raise ValueError("División por cero: Margen no puede ser 1.")
-
-        precio_venta_unitario = round((float(costo_final_venta_ars) / denominador) * float(coeficiente), 2)
-        precio_total_calculado = round(precio_venta_unitario * quantity_float, 2)
-
-        # 7. Construir Respuesta Exitosa
+        # --- PASO 6: RESPUESTA JSON ---
         response_data = {
             "status": "success",
             "product_id_solicitado": product_id,
             "nombre_producto": producto.nombre,
-            "cantidad_solicitada": quantity_float,
-            "unidad_venta": unidad_venta,
-            "costo_referencia_usd": float(costo_ref_usd),
-            "tipo_cambio_aplicado": {
-                "nombre": nombre_tc_aplicar,
-                "valor": float(tipo_cambio.valor)
-            },
-            "costo_final_venta_ars": float(costo_final_venta_ars.quantize(Decimal("0.01"))), # Redondear ARS a 2 dec
-            "margen_aplicado": margen_float,
-            "tipo_calculo_usado": tipo_calculo,
-            "referencia_interna_usada": ref_calculo_str,
-            "coeficiente_aplicado": float(coeficiente),
-            "precio_venta_unitario_ars": precio_venta_unitario,
-            "precio_total_calculado_ars": precio_total_calculado
+            "cantidad_solicitada": float(cantidad_decimal),
+            "es_precio_especial": se_aplico_precio_especial,
+            "precio_venta_unitario_ars": float(precio_venta_unitario_redondeado),
+            "precio_total_calculado_ars": float(precio_total_final_ars),
+            "debug_info_completo": {
+                "resumen_pasos": debug_info_response["etapas_calculo"],
+                "desglose_variables": detalles_calculo_dinamico if not se_aplico_precio_especial else None
+            }
         }
-        print(f"--- INFO [calculate_price]: Precio calculado para {producto.id}: {response_data}")
         return jsonify(response_data), 200
 
-    except ValueError as e: # Errores controlados (TC no válido, margen inválido, etc.)
-        print(f"ERROR [calculate_price]: ValueError para producto {product_id} - {e}")
-        # Devolver 400 Bad Request si el problema son datos inválidos del producto o TC
-        return jsonify({"status": "error", "message": f"Error al calcular precio: {e}"}), 400
+    except (ValueError, InvalidOperation) as e:
+        return jsonify({"status": "error", "message": str(e)}), 400
     except Exception as e:
-        # Errores inesperados
-        print(f"ERROR [calculate_price]: Excepción inesperada para producto {product_id}")
         traceback.print_exc()
-        return jsonify({"status": "error", "message": "Error interno del servidor al calcular el precio."}), 500
+        return jsonify({"status": "error", "message": "Error interno del servidor."}), 500
+
+
+@productos_bp.route('/recalcular_costo/<int:producto_id>', methods=['GET'])
+def recalcular_costo(producto_id):
+    """
+    Endpoint para el botón. Calcula el costo de una receta y lo devuelve.
+    NO GUARDA NADA.
+    """
+    producto = db.session.get(models.Producto, producto_id)
+    if not producto: return jsonify({"error": "Producto no encontrado"}), 404
+    if not producto.es_receta: return jsonify({"error": "Esta operación solo es válida para recetas."}), 400
+
+    try:
+        costo_calculado = calcular_costo_producto_referencia(producto_id)
+        return jsonify({"status": "success", "costo_calculado_usd": float(costo_calculado)})
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": str(e)}), 500
+    

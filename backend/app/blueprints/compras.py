@@ -14,7 +14,7 @@ import uuid # Sigue siendo útil si usas UUIDs para IDs de OrdenCompra
 import traceback
 import requests # Necesario para llamar al endpoint de actualizar costo
 
-
+#hola
 
 # --- Configuración ---
 # Obtener la URL base de la app actual o definirla. OJO: esto puede ser problemático.
@@ -34,71 +34,72 @@ FORMAS_PAGO = ["Cheque", "Efectivo", "Transferencia", "Cuenta Corriente"]
 
 # --- Función Auxiliar para formatear Orden para diferentes Roles ---
 # (Adaptada para usar objetos SQLAlchemy y campos del modelo)
+# app/blueprints/compras.py
+
 def formatear_orden_por_rol(orden_db, rol="almacen"):
     """Filtra campos sensibles según el rol desde el objeto DB."""
     if not orden_db: return None
 
-    # Campos comunes siempre visibles
     orden_dict = {
-        "id": orden_db.id, # Asume que el ID es serializable (string UUID o int)
+        "id": orden_db.id,
         "nro_solicitud_interno": orden_db.nro_solicitud_interno,
         "nro_remito_proveedor": orden_db.nro_remito_proveedor,
+        "ajuste_tc": orden_db.ajuste_tc,
         "fecha_creacion": orden_db.fecha_creacion.isoformat() if orden_db.fecha_creacion else None,
         "fecha_actualizacion": orden_db.fecha_actualizacion.isoformat() if orden_db.fecha_actualizacion else None,
         "estado": orden_db.estado,
         "proveedor_id": orden_db.proveedor_id,
-        "proveedor_nombre": orden_db.proveedor.nombre if orden_db.proveedor else None, # Nombre actual del proveedor
+        "proveedor_nombre": orden_db.proveedor.nombre if orden_db.proveedor else None,
+        "cuenta": orden_db.cuenta,
+        "iibb": orden_db.iibb,
         "observaciones_solicitud": orden_db.observaciones_solicitud,
-        # Campos de aprobación
+        "cheque_perteneciente_a": orden_db.cheque_perteneciente_a,
+        "importe_abonado": orden_db.importe_abonado,
+        "tipo_caja": orden_db.tipo_caja,
+        # --- CORRECCIÓN AQUÍ ---
+        # Accede al ID del aprobador o al nombre, no al objeto completo
         "fecha_aprobacion": orden_db.fecha_aprobacion.isoformat() if orden_db.fecha_aprobacion else None,
-        "aprobado_por": orden_db.aprobado_por_id,
+        "aprobado_por": orden_db.aprobado_por_id.username if orden_db.aprobado_por_id else None, # Ejemplo si tienes una relación y quieres el nombre de usuario
+        
         "forma_pago": orden_db.forma_pago,
-        # Campos de rechazo
         "fecha_rechazo": orden_db.fecha_rechazo.isoformat() if orden_db.fecha_rechazo else None,
-#        "rechazado_por": orden_db.rechazado_por,
         "motivo_rechazo": orden_db.motivo_rechazo,
-        # Campos de recepción
         "fecha_recepcion": orden_db.fecha_recepcion.isoformat() if orden_db.fecha_recepcion else None,
-        "recibido_por": orden_db.recibido_por_id,
+
+        # --- Y CORRECCIÓN AQUÍ ---
+        # Accede al ID del receptor o al nombre, no al objeto completo
+        "recibido_por": orden_db.recibido_por_id.username if orden_db.recibido_por_id else None, # Ejemplo si tienes una relación y quieres el nombre de usuario
+        
         "estado_recepcion": orden_db.estado_recepcion,
         "notas_recepcion": orden_db.notas_recepcion,
-        # "cantidad_recepcionada_acumulada_calc": float(orden_db.calcular_cantidad_recibida_total()), # Si tienes un método así
     }
 
-    # Items: Almacén ve info básica,     ADMIN ve costos/precios estimados
+    # El resto de la función (procesamiento de items y campos de ADMIN) se mantiene igual...
+    
     items_list = []
-    # Usar .all() si la relación es lazy='dynamic'
-    # items_db = orden_db.items.all() if hasattr(orden_db.items, 'all') else orden_db.items
-    items_db = orden_db.items # Asumiendo relación normal o eager loading si se configura
+    items_db = orden_db.items
     if items_db:
         for item_db in items_db:
+            # Tu lógica de items aquí...
+            # Asegúrate de que aquí tampoco estés pasando objetos completos
             item_dict = {
-                "id_linea": item_db.id, # ID del detalle
+                "id_linea": item_db.id,
                 "producto_id": item_db.producto_id,
-                "producto_codigo": item_db.producto.id if item_db.producto else 'N/A',
-                "producto_nombre": item_db.producto.nombre if item_db.producto else 'N/A',
+                "producto_codigo": item_db.producto.id if item_db.producto else 'N/A', # Usando el nombre de campo correcto
+                #"producto_nombre": item_db.producto.nombre if item_db.producto else 'N/A',
                 "cantidad_solicitada": float(item_db.cantidad_solicitada) if item_db.cantidad_solicitada is not None else None,
                 "cantidad_recibida": float(item_db.cantidad_recibida) if item_db.cantidad_recibida is not None else None,
                 "notas_item_recepcion": item_db.notas_item_recepcion,
                 "precio_unitario_estimado": float(item_db.precio_unitario_estimado) if item_db.precio_unitario_estimado is not None else None,
                 "importe_linea_estimado": float(item_db.importe_linea_estimado) if item_db.importe_linea_estimado is not None else None
             }
-            if rol == "ADMIN":
-                item_dict.update({
-                    "precio_unitario_estimado": float(item_db.precio_unitario_estimado) if item_db.precio_unitario_estimado is not None else None,
-                    "importe_linea_estimado": float(item_db.importe_linea_estimado) if item_db.importe_linea_estimado is not None else None,
-                    # Podrías añadir el costo ARS real de recepción si lo guardas en DetalleOrdenCompra
-                    # "costo_unitario_recepcion_ars": float(item_db.costo_unitario_recepcion_ars) if item_db.costo_unitario_recepcion_ars is not None else None,
-                })
             items_list.append(item_dict)
     orden_dict["items"] = items_list
 
-    # Campos solo para ADMIN
     if rol == "ADMIN":
         orden_dict.update({
             "importe_total_estimado": float(orden_db.importe_total_estimado) if orden_db.importe_total_estimado is not None else None,
-            # "importe_total_recibido_calc": float(orden_db.calcular_importe_recibido_total()), # Si tienes método
-            "ajuste_tc": orden_db.ajuste_tc, # SI/NO o True/False? Asegurar consistencia
+            "ajuste_tc": orden_db.ajuste_tc,
             "importe_abonado": float(orden_db.importe_abonado) if orden_db.importe_abonado is not None else None,
             "forma_pago": orden_db.forma_pago,
             "cheque_perteneciente_a": orden_db.cheque_perteneciente_a,
@@ -440,201 +441,106 @@ def rechazar_orden_compra(current_user, orden_id):
 # --- Endpoint: Recibir Mercadería de Orden de Compra ---
 @compras_bp.route('/recibir/<int:orden_id>', methods=['PUT'])
 @token_required
-@roles_required(ROLES['ADMIN']) # Permitir a ADMIN y ALMACEN recibir 
+@roles_required(ROLES['ADMIN'])
 def recibir_orden_compra(current_user, orden_id):
-    """
-    Registra la recepción de mercadería, actualiza cantidades y llama a actualizar costos.
-    Payload esperado (JSON):
-    {
-        "nro_remito_proveedor": "R-001-12345",
-        "estado_recepcion": "Parcial" | "Completa" | ...,
-        "items_recibidos": [
-            {
-             "id_linea": <id_detalle_oc_existente>, # O "producto_codigo": "CODIGO"
-             "cantidad_recibida": 450.0,
-             "costo_unitario_ars": 12.34, # <-- COSTO ARS REAL de esta recepción
-             "notas_item": "Caja abierta" (opcional)
-             }, ...
-        ],
-        "notas_recepcion_general": "...", (opcional)
-        "recibido_por": "Nombre Apellido" (opcional, tomar de auth si no)
-        // --- Datos de Pago/Costo (Opcional, usualmente cargado por     ADMIN) ---
-        "ajuste_tc": true | false, (opcional)
-        "importe_cc": 1500.50, (opcional)
-        "dif_ajuste_cambio": -50.25, (opcional)
-        "importe_abonado": 25000.00, (opcional)
-        "forma_pago": "Cheque" | ..., (opcional)
-        "cheque_perteneciente_a": "..." (opcional)
-    }
-    """
     print(f"\n--- INFO: Recibida solicitud PUT en /ordenes_compra/{orden_id}/recibir ---")
     rol_usuario = request.headers.get("X-User-Role", "almacen")
-    usuario_receptor_header = request.headers.get("X-User-Name", "Sistema") # Desde header
+    usuario_receptor = request.headers.get("X-User-Name", "Sistema")
     data = request.json
 
-    if not data: return jsonify({"error": "Payload JSON vacío"}), 400
+    if not data:
+        return jsonify({"error": "Payload JSON vacío"}), 400
 
-    # --- Validaciones de Cabecera ---
-    nro_remito = data.get('nro_remito_proveedor')
-    estado_recepcion_payload = data.get('estado_recepcion')
-    items_recibidos_payload = data.get('items_recibidos')
-    recibido_por = data.get('recibido_por', usuario_receptor_header) # Tomar del payload o header
-
-    if not nro_remito: return jsonify({"error": "Falta 'nro_remito_proveedor'"}), 400
-    if not estado_recepcion_payload or estado_recepcion_payload not in ESTADOS_RECEPCION:
-        return jsonify({"error": f"Valor inválido para 'estado_recepcion'."}), 400
-    if not items_recibidos_payload or not isinstance(items_recibidos_payload, list):
-         return jsonify({"error": "'items_recibidos' debe ser una lista"}), 400
-
-    # --- Obtener Orden y Validar Estado ---
     try:
-        # Cargar orden y sus items/productos relacionados para evitar N+1 queries después
         orden_db = db.session.query(OrdenCompra).options(
-            db.selectinload(OrdenCompra.items).selectinload(DetalleOrdenCompra.producto)
+            db.selectinload(OrdenCompra.items)
         ).get(orden_id)
 
-        if not orden_db: return jsonify({"error": "Orden de compra no encontrada"}), 404
+        if not orden_db:
+            return jsonify({"error": "Orden de compra no encontrada"}), 404
+            
+        
+        # 1. Actualizar datos generales de la Orden de Compra
+        orden_db.proveedor_id = data.get('proveedor_id', orden_db.proveedor_id)
+        orden_db.cuenta = data.get('cuenta', orden_db.cuenta)
+        orden_db.iibb = data.get('iibb', orden_db.iibb)
 
-        # Permitir recibir solo si está Aprobada (o Parcialmente Recibida si implementas multi-recepción)
-        if orden_db.estado not in ['Aprobado', 'Parcialmente Recibido', 'Con Deuda']: # Ajustar si soportas múltiples recepciones
-            return jsonify({"error": f"Solo se puede recibir mercadería de órdenes 'Aprobadas'. Estado actual: {orden_db.estado}"}), 409 # Conflict
+        if 'ajuste_tc' in data:
+            ajuste_valor = data.get('ajuste_tc')
+            orden_db.ajuste_tc = str(ajuste_valor).lower() == 'true' or ajuste_valor is True
+        
+        # 2. Actualizar datos de los items y calcular total
+        total_estimado_recalculado = Decimal('0.0')
+        if orden_db.items:
+            detalle_a_modificar = orden_db.items[0] # Asumimos una sola línea por ahora
+            
+            # Convertir valores del payload a Decimal de forma segura
+            cantidad_solicitada = Decimal(str(data.get('cantidad', '0')))
+            precio_unitario = Decimal(str(data.get('precio_unitario', '0')))
+            
+            detalle_a_modificar.cantidad_solicitada = cantidad_solicitada
+            detalle_a_modificar.precio_unitario_estimado = precio_unitario
+            
+            importe_linea = cantidad_solicitada * precio_unitario
+            detalle_a_modificar.importe_linea_estimado = importe_linea
+            total_estimado_recalculado = importe_linea
 
-        # --- Procesar Items Recibidos ---
-        # Mapa para buscar detalles existentes por ID o por producto_id/codigo
-        detalles_existentes_map = {detalle.id: detalle for detalle in orden_db.items}
-        productos_procesados_costo = set() # Para no actualizar costo del mismo producto varias veces en una llamada
+        # Actualizar el importe total de la orden con el del payload o el recalculado
+        orden_db.importe_total_estimado = Decimal(str(data.get('importe_total', total_estimado_recalculado)))
 
-        for item_recibido_data in items_recibidos_payload:
-            id_linea = item_recibido_data.get('id_linea') # Preferir ID de línea si viene
-            codigo_prod = item_recibido_data.get('producto_codigo') # Alternativa si no viene ID
-            cantidad_rec_str = item_recibido_data.get('cantidad_recibida')
-            costo_ars_str = str(item_recibido_data.get('costo_unitario_ars', '')).replace(',','.') # Costo de esta recepción
-            notas_item = item_recibido_data.get('notas_item')
+        # 3. Procesar la recepción de items
+        items_recibidos = data.get('items_recibidos', [])
+        for item_data in items_recibidos:
+            id_linea = item_data.get('id_linea')
+            detalle_para_recepcion = next((item for item in orden_db.items if item.id == id_linea), None)
+            
+            if detalle_para_recepcion:
+                cantidad_recibida_ahora = Decimal(str(item_data.get('cantidad_recibida', '0')))
+                if orden_db.estado not in ['Aprobado', 'Parcialmente Recibido', 'Con Deuda'] and item_data.get('cantidad_recibida') > 0 :
+                     return jsonify({"error": f"No se puede recibir mercadería para una orden con estado: {orden_db.estado}"}), 409
 
-            # Encontrar el detalle de la orden correspondiente
-            detalle_orden_db = None
-            if id_linea is not None:
-                detalle_orden_db = detalles_existentes_map.get(id_linea)
-            elif codigo_prod:
-                # Buscar por código si no hay ID (menos preciso si el mismo producto está varias veces)
-                for det in orden_db.items:
-                    if det.producto and det.producto.id == codigo_prod:
-                        detalle_orden_db = det
-                        break # Tomar el primero que coincida
+                # Sumar a lo que ya se haya recibido antes
+                cantidad_previa = detalle_para_recepcion.cantidad_recibida or Decimal('0')
+                detalle_para_recepcion.cantidad_recibida = cantidad_previa + cantidad_recibida_ahora
 
-            if not detalle_orden_db:
-                 msg = f"No se encontró la línea de detalle para ID '{id_linea}' o Código '{codigo_prod}' en la orden."
-                 print(f"WARN: {msg}")
-                 # Decide si fallar o continuar (por ahora fallamos)
-                 # return jsonify({"error": msg}), 400
-                 # OJO: Esto no maneja items EXTRA no solicitados. Requiere lógica adicional.
-                 print(f"WARN: Ignorando item recibido no encontrado en la orden: ID={id_linea}, Cod={codigo_prod}")
-                 continue
+        # 4. Actualizar cabecera de la recepción
+        orden_db.fecha_recepcion = datetime.datetime.utcnow()
+        orden_db.recibido_por = usuario_receptor
+        orden_db.nro_remito_proveedor = data.get('nro_remito_proveedor')
+        orden_db.estado_recepcion = data.get('estado_recepcion')
 
+        # 5. Procesar el pago y determinar el estado final
+        nuevo_abono = Decimal(str(data.get('importe_abonado', '0')))
+        importe_abonado_previo = orden_db.importe_abonado or Decimal('0')
+        orden_db.importe_abonado = importe_abonado_previo + nuevo_abono
 
-            # Validar y convertir cantidad y costo
-            try:
-                cantidad_recibida = cantidad_rec_str
-                # Costo ARS es opcional en el payload? Si no viene, no actualizamos costo ref USD.
-                costo_unitario_ars = Decimal(costo_ars_str) if costo_ars_str else None
-                if cantidad_recibida < 0: raise ValueError("Cantidad recibida no puede ser negativa")
-                if costo_unitario_ars is not None and costo_unitario_ars < 0: raise ValueError("Costo ARS no puede ser negativo")
-            except (ValueError, InvalidOperation) as e:
-                return jsonify({"error": f"Cantidad ({cantidad_rec_str}) o Costo ARS ({costo_ars_str}) inválido para línea ID {detalle_orden_db.id}: {e}"}), 400
-
-            # --- Actualizar Detalle de la Orden ---
-            # Lógica de recepción múltiple (si aplica): sumar a lo existente? O reemplazar?
-            # Por ahora, reemplazamos o asignamos si es la primera vez.
-            detalle_orden_db.cantidad_recibida = cantidad_recibida
-            detalle_orden_db.notas_item_recepcion = notas_item
-            # Guardar el costo ARS de esta recepción específica en el detalle (NUEVO CAMPO REQUERIDO en DetalleOrdenCompra?)
-            # detalle_orden_db.costo_unitario_recepcion_ars = costo_unitario_ars # Si existe el campo
-
-            # --- Disparar Actualización de Costo de Referencia (si aplica) ---
-            producto_actual = detalle_orden_db.producto
-            if (costo_unitario_ars is not None and
-                producto_actual and
-                not producto_actual.es_receta and
-                producto_actual.id not in productos_procesados_costo):
-
-                print(f"--- [Recibir OC] Preparando para actualizar costo de Producto ID: {producto_actual.id} ({producto_actual.codigo_interno}) con ARS {costo_unitario_ars}")
-                try:
-                    # *** LLAMADA AL ENDPOINT DE ACTUALIZACIÓN DE COSTO ***
-                    update_url = f"{BASE_API_URL}/productos/{producto_actual.id}/actualizar_costo_compra"
-                    update_payload = {"costo_recepcion_ars": str(costo_unitario_ars)}
-                    # Considerar Headers si el endpoint de productos requiere autenticación
-                    update_response = requests.post(update_url, json=update_payload, headers=request.headers, timeout=15) # Reenviar headers? O usar uno específico?
-
-                    if update_response.status_code == 200:
-                        print(f"--- [Recibir OC] Costo de referencia para {producto_actual.codigo_interno} actualizado OK.")
-                        productos_procesados_costo.add(producto_actual.id) # Marcar como procesado
-                    else:
-                        # Falló la actualización, loggear pero continuar con la recepción?
-                        print(f"WARN: Falló la llamada para actualizar costo de {producto_actual.codigo_interno}. Status: {update_response.status_code}")
-                        print(f"WARN: Respuesta: {update_response.text}")
-                        # Podrías decidir si esto es un error fatal para la recepción o no.
-
-                except requests.exceptions.RequestException as req_err:
-                     # Error de red al llamar al endpoint de productos
-                     print(f"ERROR: Falla de red al llamar a actualizar_costo_compra para {producto_actual.codigo_interno}: {req_err}")
-                     # Considerar si esto debe detener la recepción.
-                except Exception as call_err:
-                     # Otro error inesperado
-                     print(f"ERROR: Inesperado al llamar a actualizar_costo_compra para {producto_actual.codigo_interno}: {call_err}")
-
-        # --- Actualizar Cabecera de la Orden ---
-        # Determinar estado final (podría ser más complejo si hay multi-recepción)
-        # Simplificado: Si se recibió algo, pasa a Recibido (o Parcial si se indica)
-        # Una lógica mejor compararía total recibido vs solicitado para todos los items.
-        if orden_db.importe_total_estimado == Decimal(str(data['importe_abonado'])):
-            orden_db.estado = 'Recibido' if estado_recepcion_payload in ['Completa', 'Extra', 'Con Daños'] else 'Parcialmente Recibido'
-            for item in orden_db.items:
-                if item.producto and item.precio_unitario_estimado is not None:
-                    item.producto.costo_referencia_usd = item.precio_unitario_estimado
+        if orden_db.importe_abonado >= orden_db.importe_total_estimado:
+            orden_db.estado = 'Recibido'
         else:
-            orden_db.estado = 'Con Deuda' if estado_recepcion_payload in ['Completa', 'Extra', 'Con Daños'] else 'Parcialmente Recibido'
-            orden_db.fecha_recepcion = datetime.datetime.utcnow() # O tomar fecha del payload?
-            orden_db.recibido_por = recibido_por
-            orden_db.nro_remito_proveedor = nro_remito
-            orden_db.estado_recepcion = estado_recepcion_payload
-            orden_db.notas_recepcion = data.get('notas_recepcion_general')
-        # fecha_actualizacion se actualiza via onupdate
-
-        # --- Actualizar Datos de Pago/Costo en la Orden (si vienen y rol es ADMIN) ---
-        if rol_usuario == "ADMIN":
-            # Convertir 'SI'/'NO' a boolean si es necesario
-            ajuste_tc_payload = data.get('ajuste_tc')
-            if ajuste_tc_payload is not None:
-                 orden_db.ajuste_tc = str(ajuste_tc_payload).upper() == 'SI' # O True/False directamente
-
-            forma_pago_payload = data.get('forma_pago')
-            if forma_pago_payload:
-                 if forma_pago_payload not in FORMAS_PAGO:
-                     return jsonify({"error": f"Forma de pago '{forma_pago_payload}' inválida."}), 400
-                 orden_db.forma_pago = forma_pago_payload
-
-            try:
-                # Convertir a Decimal o Float asegurando que sean números si vienen
-                orden_db.importe_abonado = Decimal(str(data['importe_abonado'])) if 'importe_abonado' in data else orden_db.importe_abonado
-            except (ValueError, TypeError, InvalidOperation) as e:
-                 db.session.rollback()
-                 return jsonify({"error": f"Error en campos numéricos de pago/costo (importe_cc, dif_ajuste_cambio, importe_abonado): {e}"}), 400
-
-            orden_db.cheque_perteneciente_a = data.get('cheque_perteneciente_a') if orden_db.forma_pago == 'Cheque' else None
-            print(f"--- DEBUG: Datos de pago/costo de orden actualizados por rol '{rol_usuario}'")
-
-        # --- Commit Final ---
+            orden_db.estado = 'Con Deuda'
+        
+        # 6. Actualizar datos de pago
+        orden_db.forma_pago = data.get('forma_pago', orden_db.forma_pago)
+        if orden_db.forma_pago == 'Cheque':
+            orden_db.cheque_perteneciente_a = data.get('cheque_perteneciente_a')
+        else:
+            orden_db.cheque_perteneciente_a = None # Limpiar si no es cheque
+        orden_db.tipo_caja = data.get('tipo_caja', orden_db.tipo_caja)
         db.session.commit()
-        print(f"--- INFO: Orden {orden_id} registrada como recibida. Estado final: {orden_db.estado}")
-
+        
         return jsonify({
             "status": "success",
-            "message": "Mercadería registrada como recibida.",
-            "orden": formatear_orden_por_rol(orden_db, rol_usuario) # Devolver estado final
-            })
+            "message": "Mercadería registrada y orden actualizada correctamente.",
+            "orden": formatear_orden_por_rol(orden_db, rol_usuario)
+        })
 
+    except (InvalidOperation, TypeError) as e:
+        db.session.rollback()
+        print(f"ERROR: Error de conversión de datos en la orden {orden_id}: {e}")
+        traceback.print_exc()
+        return jsonify({"error": f"Dato numérico inválido: {e}"}), 400
     except Exception as e:
         db.session.rollback()
-        print(f"ERROR: Excepción inesperada al recibir orden {orden_id}")
+        print(f"ERROR: Excepción inesperada al recibir orden {orden_id}: {e}")
         traceback.print_exc()
         return jsonify({"error": "Error interno del servidor al procesar la recepción"}), 500

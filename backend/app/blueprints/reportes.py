@@ -1,8 +1,9 @@
 # app/blueprints/reportes.py
 
-from flask import Blueprint, request, jsonify, make_response
+from os import sendfile
+from flask import Blueprint, request, jsonify, make_response, current_app
 from sqlalchemy.orm import selectinload
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP, ROUND_CEILING
 import datetime
 import traceback
 import io
@@ -15,6 +16,9 @@ from openpyxl.utils import get_column_letter
 # --- Imports locales ---
 from .. import db
 from ..models import Venta, OrdenCompra
+from ..models import Producto, TipoCambio
+from ..calculator.core import obtener_coeficiente_por_rango
+from .productos import calcular_costo_producto_referencia, redondear_a_siguiente_decena
 from ..utils.decorators import token_required, roles_required
 from ..utils.permissions import ROLES
 
@@ -148,3 +152,90 @@ def reporte_movimientos_excel_limitado(current_user):
         print(f"ERROR [reporte_movimientos_excel]: Excepción inesperada")
         traceback.print_exc()
         return jsonify({"error": "Error interno al generar el reporte Excel."}), 500
+    
+@reportes_bp.route('/lista_precios/excel', methods=['GET'])
+@token_required # Asegúrate de proteger este endpoint
+def exportar_lista_precios_excel(current_user):
+    """
+    Genera un Excel con la lista de precios LLAMANDO al endpoint 'calculate_price'
+    para garantizar 100% de consistencia en la lógica.
+    """
+    try:
+        cantidades_a_calcular = [ "0.1", "0.25", "0.5", "1", "5", "10", "20", "50", "100", "200", "500", "1000" ]
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet.title = "Lista de Precios"
+
+        cabeceras = ["ID/Cód.", "Nombre Producto", "Costo Ref. USD (Unitario)"] + [f"Total x {qty}" for qty in cantidades_a_calcular]
+        style_header(sheet, cabeceras) # Asumiendo que esta función existe
+        
+        productos = Producto.query.order_by(Producto.nombre).all()
+        
+        # --- CREAMOS UN CLIENTE DE PRUEBAS PARA LLAMAR A NUESTRA PROPIA API ---
+        with current_app.test_client() as client:
+            for row_num, producto in enumerate(productos, 2):
+                sheet.cell(row=row_num, column=1, value=producto.id)
+                sheet.cell(row=row_num, column=2, value=producto.nombre)
+                
+                try:
+                    # Obtenemos el costo una vez por producto (esto no cambia)
+                    costo_unitario_usd = calcular_costo_producto_referencia(producto.id)
+                    sheet.cell(row=row_num, column=3, value=float(costo_unitario_usd)).number_format = '"$"#,##0.0000'
+
+                    # Iteramos por cada cantidad y llamamos al endpoint /calcular_precio
+                    for col_num_offset, qty_str in enumerate(cantidades_a_calcular):
+                        current_col = 4 + col_num_offset
+                        cell = sheet.cell(row=row_num, column=current_col)
+                        
+                        # Preparamos el payload para la petición interna
+                        payload = {"quantity": qty_str}
+                        
+                        # Hacemos la llamada al endpoint
+                        response = client.post(
+                            f'/productos/calcular_precio/{producto.id}',
+                            json=payload
+                        )
+                        
+                        if response.status_code == 200:
+                            # Si la llamada fue exitosa, extraemos el precio total
+                            data = response.get_json()
+                            precio_total = data.get('precio_total_calculado_ars')
+                            cell.value = float(precio_total) if precio_total is not None else "N/A"
+                            cell.number_format = '"$"#,##0.00'
+                        else:
+                            # Si la llamada falló, lo reportamos en la celda
+                            error_data = response.get_json()
+                            error_message = error_data.get('message', 'Error desconocido')
+                            print(f"WARN [export_excel]: Fallo en API para Prod ID {producto.id}, Qty {qty_str}. Msg: {error_message}")
+                            cell.value = "Error API"
+                
+                except Exception as row_error:
+                    print(f"WARN [export_excel]: Fila completa fallida para Prod ID {producto.id}. Error: {row_error}")
+                    for col_num_offset, _ in enumerate(cantidades_a_calcular):
+                        sheet.cell(row=row_num, column=4 + col_num_offset, value="Error")
+        
+        # --- Generar y Devolver el Archivo Excel (sin cambios) ---
+        excel_buffer = io.BytesIO()
+        workbook.save(excel_buffer)
+        excel_buffer.seek(0)
+        # ... (código para crear y devolver la respuesta con el archivo) ...
+        nombre_archivo = f"Lista_De_Precios_Quimex_{datetime.date.today().isoformat()}.xlsx"
+        response = make_response(excel_buffer.read())
+        response.headers['Content-Disposition'] = f'attachment; filename="{nombre_archivo}"'
+        response.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        return response
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": "No se pudo generar el archivo de lista de precios", "detalle": str(e)}), 500
+    
+
+# --- FUNCIÓN DE REDONDEO (COPIADA AQUÍ PARA USO LOCAL) ---
+def redondear_a_siguiente_decena(valor_decimal: Decimal) -> Decimal:
+    """Redondea un valor Decimal hacia arriba al siguiente múltiplo de 10."""
+    if not isinstance(valor_decimal, Decimal):
+        valor_decimal = Decimal(str(valor_decimal))
+    valor_redondeado = valor_decimal.quantize(Decimal('10'), rounding=ROUND_CEILING)
+    return valor_redondeado.quantize(Decimal("0.01"))
+
+

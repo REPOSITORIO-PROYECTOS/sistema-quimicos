@@ -1,7 +1,7 @@
 # app/blueprints/precios_especiales.py
 from flask import Blueprint, request, jsonify
 from sqlalchemy.orm import joinedload # Para cargar datos relacionados eficientemente
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 import traceback
 
 # --- Imports locales ---
@@ -9,6 +9,7 @@ from .. import db
 from ..models import PrecioEspecialCliente, Cliente, Producto
 from ..utils.decorators import token_required, roles_required
 from ..utils.permissions import ROLES
+from ..utils.math_utils import redondear_a_siguiente_decena_simplificado
 # Importar función de redondeo si la necesitas
 # from ..utils.cost_utils import redondear_decimal
 
@@ -233,32 +234,25 @@ def eliminar_precio_especial(current_user, precio_id):
         print(f"ERROR [eliminar_precio_especial]: Excepción {e}")
         traceback.print_exc()
         return jsonify({"error": "Error interno al eliminar el precio especial"}), 500
-
-
-@precios_especiales_bp.route('/actualizar-masivamente', methods=['POST'])
+    
+@precios_especiales_bp.route('/actualizar-global', methods=['POST','PUT'])
 @token_required
 @roles_required(ROLES['ADMIN'])
 def actualizar_precios_masivamente(current_user):
     """
     Actualiza TODOS los precios especiales activos aplicando un ajuste porcentual.
-    El payload debe ser un JSON como:
-    {
-        "porcentaje": "5.5",  // El porcentaje a ajustar, como string para precisión
-        "direccion": "subida" // "subida" o "bajada"
-    }
     """
     data = request.get_json()
 
-    # --- 1. Validación del Payload ---
+    # --- 1. Validación del Payload (sin cambios) ---
     if not data or 'porcentaje' not in data or 'direccion' not in data:
         return jsonify({"error": "Faltan datos requeridos: 'porcentaje' y 'direccion'."}), 400
-
+    
     porcentaje_str = str(data['porcentaje']).strip()
     direccion = data['direccion'].lower()
 
     if direccion not in ['subida', 'bajada']:
         return jsonify({"error": "El campo 'direccion' debe ser 'subida' o 'bajada'."}), 400
-
     try:
         porcentaje_decimal = Decimal(porcentaje_str)
         if porcentaje_decimal < 0:
@@ -266,22 +260,20 @@ def actualizar_precios_masivamente(current_user):
     except (InvalidOperation, ValueError):
         return jsonify({"error": "El 'porcentaje' debe ser un número válido y no negativo."}), 400
 
-    # --- 2. Preparación del multiplicador ---
-    # Convertimos el porcentaje (ej. 5.5) a un factor (ej. 1.055)
-    factor_ajuste = Decimal('1') + (porcentaje_decimal / Decimal('100'))
-
+    # --- 2. Preparación del multiplicador (CORREGIDO) ---
+    factor_porcentual = porcentaje_decimal / Decimal('100')
+    
     if direccion == 'bajada':
-        if factor_ajuste == 0: # Evitar división por cero
-             return jsonify({"error": "Un ajuste de bajada del 100% no es posible."}), 400
-        # Para bajar un X%, dividimos por 1 + (X/100)
-        # Ejemplo: bajar 10% es dividir por 1.10
-        factor_multiplicador = Decimal('1') / factor_ajuste
+        if factor_porcentual >= 1: # No se puede bajar 100% o más
+            return jsonify({"error": "Un ajuste de bajada del 100% o más no es posible."}), 400
+        # Fórmula correcta para descuento: Precio * (1 - X/100)
+        factor_multiplicador = Decimal('1') - factor_porcentual
     else: # subida
-        factor_multiplicador = factor_ajuste
+        # Fórmula correcta para aumento: Precio * (1 + X/100)
+        factor_multiplicador = Decimal('1') + factor_porcentual
         
     try:
-        # --- 3. Consulta y Actualización ---
-        # Seleccionamos todos los precios especiales que están activos
+        # --- 3. Consulta y Actualización (CON LÓGICA DE REDONDEO CONDICIONAL) ---
         precios_a_actualizar = PrecioEspecialCliente.query.filter_by(activo=True).all()
 
         if not precios_a_actualizar:
@@ -290,14 +282,24 @@ def actualizar_precios_masivamente(current_user):
         updated_count = 0
         for precio_esp in precios_a_actualizar:
             if precio_esp.precio_unitario_fijo_ars is not None and precio_esp.precio_unitario_fijo_ars > 0:
-                # Calculamos el nuevo precio
                 precio_original = precio_esp.precio_unitario_fijo_ars
-                nuevo_precio = precio_original * factor_multiplicador
+                precio_calculado = precio_original * factor_multiplicador
                 
-                # Opcional: Redondear a una cantidad específica de decimales (ej. 2)
-                # nuevo_precio = round(nuevo_precio, 2) 
+                # --- LÓGICA DE REDONDEO MEJORADA ---
+                precio_final = None
+                aviso_redondeo = ""
 
-                precio_esp.precio_unitario_fijo_ars = nuevo_precio
+                if direccion == 'subida':
+                    # Para subidas, sí aplicamos el redondeo a la siguiente decena.
+                    precio_final, _ = redondear_a_siguiente_decena_simplificado(precio_calculado)
+                    aviso_redondeo = "Todos los precios fueron redondeados a la siguiente decena."
+                else: # direccion == 'bajada'
+                    # Para bajadas, simplemente redondeamos al centavo más cercano.
+                    # Redondear hacia arriba iría en contra del descuento.
+                    precio_final = precio_calculado.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                    aviso_redondeo = "Los precios fueron ajustados al centavo más cercano."
+
+                precio_esp.precio_unitario_fijo_ars = precio_final
                 updated_count += 1
         
         # --- 4. Confirmación y Respuesta ---
@@ -307,13 +309,14 @@ def actualizar_precios_masivamente(current_user):
                 "message": "Actualización masiva completada exitosamente.",
                 "total_precios_actualizados": updated_count,
                 "porcentaje_ajuste": f"{porcentaje_decimal}%",
-                "direccion": direccion
+                "direccion": direccion,
+                "aviso": aviso_redondeo
             }), 200
         else:
-            return jsonify({"message": "No se realizaron cambios. Ningún precio cumplía los criterios para ser actualizado."}), 200
+            return jsonify({"message": "No se realizaron cambios."}), 200
 
     except Exception as e:
         db.session.rollback()
         print(f"ERROR [actualizar_precios_masivamente]: Excepción {e}")
         traceback.print_exc()
-        return jsonify({"error": "Error interno durante la actualización masiva. No se guardaron los cambios."}), 500
+        return jsonify({"error": "Error interno durante la actualización masiva."}), 500

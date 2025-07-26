@@ -1,5 +1,6 @@
 # app/blueprints/ventas.py
 
+from operator import or_
 from flask import Blueprint, request, jsonify, render_template, make_response
 from sqlalchemy.orm import selectinload # Para Eager Loading
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP, ROUND_UP
@@ -12,13 +13,6 @@ from ..models import ( Venta, DetalleVenta, Producto, UsuarioInterno, Cliente, #
                       TipoCambio, PrecioEspecialCliente ) # Añadido PrecioEspecialCliente
 # Ajusta la ruta si es necesario para estas funciones auxiliares
 # Asumiendo que están en productos.py dentro de blueprints, o muévelas a utils si prefieres
-try:
-    from .productos import calcular_costo_producto_referencia, obtener_coeficiente_por_rango
-except ImportError:
-    print("ERROR [ventas.py]: No se pudieron importar funciones desde .productos. Verifica la ubicación.")
-    # Definir funciones dummy para que la app no falle al cargar, pero dará error al usar
-    def calcular_costo_producto_referencia(pid): print("ERROR: calcular_costo_producto_referencia no importada!"); return None
-    def obtener_coeficiente_por_rango(r, q, t): print("ERROR: obtener_coeficiente_por_rango no importada!"); return None
 
 # Importar decoradores/roles (descomenta si los usas)
 from ..utils.decorators import token_required, roles_required
@@ -35,102 +29,98 @@ RECARGO_FACTURA_PORC = Decimal("21.0") # 21.0% (IVA)
 def calcular_precio_item_venta(producto_id, cantidad_decimal, cliente_id=None):
     """
     Calcula el precio unitario y total para un item de venta.
-    Primero busca un precio especial ACTIVO para el cliente/producto.
-    Si no existe o no aplica, calcula dinámicamente.
-    Devuelve: (precio_unitario_ars, precio_total_ars, costo_momento_ars, coeficiente, error_msg, es_precio_especial)
+    Utiliza la lógica híbrida: "Múltiplos de Escalón" para cant < 1 y "Cálculo Total Directo" para cant >= 1.
+    Devuelve: (precio_unitario_ars, precio_total_ars, costo_momento_ars, coeficiente_decimal, error_msg, es_precio_especial)
     """
+    from .productos import (
+        calcular_costo_producto_referencia, 
+        obtener_coeficiente_por_rango, 
+        redondear_a_siguiente_decena
+    )
+    
     print(f"DEBUG [calcular_precio_item_venta]: Calculando para ProdID={producto_id}, Cant={cantidad_decimal}, ClienteID={cliente_id}")
     try:
         producto = db.session.get(Producto, producto_id)
         if not producto:
             return None, None, None, None, f"Producto ID {producto_id} no encontrado.", False
 
-        # --- Búsqueda de Precio Especial ---
+        # --- Búsqueda de Precio Especial (sin cambios) ---
         if cliente_id:
-            print(f"DEBUG [calcular_precio_item_venta]: Buscando precio especial para ClienteID={cliente_id}, ProdID={producto_id}")
             precio_especial_activo = db.session.query(PrecioEspecialCliente).filter(
                 PrecioEspecialCliente.cliente_id == cliente_id,
                 PrecioEspecialCliente.producto_id == producto_id,
-                PrecioEspecialCliente.activo == True # Solo considerar precios activos
+                PrecioEspecialCliente.activo == True
             ).first()
-
-            if precio_especial_activo:
+            if precio_especial_activo and precio_especial_activo.precio_unitario_fijo_ars is not None:
                 precio_unitario_fijo = precio_especial_activo.precio_unitario_fijo_ars
-                if precio_unitario_fijo is not None:
-                    precio_total_fijo = (precio_unitario_fijo * cantidad_decimal).quantize(Decimal("0.01"), ROUND_HALF_UP)
-                    print(f"DEBUG [calcular_precio_item_venta]: ¡Encontrado! Usando precio especial fijo ARS {precio_unitario_fijo:.4f}")
+                precio_total_fijo = (precio_unitario_fijo * cantidad_decimal).quantize(Decimal("0.01"), ROUND_HALF_UP)
+                costo_ref_usd_calc = calcular_costo_producto_referencia(producto_id)
+                costo_momento_ars_calc = None
+                return precio_unitario_fijo, precio_total_fijo, costo_momento_ars_calc, None, None, True
 
-                    # Calcular costo base para reporting (incluso con precio especial)
-                    costo_ref_usd_calc = calcular_costo_producto_referencia(producto_id)
-                    costo_momento_ars_calc = None
-
-                    if costo_ref_usd_calc is not None:
-                        nombre_tc_aplicar = 'Oficial' if producto.ajusta_por_tc else 'Empresa'
-                        tipo_cambio = TipoCambio.query.filter_by(nombre=nombre_tc_aplicar).first()
-                        if tipo_cambio and tipo_cambio.valor and tipo_cambio.valor > 0:
-                            costo_momento_ars_calc = (costo_ref_usd_calc * tipo_cambio.valor).quantize(Decimal("0.0001"))
-                        else:
-                            print(f"WARN [calcular_precio_item_venta]: TC '{nombre_tc_aplicar}' inválido al calcular costo (precio especial).")
-                    else:
-                        print(f"WARN [calcular_precio_item_venta]: No se pudo obtener costo base (precio especial).")
-
-                    return precio_unitario_fijo, precio_total_fijo, costo_momento_ars_calc, None, None, True # Flag True
-                else:
-                    print(f"WARN [calcular_precio_item_venta]: Precio especial encontrado pero el valor es NULL.")
-            else:
-                 print(f"DEBUG [calcular_precio_item_venta]: No se encontró precio especial activo para esta combinación.")
-
-        # --- Cálculo Dinámico Normal ---
-        print(f"DEBUG [calcular_precio_item_venta]: Procediendo con cálculo dinámico para producto {producto_id}.")
+        # --- Cálculo Dinámico (con correcciones) ---
         costo_ref_usd = calcular_costo_producto_referencia(producto_id)
         if costo_ref_usd is None:
-             raise ValueError(f"No se pudo calcular el costo base USD para producto ID {producto_id}.")
+             raise ValueError(f"No se pudo calcular el costo base USD.")
 
+        # ... (Cálculo de precio_base_con_margen_ars - sin cambios) ...
         nombre_tc_aplicar = 'Oficial' if producto.ajusta_por_tc else 'Empresa'
         tipo_cambio = TipoCambio.query.filter_by(nombre=nombre_tc_aplicar).first()
-        if not tipo_cambio or tipo_cambio.valor is None or tipo_cambio.valor <= 0:
-            raise ValueError(f"Tipo de cambio '{nombre_tc_aplicar}' no válido o no encontrado.")
-
-        costo_momento_ars = (costo_ref_usd * tipo_cambio.valor).quantize(Decimal("0.0001"))
-
-        margen = Decimal(producto.margen) if producto.margen is not None else Decimal(0)
-        tipo_calculo = producto.tipo_calculo
-        ref_calculo_str = str(producto.ref_calculo) if producto.ref_calculo is not None else None
-        if margen < 0 or margen >= 1: raise ValueError(f"Margen inválido ({margen}) para producto ID {producto_id}.")
-        if not tipo_calculo or ref_calculo_str is None:
-            raise ValueError(f"Faltan tipo_calculo o ref_calculo en producto ID {producto_id}.")
-
-        cantidad_str = str(cantidad_decimal)
-        # Asegurarse que la función obtener_coeficiente exista y funcione
-        coeficiente = obtener_coeficiente_por_rango(ref_calculo_str, cantidad_str, tipo_calculo)
-        if coeficiente is None:
-            # Intentar dar un mensaje más útil si es posible
-            print(f"WARN [calcular_precio_item_venta]: Coeficiente no encontrado para Ref={ref_calculo_str}, Qty={cantidad_str}, Tipo={tipo_calculo}. Revisa datos en 'calculator' o matrices.")
-            raise ValueError(f"No se encontró coeficiente aplicable para la cantidad solicitada.")
-        try:
-             coeficiente_decimal = Decimal(str(coeficiente))
-        except InvalidOperation:
-             raise ValueError(f"Coeficiente obtenido ('{coeficiente}') no es un número válido.")
-
+        if not tipo_cambio or tipo_cambio.valor is None or tipo_cambio.valor <= 0: raise ValueError(f"Tipo de cambio '{nombre_tc_aplicar}' no válido.")
+        valor_tc_decimal = Decimal(str(tipo_cambio.valor))
+        costo_momento_ars = (costo_ref_usd * valor_tc_decimal)
+        margen = Decimal(str(producto.margen or '0.0'))
         denominador = Decimal(1) - margen
-        if denominador == 0: raise ValueError("Margen no puede ser 1 (división por cero).")
-        precio_unitario_ars = (costo_momento_ars / denominador * coeficiente_decimal).quantize(Decimal("0.1"), rounding=ROUND_UP)
-        # valor = (costo_momento_ars / denominador * coeficiente_decimal)
-        # precio_unitario_ars = (valor / Decimal('10')).to_integral_value(rounding=ROUND_UP) * Decimal('10')
-        # precio_unitario_ars = precio_unitario_ars.quantize(Decimal("0.1"))
-        precio_total_ars = (precio_unitario_ars * cantidad_decimal).quantize(Decimal("0.01"), ROUND_HALF_UP)
-        print(f"DEBUG [calcular_precio_item_venta]: Cálculo dinámico: PU={precio_unitario_ars:.4f}, PT={precio_total_ars:.2f}, Costo={costo_momento_ars:.4f}, Coef={coeficiente_decimal}")
+        if denominador <= 0: raise ValueError("Margen inválido.")
+        precio_base_con_margen_ars = costo_momento_ars / denominador
 
-        return precio_unitario_ars, precio_total_ars, costo_momento_ars, coeficiente_decimal, None, False # Flag False
+        # --- Obtención y uso correcto de los datos del coeficiente ---
+        tipo_calculo = producto.tipo_calculo
+        ref_calculo_str = str(producto.ref_calculo or '')
+        cantidad_str = str(cantidad_decimal)
+
+        resultado_calculadora = obtener_coeficiente_por_rango(ref_calculo_str, cantidad_str, tipo_calculo)
+        if resultado_calculadora is None:
+            raise ValueError(f"No se encontró coeficiente aplicable.")
+
+        coeficiente_str, escalon_cantidad_str = resultado_calculadora
+
+        try:
+            coeficiente_decimal = Decimal(coeficiente_str)
+        except InvalidOperation:
+            raise ValueError(f"Coeficiente obtenido ('{coeficiente_str}') no es un número válido.")
+        
+        precio_total_ars = None
+        precio_unitario_ars = None
+        
+        if cantidad_decimal < Decimal('1.0'):
+            # CORRECCIÓN 1: Usar la variable 'escalon_cantidad_str' que ya desempaquetamos
+            escalon_cantidad = Decimal(escalon_cantidad_str)
+            if escalon_cantidad == 0: raise ValueError("El escalón de cantidad no puede ser cero.")
+            
+            precio_del_escalon_bruto = precio_base_con_margen_ars * coeficiente_decimal
+            # CORRECCIÓN 2: Asumir que redondear... devuelve UN solo valor. Quitar ', _'
+            precio_del_escalon_redondeado = redondear_a_siguiente_decena(precio_del_escalon_bruto)
+            numero_de_escalones = cantidad_decimal / escalon_cantidad
+            
+            precio_total_ars = precio_del_escalon_redondeado * numero_de_escalones
+            precio_unitario_ars = precio_del_escalon_redondeado / escalon_cantidad
+        else:
+            precio_total_bruto_ars = (precio_base_con_margen_ars * cantidad_decimal) * coeficiente_decimal
+            # CORRECCIÓN 2: Asumir que redondear... devuelve UN solo valor. Quitar ', _'
+            precio_total_ars = redondear_a_siguiente_decena(precio_total_bruto_ars)
+            
+            if cantidad_decimal == 0: raise ValueError("La cantidad no puede ser cero.")
+            precio_unitario_ars = (precio_total_ars / cantidad_decimal)
+
+        precio_unitario_ars = precio_unitario_ars.quantize(Decimal("0.01"), ROUND_HALF_UP)
+        precio_total_ars = precio_total_ars.quantize(Decimal("0.01"), ROUND_HALF_UP)
+        
+        return precio_unitario_ars, precio_total_ars, costo_momento_ars, coeficiente_decimal, None, False
 
     except ValueError as e:
-        print(f"WARN [calcular_precio_item_venta]: Error VALOR calculando precio para producto {producto_id}: {e}")
-        # Devolver el mensaje de error específico de ValueError
+        print(f"WARN [calcular_precio_item_venta]: Error VALOR para producto {producto_id}: {e}")
         return None, None, None, None, str(e), False
-    except ImportError as e:
-         print(f"ERROR FATAL [calcular_precio_item_venta]: Error de importación al intentar calcular precio: {e}")
-         traceback.print_exc()
-         return None, None, None, None, "Error de configuración interna (importación).", False
     except Exception as e:
         print(f"ERROR [calcular_precio_item_venta]: Excepción inesperada para producto {producto_id}: {type(e).__name__}")
         traceback.print_exc()
@@ -545,169 +535,6 @@ def obtener_venta_por_id(current_user, venta_id):
         traceback.print_exc()
         return jsonify({"error": "Error interno al obtener la venta"}), 500
 
-# --- Endpoint: Actualizar Venta (Campos básicos) (Sin cambios lógicos aquí) ---
-@ventas_bp.route('/actualizar/<int:venta_id>', methods=['PUT'])
-@token_required
-@roles_required(ROLES['ADMIN'], ROLES['VENTAS_PEDIDOS'], ROLES['VENTAS_LOCAL']) # O los roles apropiados
-def actualizar_venta(current_user, venta_id):
-    """Actualiza campos básicos de una venta (NO recalcula precios de items)."""
-    venta_db = db.session.get(Venta, venta_id)
-    if not venta_db: return jsonify({"error": "Venta no encontrada"}), 404
-    data = request.get_json()
-    if not data: return jsonify({"error": "Payload vacío"}), 400
-    try:
-        campos_actualizables = ['cliente_id', 'fecha_pedido', 'direccion_entrega', 'cuit_cliente', 'observaciones', 'forma_pago', 'requiere_factura', 'monto_pagado_cliente']
-        updated = False
-        for campo in campos_actualizables:
-            if campo in data:
-                valor_nuevo = data[campo]
-                # Validaciones específicas
-                if campo == 'fecha_pedido' and valor_nuevo:
-                     try: valor_nuevo = datetime.datetime.fromisoformat(valor_nuevo)
-                     except ValueError: return jsonify({"error": f"Formato inválido para '{campo}' (ISO 8601)"}), 400
-                elif campo == 'cliente_id' and valor_nuevo:
-                     if not db.session.get(Cliente, valor_nuevo): return jsonify({"error": f"Cliente ID {valor_nuevo} no existe"}), 404
-                elif campo == 'monto_pagado_cliente' and valor_nuevo is not None:
-                    try: valor_nuevo = Decimal(str(valor_nuevo)).quantize(Decimal("0.01"))
-                    except InvalidOperation: return jsonify({"error": f"Valor inválido para '{campo}'"}), 400
-
-                # Comparar antes de asignar para saber si hubo cambios
-                if getattr(venta_db, campo) != valor_nuevo:
-                    setattr(venta_db, campo, valor_nuevo)
-                    updated = True
-
-        # Recalcular vuelto si monto pagado cambió
-        if 'monto_pagado_cliente' in data and venta_db.monto_final_con_recargos is not None:
-             # Usar el nuevo valor de monto_pagado que ya está validado y asignado (si cambió)
-             nuevo_monto_pagado_str = str(venta_db.monto_pagado_cliente) if venta_db.monto_pagado_cliente is not None else None
-             _, _, _, vuelto_recalc, error_vuelto = calcular_monto_final_y_vuelto(
-                 venta_db.monto_final_con_recargos,
-                 venta_db.forma_pago,
-                 venta_db.requiere_factura,
-                 nuevo_monto_pagado_str
-             )
-             if error_vuelto:
-                 print(f"WARN [actualizar_venta]: No se pudo recalcular vuelto: {error_vuelto}")
-                 if venta_db.vuelto_calculado is not None: # Solo marcar update si cambia a None
-                     venta_db.vuelto_calculado = None
-                     updated = True
-             elif venta_db.vuelto_calculado != vuelto_recalc:
-                 venta_db.vuelto_calculado = vuelto_recalc
-                 updated = True
-
-        if updated:
-            db.session.commit()
-            print(f"INFO: Venta actualizada: ID {venta_id}")
-        else:
-            print(f"INFO: Venta ID {venta_id} sin cambios detectados.")
-            return jsonify({"message":"No se realizaron cambios."}), 200
-
-        # Devolver venta completa actualizada
-        venta_actualizada = db.session.query(Venta).options(
-            selectinload(Venta.detalles).selectinload(DetalleVenta.producto),
-            selectinload(Venta.usuario_interno), selectinload(Venta.cliente)
-        ).get(venta_id)
-        return jsonify(venta_a_dict_completo(venta_actualizada))
-
-    except Exception as e: db.session.rollback(); print(f"ERROR [actualizar_venta]: Venta {venta_id} - {e}"); traceback.print_exc(); return jsonify({"error":"ISE"}),500
-
-# --- Endpoint: Eliminar Venta (Sin cambios) ---
-@ventas_bp.route('/eliminar/<int:venta_id>', methods=['DELETE'])
-@token_required
-@roles_required(ROLES['ADMIN'])
-def eliminar_venta(current_user, venta_id):
-    """Elimina una venta y sus detalles."""
-    venta_db = db.session.get(Venta, venta_id)
-    if not venta_db: return jsonify({"error": "Venta no encontrada"}), 404
-    try:
-        # Añadir lógica de negocio aquí si es necesario (ej: no borrar facturada)
-        db.session.delete(venta_db) # Cascade debería borrar detalles si está configurado en el modelo
-        db.session.commit()
-        print(f"INFO: Venta eliminada: ID {venta_id}")
-        return jsonify({"message": f"Venta ID {venta_id} eliminada"}), 200
-    except Exception as e: db.session.rollback(); print(f"ERROR [eliminar_venta]: Venta {venta_id} - {e}"); traceback.print_exc(); return jsonify({"error":"ISE"}),500
-
-# --- Endpoint para Generar Comprobante HTML (Sin cambios) ---
-@ventas_bp.route('/obtener_comprobante/<int:venta_id>', methods=['GET'])
-def obtener_comprobante_venta(venta_id):
-    """Genera y devuelve un HTML formateado como comprobante no fiscal."""
-    try:
-        venta_db = db.session.query(Venta).options(
-            selectinload(Venta.detalles).selectinload(DetalleVenta.producto),
-            selectinload(Venta.usuario_interno), selectinload(Venta.cliente) # Eager load cliente
-        ).get(venta_id)
-        if not venta_db: return "<h1>Venta no encontrada</h1>", 404
-        venta_dict = venta_a_dict_completo(venta_db) # Usar serializador completo
-        context = {"venta": venta_dict, "RECARGO_TRANSFERENCIA_PORC": RECARGO_TRANSFERENCIA_PORC, "RECARGO_FACTURA_PORC": RECARGO_FACTURA_PORC}
-        html_comprobante = render_template('comprobante_venta.html', **context) # Asegúrate que la plantilla exista
-        response = make_response(html_comprobante)
-        response.headers['Content-Type'] = 'text/html'
-        return response
-    except Exception as e: print(f"ERROR [obtener_comprobante_venta]: Venta {venta_id} - {e}"); traceback.print_exc(); return f"<h1>Error interno</h1><p>{e}</p>", 500
-
-
-# --- Funciones Auxiliares para Serializar Venta/Detalle (Actualizadas) ---
-
-def venta_a_dict_resumen(venta):
-    """Convierte Venta a diccionario para listas (incluye nombre cliente)."""
-    if not venta: return None
-    return {
-        "venta_id": venta.id,
-        "fecha_registro": venta.fecha_registro.isoformat() if venta.fecha_registro else None,
-        "fecha_pedido": venta.fecha_pedido.isoformat() if venta.fecha_pedido else None,
-        "direccion_entrega": venta.direccion_entrega,
-        "nombre_vendedor": venta.nombre_vendedor,
-        "usuario_interno_id": venta.usuario_interno_id,
-        "usuario_nombre": venta.usuario_interno.nombre if venta.usuario_interno else None,
-        "cliente_id": venta.cliente_id,
-        # Asume que el modelo Cliente tiene 'razon_social'
-        "cliente_nombre": venta.cliente.nombre_razon_social if venta.cliente else None,
-        "cuit_cliente": venta.cuit_cliente,
-        "monto_total_base": float(venta.monto_total) if venta.monto_total is not None else None,
-        "forma_pago": venta.forma_pago,
-        "requiere_factura": venta.requiere_factura,
-        "monto_final_con_recargos": float(venta.monto_final_con_recargos) if venta.monto_final_con_recargos is not None else None,
-    }
-
-def venta_a_dict_completo(venta):
-    """Convierte Venta a diccionario completo (incluye cliente y detalles)."""
-    if not venta: return None
-    # Cargar detalles si es lazy='dynamic'
-    detalles_list = venta.detalles.all() if hasattr(venta.detalles, 'all') else venta.detalles
-
-    resumen = venta_a_dict_resumen(venta) # Reutilizar
-    resumen.update({
-        "direccion_entrega": venta.direccion_entrega,
-        "observaciones": venta.observaciones,
-        "recargos": {
-            "transferencia": float(venta.recargo_transferencia) if venta.recargo_transferencia is not None else 0.0,
-            "factura_iva": float(venta.recargo_factura) if venta.recargo_factura is not None else 0.0,
-        },
-        "monto_pagado_cliente": float(venta.monto_pagado_cliente) if venta.monto_pagado_cliente is not None else None,
-        "vuelto_calculado": float(venta.vuelto_calculado) if venta.vuelto_calculado is not None else None,
-        "detalles": [detalle_venta_a_dict(d) for d in detalles_list]
-    })
-    return resumen
-
-def detalle_venta_a_dict(detalle):
-    """Convierte DetalleVenta a diccionario."""
-    if not detalle: return None
-    return {
-        "detalle_id": detalle.id,
-        "producto_id": detalle.producto_id,
-        "producto_codigo": detalle.producto.id if detalle.producto else None, # Usar codigo_interno
-        "producto_nombre": detalle.producto.nombre if detalle.producto else None,
-        "cantidad": float(detalle.cantidad) if detalle.cantidad is not None else None,
-        "observacion_item": detalle.observacion_item,
-        "margen_aplicado": float(detalle.margen_aplicado) if detalle.margen_aplicado is not None else None,
-        "costo_unitario_momento_ars": float(detalle.costo_unitario_momento_ars) if detalle.costo_unitario_momento_ars is not None else None,
-        "coeficiente_usado": float(detalle.coeficiente_usado) if detalle.coeficiente_usado is not None else None,
-        "precio_unitario_venta_ars": float(detalle.precio_unitario_venta_ars) if detalle.precio_unitario_venta_ars is not None else None,
-        "precio_total_item_ars": float(detalle.precio_total_item_ars) if detalle.precio_total_item_ars is not None else None,
-        # Opcional: añadir el flag si lo incluiste en el modelo
-        # "es_precio_especial": detalle.es_precio_especial
-    }
-
 # --- Endpoint: Actualizar Venta (Lógica de Recálculo Completo) ---
 @ventas_bp.route('/actualizar/<int:venta_id>', methods=['PUT'])
 @token_required
@@ -822,3 +649,270 @@ def actualizar_venta(current_user, venta_id):
         print(f"ERROR [actualizar_venta]: Excepción para venta {venta_id}: {type(e).__name__}")
         traceback.print_exc()
         return jsonify({"error": "Error interno al recalcular y actualizar la venta."}), 500
+
+
+
+
+@ventas_bp.route('/sin_entrega', methods=['GET'])
+@token_required
+@roles_required(ROLES['ADMIN'], ROLES['CONTABLE'], ROLES['VENTAS_PEDIDOS'], ROLES['VENTAS_LOCAL'])
+def obtener_ventas_sin_entrega(current_user):
+    """
+    Obtiene una lista de ventas que NO tienen una dirección de entrega especificada
+    (se asumen como retiros en local).
+    Soporta los mismos filtros y paginación que /obtener_todas.
+    """
+    try:
+        # --- FILTRO CLAVE AÑADIDO ---
+        # Iniciamos la consulta filtrando solo las ventas donde la dirección de entrega
+        # es nula O es una cadena de texto vacía.
+        query = Venta.query.filter(
+            or_(
+                Venta.direccion_entrega.is_(None),
+                Venta.direccion_entrega == ''
+            )
+        )
+
+        # --- El resto de la lógica es idéntico a las otras funciones ---
+        
+        # Aplicar Filtros
+        usuario_id_filtro = request.args.get('usuario_id', type=int)
+        if usuario_id_filtro:
+            query = query.filter(Venta.usuario_interno_id == usuario_id_filtro)
+
+        cliente_id_filtro = request.args.get('cliente_id', type=int)
+        if cliente_id_filtro:
+            query = query.filter(Venta.cliente_id == cliente_id_filtro)
+
+        fecha_desde_str = request.args.get('fecha_desde')
+        if fecha_desde_str:
+            try:
+                fecha_desde = datetime.date.fromisoformat(fecha_desde_str)
+                query = query.filter(Venta.fecha_registro >= datetime.datetime.combine(fecha_desde, datetime.time.min))
+            except ValueError:
+                return jsonify({"error": "Formato 'fecha_desde' (YYYY-MM-DD)"}), 400
+
+        fecha_hasta_str = request.args.get('fecha_hasta')
+        if fecha_hasta_str:
+            try:
+                fecha_hasta = datetime.date.fromisoformat(fecha_hasta_str)
+                query = query.filter(Venta.fecha_registro < datetime.datetime.combine(fecha_hasta + datetime.timedelta(days=1), datetime.time.min))
+            except ValueError:
+                return jsonify({"error": "Formato 'fecha_hasta' (YYYY-MM-DD)"}), 400
+
+        # Ordenar
+        query = query.order_by(Venta.fecha_registro.desc())
+
+        # Paginación
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 20, type=int)
+        paginated_ventas = query.paginate(page=page, per_page=per_page, error_out=False)
+        ventas_db = paginated_ventas.items
+
+        # Serializar Resultados
+        # Asumo que tienes una función `venta_a_dict_resumen`
+        ventas_list = []
+        for venta in ventas_db:
+            _ = venta.usuario_interno
+            _ = venta.cliente
+            ventas_list.append(venta_a_dict_resumen(venta))
+
+        # Retornar JSON
+        return jsonify({
+            "ventas": ventas_list,
+            "pagination": {
+                "total_items": paginated_ventas.total,
+                "total_pages": paginated_ventas.pages,
+                "current_page": page,
+                "per_page": per_page,
+                "has_next": paginated_ventas.has_next,
+                "has_prev": paginated_ventas.has_prev
+            }
+        })
+
+    except Exception as e:
+        print(f"ERROR [obtener_ventas_sin_entrega]: Excepción inesperada")
+        traceback.print_exc()
+        return jsonify({"error": "Error interno al obtener las ventas sin entrega"}), 500
+
+
+
+@ventas_bp.route('/con_entrega', methods=['GET'])
+@token_required
+@roles_required(ROLES['ADMIN'], ROLES['CONTABLE'], ROLES['VENTAS_PEDIDOS'], ROLES['VENTAS_LOCAL'])
+def obtener_ventas_con_entrega(current_user):
+    """
+    Obtiene una lista de ventas que tienen una dirección de entrega especificada.
+    Soporta los mismos filtros y paginación que /obtener_todas.
+    """
+    try:
+        # --- FILTRO CLAVE AÑADIDO ---
+        # Iniciamos la consulta filtrando solo las ventas que tienen una dirección
+        # de entrega que no es nula y no es una cadena de texto vacía.
+        query = Venta.query.filter(
+            Venta.direccion_entrega.isnot(None),
+            Venta.direccion_entrega != ''
+        )
+
+        # --- Aplicar Filtros (Esta lógica es idéntica a la original) ---
+        usuario_id_filtro = request.args.get('usuario_id', type=int)
+        if usuario_id_filtro:
+            query = query.filter(Venta.usuario_interno_id == usuario_id_filtro)
+
+        cliente_id_filtro = request.args.get('cliente_id', type=int)
+        if cliente_id_filtro:
+            query = query.filter(Venta.cliente_id == cliente_id_filtro)
+
+        fecha_desde_str = request.args.get('fecha_desde')
+        if fecha_desde_str:
+            try:
+                fecha_desde = datetime.date.fromisoformat(fecha_desde_str)
+                query = query.filter(Venta.fecha_registro >= datetime.datetime.combine(fecha_desde, datetime.time.min))
+            except ValueError:
+                return jsonify({"error": "Formato 'fecha_desde' (YYYY-MM-DD)"}), 400
+
+        fecha_hasta_str = request.args.get('fecha_hasta')
+        if fecha_hasta_str:
+            try:
+                fecha_hasta = datetime.date.fromisoformat(fecha_hasta_str)
+                query = query.filter(Venta.fecha_registro < datetime.datetime.combine(fecha_hasta + datetime.timedelta(days=1), datetime.time.min))
+            except ValueError:
+                return jsonify({"error": "Formato 'fecha_hasta' (YYYY-MM-DD)"}), 400
+
+        # Ordenar (Idéntico)
+        query = query.order_by(Venta.fecha_registro.desc())
+
+        # Paginación (Idéntico)
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 20, type=int)
+        paginated_ventas = query.paginate(page=page, per_page=per_page, error_out=False)
+        ventas_db = paginated_ventas.items
+
+        # Serializar Resultados (Idéntico)
+        # Asumo que tienes una función `venta_a_dict_resumen` como en el original
+        ventas_list = []
+        for venta in ventas_db:
+            _ = venta.usuario_interno
+            _ = venta.cliente
+            ventas_list.append(venta_a_dict_resumen(venta)) # ¡Asegúrate que esta función exista!
+
+        # Retornar JSON (Idéntico)
+        return jsonify({
+            "ventas": ventas_list,
+            "pagination": {
+                "total_items": paginated_ventas.total,
+                "total_pages": paginated_ventas.pages,
+                "current_page": page,
+                "per_page": per_page,
+                "has_next": paginated_ventas.has_next,
+                "has_prev": paginated_ventas.has_prev
+            }
+        })
+
+    except Exception as e:
+        print(f"ERROR [obtener_ventas_con_entrega]: Excepción inesperada")
+        traceback.print_exc()
+        return jsonify({"error": "Error interno al obtener las ventas con entrega"}), 500
+
+
+
+
+
+
+
+# --- Endpoint: Eliminar Venta (Sin cambios) ---
+@ventas_bp.route('/eliminar/<int:venta_id>', methods=['DELETE'])
+@token_required
+@roles_required(ROLES['ADMIN'])
+def eliminar_venta(current_user, venta_id):
+    """Elimina una venta y sus detalles."""
+    venta_db = db.session.get(Venta, venta_id)
+    if not venta_db: return jsonify({"error": "Venta no encontrada"}), 404
+    try:
+        # Añadir lógica de negocio aquí si es necesario (ej: no borrar facturada)
+        db.session.delete(venta_db) # Cascade debería borrar detalles si está configurado en el modelo
+        db.session.commit()
+        print(f"INFO: Venta eliminada: ID {venta_id}")
+        return jsonify({"message": f"Venta ID {venta_id} eliminada"}), 200
+    except Exception as e: db.session.rollback(); print(f"ERROR [eliminar_venta]: Venta {venta_id} - {e}"); traceback.print_exc(); return jsonify({"error":"ISE"}),500
+
+# --- Endpoint para Generar Comprobante HTML (Sin cambios) ---
+@ventas_bp.route('/obtener_comprobante/<int:venta_id>', methods=['GET'])
+def obtener_comprobante_venta(venta_id):
+    """Genera y devuelve un HTML formateado como comprobante no fiscal."""
+    try:
+        venta_db = db.session.query(Venta).options(
+            selectinload(Venta.detalles).selectinload(DetalleVenta.producto),
+            selectinload(Venta.usuario_interno), selectinload(Venta.cliente) # Eager load cliente
+        ).get(venta_id)
+        if not venta_db: return "<h1>Venta no encontrada</h1>", 404
+        venta_dict = venta_a_dict_completo(venta_db) # Usar serializador completo
+        context = {"venta": venta_dict, "RECARGO_TRANSFERENCIA_PORC": RECARGO_TRANSFERENCIA_PORC, "RECARGO_FACTURA_PORC": RECARGO_FACTURA_PORC}
+        html_comprobante = render_template('comprobante_venta.html', **context) # Asegúrate que la plantilla exista
+        response = make_response(html_comprobante)
+        response.headers['Content-Type'] = 'text/html'
+        return response
+    except Exception as e: print(f"ERROR [obtener_comprobante_venta]: Venta {venta_id} - {e}"); traceback.print_exc(); return f"<h1>Error interno</h1><p>{e}</p>", 500
+
+
+# --- Funciones Auxiliares para Serializar Venta/Detalle (Actualizadas) ---
+
+def venta_a_dict_resumen(venta):
+    """Convierte Venta a diccionario para listas (incluye nombre cliente)."""
+    if not venta: return None
+    return {
+        "venta_id": venta.id,
+        "fecha_registro": venta.fecha_registro.isoformat() if venta.fecha_registro else None,
+        "fecha_pedido": venta.fecha_pedido.isoformat() if venta.fecha_pedido else None,
+        "direccion_entrega": venta.direccion_entrega,
+        "nombre_vendedor": venta.nombre_vendedor,
+        "usuario_interno_id": venta.usuario_interno_id,
+        "usuario_nombre": venta.usuario_interno.nombre if venta.usuario_interno else None,
+        "cliente_id": venta.cliente_id,
+        # Asume que el modelo Cliente tiene 'razon_social'
+        "cliente_nombre": venta.cliente.nombre_razon_social if venta.cliente else None,
+        "cuit_cliente": venta.cuit_cliente,
+        "monto_total_base": float(venta.monto_total) if venta.monto_total is not None else None,
+        "forma_pago": venta.forma_pago,
+        "requiere_factura": venta.requiere_factura,
+        "monto_final_con_recargos": float(venta.monto_final_con_recargos) if venta.monto_final_con_recargos is not None else None,
+    }
+
+def venta_a_dict_completo(venta):
+    """Convierte Venta a diccionario completo (incluye cliente y detalles)."""
+    if not venta: return None
+    # Cargar detalles si es lazy='dynamic'
+    detalles_list = venta.detalles.all() if hasattr(venta.detalles, 'all') else venta.detalles
+
+    resumen = venta_a_dict_resumen(venta) # Reutilizar
+    resumen.update({
+        "direccion_entrega": venta.direccion_entrega,
+        "observaciones": venta.observaciones,
+        "recargos": {
+            "transferencia": float(venta.recargo_transferencia) if venta.recargo_transferencia is not None else 0.0,
+            "factura_iva": float(venta.recargo_factura) if venta.recargo_factura is not None else 0.0,
+        },
+        "monto_pagado_cliente": float(venta.monto_pagado_cliente) if venta.monto_pagado_cliente is not None else None,
+        "vuelto_calculado": float(venta.vuelto_calculado) if venta.vuelto_calculado is not None else None,
+        "detalles": [detalle_venta_a_dict(d) for d in detalles_list]
+    })
+    return resumen
+
+def detalle_venta_a_dict(detalle):
+    """Convierte DetalleVenta a diccionario."""
+    if not detalle: return None
+    return {
+        "detalle_id": detalle.id,
+        "producto_id": detalle.producto_id,
+        "producto_codigo": detalle.producto.id if detalle.producto else None, # Usar codigo_interno
+        "producto_nombre": detalle.producto.nombre if detalle.producto else None,
+        "cantidad": float(detalle.cantidad) if detalle.cantidad is not None else None,
+        "observacion_item": detalle.observacion_item,
+        "margen_aplicado": float(detalle.margen_aplicado) if detalle.margen_aplicado is not None else None,
+        "costo_unitario_momento_ars": float(detalle.costo_unitario_momento_ars) if detalle.costo_unitario_momento_ars is not None else None,
+        "coeficiente_usado": float(detalle.coeficiente_usado) if detalle.coeficiente_usado is not None else None,
+        "precio_unitario_venta_ars": float(detalle.precio_unitario_venta_ars) if detalle.precio_unitario_venta_ars is not None else None,
+        "precio_total_item_ars": float(detalle.precio_total_item_ars) if detalle.precio_total_item_ars is not None else None,
+        # Opcional: añadir el flag si lo incluiste en el modelo
+        # "es_precio_especial": detalle.es_precio_especial
+    }

@@ -169,8 +169,8 @@ class DetalleVenta(db.Model):
     venta_id = db.Column(db.Integer, db.ForeignKey('ventas.id', ondelete='CASCADE'), nullable=False)
     producto_id = db.Column(db.Integer, db.ForeignKey('productos.id', ondelete='RESTRICT'), nullable=False)
     cantidad = db.Column(db.Numeric(15, 4), nullable=False)
-    margen_aplicado = db.Column(db.Numeric(10, 4), nullable=True)
     observacion_item = db.Column(db.Text, nullable=True)
+    margen_aplicado = db.Column(db.Numeric(10, 4), nullable=True)
     costo_unitario_momento_ars = db.Column(db.Numeric(15, 4), nullable=True)
     coeficiente_usado = db.Column(db.Numeric(10, 4), nullable=True)
     precio_unitario_venta_ars = db.Column(db.Numeric(15, 4), nullable=False)
@@ -187,6 +187,7 @@ class OrdenCompra(db.Model):
     # ... (Pega aquí el resto de columnas y relaciones de OrdenCompra) ...
     nro_solicitud_interno = db.Column(db.String(50), unique=True, nullable=True)
     nro_remito_proveedor = db.Column(db.String(100), index=True, nullable=True)
+    tipo_caja = db.Column(db.String(50), nullable=True)
     proveedor_id = db.Column(db.Integer, db.ForeignKey('proveedores.id'), nullable=False)
     importe_total_estimado = db.Column(db.Numeric(15,2), nullable=True)
     precio_unitario = db.Column(db.Numeric(15,2), nullable=True)
@@ -212,7 +213,8 @@ class OrdenCompra(db.Model):
     solicitante = db.relationship('UsuarioInterno', foreign_keys=[solicitado_por_id], back_populates='ordenes_compra_solicitadas')
     aprobador = db.relationship('UsuarioInterno', foreign_keys=[aprobado_por_id], back_populates='ordenes_compra_aprobadas')
     # receptor = db.relationship('UsuarioInterno', foreign_keys=[recibido_por_id], back_populates='ordenes_compra_recibidas')
-
+    cuenta = db.Column(db.String(100), nullable=True)
+    iibb = db.Column(db.String(50), nullable=True)
 
 # --- Modelo DetalleOrdenCompra ---
 class DetalleOrdenCompra(db.Model):
@@ -287,8 +289,8 @@ class Combo(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nombre = db.Column(db.String(255), nullable=False, unique=True, index=True)
     sku_combo = db.Column(db.String(100), unique=True, nullable=True, index=True) # SKU del combo si lo vendes así
-    descripcion = db.Column(db.Text, nullable=True)
     margen_combo = db.Column(db.Numeric(10, 4), default=Decimal('0.0'))
+    descripcion = db.Column(db.Text, nullable=True)
     activo = db.Column(db.Boolean, default=True, nullable=False, index=True)
     fecha_creacion = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     fecha_modificacion = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

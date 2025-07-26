@@ -10,88 +10,97 @@ def redondear_decimal(valor: Decimal, decimales: int = 4) -> Decimal:
     quantizer = Decimal('1e-' + str(decimales))
     return valor.quantize(quantizer, rounding=ROUND_HALF_UP)
 
-def calcular_costo_producto(producto_id: int, visitados: set = None) -> Decimal | None:
-    """
-    Calcula el costo de un producto recursivamente.
-    Devuelve el costo como Decimal o None si no se puede calcular
-    (ej., falta costo base de ingrediente, ciclo detectado).
 
-    Args:
-        producto_id: ID del producto a calcular.
-        visitados: Set usado internamente para detectar ciclos de recetas.
-                   ¡No pasar manualmente al llamar desde fuera!
+def calcular_costo_producto(producto_id: int, visitados: set = None, nivel: int = 0) -> Decimal | None:
     """
+    Calcula el costo de un producto recursivamente, con logs de depuración.
+    """
+    # --- DEBUG: Variable para indentar los logs ---
+    indent = "  " * nivel
+    
+    # --- DEBUG: Imprime al entrar en la función ---
+    print(f"{indent}--> Calculando costo para Producto ID: {producto_id}")
+
     if visitados is None:
-        visitados = set() # Inicializar en la llamada raíz
+        visitados = set()
 
     if producto_id in visitados:
-        print(f"ERROR [calcular_costo_producto]: Ciclo detectado al intentar calcular costo para producto ID {producto_id}")
-        return None # ¡Ciclo detectado!
-
-    producto = db.session.get(Producto, producto_id) # Usar db.session.get es más eficiente
-    if not producto:
-        print(f"ERROR [calcular_costo_producto]: Producto ID {producto_id} no encontrado.")
+        print(f"{indent}ERROR [ciclo]: Ciclo detectado al procesar producto ID {producto_id}. Ruta de visita: {visitados}")
         return None
 
-    # Añadir al set ANTES de procesar hijos/ingredientes
-    visitados.add(producto_id)
+    producto = db.session.get(Producto, producto_id)
+    if not producto:
+        print(f"{indent}ERROR [no_encontrado]: Producto ID {producto_id} no existe en la base de datos.")
+        return None
+    
+    # --- DEBUG: Muestra el nombre del producto que se está procesando ---
+    print(f"{indent}    Producto: '{producto.nombre}' (Es receta: {producto.es_receta})")
 
-    costo_final = None # Inicializar costo
+    visitados.add(producto_id)
+    costo_final = None
 
     if not producto.es_receta:
-        # Caso Base: Es materia prima o producto comprado
-        costo_final = producto.costo_referencia_usd # Devuelve el costo base (puede ser None si no está fijado)
+        # --- CASO BASE ---
+        costo_final = producto.costo_referencia_usd
         if costo_final is None:
-             print(f"WARNING [calcular_costo_producto]: Producto base ID {producto_id} ('{producto.nombre}') no tiene costo_referencia_usd definido.")
-
+             print(f"{indent}WARN [sin_costo_base]: Es un producto base SIN costo de referencia. Retornando None.")
+        else:
+             # --- DEBUG: Imprime el costo base encontrado ---
+             print(f"{indent}    Es un producto base. Costo de referencia: {costo_final}")
     else:
-        # Caso Recursivo: Es una receta, calcular basado en ingredientes
-        if False: # Verificamos que la relación existe
-            print(f"ERROR [calcular_costo_producto]: Producto ID {producto_id} ('{producto.nombre}') marcado como receta pero sin receta asociada.")
-            visitados.remove(producto_id) # Quitar antes de retornar error
-            return None
-
-        costo_calculado_receta = Decimal(0)
-        # Acceder a la relación inversa (asumiendo que la tienes definida en Producto)
-        # o buscar la receta por producto_final_id
+        # --- CASO RECURSIVO ---
         receta = Receta.query.filter_by(producto_final_id=producto.id).first()
 
-        if not receta.items:
-             print(f"WARNING [calcular_costo_producto]: Receta para producto ID {producto_id} ('{producto.nombre}') no tiene items.")
-             # Una receta sin items podría tener costo 0 o ser un error, depende de la lógica de negocio.
-             # Devolver 0 podría ser una opción. Devolver None si se considera inválido.
-             costo_final = Decimal(0) # Opcional: devolver 0 si receta vacía es válida
-             # visitados.remove(producto_id) # Quitar antes de retornar
-             # return None # Si receta vacía no debe tener costo
+        if not receta:
+            print(f"{indent}ERROR [datos_inconsistentes]: Marcado como receta pero no tiene una asociada.")
+            if producto_id in visitados: visitados.remove(producto_id)
+            return None
 
+        if not receta.items:
+             print(f"{indent}WARN [receta_vacia]: La receta no tiene items. Costo será 0.")
+             costo_final = Decimal(0)
         else:
+            costo_calculado_receta = Decimal(0)
             calculo_posible = True
+            
+            # --- DEBUG: Imprime que va a empezar a iterar sobre los items ---
+            print(f"{indent}    Iterando sobre items de la receta:")
+
             for item in receta.items:
                 if not item.ingrediente:
-                     print(f"ERROR [calcular_costo_producto]: Item de receta para producto {producto_id} apunta a ingrediente_id {item.ingrediente_id} que no existe o falta relación.")
+                     print(f"{indent}ERROR [ingrediente_invalido]: Item apunta a un ingrediente que no existe.")
                      calculo_posible = False
-                     break # No podemos continuar si falta un ingrediente
+                     break
 
-                # Llamada recursiva para obtener el costo del ingrediente
-                costo_ingrediente = calcular_costo_producto(item.ingrediente_id, visitados.copy()) # Pasar copia del set
+                # --- LLAMADA RECURSIVA ---
+                costo_ingrediente = calcular_costo_producto(item.ingrediente_id, visitados.copy(), nivel + 1)
 
                 if costo_ingrediente is None:
-                    print(f"INFO [calcular_costo_producto]: No se pudo calcular el costo para el ingrediente ID {item.ingrediente_id} ('{item.ingrediente.nombre}') de la receta {producto_id}.")
+                    print(f"{indent}INFO [dependencia_fallida]: No se pudo calcular el costo para el ingrediente ID {item.ingrediente_id} ('{item.ingrediente.nombre}'). Abortando cálculo de esta receta.")
                     calculo_posible = False
-                    break # Si falta el costo de un ingrediente, no podemos calcular el total
+                    break
+                
+                # --- DEBUG: Imprime el cálculo de la contribución ---
+                porcentaje_decimal = item.porcentaje / Decimal(100)
+                contribucion = costo_ingrediente * porcentaje_decimal
+                print(f"{indent}      - Ingrediente: '{item.ingrediente.nombre}' (ID: {item.ingrediente_id})")
+                print(f"{indent}        Costo Ingrediente: {costo_ingrediente}")
+                print(f"{indent}        Porcentaje: {item.porcentaje}% ({porcentaje_decimal})")
+                print(f"{indent}        Contribución al costo: {costo_ingrediente} * {porcentaje_decimal} = {contribucion}")
 
-                # Calcular contribución de este ingrediente
-                contribucion = costo_ingrediente * (item.porcentaje / Decimal(100))
                 costo_calculado_receta += contribucion
 
             if calculo_posible:
-                # Redondear el resultado final de la receta
+                # --- DEBUG: Muestra la suma total antes y después de redondear ---
+                print(f"{indent}    Suma total de contribuciones (sin redondear): {costo_calculado_receta}")
                 costo_final = redondear_decimal(costo_calculado_receta)
-            # else: costo_final sigue siendo None
+                print(f"{indent}    Costo final de la receta (redondeado a 4 decimales): {costo_final}")
 
     # Quitar el ID del set al salir de esta rama de la recursión
-    # ¡Importante hacerlo ANTES de retornar!
     if producto_id in visitados:
         visitados.remove(producto_id)
-
+    
+    # --- DEBUG: Imprime el valor final que se va a retornar ---
+    print(f"{indent}<-- Retornando costo para Producto ID {producto_id}: {costo_final}")
+    
     return costo_final
