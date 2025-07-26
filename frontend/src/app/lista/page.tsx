@@ -596,28 +596,97 @@ export default function ProductPriceTable() {
   const handleCancelDolarEdit = () => { setIsEditingDolar(false); setErrorDolarSave(null); };
   const handleDolarInputChange = (e: ChangeEvent<HTMLInputElement>) => { const { name, value } = e.target; const s = value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1'); if (name === 'dolarOficial') setEditDolarOficial(s); else if (name === 'dolarQuimex') setEditDolarQuimex(s); };
 
-  const handleDeleteProduct = async (itemToDelete: DisplayItem) => {
-     if (!token) { return; }
-     if (!window.confirm(`¿Seguro de eliminar "${itemToDelete.nombre}" (ID: ${itemToDelete.id}, Tipo: ${itemToDelete.type})?`)) return;
-     setDeletingItem(itemToDelete); 
-     try {
-        const comboIdParaBorrar = itemToDelete.type === 'combo' ? itemToDelete.id : itemToDelete.combo_id_original;
-        if (comboIdParaBorrar) {
-            const deleteComboUrl = `https://quimex.sistemataup.online/combos/eliminar/${comboIdParaBorrar}`;
-            const comboResponse = await fetch(deleteComboUrl, { method: 'DELETE', headers: { "Authorization": `Bearer ${token}` }});
-            if (!comboResponse.ok && comboResponse.status !== 404) { const err = await comboResponse.json().catch(()=>{}); throw new Error(`Combo: ${err?.error || err?.detalle || comboResponse.statusText || 'Error eliminando combo'}`);}
+const handleDeleteProduct = async (itemToDelete: DisplayItem) => {
+  if (!token) {
+    alert("Error: Token no disponible. Por favor, inicie sesión de nuevo.");
+    return;
+  }
+
+  // --- PASO 1: CONFIRMACIÓN INICIAL ---
+  const confirmacionInicial = window.confirm(
+    `¿Estás seguro de que quieres iniciar el proceso de eliminación para "${itemToDelete.nombre}"?`
+  );
+
+  if (!confirmacionInicial) {
+    return; // El usuario canceló
+  }
+
+  setDeletingItem(itemToDelete); // Marcar el item como "en proceso de eliminación" en la UI
+
+  try {
+    // --- PASO 2: INTENTO DE ELIMINACIÓN (MODO ANÁLISIS) ---
+    const deleteUrl = `https://quimex.sistemataup.online/productos/eliminar/${itemToDelete.id}`;
+    const response = await fetch(deleteUrl, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+
+    if (response.ok) {
+      // --- ÉXITO INMEDIATO (SIN DEPENDENCIAS) ---
+      const result = await response.json();
+      alert(result.message || `"${itemToDelete.nombre}" fue eliminado exitosamente.`);
+      await fetchAndCombineData(); // Recargar la lista de productos
+    } else if (response.status === 409) {
+      // --- CONFLICTO (HAY DEPENDENCIAS) ---
+      const informe = await response.json();
+      
+      // Construir un mensaje de advertencia detallado
+      let mensajeAdvertencia = `${informe.error}\n\nEste producto está referenciado en:\n`;
+      const deps = informe.dependencias;
+      if (deps.es_ingrediente_en_recetas?.cantidad > 0) {
+        mensajeAdvertencia += `- ${deps.es_ingrediente_en_recetas.cantidad} receta(s) (ej: "${deps.es_ingrediente_en_recetas.detalle[0]}").\n`;
+      }
+      if (deps.precios_especiales?.cantidad > 0) {
+        mensajeAdvertencia += `- ${deps.precios_especiales.cantidad} precio(s) especial(es).\n`;
+      }
+      if (deps.detalles_venta?.cantidad > 0) {
+        mensajeAdvertencia += `- ${deps.detalles_venta.cantidad} venta(s) registrada(s).\n`;
+      }
+      if (deps.detalles_compra?.cantidad > 0) {
+        mensajeAdvertencia += `- ${deps.detalles_compra.cantidad} orden(es) de compra.\n`;
+      }
+      mensajeAdvertencia += `\n${informe.mensaje_accion.replace("vuelva a realizar esta petición añadiendo el parámetro '?forzar=true'", "¿Deseas forzar la eliminación ahora?")}`;
+
+      // Mostrar el segundo diálogo de confirmación
+      const confirmacionForzada = window.confirm(mensajeAdvertencia);
+
+      if (confirmacionForzada) {
+        // --- LLAMADA FINAL (MODO EJECUCIÓN) ---
+        const responseForzada = await fetch(`${deleteUrl}?forzar=true`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (!responseForzada.ok) {
+          const errorFinal = await responseForzada.json();
+          throw new Error(errorFinal.error || "Falló la eliminación forzada.");
         }
-        if (itemToDelete.type === 'product') {
-            const deleteProductUrl = `https://quimex.sistemataup.online/productos/eliminar/${itemToDelete.id}`;
-            const productResponse = await fetch(deleteProductUrl, { method: 'DELETE', headers: { "Authorization": `Bearer ${token}` }});
-            if (!productResponse.ok) { const err = await productResponse.json().catch(()=>{}); throw new Error(`Producto: ${err?.error || err?.detalle || productResponse.statusText || 'Error eliminando producto'}`);}
-        }
-        alert(`"${itemToDelete.nombre}" eliminado.`);
-        fetchAndCombineData();
-        //eslint-disable-next-line
-     } catch (err: any) {  alert(`Error: ${err.message}`); }
-     finally { setDeletingItem(null); }
-  };
+
+        const resultadoForzado = await responseForzada.json();
+        alert(resultadoForzado.message);
+        await fetchAndCombineData(); // Recargar la lista
+      }
+    } else {
+      // Otro tipo de error (500, 401, 404, etc.)
+      const errorData = await response.json();
+      throw new Error(errorData.error || `Error del servidor: ${response.status}`);
+    }
+} catch (err) { // El tipo por defecto ahora es 'unknown'
+  let errorMessage = "Ocurrió un error desconocido.";
+  
+  // Verificamos si 'err' es una instancia de Error
+  if (err instanceof Error) {
+    errorMessage = err.message;
+  }
+  
+  console.error("Error en el proceso de eliminación:", err);
+  alert(`Error: ${errorMessage}`);
+} finally {
+  setDeletingItem(null); // Limpiar el estado de eliminación en la UI
+}
+};
 
   const handleOpenUploadModal = () => { setIsUploadModalOpen(true); setSelectedFile(null); setUploadErrorMsg(null); setUploadSuccess(null); };
   const handleCloseUploadModal = () => { setIsUploadModalOpen(false); setUploadErrorMsg(null); setUploadSuccess(null); };
