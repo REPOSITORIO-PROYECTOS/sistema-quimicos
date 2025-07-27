@@ -8,6 +8,21 @@ interface IngredientItem { id: string; ingrediente_id: string | number; porcenta
 interface ComboComponentItem { id: string; producto_id: string | number; cantidad: number | string; }
 interface ProductOption { id: string | number; nombre: string; }
 
+
+interface ProductPayload {
+    id: string | null;
+    nombre: string;
+    descripcion: string | null;
+    unidad_venta: string | null;
+    costo_referencia_usd: number | null;
+    ajusta_por_tc: boolean;
+    ref_calculo: number | null;
+    margen: number | null;
+    tipo_calculo: string | null;
+    es_receta: boolean;
+    es_combo: boolean;
+    combo_id: number | null;
+}
 interface ProductDataForEditAPI {
     id: string | number;
     nombre: string;
@@ -86,7 +101,7 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({
     const [isSaving, setIsSaving] = useState(false);
     const [saveError, setSaveError] = useState<string | null>(null);
     const [isLoadingData, setIsLoadingData] = useState(false);
-
+    const [datosParaGuardar, setDatosParaGuardar] = useState<Partial<ProductPayload>>({});
     const { productos: productosDelContexto } = useProductsContext();
 
     useEffect(() => {
@@ -111,6 +126,29 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({
         } catch (e) { console.error("Error en getComboIdFromProductId", e); }
         return null;
     }, [token]);
+
+    useEffect(() => {
+    if (!esCombo) {
+        const payloadActualizado = {
+            id: productCode.trim() || null,
+            nombre: nombre.trim(),
+            descripcion: descripcionProducto.trim() || null,
+            unidad_venta: unidadVenta || null,
+            costo_referencia_usd: parseFloat(costoReferenciaUsd) || null,
+            ajusta_por_tc: ajustaPorTc,
+            ref_calculo: parseFloat(unidadReferencia) || null,
+            margen: parseFloat(margenProducto) || null,
+            tipo_calculo: (tipoCalculo.trim() || '').toUpperCase() || null,
+            es_receta: esReceta,
+            es_combo: false,
+            combo_id: null,
+        };
+        setDatosParaGuardar(payloadActualizado);
+    }
+    }, [
+        productCode, nombre, descripcionProducto, unidadVenta, costoReferenciaUsd, 
+        ajustaPorTc, unidadReferencia, margenProducto, tipoCalculo, esReceta, esCombo
+    ]);
 
     useEffect(() => {
         const fetchDetails = async () => {
@@ -275,12 +313,13 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({
                 const margenComboNum = parseFloat(margenCombo);
                 if (isNaN(margenComboNum) || margenComboNum < 0 || margenComboNum >= 1) throw new Error("Margen Combo: 0 a <1.");
                 if (comboComponents.length === 0 || comboComponents.some(c => !c.producto_id || parseInt(c.cantidad.toString()) <= 0)) throw new Error("Componentes Combo incompletos.");
-
-                const comboPayload = {
-                    nombre: nombre.trim(), sku_combo: skuCombo.trim() || null, descripcion: descripcionCombo.trim() || null,
-                    margen_combo: margenComboNum, activo: true,
-                    componentes: comboComponents.map(c => ({ producto_id: Number(c.producto_id), cantidad: parseInt(c.cantidad.toString(), 10) })),
-                };
+                /// COMENTARIO CORRECION MOMENTANEA
+                //const comboPayload = {
+                //    nombre: nombre.trim(), sku_combo: skuCombo.trim() || null, descripcion: descripcionCombo.trim() || null,
+                //    margen_combo: margenComboNum, activo: true,
+                //    componentes: comboComponents.map(c => ({ producto_id: Number(c.producto_id), cantidad: parseInt(c.cantidad.toString(), 10) })),
+                //};
+                ///
                 let effectiveComboIdForEdit = comboIdOriginal;
                 if(isEditMode && productIdToEdit && !comboIdOriginal && !comboIdToEdit){
                     const existingComboIdFromProduct = await getComboIdFromProductId(productIdToEdit);
@@ -289,7 +328,7 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({
 
                 const comboApiUrl = (isEditMode && effectiveComboIdForEdit) ? `https://quimex.sistemataup.online/combos/editar/${effectiveComboIdForEdit}` : 'https://quimex.sistemataup.online/combos/crear';
                 const comboApiMethod = (isEditMode && effectiveComboIdForEdit) ? 'PUT' : 'POST';
-                const comboResponse = await fetch(comboApiUrl, { method: comboApiMethod, headers: { 'Content-Type': 'application/json', "Authorization": `Bearer ${token}` }, body: JSON.stringify(comboPayload) });
+                const comboResponse = await fetch(comboApiUrl, { method: comboApiMethod, headers: { 'Content-Type': 'application/json', "Authorization": `Bearer ${token}` }, body: JSON.stringify(datosParaGuardar) });
                 const comboResult = await comboResponse.json();
                 if (!comboResponse.ok) throw new Error(comboResult.error || `Error ${isEditMode ? 'actualizando' : 'creando'} combo`);
 
