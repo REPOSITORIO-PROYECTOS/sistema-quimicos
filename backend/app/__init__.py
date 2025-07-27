@@ -59,8 +59,10 @@ def create_app(config_object='config.Config'):
     # Esto manejará automáticamente las peticiones OPTIONS (preflight).
     CORS(
         app,
-        origins=allowed_origins,
-        supports_credentials=True
+        resources={r"/*": {"origins": allowed_origins}},
+        allow_headers=["Authorization", "Content-Type", "X-Requested-With"], # <-- LÍNEA CRUCIAL
+        supports_credentials=True,
+        methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"] # Es bueno ser explícito con los métodos también
     )
     print(f"--- INFO [app/__init__.py]: CORS configurado para orígenes: {allowed_origins}")
     # --- FIN DE CONFIGURACIÓN DE CORS ---
