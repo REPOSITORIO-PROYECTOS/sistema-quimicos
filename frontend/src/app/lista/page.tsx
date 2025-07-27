@@ -771,7 +771,7 @@ const handleDeleteProduct = async (itemToDelete: DisplayItem) => {
       const errorData = await response.json();
       throw new Error(errorData.error || `Error del servidor: ${response.status}`);
     }
-} catch (err) { // El tipo por defecto ahora es 'unknown'
+} catch (err) { // El tipo por defecto es 'unknown'
   let errorMessage = "Ocurrió un error desconocido.";
   
   // Verificamos si 'err' es una instancia de Error
