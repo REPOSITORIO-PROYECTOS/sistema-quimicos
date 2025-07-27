@@ -26,15 +26,16 @@ type ItemFormData = {
 type FormularioItemProps = {
     onSubmit: (data: ItemFormData) => void;
     onCancel: () => void;
+    initialData?: Partial<ItemFormData>;
 };
 
-export function FormularioItem({ onSubmit, onCancel }: FormularioItemProps) {
+export function FormularioItem({ onSubmit, onCancel, initialData }: FormularioItemProps) {
     const [formData, setFormData] = useState<ItemFormData>({
-        tipo: "",
-        estatus: "",
-        descripcion: "",
-        cotizacion: "",
-        un: "",
+        tipo: initialData?.tipo || "",
+        estatus: initialData?.estatus || "",
+        descripcion: initialData?.descripcion || "",
+        cotizacion: initialData?.cotizacion || "",
+        un: initialData?.un || "",
     });
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
