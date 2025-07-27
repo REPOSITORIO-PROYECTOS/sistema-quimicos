@@ -1,10 +1,9 @@
 // components/ProductPriceTable.tsx
 "use client";
 
-import React, { useState, useEffect, useCallback, ChangeEvent, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, ChangeEvent } from 'react';
 import CreateProductModal from '@/components/CreateProductModal';
 import * as XLSX from 'xlsx';
-import Select from 'react-select';
 
 // --- Tipos de Datos (sin cambios) ---
 type ProductDataRaw = {
@@ -71,121 +70,7 @@ export type DisplayItem = {
   ajusta_por_tc: boolean;
 };
 
-// --- INICIO: COMPONENTE DE MODAL MEJORADO ---
-const IncreaseCostModal: React.FC<{
-  isOpen: boolean;
-  onClose: () => void;
-  products: DisplayItem[];
-  onApply: (productId: number, percentage: number) => Promise<void>;
-  isApplying: boolean;
-  error: string | null;
-}> = ({ isOpen, onClose, products, onApply, isApplying, error }) => {
-  const [selectedProduct, setSelectedProduct] = useState<{ value: number; label: string } | null>(null);
-  const [percentage, setPercentage] = useState<string>('');
 
-  const productOptions = products
-    .filter(p => p.type === 'product' && !p.es_combo_proxy)
-    .map(p => ({ value: p.id, label: `${p.nombre} (${p.codigo})` }));
-
-  const calculationResult = useMemo(() => {
-    if (!selectedProduct || !percentage) return null;
-
-    const productData = products.find(p => p.id === selectedProduct.value);
-    const currentCost = productData?.costo_referencia_usd ?? 0;
-    const percentageValue = parseFloat(percentage) || 0;
-    
-    if (currentCost === 0 && percentageValue !== 0) return { currentCost: 0, newCost: 0, warning: "El costo base es 0, el resultado será 0."};
-
-    const factor = 1 + (percentageValue / 100);
-    const newCost = currentCost * factor;
-
-    return { currentCost, newCost, warning: null };
-  }, [selectedProduct, percentage, products]);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (selectedProduct && percentage) {
-      onApply(selectedProduct.value, parseFloat(percentage));
-    }
-  };
-
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 bg-gray-600 bg-opacity-75 overflow-y-auto h-full w-full z-50 flex justify-center items-center px-4">
-      <div className="relative mx-auto p-5 border w-full max-w-lg shadow-lg rounded-md bg-white">
-        <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">Aplicar Aumento/Disminución en Cascada</h3>
-        <form onSubmit={handleSubmit}>
-          <div className="space-y-4">
-            <div>
-              <label htmlFor="product-select" className="block text-sm font-medium text-gray-700 mb-1">
-                Producto Base (Materia Prima)*
-              </label>
-              <Select
-                id="product-select"
-                options={productOptions}
-                value={selectedProduct}
-                onChange={setSelectedProduct}
-                placeholder="Seleccionar producto base..."
-                isClearable
-                isSearchable
-              />
-            </div>
-            <div>
-              <label htmlFor="percentage-input" className="block text-sm font-medium text-gray-700 mb-1">
-                Porcentaje de Aumento/Disminución*
-              </label>
-              <input
-                id="percentage-input"
-                type="number"
-                step="0.01"
-                value={percentage}
-                onChange={(e) => setPercentage(e.target.value)}
-                placeholder="Ej: 10 para 10% de aumento, -5 para 5% de baja"
-                className="w-full px-3 py-2 border rounded-md"
-                required
-              />
-            </div>
-
-            {calculationResult && (
-              <div className="mt-4 p-3 bg-gray-50 rounded-md text-sm border">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Costo Actual (USD):</span>
-                  <span className="font-semibold text-gray-800">${calculationResult.currentCost.toFixed(4)}</span>
-                </div>
-                <div className="flex justify-between mt-1">
-                  <span className="text-gray-600">Nuevo Costo (USD):</span>
-                  <span className="font-semibold text-indigo-600">${calculationResult.newCost.toFixed(4)}</span>
-                </div>
-                {calculationResult.warning && <p className="text-xs text-orange-600 mt-2">{calculationResult.warning}</p>}
-              </div>
-            )}
-            
-            {error && <p className="text-sm text-red-600 bg-red-100 p-2 rounded mt-4">{error}</p>}
-          </div>
-          <div className="items-center px-4 py-3 gap-2 flex flex-col sm:flex-row sm:justify-end border-t mt-6 pt-4">
-            <button
-              type="submit"
-              disabled={!selectedProduct || !percentage || isApplying}
-              className="w-full sm:w-auto px-4 py-2 bg-rose-500 text-white rounded-md shadow-sm hover:bg-rose-600 disabled:bg-gray-300 flex items-center justify-center gap-2"
-            >
-              {isApplying ? 'Aplicando...' : 'Aplicar Aumento'}
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={isApplying}
-              className="w-full sm:w-auto mt-2 sm:mt-0 px-4 py-2 bg-gray-200 text-gray-800 rounded-md shadow-sm hover:bg-gray-300 disabled:bg-gray-100"
-            >
-              Cancelar
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-};
-// --- FIN: NUEVO COMPONENTE DE MODAL ---
 
 
 const ITEMS_PER_PAGE = 15;
@@ -231,9 +116,8 @@ export default function ProductPriceTable() {
   const [isPreparingPriceList, setIsPreparingPriceList] = useState(false);
   const [, setPriceListError] = useState<string | null>(null);
 
-  const [isIncreaseModalOpen, setIsIncreaseModalOpen] = useState(false);
-  const [isApplyingIncrease, setIsApplyingIncrease] = useState(false);
-  const [increaseError, setIncreaseError] = useState<string | null>(null);
+  const [isDownloadingFormulas, setIsDownloadingFormulas] = useState(false);
+  const [downloadFormulasError, setDownloadFormulasError] = useState<string | null>(null);
 
   // --- NUEVOS ESTADOS PARA ACTUALIZACIÓN GLOBAL DE RECETAS ---
   const [isUpdatingAllRecipes, setIsUpdatingAllRecipes] = useState(false);
@@ -242,7 +126,7 @@ export default function ProductPriceTable() {
 
  useEffect(() => {
     const header = document.getElementById('product-table-header');
-    const isAnyModalOpen = isProductModalOpen || isUploadModalOpen || isIncreaseModalOpen;
+    const isAnyModalOpen = isProductModalOpen || isUploadModalOpen ;
     
     if (isAnyModalOpen) {
       document.body.classList.add('modal-open');
@@ -265,7 +149,7 @@ export default function ProductPriceTable() {
         header.classList.add('sticky', 'z-10');
       }
     };
-  }, [isProductModalOpen, isUploadModalOpen, isIncreaseModalOpen]);
+  }, [isProductModalOpen, isUploadModalOpen]);
 
   const generateAndDownloadExcel = (itemsToExport: DisplayItem[]) => {
     // ... (tu lógica de Excel sin cambios)
@@ -536,47 +420,51 @@ const displayCombos: DisplayItem[] = rawCombos.filter(c => !productProxyComboIds
     }
   }, [token]);
   
-  const handleApplyIncrease = async (productId: number, percentage: number) => {
-    // ... (tu lógica sin cambios)
+const handleDownloadFormulas = async () => {
     if (!token) {
-      setIncreaseError("Token no disponible. Inicie sesión.");
-      return;
+        alert("Error: No autenticado.");
+        return;
     }
-    setIsApplyingIncrease(true);
-    setIncreaseError(null);
-
+    setIsDownloadingFormulas(true);
+    setDownloadFormulasError(null);
     try {
-      const response = await fetch('https://quimex.sistemataup.online/productos/actualizar_costos_por_aumento', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          producto_base_id: productId,
-          porcentaje_aumento: percentage
-        })
-      });
-
-      const result = await response.json();
-      if (!response.ok) {
-        throw new Error(result.error || `Error ${response.status} al aplicar aumento.`);
-      }
-      //eslint-disable-next-line
-      const details = result.detalles_actualizacion.map((d: any) => 
-        `\n- ${d.nombre} (ID: ${d.producto_id}): $${d.costo_anterior_usd.toFixed(4)} -> $${d.costo_nuevo_usd.toFixed(4)}`
-      ).join('');
-      alert(`${result.message}\n${details}`);
-      
-      setIsIncreaseModalOpen(false);
-      await fetchAndCombineData(); 
-      //eslint-disable-next-line  
-    } catch (error: any) {
-      setIncreaseError(error.message || "Ocurrió un error desconocido.");
+        const response = await fetch('https://quimex.sistemataup.online/reportes/formulas-excel', {
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: `Error del servidor: ${response.status}` }));
+            throw new Error(errorData.error);
+        }
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        const contentDisposition = response.headers.get('content-disposition');
+        let filename = 'Reporte_Formulas_Quimex.xlsx';
+        if (contentDisposition) {
+            const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+            if (filenameMatch && filenameMatch.length === 2) {
+                filename = filenameMatch[1];
+            }
+        }
+        link.setAttribute('download', filename);
+        document.body.appendChild(link);
+        link.click();
+        link.parentNode?.removeChild(link);
+        window.URL.revokeObjectURL(url);
+    } catch (error) { // <-- CORREGIDO: Quita ': any'
+        console.error("Error al descargar el reporte de fórmulas:", error);
+        let errorMessage = "Ocurrió un error desconocido.";
+        if (error instanceof Error) {
+            errorMessage = error.message;
+        }
+        setDownloadFormulasError(errorMessage);
+        alert(`Error al generar el reporte: ${errorMessage}`);
     } finally {
-      setIsApplyingIncrease(false);
+        setIsDownloadingFormulas(false);
     }
-  };
+};
 
   // --- NUEVA FUNCIÓN PARA ACTUALIZAR COSTOS DE RECETAS ---
   const handleUpdateAllRecipeCosts = async () => {
@@ -901,12 +789,12 @@ const handleDeleteProduct = async (itemToDelete: DisplayItem) => {
                 >
                     {isUpdatingAllRecipes ? '...' : 'Actualizar Costo Recetas Global'}
                 </button>
-                 <button
-                    onClick={() => setIsIncreaseModalOpen(true)}
-                    disabled={!token || allItems.length === 0}
-                    className="w-full sm:w-auto bg-rose-600 text-white px-4 py-2 rounded-md shadow-sm hover:bg-rose-700 disabled:bg-gray-400 flex items-center justify-center gap-2"
+                <button
+                    onClick={handleDownloadFormulas}
+                    disabled={!token || isDownloadingFormulas}
+                    className="w-full sm:w-auto bg-teal-600 text-white px-4 py-2 rounded-md shadow-sm hover:bg-teal-700 disabled:bg-gray-400 flex items-center justify-center gap-2"
                 >
-                    Aumento en Cascada
+                    {isDownloadingFormulas ? 'Generando...' : 'Descargar Fórmulas'}
                 </button>
                 <button
                     onClick={handleDownloadPriceList}
@@ -963,8 +851,8 @@ const handleDeleteProduct = async (itemToDelete: DisplayItem) => {
           </>
         )}
       </div>
-
-      <IncreaseCostModal isOpen={isIncreaseModalOpen} onClose={() => setIsIncreaseModalOpen(false)} products={allItems} onApply={handleApplyIncrease} isApplying={isApplyingIncrease} error={increaseError} />
+      {downloadFormulasError && <p className="text-center text-red-600 my-2 bg-red-50 p-2 rounded border text-sm">Error en descarga de fórmulas: {downloadFormulasError}</p>}
+      {isDownloadingFormulas && <div className="fixed inset-0 bg-gray-600 bg-opacity-75 z-50 flex justify-center items-center"><div className="bg-white p-6 rounded shadow-lg">Generando reporte de fórmulas...</div></div>}
       {isProductModalOpen && (<CreateProductModal onClose={handleCloseProductModal} onProductCreatedOrUpdated={handleProductCreatedOrUpdated} productIdToEdit={editingItemType === 'product' ? editingItemId : null} comboIdToEdit={editingItemType === 'combo' ? editingItemId : (editingItemType === 'product' && displayedItems.find(it => it.id === editingItemId && it.type === 'product')?.es_combo_proxy ? displayedItems.find(it => it.id === editingItemId && it.type === 'product')?.combo_id_original : null) } isInitiallyCombo={editingItemType === 'combo' || (editingItemType === 'product' && displayedItems.find(it => it.id === editingItemId && it.type === 'product')?.es_combo_proxy)} /> )}
       {isUploadModalOpen && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-75 z-50 flex justify-center items-center px-4">
