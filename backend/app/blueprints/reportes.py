@@ -2,7 +2,7 @@
 
 from os import sendfile
 from flask import Blueprint, request, jsonify, make_response, current_app
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, joinedload
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP, ROUND_CEILING
 import datetime
 import traceback
@@ -12,11 +12,12 @@ import io
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill
 from openpyxl.utils import get_column_letter
+import pandas as pd
 
 # --- Imports locales ---
 from .. import db
 from ..models import Venta, OrdenCompra
-from ..models import Producto, TipoCambio
+from ..models import Producto, TipoCambio, Receta, RecetaItem, Cliente, PrecioEspecialCliente, DetalleOrdenCompra, DetalleVenta, ComboComponente
 from ..calculator.core import obtener_coeficiente_por_rango
 from .productos import calcular_costo_producto_referencia, redondear_a_siguiente_decena
 from ..utils.decorators import token_required, roles_required
@@ -239,3 +240,106 @@ def redondear_a_siguiente_decena(valor_decimal: Decimal) -> Decimal:
     return valor_redondeado.quantize(Decimal("0.01"))
 
 
+def _aplanar_receta(receta_item: RecetaItem, nivel: int, lista_plana: list):
+    """
+    Función auxiliar recursiva que navega la jerarquía de una receta
+    y agrega cada ingrediente a una lista plana.
+    """
+    ingrediente = receta_item.ingrediente
+    if not ingrediente:
+        return
+
+    # 1. Añadir el ingrediente actual a la lista
+    lista_plana.append({
+        'Nivel': nivel,
+        'Receta Padre': receta_item.receta.producto.nombre if receta_item.receta and receta_item.receta.producto else 'N/A',
+        'ID Ingrediente': ingrediente.id,
+        'Código Ingrediente': ingrediente.codigo,
+        'Nombre Ingrediente': ingrediente.nombre,
+        'Es Receta': 'Sí' if ingrediente.es_receta else 'No',
+        'Porcentaje en Receta Padre (%)': float(receta_item.porcentaje),
+        'Costo USD Ingrediente (Unitario)': float(ingrediente.costo_referencia_usd or 0),
+        'Contribución al Costo USD': (Decimal(str(receta_item.porcentaje)) / Decimal('100')) * Decimal(str(ingrediente.costo_referencia_usd or 0))
+    })
+
+    # 2. Si el ingrediente es a su vez una receta, explorar sus sub-ingredientes
+    if ingrediente.es_receta and ingrediente.receta:
+        # Optimizamos la carga de las relaciones para evitar consultas N+1
+        sub_items = db.session.query(RecetaItem).options(
+            joinedload(RecetaItem.ingrediente),
+            joinedload(RecetaItem.receta).joinedload(Receta.producto)
+        ).filter(RecetaItem.receta_id == ingrediente.receta.id).all()
+        
+        for sub_item in sub_items:
+            _aplanar_receta(sub_item, nivel + 1, lista_plana)
+
+@reportes_bp.route('/formulas-excel', methods=['GET'])
+@token_required
+@roles_required(ROLES['ADMIN'], ROLES['OPERADOR']) # Roles que pueden ver las fórmulas
+def exportar_formulas_a_excel(current_user):
+    """
+    Genera un archivo Excel con el desglose completo de todas las recetas.
+    """
+    try:
+        # Obtener todas las recetas "raíz" (productos que son recetas)
+        recetas_raiz = Producto.query.filter_by(es_receta=True).all()
+
+        lista_final_plana = []
+        for producto_receta in recetas_raiz:
+             # Añadir una fila para la receta principal
+            lista_final_plana.append({
+                'Nivel': 0,
+                'Receta Padre': '',
+                'ID Ingrediente': producto_receta.id,
+                'Código Ingrediente': producto_receta.codigo,
+                'Nombre Ingrediente': f"--- RECETA: {producto_receta.nombre} ---",
+                'Es Receta': 'Sí',
+                'Porcentaje en Receta Padre (%)': 100.0,
+                'Costo USD Ingrediente (Unitario)': float(producto_receta.costo_referencia_usd or 0),
+                'Contribución al Costo USD': float(producto_receta.costo_referencia_usd or 0)
+            })
+
+            if producto_receta.receta:
+                # Carga optimizada de los ingredientes de primer nivel
+                items_raiz = db.session.query(RecetaItem).options(
+                    joinedload(RecetaItem.ingrediente),
+                    joinedload(RecetaItem.receta).joinedload(Receta.producto)
+                ).filter(RecetaItem.receta_id == producto_receta.receta.id).all()
+                for item in items_raiz:
+                    _aplanar_receta(item, 1, lista_final_plana)
+        
+        if not lista_final_plana:
+            return jsonify({"error": "No se encontraron recetas para exportar"}), 404
+
+        # Crear un DataFrame de pandas
+        df = pd.DataFrame(lista_final_plana)
+
+        # Crear el archivo Excel en memoria
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Desglose de Fórmulas')
+            
+            worksheet = writer.sheets['Desglose de Fórmulas']
+            # Aplicar formato a las columnas
+            worksheet.column_dimensions[get_column_letter(1)].width = 8  # Nivel
+            worksheet.column_dimensions[get_column_letter(2)].width = 35 # Receta Padre
+            worksheet.column_dimensions[get_column_letter(5)].width = 45 # Nombre Ingrediente
+            worksheet.column_dimensions[get_column_letter(7)].width = 25 # %
+            worksheet.column_dimensions[get_column_letter(8)].width = 25 # Costo
+            worksheet.column_dimensions[get_column_letter(9)].width = 25 # Contribución
+
+            for col_letter in ['H', 'I']: # Columnas de costos
+                 for cell in worksheet[col_letter]:
+                     cell.number_format = '"$"#,##0.0000'
+
+        output.seek(0)
+
+        # Enviar el archivo como respuesta
+        response = make_response(output.read())
+        response.headers['Content-Disposition'] = f'attachment; filename="Reporte_Formulas_Quimex_{datetime.date.today().isoformat()}.xlsx"'
+        response.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        return response
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": "Error interno al generar el reporte de fórmulas.", "detalle": str(e)}), 500
