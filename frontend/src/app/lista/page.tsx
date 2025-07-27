@@ -32,6 +32,7 @@ type ComboDataRaw = {
   sku_combo?: string | null;
   margen_combo: number;
   activo: boolean;
+  precio_base_combo_ars?: number;
   descripcion?: string | null;
   info_calculada?: {
     costo_total_usd?: number | null;
@@ -501,12 +502,26 @@ export default function ProductPriceTable() {
 
       const productProxyComboIds = new Set(displayProducts.filter(p => p.es_combo_proxy && p.combo_id_original).map(p => p.combo_id_original));
 
-      const displayCombos: DisplayItem[] = rawCombos.filter(c => !productProxyComboIds.has(c.id)).map(c => ({
-        id: c.id, displayId: `combo-${c.id}`, type: 'combo', nombre: c.nombre,
-        codigo: c.sku_combo || `CMB-${c.id}`, fecha_actualizacion: 'N/A', tipo_calculo: "COMBO",
-        margen: c.margen_combo ? c.margen_combo * 100 : undefined, ref_calculo: "-",
-        costo_referencia_usd: c.costo_referencia_usd, es_combo_proxy: false, combo_id_original: c.id,
-        precio: c.costo_referencia_ars, isLoadingPrice: c.costo_referencia_ars === undefined, priceError: false,
+const displayCombos: DisplayItem[] = rawCombos.filter(c => !productProxyComboIds.has(c.id)).map(c => ({
+        id: c.id, 
+        displayId: `combo-${c.id}`, 
+        type: 'combo', 
+        nombre: c.nombre,
+        codigo: c.sku_combo || `CMB-${c.id}`, 
+        fecha_actualizacion: 'N/A', 
+        tipo_calculo: "COMBO",
+        margen: c.margen_combo ? c.margen_combo * 100 : undefined, 
+        ref_calculo: "-",
+        costo_referencia_usd: c.costo_referencia_usd === null ? undefined : c.costo_referencia_usd, 
+        es_combo_proxy: false, 
+        combo_id_original: c.id,
+        // --- INICIO DE LA CORRECCIÓN ---
+        // Se lee el precio del campo 'precio_base_combo_ars' que envía la API
+        precio: c.precio_base_combo_ars === null ? undefined : c.precio_base_combo_ars,
+        // La condición ahora evalúa el campo correcto, resultando en 'false' si el precio existe
+        isLoadingPrice: c.precio_base_combo_ars === undefined,
+        // --- FIN DE LA CORRECCIÓN ---
+        priceError: false,
         ajusta_por_tc: false,
       }));
 
