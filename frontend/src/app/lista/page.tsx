@@ -283,61 +283,64 @@ export default function ProductPriceTable() {
   }, [token]);
 
   const handleDownloadPriceList = async () => {
-    // ... (tu lógica sin cambios)
-     if (!window.confirm("Se calculará el precio base de todos los productos para generar la lista. Esto puede tomar varios segundos. ¿Deseas continuar?")) {
+    if (!token) {
+        alert("Error: No autenticado.");
+        return;
+    }
+    
+    if (!window.confirm("Se generará un reporte Excel con la lista de precios por volumen. Esto puede tardar unos segundos. ¿Deseas continuar?")) {
       return;
     }
+
     setIsPreparingPriceList(true);
     setPriceListError(null);
-    const quantities = [0.250, 0.500, 1, 5, 10, 25, 50, 100];
+
     try {
-      const productsToProcess = allItems.filter(item => item.type === 'product');
-      const pricePromises = productsToProcess.map(product =>
-        calculatePrice(product, 1)
-          .then(result => ({
-            nombre: product.nombre,
-            unitPrice: result.unitPrice,
-          }))
-          .catch(error => {
-            console.error(`No se pudo calcular el precio para ${product.nombre}:`, error);
-            return { nombre: product.nombre, unitPrice: null };
-          })
-      );
-      const priceResults = await Promise.all(pricePromises);
-      const headers = ['Producto', ...quantities.map(String)];
-      const excelData = priceResults.map(result => {
-        const row: { [key: string]: string | number } = { 'Producto': result.nombre };
-        if (result.unitPrice === null) {
-          quantities.forEach(q => { row[String(q)] = "Error"; });
-        } else {
-          quantities.forEach(q => { row[String(q)] = result.unitPrice! * q; });
+        // La URL completa del backend + la ruta del endpoint CORRECTO
+        const response = await fetch('https://quimex.sistemataup.online/reportes/lista_precios/excel', {
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: `Error del servidor: ${response.status}` }));
+            throw new Error(errorData.error || `Error ${response.status}`);
         }
-        return row;
-      });
-      const worksheet = XLSX.utils.json_to_sheet(excelData, { header: headers });
-      worksheet['!cols'] = [{ wch: 45 }, ...quantities.map(() => ({ wch: 15 }))];
-      const range = XLSX.utils.decode_range(worksheet['!ref']!);
-      for (let R = range.s.r + 1; R <= range.e.r; ++R) {
-        for (let C = 1; C <= range.e.c; ++C) {
-            const cell_address = { c: C, r: R };
-            const cell_ref = XLSX.utils.encode_cell(cell_address);
-            if (worksheet[cell_ref] && typeof worksheet[cell_ref].v === 'number') {
-                worksheet[cell_ref].t = 'n';
-                worksheet[cell_ref].z = '$#,##0.00';
+
+        // El backend ahora nos devuelve el archivo Excel ya generado y listo.
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        
+        // Obtenemos el nombre del archivo desde las cabeceras de la respuesta
+        const contentDisposition = response.headers.get('content-disposition');
+        let filename = 'Lista_Precios_Volumen_Quimex.xlsx'; // Nombre por defecto
+        if (contentDisposition) {
+            const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+            if (filenameMatch && filenameMatch.length === 2) {
+                filename = filenameMatch[1];
             }
         }
-      }
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, "Lista de Precios por Volumen");
-      XLSX.writeFile(workbook, "Lista_Precios_Volumen_Quimex.xlsx");
-      //eslint-disable-next-line
-    } catch (err: any) {
-      console.error("Error generando la lista de precios por volumen:", err);
-      setPriceListError("Ocurrió un error general. Inténtalo de nuevo.");
+        
+        link.setAttribute('download', filename);
+        document.body.appendChild(link);
+        link.click();
+        link.parentNode?.removeChild(link);
+        window.URL.revokeObjectURL(url);
+
+    } catch (error) {
+        console.error("Error generando la lista de precios por volumen:", error);
+        let errorMessage = "Ocurrió un error desconocido.";
+        if (error instanceof Error) {
+            errorMessage = error.message;
+        }
+        setPriceListError(errorMessage);
+        alert(`Error al generar el reporte: ${errorMessage}`);
     } finally {
-      setIsPreparingPriceList(false);
+        setIsPreparingPriceList(false);
     }
-  };
+};
 
   const fetchDolarValues = useCallback(async () => {
     // ... (tu lógica sin cambios)
