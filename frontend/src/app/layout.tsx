@@ -7,6 +7,7 @@ import "@/styles/globals.css";
 import { AuthProvider } from "@/components/providers/auth-provider";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { ProductsProvider } from "@/context/ProductsContext";
+import { ProductsActivosProvider } from "@/context/ProductsContextActivos";
 import { ClientesProvider } from '@/context/ClientesContext';
 import AppShell from "@/components/AppShell"; // <-- 1. IMPORTAMOS AppShell
 import { ProveedoresProvider } from "@/context/ProveedoresContext";
@@ -42,11 +43,13 @@ export default function RootLayout({
                     <AuthProvider>
                         <ClientesProvider>
                             <ProductsProvider>
+                                <ProductsActivosProvider>
                                 <ProveedoresProvider>
                                 <AppShell>
                                     {children}
                                 </AppShell>
                                 </ProveedoresProvider>
+                                </ProductsActivosProvider>
                             </ProductsProvider>
                         </ClientesProvider>
                     </AuthProvider>

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { useProductsContext, Producto as ProductoContextType } from "@/context/ProductsContext";
+import { useProductsContextActivos, Producto as ProductoContextType } from "@/context/ProductsContextActivos";
 import Select from 'react-select';
 import { useRouter } from 'next/navigation';
 import BotonVolver from './BotonVolver';
@@ -174,7 +174,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
   const [successMensaje, setSuccessMensaje] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const productosContext = useProductsContext();
+  const productosContext = useProductsContextActivos();
 
   const [initialTotalNetoDelGet, setInitialTotalNetoDelGet] = useState<number | null>(null);
   const [hasUserInteracted, setHasUserInteracted] = useState(false);
@@ -743,6 +743,13 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         .no-spinners {
           -moz-appearance: textfield;
         }
+        .ticket-separator {
+                page-break-before: always !important; /* Fuerza un salto de página ANTES de este elemento */
+                height: 0; /* No ocupa espacio visible */
+                border: none; /* Sin bordes visibles en la impresión */
+                margin: 0;
+                padding: 0;
+            }
         .presupuesto-container { font-family: Arial, sans-serif; color: #000; margin: 20px; }
         .presupuesto-header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom:15px;}
         .logo-container { display:flex; flex-direction:column; align-items:center;}

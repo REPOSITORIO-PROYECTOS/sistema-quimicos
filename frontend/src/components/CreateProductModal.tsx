@@ -6,7 +6,9 @@ import { useProductsContext } from '@/context/ProductsContext';
 interface IngredientItem { id: string; ingrediente_id: string | number; porcentaje: string; }
 interface ComboComponentItem { id: string; producto_id: string | number; cantidad: number | string; }
 interface ProductOption { id: string | number; nombre: string; }
-interface ProductDataForEditAPI { id: string | number; nombre: string; sku?: string | null; unidad_venta: string | null; costo_referencia_usd: number | null; es_receta: boolean; ajusta_por_tc: boolean; ref_calculo: number | null; margen: number | null; tipo_calculo: string | null; descripcion?: string | null; es_combo?: boolean; combo_id?: number | null; }
+interface ProductDataForEditAPI {
+    activo: boolean; id: string | number; nombre: string; sku?: string | null; unidad_venta: string | null; costo_referencia_usd: number | null; es_receta: boolean; ajusta_por_tc: boolean; ref_calculo: number | null; margen: number | null; tipo_calculo: string | null; descripcion?: string | null; es_combo?: boolean; combo_id?: number | null; 
+}
 interface RecipeItemForEditAPI { ingrediente_id: number | string; porcentaje: number; }
 interface ApiComboComponente { cantidad: number; componente: { es_receta: boolean; nombre: string; producto_id: number | string; }; id: number; }
 interface ComboDataAPI { id: number; nombre: string; sku_combo: string | null; descripcion: string | null; margen_combo: number; activo: boolean; componentes: ApiComboComponente[]; }
@@ -40,6 +42,7 @@ const ModalFooter: React.FC<{ isSaving: boolean; isLoadingData: boolean; isEditM
 
 // --- NUEVA ESTRUCTURA DE ESTADO ---
 interface FormData {
+    activo: boolean;
     productCode: string;
     nombre: string;
     descripcionProducto: string;
@@ -58,7 +61,7 @@ interface FormData {
 const initialFormData: FormData = {
     productCode: '', nombre: '', descripcionProducto: '', unidadVenta: '', costoReferenciaUsd: '',
     ajustaPorTc: false, unidadReferencia: '', margenProducto: '', tipoCalculo: '', esReceta: false,
-    skuCombo: '', descripcionCombo: '', margenCombo: '',
+    skuCombo: '', descripcionCombo: '', margenCombo: '',activo:false
 };
 
 export interface CreateProductModalProps {
@@ -80,6 +83,7 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({
     // --- ESTADO REFACTORIZADO ---
     const [formData, setFormData] = useState<FormData>(initialFormData);
     const [esCombo, setEsCombo] = useState(isInitiallyCombo || false);
+    const [, setActivo] = useState(true);
 
     // Estados que no son del formulario se mantienen separados
     const [ingredients, setIngredients] = useState<IngredientItem[]>([]);
@@ -169,6 +173,7 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({
                         margenProducto: productData.margen?.toString() || '',
                         tipoCalculo: (productData.tipo_calculo || '').toUpperCase(),
                         esReceta: productData.es_receta || false,
+                        activo : productData.activo || false,
                         // Limpiar campos de combo
                         skuCombo: '', descripcionCombo: '', margenCombo: '',
                     });
@@ -210,6 +215,8 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({
 
         if (type === 'checkbox') {
             const { checked } = e.target as HTMLInputElement;
+            if (name === 'activo') {
+                setActivo(checked);}
             if (name === 'esReceta') {
                 setFormData(prev => ({ ...prev, esReceta: checked }));
                 if (checked) { setEsCombo(false); if (ingredients.length === 0) addIngredientRow(); } 
@@ -292,6 +299,7 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({
                     unidad_venta: formData.unidadVenta || null,
                     costo_referencia_usd: parseFloat(formData.costoReferenciaUsd) || null,
                     ajusta_por_tc: formData.ajustaPorTc,
+                    activo: formData.activo,
                     ref_calculo: parseFloat(formData.unidadReferencia) || null,
                     margen: parseFloat(formData.margenProducto) || null,
                     tipo_calculo: (formData.tipoCalculo.trim() || '').toUpperCase() || null,
@@ -315,6 +323,7 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({
                     await fetch(recipeApiUrl, { method: recipeApiMethod, headers: { 'Content-Type': 'application/json', "Authorization": `Bearer ${token}` }, body: JSON.stringify(recipePayload) });
                 }
                 alert(`Producto "${formData.nombre}" guardado.`);
+                window.location.reload();
             }
             onProductCreatedOrUpdated();
             onClose();
@@ -381,6 +390,10 @@ return (
                         <div className="flex items-center">
                             <input id="esCombo" name="esCombo" type="checkbox" checked={esCombo} onChange={handleInputChange} className="h-4 w-4 text-indigo-600 rounded" />
                             <label htmlFor="esCombo" className="ml-2 text-sm">Es Combo</label>
+                        </div>
+                        <div className="flex items-center">
+                            <input id="activo" name="activo" type="checkbox" checked={formData.activo} onChange={handleInputChange} className="h-4 w-4 text-indigo-600 rounded" />
+                            <label htmlFor="activo" className="ml-2 text-sm">Activo</label>
                         </div>
                         <div className="flex items-center">
                             <input id="ajustaPorTc" name="ajustaPorTc" type="checkbox" checked={formData.ajustaPorTc} onChange={handleInputChange} className={`h-4 w-4 text-indigo-600 rounded ${isProductFieldsDisabled ? 'cursor-not-allowed opacity-50' : ''}`} disabled={isProductFieldsDisabled} />

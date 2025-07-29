@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { useProductsContext, Producto as ProductoContextType } from "@/context/ProductsContext";
+import { useProductsContextActivos, Producto as ProductoContextType } from "@/context/ProductsContextActivos";
 import { useClientesContext } from "@/context/ClientesContext";
 import Select from 'react-select';
 import { useRouter } from 'next/navigation';
@@ -151,7 +151,7 @@ export default function RegistrarPedidoPuertaPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
-  const productosContext = useProductsContext();
+  const productosContext = useProductsContextActivos();
   const [nombreVendedor, setNombreVendedor] = useState<string>('');
   const router = useRouter();
   const irAccionesPuerta = () => router.push('/acciones-puerta');
@@ -736,27 +736,39 @@ export default function RegistrarPedidoPuertaPage() {
         <TicketPuertaComponent {...ticketProps} isOriginal={false} />
       </div>
 
-      <style jsx global>{`
+      
+<style jsx global>{`
+        /* --- Tus otros estilos (no-spinners, react-select, etc.) van aquí sin cambios --- */
         .no-spinners::-webkit-outer-spin-button,
         .no-spinners::-webkit-inner-spin-button {
           -webkit-appearance: none;
           margin: 0;
         }
         .no-spinners {
-          -moz-appearance: textfield;
+          -moz-appearance: textfield; 
         }
-        .react-select__control {
-            border-color: rgb(209 213 219) !important;
-            box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05) !important;
-            min-height: 42px !important;
-        }
-        .react-select__control--is-focused {
-            border-color: rgb(99 102 241) !important;
-            box-shadow: 0 0 0 1px rgb(99 102 241) !important;
-        }
-        .react-select__value-container {
-            padding-left: 0.75rem !important;
-            padding-right: 0.75rem !important;
+        /* ... etc ... */
+
+
+        /* --- REGLAS DE IMPRESIÓN --- */
+        @media print {
+            
+
+            /* 2. Asegura que el contenedor de los tickets ocupe todo el espacio */
+            #presupuesto-imprimible {
+                display: block;
+                margin: 0;
+                padding: 0;
+            }
+            
+            /* 3. LA MAGIA: El separador que fuerza el salto de página */
+            .ticket-separator {
+                page-break-before: always !important; /* Fuerza un salto de página ANTES de este elemento */
+                height: 0; /* No ocupa espacio visible */
+                border: none; /* Sin bordes visibles en la impresión */
+                margin: 0;
+                padding: 0;
+            }
         }
       `}</style>
     </>

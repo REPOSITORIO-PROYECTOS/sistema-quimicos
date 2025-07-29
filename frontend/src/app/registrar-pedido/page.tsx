@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { useProductsContext, Producto as ProductoContextType } from "@/context/ProductsContext";
+import { useProductsContextActivos, Producto as ProductoContextType } from "@/context/ProductsContextActivos";
 import { useClientesContext, Cliente } from "@/context/ClientesContext";
 import Select from 'react-select';
 import { useRouter } from 'next/navigation';
@@ -181,7 +181,7 @@ export default function RegistrarPedidoPage() {
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
 
-  const productosContext = useProductsContext();
+  const productosContext = useProductsContextActivos();
 
   const opcionesDeProductoParaSelect = useMemo(() =>
     productosContext?.productos.map((prod: ProductoContextType) => ({
@@ -855,6 +855,13 @@ export default function RegistrarPedidoPage() {
         .no-spinners {
           -moz-appearance: textfield;
         }
+        .ticket-separator {
+                page-break-before: always !important; /* Fuerza un salto de página ANTES de este elemento */
+                height: 0; /* No ocupa espacio visible */
+                border: none; /* Sin bordes visibles en la impresión */
+                margin: 0;
+                padding: 0;
+            }
          .react-select__control {
             border-color: rgb(209 213 219) !important;
             box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05) !important;
