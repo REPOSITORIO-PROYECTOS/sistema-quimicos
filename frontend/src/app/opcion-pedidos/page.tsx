@@ -1,20 +1,17 @@
-"use client"; // Directiva al inicio del archivo
+"use client";
 
-// Imports al inicio
 import FormularioActualizarPedido from '@/components/formularioActualizacionPedido';
 import React, { useState, useEffect } from 'react';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import BotonVolver from '@/components/BotonVolver';
 
-// Tipos definidos fuera del componente
 type DetalleItem = {
   cantidad: number;
   precio_total_item_ars: number;
   precio_unitario_venta_ars: number;
   producto_id: number;
   producto_nombre: string;
-  // descuento_item_porcentaje?: number; // Columna eliminada, pero el dato podría existir
 };
 
 type BoletaOriginal = {
@@ -61,7 +58,6 @@ type Pagination = {
 
 
 export default function TotalPedidos() {
-  // Estados
   const [boletasApiOriginales, setBoletasApiOriginales] = useState<Partial<BoletaOriginal>[]>([]);
   const [boletasFiltradasParaLista, setBoletasFiltradasParaLista] = useState<BoletaParaLista[]>([]);
   const [boletasPaginadas, setBoletasPaginadas] = useState<BoletaParaLista[]>([]);
@@ -290,6 +286,63 @@ export default function TotalPedidos() {
     `;
   };
 
+  const renderRemitoParaImprimir = (boletaData: BoletaOriginal) => {
+    const fechaBoleta = boletaData.fecha_pedido || boletaData.fecha_emision || new Date().toISOString();
+    const fontSizeBaseBoleta = '10pt'; 
+    const fontSizeItems = '1em'; 
+
+    return `
+      <div class="presupuesto-container" style="width: 210mm; height: auto; min-height:280mm; padding: 10mm; box-sizing: border-box; font-family: Arial, sans-serif; font-size: ${fontSizeBaseBoleta}; border: 1px solid #eee; margin-bottom:5mm; page-break-after: always;">
+        <header class="presupuesto-header" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px; border-bottom: 2px solid black; padding-bottom: 10px;">
+          <div class="logo-container" style="text-align: left;">
+            <img src="/logo.png" alt="QuiMex" class="logo" style="max-width: 150px; margin-bottom: 5px;" />
+            <p class="sub-logo-text" style="font-size: 0.8em; font-weight: bold;">REMITO</p>
+          </div>
+          <div class="info-empresa" style="text-align: right; font-size: 0.9em;">
+            <p>📱 11 2395 1494</p><p>📞 4261 3605</p><p>📸 quimex_berazategui</p>
+          </div>
+        </header>
+        <section class="datos-pedido" style="margin-bottom: 15px; display: flex; justify-content: space-between; flex-wrap: wrap;">
+          <table class="tabla-datos-principales" style="width: 100%; border-collapse: collapse; margin-bottom: 5mm;">
+            <tbody>
+              <tr><td style="font-weight: bold; padding: 2px 0;">PEDIDO:</td><td>#${boletaData.venta_id}</td></tr>
+              <tr><td style="font-weight: bold; padding: 2px 0;">FECHA:</td><td>${new Date(fechaBoleta).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'})}</td></tr>
+              <tr><td style="font-weight: bold; padding: 2px 0;">CLIENTE:</td><td>${boletaData.cliente_nombre || 'CONSUMIDOR FINAL'}</td></tr>
+              ${boletaData.cuit_cliente ? `<tr><td style="font-weight: bold; padding: 2px 0;">CUIT:</td><td>${boletaData.cuit_cliente}</td></tr>` : ''}
+              <tr><td style="font-weight: bold; padding: 2px 0;">DIRECCIÓN:</td><td>${boletaData.direccion_entrega || '-'}</td></tr>
+            </tbody>
+          </table>
+        </section>
+        <section class="detalle-productos" style="margin-bottom: 15px;">
+          <table class="tabla-items" style="width: 100%; border-collapse: collapse; font-size: ${fontSizeItems};">
+            <thead>
+              <tr style="background-color: #f0f0f0;">
+                <th style="border: 1px solid black; padding: 3px; text-align: center; width: 10%;">ITEM</th>
+                <th style="border: 1px solid black; padding: 3px; text-align: left; width: 75%;">PRODUCTO</th>
+                <th style="border: 1px solid black; padding: 3px; text-align: center; width: 15%;">CANT.</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${(boletaData.detalles || []).map((item: DetalleItem, index: number) => `
+                <tr>
+                  <td style="border: 1px solid black; padding: 2px 3px; text-align: center;">${index + 1}</td>
+                  <td style="border: 1px solid black; padding: 2px 3px;">${item.producto_nombre || 'N/A'}</td>
+                  <td style="border: 1px solid black; padding: 2px 3px; text-align: center;">${item.cantidad || 0}</td>
+                </tr>
+              `).join('')}
+              ${Array.from({ length: Math.max(0, 12 - (boletaData.detalles || []).length) }).map(() => 
+                `<tr class="empty-row"><td style="border: 1px solid black; padding: 2px 3px; height: 1.1em;"> </td><td style="border: 1px solid black;"> </td><td style="border: 1px solid black;"> </td></tr>`).join('')}
+            </tbody>
+          </table>
+        </section>
+        ${boletaData.observaciones ? `<section class="observaciones" style="margin-top: 10px; font-size: 0.9em; padding: 3px 0;"><p style="margin:0;"><strong>Observaciones:</strong> ${boletaData.observaciones}</p></section>` : ''}
+        <footer class="presupuesto-footer" style="margin-top: auto; padding-top: 10px; border-top: 1px solid #ccc; font-size: 0.8em; text-align: center;">
+            <p>Recibí conforme</p>
+        </footer>
+      </div>
+    `;
+  };
+
   const handleImprimirSeleccionados = async () => {
     if (selectedBoletas.size === 0) {
       alert("Por favor, seleccione al menos una boleta para imprimir.");
@@ -411,7 +464,128 @@ export default function TotalPedidos() {
 
     setIsPrinting(false);
   };
+  
+  const handleImprimirRemitosSeleccionados = async () => {
+    if (selectedBoletas.size === 0) {
+      alert("Por favor, seleccione al menos un remito para imprimir.");
+      return;
+    }
+    setIsPrinting(true);
+    setPrintingMessage("Cargando detalles de remitos...");
+    setError(null);
 
+    const idsSeleccionados = Array.from(selectedBoletas);
+    const remitosDetalladosAImprimir: BoletaOriginal[] = [];
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+        setError("No autenticado. No se puede imprimir.");
+        setIsPrinting(false);
+        setPrintingMessage(null);
+        return;
+    }
+    
+    let count = 0;
+    for (const ventaId of idsSeleccionados) {
+        count++;
+        setPrintingMessage(`Cargando detalle ${count} de ${idsSeleccionados.length}... (Remito #${ventaId})`);
+        try {
+            const detalleRes = await fetch(`https://quimex.sistemataup.online/ventas/obtener/${ventaId}`, {
+                headers: {"content-type":"application/json","Authorization":`Bearer ${token}`}
+            });
+
+            if (!detalleRes.ok) {
+                const errorData = await detalleRes.json().catch(() => ({ message: `Error ${detalleRes.status}` }));
+                console.error(`Error obteniendo detalles para remito #${ventaId}:`, errorData.message || detalleRes.statusText);
+                setError(prev => (prev ? prev + "\n" : "") + `Error detalle remito #${ventaId}: ${errorData.message || detalleRes.statusText}`);
+                continue; 
+            }
+            const data = await detalleRes.json();
+            if (data && data.detalles) {
+                data.detalles = Array.isArray(data.detalles) ? data.detalles : [];
+                remitosDetalladosAImprimir.push(data as BoletaOriginal);
+            } else {
+                console.warn(`Respuesta para remito #${ventaId} sin detalles o estructura inesperada.`);
+                setError(prev => (prev ? prev + "\n" : "") + `Respuesta inesperada para remito #${ventaId}.`);
+            }
+            // eslint-disable-next-line
+        } catch (error: any) {
+            console.error("Error en fetch de detalles para remito:", ventaId, error);
+            setError(prev => (prev ? prev + "\n" : "") + `Error de red para remito #${ventaId}: ${error.message}`);
+        }
+    }
+
+    if (remitosDetalladosAImprimir.length === 0) {
+      setError((prevError) => (prevError ? prevError + "\n" : "") + "No se pudieron obtener los detalles de ningún remito seleccionado para imprimir.");
+      setIsPrinting(false);
+      setPrintingMessage(null);
+      return;
+    }
+    
+    setPrintingMessage(`Generando PDF con ${remitosDetalladosAImprimir.length} remito(s)...`);
+
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    const printContainer = document.createElement('div');
+    printContainer.style.position = 'fixed';
+    printContainer.style.left = '-9999px';
+    printContainer.style.width = '210mm';
+    document.body.appendChild(printContainer);
+
+    for (let i = 0; i < remitosDetalladosAImprimir.length; i++) {
+      const remito = remitosDetalladosAImprimir[i];
+      setPrintingMessage(`Procesando remito ${i + 1} de ${remitosDetalladosAImprimir.length} para PDF... (ID: ${remito.venta_id})`);
+      printContainer.innerHTML = renderRemitoParaImprimir(remito);
+      const remitoElement = printContainer.querySelector('.presupuesto-container') as HTMLElement;
+
+      if (remitoElement) {
+        try {
+          const canvas = await html2canvas(remitoElement, { 
+            scale: 2.5, 
+            useCORS: true,
+            logging: false, 
+            width: remitoElement.offsetWidth, 
+            height: remitoElement.offsetHeight, 
+            windowWidth: remitoElement.scrollWidth,
+            windowHeight: remitoElement.scrollHeight
+          });
+          const imgData = canvas.toDataURL('image/png', 0.9); 
+          
+          if (i > 0) { 
+            pdf.addPage();
+          }
+          const pdfWidth = pdf.internal.pageSize.getWidth() - 20; 
+          const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+          const pageHeight = pdf.internal.pageSize.getHeight() - 20; 
+
+          if (pdfHeight > pageHeight) { 
+             pdf.addImage(imgData, 'PNG', 10, 10, (canvas.width * pageHeight) / canvas.height , pageHeight);
+          } else {
+             pdf.addImage(imgData, 'PNG', 10, 10, pdfWidth, pdfHeight);
+          }
+          // eslint-disable-next-line
+        } catch (error: any) {
+          console.error("Error al generar canvas para remito:", remito.venta_id, error);
+          setError(prev => (prev ? prev + "\n" : "") + `Error al procesar remito #${remito.venta_id} para PDF: ${error.message}`);
+        }
+      }
+    }
+    
+    document.body.removeChild(printContainer);
+    setPrintingMessage(null);
+    
+    if (pdf.internal.pages && pdf.internal.pages.length > 1 && remitosDetalladosAImprimir.length > 0) {
+      pdf.autoPrint();
+      window.open(pdf.output('bloburl'), '_blank');
+    } else if (remitosDetalladosAImprimir.length > 0) { 
+        setError((prevError) => (prevError ? prevError + "\n" : "") + "No se pudieron generar páginas en el PDF, aunque se procesaron remitos.");
+    } else {
+        if (!error) {
+             setError((prevError) => (prevError ? prevError + "\n" : "") + "No se generaron páginas en el PDF.");
+        }
+    }
+
+    setIsPrinting(false);
+  };
 
   return (
     <>
@@ -424,19 +598,34 @@ export default function TotalPedidos() {
                 <h2 className="text-2xl md:text-3xl font-semibold text-indigo-800">
                 Pedidos para Entregar Mañana
                 </h2>
-                <button
-                    onClick={handleImprimirSeleccionados}
-                    disabled={selectedBoletas.size === 0 || isPrinting}
-                    className="mt-4 sm:mt-0 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded disabled:opacity-50 flex items-center"
-                >
-                  {isPrinting && (
-                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                  )}
-                  {isPrinting ? (printingMessage || 'Procesando...') : `Imprimir Seleccionados (${selectedBoletas.size})`}
-                </button>
+                <div className="flex flex-col sm:flex-row gap-2 mt-4 sm:mt-0">
+                  <button
+                      onClick={handleImprimirSeleccionados}
+                      disabled={selectedBoletas.size === 0 || isPrinting}
+                      className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded disabled:opacity-50 flex items-center justify-center"
+                  >
+                    {isPrinting && printingMessage?.includes('boleta') && (
+                      <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                    )}
+                    {isPrinting && printingMessage?.includes('boleta') ? printingMessage : `Imprimir Boletas (${selectedBoletas.size})`}
+                  </button>
+                  <button
+                      onClick={handleImprimirRemitosSeleccionados}
+                      disabled={selectedBoletas.size === 0 || isPrinting}
+                      className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded disabled:opacity-50 flex items-center justify-center"
+                  >
+                    {isPrinting && printingMessage?.includes('remito') && (
+                      <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                    )}
+                    {isPrinting && printingMessage?.includes('remito') ? printingMessage : `Imprimir Remitos (${selectedBoletas.size})`}
+                  </button>
+                </div>
             </div>
 
             {loading && <p className="text-center text-gray-600 my-4">Cargando lista de pedidos...</p>}

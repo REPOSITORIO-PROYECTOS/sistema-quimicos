@@ -8,7 +8,7 @@ import {
     CardTitle,
 } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { DollarSign, ShoppingCart, TrendingUp, Download } from "lucide-react"; // --- NUEVO: Se añade ícono Download
+import { DollarSign, ShoppingCart, TrendingUp, Download } from "lucide-react";
 import { useEffect, useState, useMemo } from "react";
 import {
     XAxis,
@@ -23,14 +23,13 @@ import {
     BarChart,
     Bar,
 } from "recharts";
-import { Button } from "@/components/ui/button"; // --- NUEVO: Importamos el botón
-import { Input } from "@/components/ui/input";   // --- NUEVO: Importamos el input para fechas
-import { Label } from "@/components/ui/label";   // --- NUEVO: Importamos el label para accesibilidad
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
-// --- INICIO: Definición de Tipos (sin cambios) ---
 type VentaTipo = "puerta" | "pedido";
 interface VentaDetalle { id: string; productoNombre: string; cantidad: number; precioVentaUnitario: number; costoUnitario: number; }
-interface Venta { id: string; fecha: string; tipo: VentaTipo; items: VentaDetalle[]; totalVenta: number; totalCosto: number; /* COGS */ }
+interface Venta { id: string; fecha: string; tipo: VentaTipo; items: VentaDetalle[]; totalVenta: number; totalCosto: number; }
 interface VentaApi { venta_id: number | string; fecha_registro: string; direccion_entrega?: string | null; monto_final_con_recargos?: number; }
 interface PaginatedVentasResponse { ventas: VentaApi[]; pagination: { total_pages: number; }; }
 interface DetalleVentaIndividualApi { detalle_id?: number | string; producto_nombre?: string; cantidad?: number; precio_unitario_venta_ars?: number; costo_unitario_momento_ars?: number; }
@@ -41,10 +40,7 @@ interface PaginatedOrdenesCompraResponse { ordenes: OrdenCompraApi[]; pagination
 
 const ESTADOS_API_A_EN_ESPERA: string[] = [ "PENDIENTE_APROBACION", "APROBADO","CON DEUDA", "EN_ESPERA_RECEPCION", "RECIBIDA_PARCIAL"];
 const ESTADOS_API_A_PAGADO: string[] = [ "PAGADA_TOTAL", "RECIBIDO"];
-// --- FIN: Definición de Tipos ---
 
-
-// --- INICIO: Funciones de Fetching y Procesamiento (sin cambios) ---
 async function fetchTodasLasOrdenesDeCompraHistoricas(): Promise<OrdenCompraApi[]> {
     const currentToken = typeof window !== "undefined" ? localStorage.getItem("token") : null;
     if (!currentToken) { console.error("Token no encontrado para API Compras"); throw new Error("Token no disponible");}
@@ -56,7 +52,7 @@ async function fetchTodasLasOrdenesDeCompraHistoricas(): Promise<OrdenCompraApi[
     do {
         const params = new URLSearchParams({
             page: currentPage.toString(),
-            per_page: '100', // Traer de a 100 para eficiencia
+            per_page: '100',
         });
         
         const url = `${baseUrl}?${params.toString()}`;
@@ -79,7 +75,6 @@ async function fetchTodasLasOrdenesDeCompraHistoricas(): Promise<OrdenCompraApi[
     } while (currentPage <= totalPages && totalPages > 0);
     return todasLasOrdenes;
 }
-
 
 const obtenerDatosComprasDashboard = async (mes: number, anio: number): Promise<{
     statusCountsHistoricos: { name: string; cantidad: number }[];
@@ -105,7 +100,12 @@ const obtenerDatosComprasDashboard = async (mes: number, anio: number): Promise<
             if (orden.fecha_creacion) {
                 const fechaOrden = orden.fecha_creacion.split('T')[0];
                 if (fechaOrden >= fechaDesdeStr && fechaOrden <= fechaHastaStr) {
-                    totalGastadoMesCalculadoCliente += orden.items[0].importe_linea_estimado || 0;
+                    if (Array.isArray(orden.items)) {
+                        const totalDeLaOrden = orden.items.reduce((acumulador, item) => {
+                            return acumulador + (item.importe_linea_estimado || 0);
+                        }, 0);
+                        totalGastadoMesCalculadoCliente += totalDeLaOrden;
+                    }
                 }
             }
         });
@@ -251,7 +251,6 @@ const obtenerDatosVentasParaDashboard = async (mes: number, anio: number): Promi
         return [];
     }
 };
-// --- FIN: Funciones de Fetching y Procesamiento ---
 
 const PIE_COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042"];
 const BAR_CHART_VENTAS_COLORS = ["#8884d8", "#82ca9d"];
@@ -264,7 +263,6 @@ export default function Dashboard() {
     const [currentMonthName, setCurrentMonthName] = useState("");
     const [error, setError] = useState<string | null>(null);
 
-    // --- NUEVO: Estado para los inputs de fecha y el proceso de descarga ---
     const [fechaDesde, setFechaDesde] = useState('');
     const [fechaHasta, setFechaHasta] = useState('');
     const [isDownloading, setIsDownloading] = useState(false);
@@ -288,7 +286,7 @@ export default function Dashboard() {
                 setVentas(ventasData);
                 setStatusCountsComprasHistoricos(datosCompras.statusCountsHistoricos);
                 setTotalGastadoComprasDelMes(datosCompras.totalGastadoEnComprasDelMes);
-              // eslint-disable-next-line
+                // eslint-disable-next-line
             } catch (err: any) {
                 console.error("Error general al cargar datos para el dashboard:", err);
                 setError("Ocurrió un error al cargar los datos.");
@@ -356,7 +354,6 @@ export default function Dashboard() {
         return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(value);
     }
     
-    // --- NUEVO: Función para manejar la descarga del reporte Excel ---
     const handleDownloadReport = async () => {
         setDownloadError(null);
         if (!fechaDesde || !fechaHasta) {
@@ -384,24 +381,19 @@ export default function Dashboard() {
             });
 
             if (!response.ok) {
-                // Si la API devuelve un error (ej. 400, 500), intenta leerlo como JSON
                 const errorData = await response.json().catch(() => ({ message: 'Error desconocido del servidor.' }));
                 throw new Error(errorData.message || `Error ${response.status} al generar el reporte.`);
             }
 
-            // Esperamos un archivo, así que usamos .blob()
             const blob = await response.blob();
             
-            // Crear un enlace temporal para descargar el archivo
             const downloadUrl = window.URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = downloadUrl;
-            // Define el nombre del archivo
             link.setAttribute('download', `reporte-movimientos-${fechaDesde}-al-${fechaHasta}.xlsx`);
             document.body.appendChild(link);
             link.click();
 
-            // Limpieza
             link.parentNode?.removeChild(link);
             window.URL.revokeObjectURL(downloadUrl);
             // eslint-disable-next-line
@@ -427,7 +419,6 @@ export default function Dashboard() {
                 <h2 className="text-3xl font-bold tracking-tight">Dashboard de Administración</h2>
             </div>
             
-            {/* --- NUEVO: Card para la funcionalidad de descarga de reportes --- */}
             <Card className="mb-6">
                 <CardHeader>
                     <CardTitle>Generar Reporte de Movimientos</CardTitle>
