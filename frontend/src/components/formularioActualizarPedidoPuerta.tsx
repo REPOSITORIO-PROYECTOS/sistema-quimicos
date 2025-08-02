@@ -5,7 +5,6 @@ import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import BotonVolver from "./BotonVolver";
 
-// --- Tipos y Constantes (Sin cambios) ---
 type ProductoPedido = {
   producto: number;
   qx: number;
@@ -13,6 +12,7 @@ type ProductoPedido = {
   total: number;
   observacion?: string;
 };
+
 interface IFormData {
   nombre: string;          
   cuit: string;
@@ -26,6 +26,7 @@ interface IFormData {
   requiereFactura: boolean;  
   observaciones?: string;    
 }
+
 interface TotalCalculadoAPI {
   monto_base: number;
   forma_pago_aplicada: string;
@@ -36,9 +37,11 @@ interface TotalCalculadoAPI {
   };
   monto_final_con_recargos: number;
 }
+
 const VENDEDORES = ["martin", "moises", "sergio", "gabriel", "mauricio", "elias", "ardiles", "redonedo"];
 
-// --- PASO 1: CREAR UN ÚNICO COMPONENTE REUTILIZABLE PARA EL TICKET ---
+let auxPrecio = 0;
+
 const TicketComponent: React.FC<{
     id: number | undefined;
     formData: IFormData;
@@ -50,7 +53,6 @@ const TicketComponent: React.FC<{
 }> = ({ id, formData, displayTotal, nombreVendedor, productos, productosContext }) => {
     return (
         <div className="presupuesto-container">
-            {/* Encabezado completo del ticket */}
             <header className="presupuesto-header">
                 <div className="logo-container">
                     <img src="/logo.png" alt="QuiMex" className="logo" />
@@ -63,7 +65,6 @@ const TicketComponent: React.FC<{
                 </div>
             </header>
             
-            {/* Datos del pedido */}
             <section className="datos-pedido">
                 <table className="tabla-datos-principales">
                     <tbody>
@@ -76,7 +77,6 @@ const TicketComponent: React.FC<{
                 </table>
             </section>
             
-            {/* Detalle de productos */}
             <section className="detalle-productos">
                 <table className="tabla-items">
                     <thead>
@@ -139,8 +139,80 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
   const router = useRouter();
   const irAccionesPuerta = () => router.push('/acciones-puerta');
   const [nombreVendedor, setNombreVendedor] = useState<string>(''); 
-
   const productosContext = useProductsContext();
+
+  const recalculatePricesForProducts = useCallback(async (currentProducts: ProductoPedido[], clienteId: number | null) => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+        setErrorMensaje("No autenticado. No se pueden calcular precios.");
+        return;
+    }
+
+    const productQuantities = new Map<number, { totalQuantity: number; indices: number[] }>();
+    currentProducts.forEach((p, index) => {
+        if (p.producto > 0 && p.qx >= 0) {
+            const existing = productQuantities.get(p.producto);
+            if (existing) {
+                existing.totalQuantity += p.qx;
+                existing.indices.push(index);
+            } else {
+                productQuantities.set(p.producto, {
+                    totalQuantity: p.qx,
+                    indices: [index],
+                });
+            }
+        }
+    });
+
+    const pricePromises = Array.from(productQuantities.entries()).map(
+        async ([productoId, { totalQuantity, indices }]) => {
+            try {
+              const effectiveQuantity = totalQuantity === 0 ? 1 : totalQuantity;
+                const precioRes = await fetch(`https://quimex.sistemataup.online/productos/calcular_precio/${productoId}`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+                    body: JSON.stringify({ producto_id: productoId, quantity: effectiveQuantity, cliente_id: clienteId }),
+                });
+                if (!precioRes.ok) {
+                    const errData = await precioRes.json().catch(() => ({ message: "Error al calcular precio." }));
+                    throw new Error(errData.message || "Error al calcular precio.");
+                }
+                const precioData = await precioRes.json();
+                if (totalQuantity < 1)
+                  auxPrecio = precioData.precio_total_calculado_ars;
+                return {
+                    precio: precioData.precio_venta_unitario_ars || 0,
+                    indices,
+                };
+                // eslint-disable-next-line
+            } catch (error: any) {
+                console.error(`Error al obtener precio para producto ID ${productoId}:`, error);
+                setErrorMensaje(error.message || `Error al obtener precio del producto ID ${productoId}.`);
+                return { precio: 0, indices };
+            }
+        }
+    );
+
+    const priceResults = await Promise.all(pricePromises);
+    const updatedProducts = [...currentProducts];
+
+    priceResults.forEach(result => {
+        const { precio, indices } = result;
+        indices.forEach(index => {
+            const item = updatedProducts[index];
+            item.precio = precio;
+            item.total = item.qx < 1 ? auxPrecio : item.precio * item.qx;
+        });
+    });
+
+    updatedProducts.forEach(item => {
+        if (item.producto === 0 || item.qx === 0) {
+            item.precio = 0;
+            item.total = 0;
+        }
+    });
+    setProductos(updatedProducts);
+  }, []);
 
   const cargarFormulario = useCallback(async (pedidoId: number) => {
     setIsLoading(true);
@@ -164,9 +236,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
       const datosAPI = await response.json();
       
       setNombreVendedor(datosAPI.nombre_vendedor || ''); 
-
-      let var_vuelto = datosAPI.vuelto_calculado;
-      if (var_vuelto == null) var_vuelto = 0;
+      const clienteId = datosAPI.cliente_id || null;
 
       setFormData({
         nombre: "Cliente puerta",
@@ -175,32 +245,44 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         fechaEntrega: datosAPI.fecha_pedido || "",   
         formaPago: datosAPI.forma_pago || "efectivo",
         montoPagado: datosAPI.monto_pagado_cliente || 0,
-        vuelto: var_vuelto,
-        cliente_id:0,
-        cuit:"",
+        vuelto: datosAPI.vuelto_calculado ?? 0,
+        cliente_id: clienteId,
+        cuit: "",
         requiereFactura: datosAPI.requiere_factura || false, 
         observaciones: datosAPI.observaciones || "",
       });
-      
-      //eslint-disable-next-line
+      // eslint-disable-next-line
       const productosCargados: ProductoPedido[] = datosAPI.detalles?.map((detalle: any) => ({
         producto: detalle.producto_id,
         qx: detalle.cantidad,
-        precio: detalle.precio_unitario_venta_ars || 0,
-        total: detalle.cantidad < 1 ? detalle.precio_unitario_venta_ars : (detalle.precio_total_item_ars || 0),
+        precio: 0, // Se inicializa en 0, ya que se recalculará inmediatamente
+        total: 0, // Se inicializa en 0, ya que se recalculará inmediatamente
         observacion: detalle.observacion_item || "",
       })) || [];
       
-      setProductos(productosCargados.length > 0 ? productosCargados : [{ producto: 0, qx: 0, precio: 0, total: 0, observacion: "" }]);
-    } //eslint-disable-next-line
-     catch (error: any) {
+      // Llamada crucial para recalcular los precios inmediatamente después de cargar
+      await recalculatePricesForProducts(productosCargados, clienteId);
+
+      const totalInicialAPI: TotalCalculadoAPI = {
+        monto_base: datosAPI.monto_total_base || 0,
+        forma_pago_aplicada: datosAPI.forma_pago || 'efectivo',
+        requiere_factura_aplicada: datosAPI.requiere_factura || false,
+        recargos: {
+            transferencia: datosAPI.recargo_transferencia || 0,
+            factura_iva: datosAPI.recargo_iva || 0,
+        },
+        monto_final_con_recargos: datosAPI.monto_total_final_con_recargos || 0,
+      };
+      setTotalCalculadoApi(totalInicialAPI);
+      // eslint-disable-next-line
+    } catch (error: any) {
       console.error("Error detallado en cargarFormulario:", error);
       setErrorMensaje(error.message || "Ocurrió un error desconocido al cargar los detalles del pedido.");
       setNombreVendedor(''); 
     } finally {
       setIsLoading(false);
     }
-  }, []); 
+  }, [recalculatePricesForProducts]); 
 
   useEffect(() => {
     if (id) {
@@ -208,27 +290,37 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     } else {
       setErrorMensaje("ID de pedido no proporcionado para cargar los detalles.");
       setIsLoading(false);
-      setNombreVendedor(''); 
     }
   }, [id, cargarFormulario]);
   
   const montoBaseProductos = useMemo(() => {
     return productos.reduce((sum, item) => sum + (item.total || 0), 0);
   }, [productos]);
+  
+  const handleProductRowInputChange = async (
+    index: number,
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const { name, value } = e.target;
+    const nuevosProductos = [...productos];
+    const currentProductItem = nuevosProductos[index];
+
+    if (name === "qx") {
+        currentProductItem.qx = parseFloat(value) || 0;
+    } else if (name === "observacion") {
+        currentProductItem.observacion = value;
+    }
+    
+    await recalculatePricesForProducts(nuevosProductos, formData.cliente_id);
+  };
 
   useEffect(() => {
     const recalcularTotalConAPI = async () => {
-      if (isLoading) {
-        return;
-      }
-
+      if (isLoading) return;
       if (montoBaseProductos <= 0) {
-        if (totalCalculadoApi !== null) { 
-          setTotalCalculadoApi(null);
-        }
+        if (totalCalculadoApi !== null) setTotalCalculadoApi(null);
         return;
       }
-
       setIsCalculatingTotal(true); 
       setErrorMensaje('');
       const token = localStorage.getItem("token");
@@ -253,22 +345,13 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         }
         const data: TotalCalculadoAPI = await response.json();
         
-        if (
-          !totalCalculadoApi ||
-          totalCalculadoApi.monto_final_con_recargos !== data.monto_final_con_recargos ||
-          totalCalculadoApi.monto_base !== data.monto_base ||
-          totalCalculadoApi.forma_pago_aplicada !== data.forma_pago_aplicada || 
-          totalCalculadoApi.recargos?.transferencia !== data.recargos?.transferencia ||
-          totalCalculadoApi.recargos?.factura_iva !== data.recargos?.factura_iva
-        ) {
+        if (!totalCalculadoApi || totalCalculadoApi.monto_final_con_recargos !== data.monto_final_con_recargos) {
           setTotalCalculadoApi(data);
         }
-        //eslint-disable-next-line
+        // eslint-disable-next-line
       } catch (e:any) { 
         setErrorMensaje(e.message || "Error al calcular el total final."); 
-        if (totalCalculadoApi !== null) {
-            setTotalCalculadoApi(null);
-        }
+        if (totalCalculadoApi !== null) setTotalCalculadoApi(null);
       } finally { 
         setIsCalculatingTotal(false); 
       }
@@ -280,30 +363,14 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
   useEffect(() => {
     const calcularVueltoConAPI = async () => {
         const token = localStorage.getItem("token");
-
         if (!token || isLoading) {
             let nuevoVueltoDeterminado = formData.vuelto; 
-            if (!isLoading && montoBaseProductos === 0 && formData.montoPagado === 0) {
-                nuevoVueltoDeterminado = 0;
-            } else if (!isLoading && montoBaseProductos === 0 && formData.montoPagado > 0) {
-                nuevoVueltoDeterminado = formData.montoPagado;
-            }
-            
-            if (formData.vuelto !== nuevoVueltoDeterminado) {
-                setFormData(prev => ({ ...prev, vuelto: nuevoVueltoDeterminado }));
-            }
+            if (!isLoading && montoBaseProductos === 0 && formData.montoPagado > 0) nuevoVueltoDeterminado = formData.montoPagado;
+            else if (!isLoading && (montoBaseProductos > 0 || formData.montoPagado === 0)) nuevoVueltoDeterminado = 0;
+            if (formData.vuelto !== nuevoVueltoDeterminado) setFormData(prev => ({ ...prev, vuelto: nuevoVueltoDeterminado }));
             return;
         }
-
         const montoFinalParaVuelto = totalCalculadoApi ? totalCalculadoApi.monto_final_con_recargos : montoBaseProductos;
-        
-        if (formData.montoPagado <= 0 && montoFinalParaVuelto <= 0) {
-            if (formData.vuelto !== 0) {
-                setFormData(p => ({ ...p, vuelto: 0 }));
-            }
-            return;
-        }
-        
         if (formData.montoPagado >= montoFinalParaVuelto && montoFinalParaVuelto >= 0) {
             try {
                 const resVuelto = await fetch("https://quimex.sistemataup.online/ventas/calcular_vuelto", {
@@ -316,26 +383,17 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
                 }
                 const dataVuelto = await resVuelto.json();
                 const nuevoVueltoApi = parseFloat((dataVuelto.vuelto||0).toFixed(2));
-                if (formData.vuelto !== nuevoVueltoApi) {
-                    setFormData(p => ({ ...p, vuelto: nuevoVueltoApi }));
-                }
-                //eslint-disable-next-line
+                if (formData.vuelto !== nuevoVueltoApi) setFormData(p => ({ ...p, vuelto: nuevoVueltoApi }));
+                // eslint-disable-next-line
             } catch (error: any) {
                 setErrorMensaje(error.message || "Error al calcular el vuelto.");
-                if (formData.vuelto !== 0) {
-                    setFormData(p => ({ ...p, vuelto: 0 }));
-                }
+                if (formData.vuelto !== 0) setFormData(p => ({ ...p, vuelto: 0 }));
             }
         } else {
-            if (formData.vuelto !== 0) {
-                setFormData(p => ({ ...p, vuelto: 0 }));
-            }
+            if (formData.vuelto !== 0) setFormData(p => ({ ...p, vuelto: 0 }));
         }
     };
-
-    if (!isCalculatingTotal) { 
-        calcularVueltoConAPI();
-    }
+    if (!isCalculatingTotal) calcularVueltoConAPI();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.montoPagado, totalCalculadoApi, montoBaseProductos, isLoading, isCalculatingTotal]);
 
@@ -345,16 +403,12 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
                 type === 'number' ? parseFloat(value) || 0 : value;
     setFormData((prev) => {
     const newState = { ...prev, [name]: val };
-    if (name === 'formaPago') {
-      newState.requiereFactura = (val === 'factura');
-    }
+    if (name === 'formaPago') newState.requiereFactura = (val === 'factura');
     return newState;
     });
   };
-
-  const handleVendedorInputChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setNombreVendedor(e.target.value);
-  };
+  
+  const handleVendedorInputChange = (e: React.ChangeEvent<HTMLSelectElement>) => setNombreVendedor(e.target.value);
   
   const handleSubmit = async (e: React.FormEvent ) => {
     e.preventDefault();
@@ -420,7 +474,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         handleImprimirPresupuesto();
         setTimeout(() => irAccionesPuerta(), 1500);
       }
-      //eslint-disable-next-line
+      // eslint-disable-next-line
     } catch (err: any) {
       setErrorMensaje(err.message || "Error de red.");
     } finally {
@@ -448,7 +502,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     return <div className="flex flex-col items-center justify-center min-h-screen bg-indigo-900"><p className="text-white text-xl">Cargando datos del pedido...</p></div>;
   }
 
-  const displayTotal = totalCalculadoApi ? totalCalculadoApi.monto_final_con_recargos : montoBaseProductos;
+ const displayTotal = totalCalculadoApi?.monto_final_con_recargos ?? montoBaseProductos;
 
   const ticketProps = {
     id,
@@ -458,7 +512,6 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     productos,
     productosContext,
   };
-
 
   return (
     <>
@@ -515,8 +568,23 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
                 {productos.map((item, index) => (
                   <div key={index} className="grid grid-cols-1 md:grid-cols-[1fr_90px_1fr_100px_100px] items-center gap-2 border-b pb-1 last:border-b-0">
                     <input type="text" readOnly disabled value={productosContext.productos.find(p=>p.id===item.producto)?.nombre||`ID:${item.producto}`} className="shadow-sm border rounded w-full py-1 px-3 text-gray-700 bg-gray-100"/>
-                    <input type="number" readOnly disabled value={item.qx===0?'':item.qx} className="shadow-sm border rounded w-full py-1 px-2 text-gray-700 text-center bg-gray-100"/>
-                    <input type="text" readOnly disabled value={item.observacion || ''} className="shadow-sm border rounded w-full py-1 px-3 text-gray-700 bg-gray-100 text-sm"/>
+                    <input 
+                      type="number"
+                      name="qx"
+                      value={item.qx === 0 ? '' : item.qx} 
+                      onChange={(e) => handleProductRowInputChange(index, e)}
+                      className="shadow-sm border rounded w-full py-1 px-2 text-gray-700 text-center focus:outline-none focus:ring-1 focus:ring-indigo-500 no-spinners"
+                      min="0"
+                      step="any"
+                      disabled
+                    />
+                    <input 
+                      type="text"
+                      name="observacion"
+                      value={item.observacion || ''} 
+                      onChange={(e) => handleProductRowInputChange(index, e)}
+                      className="shadow-sm border rounded w-full py-1 px-3 text-gray-700 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
                     <input type="text" readOnly disabled value={`$ ${item.precio.toFixed(2)}`} className="shadow-sm border rounded w-full py-1 px-2 text-gray-700 text-right bg-gray-100"/>
                     <input type="text" readOnly disabled value={`$ ${item.total.toFixed(2)}`} className="shadow-sm border rounded w-full py-1 px-2 text-gray-700 text-right bg-gray-100"/>
                   </div>
@@ -558,12 +626,8 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         </div>
       </div>
       
-      {/* PASO 2: REEMPLAZAR EL CÓDIGO DUPLICADO CON EL NUEVO COMPONENTE */}
       <div id="presupuesto-imprimible" className="hidden print:block">
-        {/* Se llama al primer ticket */}
         <TicketComponent {...ticketProps} />
-        
-        {/* Separador */}
         <div
             className="ticket-separator"
             style={{
@@ -572,8 +636,6 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
                 width: '100%'
             }}
         ></div>
-        
-        {/* Se llama al segundo ticket (la copia) */}
         <TicketComponent {...ticketProps} />
       </div>
 
@@ -594,7 +656,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
             .ticket-separator {
                 page-break-before: always;
                 border-top: 3px dashed #888;
-                margin: 0; /* Ajusta el margen para la impresión */
+                margin: 0;
             }
         }
       `}</style>
