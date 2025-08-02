@@ -9,7 +9,6 @@ import BotonVolver from "@/components/BotonVolver";
 
 // --- Tipos y Constantes (Sin cambios) ---
 let idClient = 0;
-let auxPrecio = 0;
 type ProductoPedido = {
   producto: number;
   qx: number;
@@ -67,7 +66,7 @@ const TicketComponent: React.FC<{
     baseTotalConRecargos: number;
     productos: ProductoPedido[];
     // eslint-disable-next-line
-    productosContext: any;
+    productosContext: { productos: ProductoContextType[] } | null; 
     isOriginal: boolean;
 }> = ({
     formData,
@@ -331,13 +330,14 @@ export default function RegistrarPedidoPage() {
   }, [montoBaseProductos, formData.formaPago, formData.requiereFactura, formData.montoPagado, formData.descuentoTotal, totalCalculadoApi, formData.vuelto]);
 
 
-  const recalculatePricesForProducts = useCallback(async (currentProducts: ProductoPedido[]) => {
+const recalculatePricesForProducts = useCallback(async (currentProducts: ProductoPedido[]) => {
     const token = localStorage.getItem("token");
     if (!token) {
         setErrorMessage("No autenticado. No se pueden calcular precios.");
         return;
     }
 
+    // 1. AGRUPA PRODUCTOS IDÉNTICOS Y SUMA SUS CANTIDADES (Esta lógica se mantiene intacta)
     const productQuantities = new Map<number, { totalQuantity: number; indices: number[] }>();
     currentProducts.forEach((p, index) => {
         if (p.producto > 0 && p.qx >= 0) {
@@ -354,56 +354,69 @@ export default function RegistrarPedidoPage() {
         }
     });
 
+    // 2. REALIZA LAS LLAMADAS A LA API DE FORMA INDEPENDIENTE
     const pricePromises = Array.from(productQuantities.entries()).map(
         async ([productoId, { totalQuantity, indices }]) => {
             try {
-              if (totalQuantity==0)
-                  totalQuantity = 1;
+                // Si la cantidad total de un producto es 0, no se llama a la API
+                if (totalQuantity === 0) {
+                    return { precioUnitario: 0, precioTotalCalculado: 0, indices };
+                }
+
                 const precioRes = await fetch(`https://quimex.sistemataup.online/productos/calcular_precio/${productoId}`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-                    body: JSON.stringify({ producto_id: productoId, quantity: totalQuantity,cliente_id: idClient || null}),
+                    body: JSON.stringify({ producto_id: productoId, quantity: totalQuantity, cliente_id: idClient || null }),
                 });
+
                 if (!precioRes.ok) {
-                    const errData = await precioRes.json().catch(() => ({ message: "Error al calcular precio." }));
-                    throw new Error(errData.message || "Error al calcular precio.");
+                    const errData = await precioRes.json().catch(() => ({ message: "Error de cálculo de precio." }));
+                    throw new Error(errData.message || "Error en API de precios.");
                 }
                 const precioData = await precioRes.json();
                 
-                if (totalQuantity < 1)
-                  auxPrecio = precioData.precio_total_calculado_ars;
+                // Devuelve un objeto con los precios específicos para ESTE producto
                 return {
-                    precio: precioData.precio_venta_unitario_ars || 0,
+                    precioUnitario: precioData.precio_venta_unitario_ars || 0,
+                    precioTotalCalculado: precioData.precio_total_calculado_ars || 0,
                     indices,
                 };
-                // eslint-disable-next-line
-            } catch (error: any) {
-                console.error(`Error al obtener precio para producto ID ${productoId}:`, error);
-                setErrorMessage(error.message);
-                return { precio: 0, indices };
-            }
+          } catch (error) { // Nota: ya no ponemos ': any'
+              console.error(`Error al obtener precio para producto ID ${productoId}:`, error);
+              // Verificamos que 'error' sea una instancia de Error antes de usar .message
+              if (error instanceof Error) {
+                  setErrorMessage(error.message);
+              } else {
+                  setErrorMessage("Ocurrió un error desconocido al calcular el precio.");
+              }
+              return { precioUnitario: 0, precioTotalCalculado: 0, indices };
+          }
         }
     );
 
     const priceResults = await Promise.all(pricePromises);
-
     const updatedProducts = [...currentProducts];
 
+    // 3. ASIGNA LOS PRECIOS CORRECTOS A CADA LÍNEA, SIN USAR VARIABLES GLOBALES
     priceResults.forEach(result => {
-        const { precio, indices } = result;
+        // Cada 'result' contiene los precios para un ID de producto específico
+        const { precioUnitario, precioTotalCalculado, indices } = result;
+        
         indices.forEach(index => {
             const item = updatedProducts[index];
-            item.precio = precio;
-            let totalBruto;
-            if (item.qx < 1)
-               totalBruto = auxPrecio;
-            else
-              totalBruto = item.precio * item.qx;
+            
+            // Asigna el precio unitario para mostrar en la columna "P.Unit"
+            item.precio = precioUnitario; 
 
+            // Usa el precio total que el backend calculó (Regla de Oro) como base
+            const totalBruto = precioTotalCalculado;
+            
+            // Aplica el descuento del ítem sobre ese total bruto
             item.total = totalBruto * (1 - (item.descuento / 100));
         });
     });
 
+    // 4. Limpieza final para filas vacías
     updatedProducts.forEach(item => {
         if (item.producto === 0 || item.qx === 0) {
             item.precio = 0;
@@ -412,7 +425,7 @@ export default function RegistrarPedidoPage() {
     });
 
     setProductos(updatedProducts);
-  }, [setErrorMessage]);
+}, [setErrorMessage]);
 
   const handleProductSelectChange = async (
     index: number,
