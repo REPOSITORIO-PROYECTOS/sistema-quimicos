@@ -53,7 +53,6 @@ const initialProductos: ProductoPedido[] = [
 
 const VENDEDORES = ["martin", "moises", "sergio", "gabriel", "mauricio", "elias", "ardiles", "redonedo"];
  
-let auxPrecio = 0;
 
 const TicketPuertaComponent: React.FC<{
     formData: IFormData;
@@ -317,34 +316,45 @@ export default function RegistrarPedidoPuertaPage() {
                     throw new Error(errData.message || "Error al calcular precio.");
                 }
                 const precioData = await precioRes.json();
-                if (totalQuantity < 1)
-                  auxPrecio = precioData.precio_total_calculado_ars;
+                
                 return {
-                    precio: precioData.precio_venta_unitario_ars || 0,
+                    precioUnitario: precioData.precio_venta_unitario_ars || 0,
+                    precioTotalCalculado: precioData.precio_total_calculado_ars || 0,
                     indices,
                 };
-                // eslint-disable-next-line
-            } catch (error: any) {
-                console.error(`Error al obtener precio para producto ID ${productoId}:`, error);
-                setErrorMessage(error.message || `Error al obtener precio del producto ID ${productoId}.`);
-                return { precio: 0, indices };
-            }
+          } catch (error) { // Nota: ya no ponemos ': any'
+              console.error(`Error al obtener precio para producto ID ${productoId}:`, error);
+              // Verificamos que 'error' sea una instancia de Error antes de usar .message
+              if (error instanceof Error) {
+                  setErrorMessage(error.message);
+              } else {
+                  setErrorMessage("Ocurrió un error desconocido al calcular el precio.");
+              }
+              return { precioUnitario: 0, precioTotalCalculado: 0, indices };
+          }
         }
     );
+
 
     const priceResults = await Promise.all(pricePromises);
 
     const updatedProducts = [...currentProducts];
 
-    priceResults.forEach(result => {
-        const { precio, indices } = result;
+priceResults.forEach(result => {
+        // Cada 'result' contiene los precios para un ID de producto específico
+        const { precioUnitario, precioTotalCalculado, indices } = result;
+        
         indices.forEach(index => {
             const item = updatedProducts[index];
-            item.precio = precio;
-            if (item.qx < 1)
-              item.total = auxPrecio;
-            else
-              item.total = item.precio * item.qx;
+            
+            // Asigna el precio unitario para mostrar en la columna "P.Unit"
+            item.precio = precioUnitario; 
+
+            // Usa el precio total que el backend calculó (Regla de Oro) como base
+            const totalBruto = precioTotalCalculado;
+            
+            // Aplica el descuento del ítem sobre ese total bruto
+            item.total = totalBruto;
         });
     });
 

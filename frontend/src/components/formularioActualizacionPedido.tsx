@@ -7,7 +7,6 @@ import { useRouter } from 'next/navigation';
 import BotonVolver from './BotonVolver';
 
 let idClient = 0;
-let auxPrecio = 0;
 type ProductoPedido = {
   id_detalle?: number;
   producto: number;
@@ -211,34 +210,45 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
                     throw new Error(errData.message || "Error al calcular precio.");
                 }
                 const precioData = await precioRes.json();
-                if (totalQuantity < 1)
-                  auxPrecio = precioData.precio_total_calculado_ars;
-                return {
-                    precio: precioData.precio_venta_unitario_ars || 0,
+              return {
+                    precioUnitario: precioData.precio_venta_unitario_ars || 0,
+                    precioTotalCalculado: precioData.precio_total_calculado_ars || 0,
                     indices,
                 };
-                // eslint-disable-next-line
-            } catch (error: any) {
-                console.error(`Error al obtener precio para producto ID ${productoId}:`, error);
-                setErrorMensaje(error.message || `Error al obtener precio del producto ID ${productoId}.`);
-                return { precio: 0, indices };
-            }
+          } catch (error) { // Nota: ya no ponemos ': any'
+              console.error(`Error al obtener precio para producto ID ${productoId}:`, error);
+              // Verificamos que 'error' sea una instancia de Error antes de usar .message
+              if (error instanceof Error) {
+                  setErrorMensaje(error.message);
+              } else {
+                  setErrorMensaje("Ocurrió un error desconocido al calcular el precio.");
+              }
+              return { precioUnitario: 0, precioTotalCalculado: 0, indices };
+          }
         }
     );
 
     const priceResults = await Promise.all(pricePromises);
     const updatedProducts = [...currentProducts];
 
+    // 3. ASIGNA LOS PRECIOS CORRECTOS A CADA LÍNEA, SIN USAR VARIABLES GLOBALES
     priceResults.forEach(result => {
-        const { precio, indices } = result;
+        // Cada 'result' contiene los precios para un ID de producto específico
+        const { precioUnitario, precioTotalCalculado, indices } = result;
+        
         indices.forEach(index => {
             const item = updatedProducts[index];
-            item.precio = precio;
-            const totalBruto = item.qx < 1 ? auxPrecio : item.precio * item.qx;
+            
+            // Asigna el precio unitario para mostrar en la columna "P.Unit"
+            item.precio = precioUnitario; 
+
+            // Usa el precio total que el backend calculó (Regla de Oro) como base
+            const totalBruto = precioTotalCalculado;
+            
+            // Aplica el descuento del ítem sobre ese total bruto
             item.total = totalBruto * (1 - (item.descuento / 100));
         });
     });
-
     updatedProducts.forEach(item => {
         if (item.producto === 0 || item.qx === 0) {
             item.precio = 0;
@@ -534,7 +544,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     };
 
     try {
-      if (false){handleImprimirRemito()}
+      
       const response = await fetch(`https://quimex.sistemataup.online/ventas/actualizar/${id}`, {
         method: "PUT",
         headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},
@@ -700,8 +710,23 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
                 <input type="text" value={`$ ${displayTotalToShow.toFixed(2)}`} readOnly className="w-full md:w-auto md:max-w-xs inline-block bg-gray-100 shadow-sm border rounded py-2 px-3 text-gray-900 text-right font-bold text-lg focus:outline-none"/>
               </div>
             </fieldset>
-            <div className="flex justify-end mt-8"><button type="submit" className="bg-green-600 text-white px-8 py-3 rounded-md hover:bg-green-700 font-semibold text-lg disabled:opacity-50" disabled={isLoading || isSubmitting || isCalculatingTotal }>{isSubmitting ? 'Actualizando...' : 'Actualizar Pedido e Imprimir'}</button></div>
-          </form>
+            
+<div className="flex justify-end mt-8 gap-x-4">
+  <button
+    type="button"
+    onClick={handleImprimirRemito}
+    className="bg-green-600 text-white px-8 py-3 rounded-md hover:bg-green-700 font-semibold text-lg disabled:opacity-50"
+  >
+    Imprimir orden
+  </button>
+  <button
+    type="submit"
+    className="bg-green-600 text-white px-8 py-3 rounded-md hover:bg-green-700 font-semibold text-lg disabled:opacity-50"
+    disabled={isLoading || isSubmitting || isCalculatingTotal}
+  >
+    {isSubmitting ? 'Actualizando...' : 'Actualizar Pedido e Imprimir'}
+  </button>
+</div>          </form>
         </div>
       </div>
       <div id="presupuesto-imprimible" className="hidden print:block">
