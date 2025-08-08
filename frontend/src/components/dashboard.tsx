@@ -35,11 +35,29 @@ interface PaginatedVentasResponse { ventas: VentaApi[]; pagination: { total_page
 interface DetalleVentaIndividualApi { detalle_id?: number | string; producto_nombre?: string; cantidad?: number; precio_unitario_venta_ars?: number; costo_unitario_momento_ars?: number; }
 interface VentaIndividualApi { venta_id: number | string; monto_final_con_recargos: number; detalles: DetalleVentaIndividualApi[]; }
 interface ItemOrdenCompraApi { id_linea: number; producto_id: number; producto_codigo: string; producto_nombre: string; cantidad_solicitada: number | null; cantidad_recibida: number | null; notas_item_recepcion: string | null; precio_unitario_estimado: number | null; importe_linea_estimado: number | null; }
-interface OrdenCompraApi { id: number; nro_solicitud_interno: string | null; fecha_creacion: string | null; estado: string; proveedor_id: number; proveedor_nombre: string | null; items: ItemOrdenCompraApi[]; importe_total_estimado: number | null; }
+interface OrdenCompraApi {
+    importe_abonado: number; id: number; nro_solicitud_interno: string | null; fecha_creacion: string | null; estado: string; proveedor_id: number; proveedor_nombre: string | null; items: ItemOrdenCompraApi[]; importe_total_estimado: number | null; 
+}
 interface PaginatedOrdenesCompraResponse { ordenes: OrdenCompraApi[]; pagination: { total_pages: number; }; }
+interface CajaDelDiaData {
+    fecha: string;
+    resumen_caja: { [key: string]: number };
+    total_caja: number;
+}
+
+interface PaginatedOrdenesCompraResponse { ordenes: OrdenCompraApi[]; pagination: { total_pages: number; }; }
+interface CajaDelDiaData {
+    fecha: string;
+    resumen_caja: { [key: string]: number };
+    total_caja: number;
+}
 
 const ESTADOS_API_A_EN_ESPERA: string[] = [ "PENDIENTE_APROBACION", "APROBADO","CON DEUDA", "EN_ESPERA_RECEPCION", "RECIBIDA_PARCIAL"];
 const ESTADOS_API_A_PAGADO: string[] = [ "PAGADA_TOTAL", "RECIBIDO"];
+
+import { Banknote, AlertCircle } from "lucide-react";
+
+
 
 async function fetchTodasLasOrdenesDeCompraHistoricas(): Promise<OrdenCompraApi[]> {
     const currentToken = typeof window !== "undefined" ? localStorage.getItem("token") : null;
@@ -79,6 +97,7 @@ async function fetchTodasLasOrdenesDeCompraHistoricas(): Promise<OrdenCompraApi[
 const obtenerDatosComprasDashboard = async (mes: number, anio: number): Promise<{
     statusCountsHistoricos: { name: string; cantidad: number }[];
     totalGastadoEnComprasDelMes: number;
+    deudaTotalConProveedores: number; // <-- NUEVO VALOR DEVUELTO
 }> => {
     try {
         const todasLasOrdenesHistoricas = await fetchTodasLasOrdenesDeCompraHistoricas();
@@ -86,6 +105,7 @@ const obtenerDatosComprasDashboard = async (mes: number, anio: number): Promise<
         let enEsperaCount = 0;
         let pagadosCount = 0;
         let totalGastadoMesCalculadoCliente = 0;
+        let deudaTotalGlobal = 0; // <-- NUEVO ACUMULADOR
 
         const primerDiaDelMes = new Date(anio, mes, 1);
         const ultimoDiaDelMes = new Date(anio, mes + 1, 0);
@@ -96,33 +116,35 @@ const obtenerDatosComprasDashboard = async (mes: number, anio: number): Promise<
             const estadoUpper = orden.estado?.toUpperCase() || "";
             if (ESTADOS_API_A_EN_ESPERA.map(s => s.toUpperCase()).includes(estadoUpper)) enEsperaCount++;
             else if (ESTADOS_API_A_PAGADO.map(s => s.toUpperCase()).includes(estadoUpper)) pagadosCount++;
+            
+            // --- CÁLCULO DE DEUDA ---
+            const totalOrden = orden.importe_total_estimado || 0;
+            const pagadoOrden = orden.importe_abonado || 0;
+            if (totalOrden > pagadoOrden) {
+                deudaTotalGlobal += totalOrden - pagadoOrden;
+            }
 
+            // --- CÁLCULO DE GASTO DEL MES (sin cambios) ---
             if (orden.fecha_creacion) {
                 const fechaOrden = orden.fecha_creacion.split('T')[0];
                 if (fechaOrden >= fechaDesdeStr && fechaOrden <= fechaHastaStr) {
-                    if (Array.isArray(orden.items)) {
-                        const totalDeLaOrden = orden.items.reduce((acumulador, item) => {
-                            return acumulador + (item.importe_linea_estimado || 0);
-                        }, 0);
-                        totalGastadoMesCalculadoCliente += totalDeLaOrden;
-                    }
+                    totalGastadoMesCalculadoCliente += totalOrden;
                 }
             }
         });
         
         return {
-            statusCountsHistoricos: [
-                { name: "En Espera", cantidad: enEsperaCount },
-                { name: "Pagados", cantidad: pagadosCount }
-            ],
-            totalGastadoEnComprasDelMes: parseFloat(totalGastadoMesCalculadoCliente.toFixed(2))
+            statusCountsHistoricos: [ { name: "En Espera", cantidad: enEsperaCount }, { name: "Pagados", cantidad: pagadosCount } ],
+            totalGastadoEnComprasDelMes: parseFloat(totalGastadoMesCalculadoCliente.toFixed(2)),
+            deudaTotalConProveedores: parseFloat(deudaTotalGlobal.toFixed(2)) // <-- DEVOLVER NUEVO VALOR
         };
 
     } catch (error) {
         console.error("Error procesando datos de compras para dashboard:", error);
         return {
             statusCountsHistoricos: [ { name: "En Espera", cantidad: 0 }, { name: "Pagados", cantidad: 0 }],
-            totalGastadoEnComprasDelMes: 0
+            totalGastadoEnComprasDelMes: 0,
+            deudaTotalConProveedores: 0 // <-- VALOR POR DEFECTO EN CASO DE ERROR
         };
     }
 };
@@ -189,6 +211,26 @@ async function fetchDetallesDeVentaIndividual(ventaId: number | string): Promise
     }
     return data;
 }
+
+async function fetchCajaDelDia(): Promise<CajaDelDiaData> {
+    const currentToken = localStorage.getItem("token");
+    if (!currentToken) {
+        throw new Error("Token no disponible para obtener la caja del día");
+    }
+    
+    const url = `https://quimex.sistemataup.online/reportes/caja-del-dia`;
+    const response = await fetch(url, {
+        headers: { 'Authorization': `Bearer ${currentToken}` }
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: "Error desconocido" }));
+        throw new Error(errorData.error || `Error del servidor al obtener la caja: ${response.status}`);
+    }
+    
+    return response.json();
+}
+
 
 const obtenerDatosVentasParaDashboard = async (mes: number, anio: number): Promise<Venta[]> => {
     try {
@@ -262,43 +304,53 @@ export default function Dashboard() {
     const [isLoading, setIsLoading] = useState(true);
     const [currentMonthName, setCurrentMonthName] = useState("");
     const [error, setError] = useState<string | null>(null);
-
     const [fechaDesde, setFechaDesde] = useState('');
     const [fechaHasta, setFechaHasta] = useState('');
     const [isDownloading, setIsDownloading] = useState(false);
     const [downloadError, setDownloadError] = useState<string | null>(null);
+    const [deudaTotalProveedores, setDeudaTotalProveedores] = useState<number>(0);
+    const [cajaDelDia, setCajaDelDia] = useState<CajaDelDiaData | null>(null);
 
-    useEffect(() => {
-        const loadData = async () => {
-            setIsLoading(true);
-            setError(null);
-            try {
-                const today = new Date();
-                const currentMonth = today.getMonth(); 
-                const currentYear = today.getFullYear();
-                setCurrentMonthName(today.toLocaleString('es-ES', { month: 'long' }));
+useEffect(() => {
+    const loadData = async () => {
+        setIsLoading(true);
+        setError(null);
+        try {
+            const today = new Date();
+            const currentMonth = today.getMonth(); 
+            const currentYear = today.getFullYear();
+            setCurrentMonthName(today.toLocaleString('es-ES', { month: 'long' }));
 
-                const [ventasData, datosCompras] = await Promise.all([
-                    obtenerDatosVentasParaDashboard(currentMonth, currentYear),
-                    obtenerDatosComprasDashboard(currentMonth, currentYear) 
-                ]);
+            const [ventasData, datosCompras, cajaData] = await Promise.all([
+                obtenerDatosVentasParaDashboard(currentMonth, currentYear),
+                obtenerDatosComprasDashboard(currentMonth, currentYear),
+                fetchCajaDelDia()
+            ]);
 
-                setVentas(ventasData);
-                setStatusCountsComprasHistoricos(datosCompras.statusCountsHistoricos);
-                setTotalGastadoComprasDelMes(datosCompras.totalGastadoEnComprasDelMes);
-                // eslint-disable-next-line
-            } catch (err: any) {
-                console.error("Error general al cargar datos para el dashboard:", err);
-                setError("Ocurrió un error al cargar los datos.");
-                setVentas([]);
-                setStatusCountsComprasHistoricos([{ name: "En Espera", cantidad: 0 },{ name: "Pagados", cantidad: 0 }]);
-                setTotalGastadoComprasDelMes(0);
-            } finally {
-                setIsLoading(false);
-            }
-        };
-        loadData();
-    }, []);
+            setVentas(ventasData);
+            setStatusCountsComprasHistoricos(datosCompras.statusCountsHistoricos);
+            setTotalGastadoComprasDelMes(datosCompras.totalGastadoEnComprasDelMes);
+            
+            // Guardar los nuevos datos en el estado
+            setDeudaTotalProveedores(datosCompras.deudaTotalConProveedores);
+            setCajaDelDia(cajaData);
+            
+        } catch (err) {
+            console.error("Error general al cargar datos para el dashboard:", err);
+            setError("Ocurrió un error al cargar los datos.");
+            // Resetear todos los estados
+            setVentas([]);
+            setStatusCountsComprasHistoricos([{ name: "En Espera", cantidad: 0 },{ name: "Pagados", cantidad: 0 }]);
+            setTotalGastadoComprasDelMes(0);
+            setDeudaTotalProveedores(0);
+            setCajaDelDia(null);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+    loadData();
+}, []);
+
 
     const ventasDiariasData = useMemo(() => {
         if (!ventas.length) return [];
@@ -513,6 +565,65 @@ export default function Dashboard() {
                             </CardContent>
                         </Card>
                     </div>
+                                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4"> 
+                    
+                    {/* NUEVA TARJETA: CAJA DEL DÍA */}
+                    <Card>
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <CardTitle className="text-sm font-medium">Caja de Hoy ({cajaDelDia?.fecha})</CardTitle>
+                            <Banknote className="h-4 w-4 text-muted-foreground" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-2xl font-bold">{formatCurrency(cajaDelDia?.total_caja || 0)}</div>
+                            <div className="text-xs text-muted-foreground space-y-1 mt-1">
+                                {cajaDelDia && Object.entries(cajaDelDia.resumen_caja).map(([metodo, monto]) => (
+                                    <div key={metodo} className="flex justify-between">
+                                        <span>{metodo}:</span>
+                                        <span className="font-semibold">{formatCurrency(monto)}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card> {/* Tarjeta existente de Ventas Totales */}
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <CardTitle className="text-sm font-medium">Ventas Totales del Mes</CardTitle>
+                            <DollarSign className="h-4 w-4 text-muted-foreground" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-2xl font-bold">{formatCurrency(metricasMes.totalVentasMes)}</div>
+                            <p className="text-xs text-muted-foreground">Suma de monto final con recargos.</p>
+                        </CardContent>
+                    </Card>
+                    
+                    {/* NUEVA TARJETA: DEUDA CON PROVEEDORES */}
+                    <Card>
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <CardTitle className="text-sm font-medium">Deuda Total Proveedores</CardTitle>
+                            <AlertCircle className="h-4 w-4 text-muted-foreground" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-2xl font-bold text-orange-600">{formatCurrency(deudaTotalProveedores)}</div>
+                            <p className="text-xs text-muted-foreground">Suma de (Total - Pagado) de todas las O.C.</p>
+                        </CardContent>
+                    </Card>
+
+                    <Card> {/* Tarjeta existente de Ganancia */}
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <CardTitle className="text-sm font-medium">Ganancia (Ventas Mes - Compras Mes)</CardTitle>
+                            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className={`text-2xl font-bold ${metricasMes.gananciaNetaDefinidaUsuario < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                                {formatCurrency(metricasMes.gananciaNetaDefinidaUsuario)}
+                            </div>
+                            <p className="text-xs text-muted-foreground">Ventas del Mes - Gasto en Compras del Mes.</p>
+                        </CardContent>
+                    </Card>
+                </div>
+
+
                     <Card>
                         <CardHeader>
                             <CardTitle>Ventas Diarias del Mes (Puerta vs. Pedidos)</CardTitle>
