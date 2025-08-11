@@ -3,13 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
+    "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"
   },
   "browserslist": [
-    "last 2 versions",
+    "last 2 versions", 
     "not dead",
     "not < 0.2%"
   ],
