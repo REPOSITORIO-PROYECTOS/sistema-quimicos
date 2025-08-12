@@ -1,6 +1,7 @@
 // Ruta: src/components/Ticket.tsx
 
 import React from 'react';
+import Image from 'next/image'; // La importación es correcta y ahora SÍ se usa
 
 // --- Definiciones de Tipos de Datos ---
 type ProductoVenta = {
@@ -46,7 +47,14 @@ const Ticket: React.FC<TicketProps> = ({ tipo, ventaData }) => {
             <div className="presupuesto-container">
                 <header className="presupuesto-header">
                     <div className="logo-container">
-                        <img src="/logo.png" alt="Quimex" className="logo" />
+                        {/* CAMBIO CRÍTICO: Se reemplaza <img> por <Image /> */}
+                        <Image 
+                          src="/logo.png" 
+                          alt="Quimex" 
+                          className="logo"
+                          width={80}  // Atributo obligatorio
+                          height={40} // Atributo obligatorio
+                        />
                         <p className="sub-logo-text">
                             {isFinancial ? "COMPROBANTE NO VALIDO COMO FACTURA" : "ORDEN DE TRABAJO"}
                         </p>
@@ -104,7 +112,6 @@ const Ticket: React.FC<TicketProps> = ({ tipo, ventaData }) => {
                     </table>
                 </section>
                 
-                {/* CAMBIO: La sección de observaciones ahora es visualmente prominente */}
                 {ventaData.observaciones && (
                     <section className="ticket-observaciones-importante">
                         <p><strong>Observaciones:</strong></p>
@@ -141,7 +148,7 @@ const Ticket: React.FC<TicketProps> = ({ tipo, ventaData }) => {
                     margin-bottom: 5px;
                 }
                 .logo-container { text-align: left; }
-                .logo { width: 80px; margin-bottom: 4px; }
+                .logo { width: 80px; margin-bottom: 4px; height: auto; } /* 'height: auto' es buena práctica con Image */
                 .sub-logo-text { font-size: 9px; font-weight: bold; margin: 0; }
                 .info-empresa {                     
                     display: flex;
@@ -174,7 +181,6 @@ const Ticket: React.FC<TicketProps> = ({ tipo, ventaData }) => {
                      border-bottom: none;
                 }
 
-                /* CAMBIO: Se eliminó la clase antigua y se creó esta nueva, mucho más visual */
                 .ticket-observaciones-importante {
                     margin-top: 10px;
                     padding: 8px;
@@ -182,12 +188,11 @@ const Ticket: React.FC<TicketProps> = ({ tipo, ventaData }) => {
                     font-size: 11px;
                 }
                 .ticket-observaciones-importante p {
-                    margin: 0 0 4px 0; /* Espacio entre el título "Observaciones" y el texto */
+                    margin: 0 0 4px 0;
                 }
                 .ticket-observaciones-importante p:last-child {
                     margin-bottom: 0;
                 }
-
 
                 .ticket-footer-original {
                     text-align: center;

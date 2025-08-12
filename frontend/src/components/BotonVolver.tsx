@@ -1,29 +1,30 @@
 // src/components/BotonVolver.tsx
-"use client"; // Importante: Este componente usa hooks, por lo que es un Client Component
+"use client"; 
 
-import { useRouter } from 'next/navigation'; // O 'next/router' si usas Pages Router
+import { useRouter } from 'next/navigation';
 import React from 'react';
 
-// Opcional: puedes pasarle props para personalizarlo más, como el texto o estilos
+// CAMBIO: Añadimos la prop opcional 'onClick' a la interfaz
 interface BotonVolverProps {
   className?: string;
   texto?: string;
+  onClick?: () => void; // Puede recibir una función que no devuelve nada
 }
 
 const BotonVolver: React.FC<BotonVolverProps> = ({
   className = '',
   texto = 'Volver',
+  onClick, // La recibimos aquí
 }) => {
   const router = useRouter();
 
-  const handleGoBack = () => {
-    router.back(); 
-  };
+
+  const handleGoBack = onClick ? onClick : () => router.back();
 
   return (
     <button
       type="button"
-      onClick={handleGoBack}
+      onClick={handleGoBack} // Usamos nuestra nueva función handleGoBack
       className={`flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 ${className}`}
     >
       <svg
