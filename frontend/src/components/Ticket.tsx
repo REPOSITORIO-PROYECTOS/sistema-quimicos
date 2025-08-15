@@ -50,7 +50,7 @@ const Ticket: React.FC<TicketProps> = ({ tipo, ventaData }) => {
                         {/* CAMBIO CRÍTICO: Se reemplaza <img> por <Image /> */}
                         <Image 
                           src="/logo.png" 
-                          alt="Quimex" 
+                          alt="Quimex"  
                           className="logo"
                           width={80}  // Atributo obligatorio
                           height={40} // Atributo obligatorio
@@ -71,6 +71,9 @@ const Ticket: React.FC<TicketProps> = ({ tipo, ventaData }) => {
                         <tbody>
                             <tr><td>PEDIDO</td><td>{ventaData.venta_id || 'NUEVO'}</td></tr>
                             <tr><td>FECHA</td><td>{ventaData.fecha_emision ? new Date(ventaData.fecha_emision).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : ''}</td></tr>
+                            {ventaData.cliente.direccion && ventaData.cliente.direccion.trim() !== '' && (
+                            <tr><td>DIRECCIÓN</td><td>{ventaData.cliente.direccion.toUpperCase()}</td></tr>
+                            )}
                             <tr><td>CLIENTE</td><td>{ventaData.cliente.nombre.toUpperCase()}</td></tr>
                             <tr><td>VENDEDOR</td><td>{ventaData.vendedor ? ventaData.vendedor.charAt(0).toUpperCase() + ventaData.vendedor.slice(1) : '-'}</td></tr>
                             {isFinancial && (

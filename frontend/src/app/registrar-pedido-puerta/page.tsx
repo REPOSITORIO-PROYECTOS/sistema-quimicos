@@ -155,7 +155,7 @@ export default function RegistrarPedidoPuertaPage() {
 
     const handleProductSelectChange = useCallback(async (index: number, selectedOption: { value: number; label: string } | null) => {
         const nuevosProductos = [...productos];
-        if (selectedOption) { nuevosProductos[index] = { ...nuevosProductos[index], producto: selectedOption.value, qx: nuevosProductos[index].qx > 0 ? nuevosProductos[index].qx : 1 }; }
+        if (selectedOption) { nuevosProductos[index] = { ...nuevosProductos[index], producto: selectedOption.value, qx: nuevosProductos[index].qx > 0 ? nuevosProductos[index].qx : 0 }; }
         else { nuevosProductos[index] = { ...initialProductos[0] }; }
         await recalculatePricesForProducts(nuevosProductos);
     }, [productos, recalculatePricesForProducts]);
@@ -252,124 +252,127 @@ export default function RegistrarPedidoPuertaPage() {
         observaciones: formData.observaciones,
     };
 
-    return (
-      <>
-        <div className="flex items-center justify-center min-h-screen bg-indigo-900 py-10 px-4 print:hidden">
-            <div className="bg-white p-6 md:p-8 rounded-lg shadow-md w-full max-w-5xl">
-                <BotonVolver className="ml-0" />
-                <h2 className="text-3xl font-bold text-center text-indigo-800 mb-4">Registrar Venta en Local</h2>
-                <div className="mb-6">
-                    <label htmlFor="nombreVendedor" className="block text-sm font-medium text-gray-700 mb-1">Vendedor*</label>
-                    <select id="nombreVendedor" value={nombreVendedor} onChange={(e) => setNombreVendedor(e.target.value)} required
-                        className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500">
-                        <option value="" disabled>-- Seleccione un vendedor --</option>
-                        {VENDEDORES.map(v => <option key={v} value={v}>{v.charAt(0).toUpperCase() + v.slice(1)}</option>)}
-                    </select>
-                </div>
-                {errorMessage && <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4" onClick={() => setErrorMessage('')}><p>{errorMessage}</p></div>}
-                {successMessage && <div className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4"><p>{successMessage}</p></div>}
-                <form onSubmit={handleSubmit} className="space-y-6">
-                    <fieldset className="border p-4 rounded-md">
-                        <legend className="text-lg font-medium text-gray-700 px-2">Productos</legend>
-                        {/* CAMBIO: Se añade la columna de descuento y se ajusta el grid */}
-                        <div className="mb-2 hidden md:grid md:grid-cols-[minmax(0,1fr)_80px_70px_minmax(0,1fr)_100px_100px_32px] items-center gap-2 font-semibold text-sm text-gray-600 px-3">
-                            <span>Producto*</span><span className="text-center">Cant*</span><span className="text-center">Desc%</span><span>Observación</span>
-                            <span className="text-right">Precio U.</span><span className="text-right">Total</span><span />
-                        </div>
-                        <div className="space-y-3">
-                            {productos.map((item, index) => (
-                                <div key={index} className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_80px_70px_minmax(0,1fr)_100px_100px_32px] items-center gap-2 border-b pb-2 last:border-b-0 md:border-none md:pb-0">
-                                    <Select name={`producto-${index}`} options={opcionesDeProductoParaSelect} value={opcionesDeProductoParaSelect.find(opt => opt.value === item.producto) || null}
-                                        onChange={(selectedOption) => handleProductSelectChange(index, selectedOption)} placeholder="Buscar producto..." isClearable isSearchable
-                                        isLoading={productosContext.loading} className="text-sm react-select-container" classNamePrefix="react-select" />
-                                    <input type="number" name="qx" placeholder="Cant." value={item.qx === 0 ? '' : item.qx} onChange={(e) => handleProductRowInputChange(index, e)} min="0" step="any" required
-                                        className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-center focus:outline-none focus:ring-1 focus:ring-indigo-500 no-spinners"/>
-                                    {/* NUEVO: Input para descuento individual */}
-                                    <input type="number" name="descuento" placeholder="0" value={item.descuento === 0 ? '' : item.descuento} onChange={(e) => handleProductRowInputChange(index, e)}
-                                        className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-center focus:outline-none focus:ring-1 focus:ring-indigo-500 no-spinners" min="0" max="100" />
-                                    <input type="text" name="observacion" placeholder="Obs. ítem" value={item.observacion || ''} onChange={(e) => handleProductRowInputChange(index, e)}
-                                        className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500" />
-                                    <input type="text" value={`$ ${item.precio.toFixed(2)}`} readOnly className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-right bg-gray-100"/>
-                                    <input type="text" value={`$ ${item.total.toFixed(2)}`} readOnly className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-right bg-gray-100"/>
-                                    <div className="flex justify-end md:justify-center items-center">
-                                        {productos.length > 1 && <button type="button" onClick={() => eliminarProducto(index)} title="Eliminar producto" className="text-red-500 hover:text-red-700 font-bold text-xl leading-none p-1 rounded-full hover:bg-red-100">×</button>}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                        <button type="button" onClick={agregarProducto} className="mt-4 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 text-sm">
-                            + Agregar Producto
-                        </button>
-                    </fieldset>
 
-                    <fieldset className="border p-4 rounded-md">
-                        <legend className="text-lg font-medium text-gray-700 px-2">Pago y Totales</legend>
-                        {/* CAMBIO: Se añade descuento total y se ajusta el grid */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="formaPago">Forma de Pago</label>
-                                <select id="formaPago" name="formaPago" value={formData.formaPago} onChange={handleFormChange} className="w-full shadow-sm border rounded py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500">
-                                    <option value="efectivo">Efectivo</option><option value="transferencia">Transferencia</option><option value="factura">Factura</option>
-                                </select>
-                            </div>
-                            {/* NUEVO: Input para descuento total */}
-                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="descuentoTotal">Desc. Total (%)</label>
-                                <input id="descuentoTotal" type="number" name="descuentoTotal" value={formData.descuentoTotal === 0 ? '' : formData.descuentoTotal} onChange={handleFormChange}
-                                    className="w-full bg-white shadow-sm border rounded py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 no-spinners" placeholder="0" min="0" max="100" />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="montoPagado">Monto Pagado</label>
-                                <input id="montoPagado" type="number" name="montoPagado" value={formData.montoPagado === 0 ? '' : formData.montoPagado} onChange={handleFormChange}
-                                    className="w-full bg-white shadow-sm border rounded py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 no-spinners" placeholder="0.00" step="0.01" min="0" />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="vuelto">Vuelto</label>
-                                <input id="vuelto" type="text" name="vuelto" readOnly value={`$ ${formData.vuelto.toFixed(2)}`}
-                                    className="w-full bg-gray-100 shadow-sm border rounded py-2 px-3 text-gray-700 focus:outline-none text-right"/>
-                            </div>
-                        </div>
-                        <div className="mt-4 text-right">
-                            {isCalculatingTotal && <p className="text-sm text-blue-600 italic">Calculando total...</p>}
-                            {totalCalculadoApi && (
-                                <div className="text-xs text-gray-600 mb-1">
-                                    <span>Base: ${totalCalculadoApi.monto_base.toFixed(2)}</span>
-                                    {totalCalculadoApi.recargos.transferencia > 0 && <span className="ml-2">Rec. Transf: ${totalCalculadoApi.recargos.transferencia.toFixed(2)}</span>}
-                                    {totalCalculadoApi.recargos.factura_iva > 0 && <span className="ml-2">IVA: ${totalCalculadoApi.recargos.factura_iva.toFixed(2)}</span>}
-                                    {formData.descuentoTotal > 0 && (
-                                        <span className="ml-2 text-red-600">Desc. Total ({formData.descuentoTotal}%): -$ {(baseTotalConRecargos * (formData.descuentoTotal / 100)).toFixed(2)}</span>
-                                    )}
-                                </div>
-                            )}
-                            <label className="block text-sm font-medium text-gray-500 mb-1">Total Pedido</label>
-                            <input type="text" value={`$ ${displayTotal.toFixed(2)}`} readOnly
-                                className="w-full md:w-auto md:max-w-xs inline-block bg-gray-100 shadow-sm border rounded py-2 px-3 text-gray-900 text-right font-bold text-lg focus:outline-none"/>
-                        </div>
-                    </fieldset>
-                    <div className="flex justify-end mt-8">
-                        <button type="submit" className="bg-green-600 text-white px-8 py-3 rounded-md hover:bg-green-700 font-semibold text-lg disabled:opacity-50" disabled={isSubmitting || isCalculatingTotal || !nombreVendedor.trim()}>
-                            {isSubmitting ? 'Registrando...' : 'Registrar Venta'}
-                        </button>
-                    </div>
-                </form>
+return (
+  <>
+    {/* Contenedor principal con fondo oscuro */}
+    <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-indigo-900 py-10 px-4 print:hidden">
+        {/* Panel del formulario con sombra realzada */}
+        <div className="bg-white p-6 md:p-8 rounded-xl shadow-2xl w-full max-w-5xl border border-gray-200">
+            <BotonVolver className="ml-0" />
+            <h2 className="text-3xl font-bold text-center text-indigo-800 mb-4">Registrar Venta en Local</h2>
+            
+            {/* --- SECCIÓN VENDEDOR --- */}
+            <div className="mb-6">
+                <label htmlFor="nombreVendedor" className="block text-sm font-medium text-gray-700 mb-1">Vendedor*</label>
+                <select id="nombreVendedor" value={nombreVendedor} onChange={(e) => setNombreVendedor(e.target.value)} required
+                    className="shadow-sm border border-gray-300 rounded-md w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    <option value="" disabled>-- Seleccione un vendedor --</option>
+                    {VENDEDORES.map(v => <option key={v} value={v}>{v.charAt(0).toUpperCase() + v.slice(1)}</option>)}
+                </select>
             </div>
-        </div>
+            
+            {/* --- MENSAJES DE ESTADO --- */}
+            {errorMessage && <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4 rounded-r-md" onClick={() => setErrorMessage('')}><p>{errorMessage}</p></div>}
+            {successMessage && <div className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4 rounded-r-md"><p>{successMessage}</p></div>}
+            
+            <form onSubmit={handleSubmit} className="space-y-6">
+                
+                {/* --- CAMBIO DE ESTILO: Fieldset con fondo y sombra sutil --- */}
+                <fieldset className="bg-gray-50 border border-gray-200 p-4 rounded-lg shadow-sm">
+                    <legend className="text-lg font-semibold text-gray-800 px-2">Productos</legend>
+                    {/* Encabezados de la tabla de productos */}
+                    <div className="mb-3 hidden md:grid md:grid-cols-[minmax(0,1fr)_80px_minmax(0,1fr)_100px_100px_32px] items-center gap-2 font-bold text-sm text-gray-600 px-3">
+                        <span>Producto*</span><span className="text-center">Cant*</span><span>Observación</span>
+                        <span className="text-right">Precio U.</span><span className="text-right">Total</span><span />
+                    </div>
+                    {/* Filas de productos */}
+                    <div className="space-y-3">
+                        {productos.map((item, index) => (
+                            <div key={index} className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_80px_minmax(0,1fr)_100px_100px_32px] items-center gap-2 border-b border-gray-200 pb-3 last:border-b-0">
+                                <Select name={`producto-${index}`} options={opcionesDeProductoParaSelect} value={opcionesDeProductoParaSelect.find(opt => opt.value === item.producto) || null}
+                                    onChange={(selectedOption) => handleProductSelectChange(index, selectedOption)} placeholder="Buscar producto..." isClearable isSearchable
+                                    isLoading={productosContext.loading} className="text-sm react-select-container" classNamePrefix="react-select" />
+                                <input type="number" name="qx" placeholder="Cant." value={item.qx === 0 ? '' : item.qx} onChange={(e) => handleProductRowInputChange(index, e)} min="0" step="any" required
+                                    className="shadow-sm border border-gray-300 rounded-md w-full py-2 px-2 text-gray-700 text-center focus:outline-none focus:ring-2 focus:ring-indigo-500 no-spinners"/>
+                                <input type="text" name="observacion" placeholder="Obs. ítem" value={item.observacion || ''} onChange={(e) => handleProductRowInputChange(index, e)}
+                                    className="shadow-sm border border-gray-300 rounded-md w-full py-2 px-2 text-gray-700 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                                <input type="text" value={`$ ${item.precio.toFixed(2)}`} readOnly className="shadow-sm border border-gray-300 rounded-md w-full py-2 px-2 text-gray-700 text-right bg-gray-100 cursor-not-allowed"/>
+                                <input type="text" value={`$ ${item.total.toFixed(2)}`} readOnly className="shadow-sm border border-gray-300 rounded-md w-full py-2 px-2 text-gray-700 text-right bg-gray-100 cursor-not-allowed"/>
+                                <div className="flex justify-end md:justify-center items-center">
+                                    {productos.length > 1 && <button type="button" onClick={() => eliminarProducto(index)} title="Eliminar producto" className="text-red-500 hover:text-red-700 font-bold text-2xl leading-none p-1 rounded-full flex items-center justify-center h-8 w-8 hover:bg-red-100 transition-colors">×</button>}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                    <button type="button" onClick={agregarProducto} className="mt-4 bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 transition-colors text-sm font-semibold">
+                        + Agregar Producto
+                    </button>
+                </fieldset>
 
-        <div id="presupuesto-imprimible" className="hidden print:block">
-            <Ticket tipo="comprobante" ventaData={ventaDataParaTicket} />
-            <div style={{ pageBreakBefore: 'always' }}></div>
-            <Ticket tipo="orden_de_trabajo" ventaData={ventaDataParaTicket} />
+                {/* --- CAMBIO DE ESTILO: Fieldset con fondo y sombra sutil --- */}
+                <fieldset className="bg-gray-50 border border-gray-200 p-4 rounded-lg shadow-sm">
+                    <legend className="text-lg font-semibold text-gray-800 px-2">Pago y Totales</legend>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="formaPago">Forma de Pago</label>
+                            <select id="formaPago" name="formaPago" value={formData.formaPago} onChange={handleFormChange} className="w-full shadow-sm border border-gray-300 rounded-md py-2 px-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                                <option value="efectivo">Efectivo</option><option value="transferencia">Transferencia</option><option value="factura">Factura</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="montoPagado">Monto Pagado</label>
+                            <input id="montoPagado" type="number" name="montoPagado" value={formData.montoPagado === 0 ? '' : formData.montoPagado} onChange={handleFormChange}
+                                className="w-full bg-white shadow-sm border border-gray-300 rounded-md py-2 px-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 no-spinners" placeholder="0.00" step="0.01" min="0" />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="vuelto">Vuelto</label>
+                            <input id="vuelto" type="text" name="vuelto" readOnly value={`$ ${formData.vuelto.toFixed(2)}`}
+                                className="w-full bg-gray-200 shadow-sm border border-gray-300 rounded-md py-2 px-3 text-gray-800 focus:outline-none text-right font-medium cursor-not-allowed"/>
+                        </div>
+                    </div>
+                    <div className="mt-6 text-right space-y-2">
+                        {isCalculatingTotal && <p className="text-sm text-blue-600 italic">Calculando total...</p>}
+                        {totalCalculadoApi && (
+                            <div className="text-xs text-gray-600 mb-1 p-2 bg-gray-200 rounded-md inline-block">
+                                <span>Base: ${totalCalculadoApi.monto_base.toFixed(2)}</span>
+                                {totalCalculadoApi.recargos.transferencia > 0 && <span className="ml-3">Rec. Transf: ${totalCalculadoApi.recargos.transferencia.toFixed(2)}</span>}
+                                {totalCalculadoApi.recargos.factura_iva > 0 && <span className="ml-3">IVA: ${totalCalculadoApi.recargos.factura_iva.toFixed(2)}</span>}
+                            </div>
+                        )}
+                        <div className="flex justify-end items-center">
+                             <label className="block text-base font-semibold text-gray-600 mr-4">Total Pedido</label>
+                            <input type="text" value={`$ ${displayTotal.toFixed(2)}`} readOnly
+                                className="w-full md:w-auto md:max-w-xs inline-block bg-gray-200 shadow-inner border border-gray-300 rounded-md py-2 px-4 text-gray-900 text-right font-bold text-xl cursor-not-allowed"/>
+                        </div>
+                    </div>
+                </fieldset>
+
+                <div className="flex justify-end pt-4">
+                    <button type="submit" className="bg-green-600 text-white px-8 py-3 rounded-lg hover:bg-green-700 font-semibold text-lg disabled:opacity-50 transition-all transform hover:scale-105 shadow-lg" disabled={isSubmitting || isCalculatingTotal || !nombreVendedor.trim()}>
+                        {isSubmitting ? 'Registrando...' : 'Registrar Venta'}
+                    </button>
+                </div>
+            </form>
         </div>
-        
-        <style jsx global>{`
-          .no-spinners::-webkit-outer-spin-button, .no-spinners::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-          .no-spinners { -moz-appearance: textfield; }
-          .react-select__control { border-color: rgb(209 213 219) !important; box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05) !important; min-height: 42px !important; }
-          .react-select__control--is-focused { border-color: rgb(99 102 241) !important; box-shadow: 0 0 0 1px rgb(99 102 241) !important; }
-          .react-select__option { background-color: white; color: #333; }
-          .react-select__option--is-focused { background-color: #4f46e5 !important; color: white !important; }
-          .react-select__option--is-selected { background-color: #6366f1 !important; color: white !important; }     
-        `}</style>
-      </>
-    );
+    </div>
+
+    {/* Contenedor para la impresión */}
+    <div id="presupuesto-imprimible" className="hidden print:block">
+        <Ticket tipo="comprobante" ventaData={ventaDataParaTicket} />
+        <div style={{ pageBreakBefore: 'always' }}></div>
+        <Ticket tipo="comprobante" ventaData={ventaDataParaTicket} />
+    </div>
+    
+    <style jsx global>{`
+      .no-spinners::-webkit-outer-spin-button, .no-spinners::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+      .no-spinners { -moz-appearance: textfield; }
+      .react-select__control { border-color: #d1d5db !important; box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05) !important; min-height: 42px !important; border-radius: 0.375rem !important;}
+      .react-select__control--is-focused { border-color: #4f46e5 !important; box-shadow: 0 0 0 2px #c7d2fe !important; }
+      .react-select__option { background-color: white; color: #333; }
+      .react-select__option--is-focused { background-color: #e0e7ff !important; color: #1e1b4b !important; }
+      .react-select__option--is-selected { background-color: #4f46e5 !important; color: white !important; }     
+    `}</style>
+  </>
+);
 }
