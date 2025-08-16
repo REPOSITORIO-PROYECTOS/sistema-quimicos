@@ -18,7 +18,7 @@ export interface VentaData {
     nombre: string;
     direccion?: string;
   };
-  vendedor: string;
+  nombre_vendedor: string;
   items: ProductoVenta[];
   total_final: number;
   observaciones?: string;
@@ -76,7 +76,7 @@ const Ticket: React.FC<TicketProps> = ({ tipo, ventaData }) => {
                             <tr><td>DIRECCIÓN</td><td>{ventaData.cliente.direccion.toUpperCase()}</td></tr>
                             )}
                             <tr><td>CLIENTE</td><td>{ventaData.cliente.nombre.toUpperCase()}</td></tr>
-                            <tr><td>VENDEDOR</td><td>{ventaData.vendedor ? ventaData.vendedor.charAt(0).toUpperCase() + ventaData.vendedor.slice(1) : '-'}</td></tr>
+                            <tr><td>VENDEDOR</td><td>{ventaData.nombre_vendedor ? ventaData.nombre_vendedor.charAt(0).toUpperCase() + ventaData.nombre_vendedor.slice(1) : '-'}</td></tr>
                             {isFinancial && ventaData.forma_pago && (
                             <tr><td>FORMA PAGO</td><td>{ventaData.forma_pago.charAt(0).toUpperCase() + ventaData.forma_pago.slice(1)}</td></tr>
                             )}

@@ -280,7 +280,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
       venta_id: id,
       fecha_emision: formData.fechaEmision,
       cliente: { nombre: formData.nombre, direccion: formData.direccion },
-      vendedor: "pedidos",
+      nombre_vendedor: "pedidos",
       items: productos.filter(p => p.producto && p.qx > 0).map(item => {
               const pInfo = productosContext?.productos.find(p => p.id === item.producto);
               const totalConRecargosItem = (item.total || 0) * (totalCalculadoApi && montoBaseProductos > 0 ? totalCalculadoApi.monto_final_con_recargos / montoBaseProductos : 1);

@@ -316,7 +316,7 @@ const resetearFormulario = useCallback(() => {
       venta_id: lastVentaId,
       fecha_emision: formData.fechaEmision,
       cliente: { nombre: formData.nombre, direccion: formData.direccion },
-      vendedor: VENDEDOR_FIJO,
+      nombre_vendedor: VENDEDOR_FIJO,
       items: productos
           .filter(p => p.producto && p.qx > 0)
           .map(item => {

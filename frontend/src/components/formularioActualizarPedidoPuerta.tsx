@@ -24,7 +24,7 @@ type DetalleAPI = {
   observacion_item?: string;
 };
 interface IFormData {
-  vendedor: string;
+  nombre_vendedor: string;
   fecha_emision: string;
   forma_pago: string;
   monto_pagado: number;
@@ -51,8 +51,8 @@ const initialProductoItem : ProductoPedido = { producto_id: 0, cantidad: 0, prec
 // --- Componente Principal ---
 export default function FormularioActualizarPedidoPuerta({ id, onVolver }: FormularioProps) {
   const [formData, setFormData] = useState<IFormData>({
-    vendedor: "", fecha_emision: "", forma_pago: "efectivo",
-    monto_pagado: 0, descuentoTotal: 0, vuelto: 0, 
+    nombre_vendedor: "", fecha_emision: "", forma_pago: "efectivo",
+    monto_pagado: 0, descuentoTotal: 0, vuelto: 0,
     requiere_factura: false, observaciones: "",
   });
   const [productos, setProductos] = useState<ProductoPedido[]>([]);
@@ -120,7 +120,7 @@ const cargarFormulario = useCallback(async (pedidoId: number) => {
       
       setFormData({
         // ... (Tu lógica para setFormData se mantiene igual, cargando vendedor, forma de pago, etc.)
-        vendedor: datosAPI.nombre_vendedor || '',
+        nombre_vendedor: datosAPI.nombre_vendedor || '',
         fecha_emision: datosAPI.fecha_pedido || "",
         forma_pago: datosAPI.forma_pago || "efectivo",
         monto_pagado: datosAPI.monto_pagado_cliente || 0,
@@ -266,12 +266,12 @@ useEffect(() => {
   const handleSubmit = async (e: React.FormEvent ) => {
     e.preventDefault();
     setErrorMensaje(''); setSuccessMensaje('');
-    if (!id || !formData.vendedor.trim()) { setErrorMensaje("ID o Vendedor no válidos."); return; }
+    if (!id || !formData.nombre_vendedor.trim()) { setErrorMensaje("ID o Vendedor no válidos."); return; }
     setIsSubmitting(true);
     const token = localStorage.getItem("token");
     if (!token) { setErrorMensaje("No autenticado."); setIsSubmitting(false); return; }
     const dataToUpdate = {
-      nombre_vendedor: formData.vendedor.trim(), forma_pago: formData.forma_pago,
+      nombre_vendedor: formData.nombre_vendedor.trim(), forma_pago: formData.forma_pago,
       monto_pagado_cliente: formData.monto_pagado, requiere_factura: formData.requiere_factura,
       observaciones: formData.observaciones || "", monto_total_base: montoBaseProductos,
       descuento_total_global_porcentaje: formData.descuentoTotal,
@@ -303,7 +303,7 @@ useEffect(() => {
   
   const ventaDataParaTicket: VentaData = {
       venta_id: id, fecha_emision: formData.fecha_emision, cliente: { nombre: "CONSUMIDOR FINAL" },
-      vendedor: formData.vendedor,
+      nombre_vendedor: formData.nombre_vendedor.trim(),
       items: productos.map(p => ({
         producto_id: p.producto_id,
         producto_nombre: productosContext.productos.find(prod => prod.id === p.producto_id)?.nombre || `ID:${p.producto_id}`,
@@ -329,7 +329,7 @@ useEffect(() => {
               <legend className="text-lg font-medium text-gray-700 px-2">Datos Generales</legend>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div><label className="block text-sm font-medium text-gray-700 mb-1">Vendedor*</label>
-                  <select name="vendedor" value={formData.vendedor} onChange={handleFormChange} required className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                  <select name="nombre_vendedor" value={formData.nombre_vendedor} onChange={handleFormChange} required className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500">
                       <option value="" disabled>-- Seleccione --</option>
                       {VENDEDORES.map(v => <option key={v} value={v}>{v.charAt(0).toUpperCase() + v.slice(1)}</option>)}
                   </select>

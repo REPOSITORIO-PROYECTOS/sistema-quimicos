@@ -236,8 +236,8 @@ export default function RegistrarPedidoPuertaPage() {
         venta_id: lastVentaId,
         fecha_emision: formData.fechaEmision,
         cliente: { nombre: "CONSUMIDOR FINAL" },
-        vendedor: nombreVendedor,
-        items: productos.filter(p => p.producto && p.qx > 0).map(item => {
+        nombre_vendedor: nombreVendedor.trim(),
+         items: productos.filter(p => p.producto && p.qx > 0).map(item => {
             const pInfo = productosContext?.productos.find(p => p.id === item.producto);
             // El total del item ya tiene el descuento individual aplicado, solo falta el recargo
             const totalItemConRecargo = item.total * (totalCalculadoApi && montoBaseProductos > 0 ? totalCalculadoApi.monto_final_con_recargos / montoBaseProductos : 1);
