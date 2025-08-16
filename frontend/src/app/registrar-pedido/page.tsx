@@ -329,6 +329,7 @@ const resetearFormulario = useCallback(() => {
           }),
       total_final: displayTotal,
       observaciones: formData.observaciones,
+      forma_pago: formData.formaPago, // Se añade la forma de pago
   };
 
 return (

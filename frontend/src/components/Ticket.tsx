@@ -22,6 +22,7 @@ export interface VentaData {
   items: ProductoVenta[];
   total_final: number;
   observaciones?: string;
+  forma_pago?: string;
 }
 
 interface TicketProps {
@@ -76,6 +77,9 @@ const Ticket: React.FC<TicketProps> = ({ tipo, ventaData }) => {
                             )}
                             <tr><td>CLIENTE</td><td>{ventaData.cliente.nombre.toUpperCase()}</td></tr>
                             <tr><td>VENDEDOR</td><td>{ventaData.vendedor ? ventaData.vendedor.charAt(0).toUpperCase() + ventaData.vendedor.slice(1) : '-'}</td></tr>
+                            {isFinancial && ventaData.forma_pago && (
+                            <tr><td>FORMA PAGO</td><td>{ventaData.forma_pago.charAt(0).toUpperCase() + ventaData.forma_pago.slice(1)}</td></tr>
+                            )}
                             {isFinancial && (
                                 <tr><td>TOTAL FINAL</td><td className="font-bold">$ {formatPrice(ventaData.total_final)}</td></tr>
                             )}

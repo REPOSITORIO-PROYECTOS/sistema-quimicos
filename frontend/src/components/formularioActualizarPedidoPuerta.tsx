@@ -289,7 +289,7 @@ useEffect(() => {
       const result = await response.json();
       if(!response.ok) throw new Error(result?.message || 'Error al actualizar el pedido.');
       setSuccessMensaje("¡Pedido actualizado con éxito!");
-      handleImprimir(['orden_de_trabajo', 'orden_de_trabajo']); // IMPRIME 2 AL ACTUALIZAR
+      handleImprimir(['comprobante', 'comprobante']); // IMPRIME 2 AL ACTUALIZAR
       setTimeout(() => onVolver(), 2000);
     } catch (err) {
       if(err instanceof Error) setErrorMensaje(err.message);
@@ -310,7 +310,8 @@ useEffect(() => {
         cantidad: p.cantidad,
         precio_total_item_ars: (p.total_linea || 0) * (totalCalculadoApi && montoBaseProductos > 0 ? totalCalculadoApi.monto_final_con_recargos / montoBaseProductos : 1)
       })),
-      total_final: displayTotal, observaciones: formData.observaciones
+      total_final: displayTotal, observaciones: formData.observaciones,
+      forma_pago: formData.forma_pago,
   };
 
   return (

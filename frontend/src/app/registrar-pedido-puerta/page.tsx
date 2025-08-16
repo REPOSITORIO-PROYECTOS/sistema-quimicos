@@ -250,6 +250,7 @@ export default function RegistrarPedidoPuertaPage() {
         }),
         total_final: displayTotal,
         observaciones: formData.observaciones,
+        forma_pago: formData.formaPago,
     };
 
 
