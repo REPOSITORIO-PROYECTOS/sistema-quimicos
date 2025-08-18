@@ -72,86 +72,121 @@ export default function FormularioActualizarPedidoPuerta({ id, onVolver }: Formu
   const montoBaseProductos = useMemo(() => {
     return productos.reduce((sum, item) => sum + (item.total_linea || 0), 0);
   }, [productos]);
-  
+
   const recalculatePricesForProducts = useCallback(async (currentProducts: ProductoPedido[]) => {
     const token = localStorage.getItem("token");
-    if (!token) { setErrorMensaje("No autenticado."); return; }
-    
-    const productsToUpdate = currentProducts.map(async (item) => {
-        if (item.producto_id <= 0 || item.cantidad <= 0) {
-            return { ...item, precio_unitario: 0, total_linea: 0 };
-        }
-        try {
-            const precioRes = await fetch(`https://quimex.sistemataup.online/productos/calcular_precio/${item.producto_id}`, {
-                method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-                body: JSON.stringify({ producto_id: item.producto_id, quantity: item.cantidad, cliente_id: null }),
-            });
-            if (!precioRes.ok) throw new Error((await precioRes.json()).message || "Error API precios.");
-            const precioData = await precioRes.json();
-            const totalBruto = precioData.precio_total_calculado_ars || 0;
-            return {
-                ...item,
-                precio_unitario: precioData.precio_venta_unitario_ars || 0,
-                total_linea: totalBruto * (1 - (item.descuento / 100)),
-            };
-        } catch (error) {
-            if (error instanceof Error) setErrorMensaje(prev => `${prev}\nError Prod ID ${item.producto_id}: ${error.message}`);
-            return { ...item, precio_unitario: 0, total_linea: 0 };
+    if (!token) { 
+        setErrorMensaje("No autenticado."); 
+        return; 
+    }
+
+    // --- INICIO DE LA LÓGICA CORRECTA Y DEFINITIVA ---
+
+    // 1. Agrupar cantidades totales por cada ID de producto.
+    const productQuantities = new Map<number, { totalQuantity: number; indices: number[] }>();
+    currentProducts.forEach((p, index) => {
+        if (p.producto_id > 0) {
+            const existing = productQuantities.get(p.producto_id) || { totalQuantity: 0, indices: [] };
+            existing.totalQuantity += p.cantidad;
+            existing.indices.push(index);
+            productQuantities.set(p.producto_id, existing);
         }
     });
 
-    const newProducts = await Promise.all(productsToUpdate);
+    // 2. Crear una promesa por cada producto ÚNICO para obtener su precio unitario correcto.
+    const pricePromises = Array.from(productQuantities.entries()).map(async ([productoId, { totalQuantity, indices }]) => {
+        if (totalQuantity <= 0) {
+            return { precioUnitario: 0, indices };
+        }
+        try {
+            const precioRes = await fetch(`https://quimex.sistemataup.online/productos/calcular_precio/${productoId}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+                body: JSON.stringify({ 
+                    producto_id: productoId, 
+                    quantity: totalQuantity, // Se usa la cantidad TOTAL acumulada
+                    cliente_id: null 
+                }),
+            });
+            if (!precioRes.ok) {
+                const errorData = await precioRes.json().catch(() => ({ message: 'API de precios falló' }));
+                throw new Error(errorData.message);
+            }
+            const precioData = await precioRes.json();
+            return { precioUnitario: precioData.precio_venta_unitario_ars || 0, indices };
+        } catch (error) {
+            if (error instanceof Error) {
+                setErrorMensaje(prev => `${prev}\nError al calcular precio para Prod ID ${productoId}: ${error.message}`);
+            }
+            return { precioUnitario: 0, indices };
+        }
+    });
+    const priceResults = await Promise.all(pricePromises);
+    const newProducts = [...currentProducts];
+
+    priceResults.forEach(({ precioUnitario, indices }) => {
+        indices.forEach(index => {
+            const item = newProducts[index];
+            if (item) {
+                item.precio_unitario = precioUnitario;
+                const totalBruto = precioUnitario * item.cantidad;
+                item.total_linea = totalBruto * (1 - (item.descuento / 100));
+            }
+        });
+    });
     setProductos(newProducts);
-  }, [setErrorMensaje]);
 
-const cargarFormulario = useCallback(async (pedidoId: number) => {
-    setIsLoading(true);
-    setErrorMensaje('');
-    const token = localStorage.getItem("token");
-    if (!token) { setErrorMensaje("No autenticado."); setIsLoading(false); return; }
+  }, [setErrorMensaje, setProductos]);
 
-    try {
-      const response = await fetch(`https://quimex.sistemataup.online/ventas/obtener/${pedidoId}`, {
-        headers: { "Authorization": `Bearer ${token}` }
-      });
-      if (!response.ok) throw new Error((await response.json()).message || "No se pudieron cargar los datos del pedido.");
-      
-      const datosAPI = await response.json();
-      
-      setFormData({
-        // ... (Tu lógica para setFormData se mantiene igual, cargando vendedor, forma de pago, etc.)
-        nombre_vendedor: datosAPI.nombre_vendedor || '',
-        fecha_emision: datosAPI.fecha_pedido || "",
-        forma_pago: datosAPI.forma_pago || "efectivo",
-        monto_pagado: datosAPI.monto_pagado_cliente || 0,
-        descuentoTotal: datosAPI.descuento_total_global_porcentaje || 0,
-        vuelto: datosAPI.vuelto_calculado ?? 0,
-        requiere_factura: datosAPI.requiere_factura || false,
-        observaciones: datosAPI.observaciones || "",
-      });
 
-      // Paso 1: Mapeamos los datos básicos de la API (producto y cantidad).
-      // Los precios y totales los ignoramos, porque los vamos a recalcular.
-      const productosParaRecalcular: ProductoPedido[] = datosAPI.detalles?.map((detalle: DetalleAPI) => ({
-        producto_id: detalle.producto_id,
-        cantidad: detalle.cantidad,
-        // Asumimos descuentos guardados si existen, si no, 0.
-        descuento: detalle.descuento_item_porcentaje || 0,
-        observacion_item: detalle.observacion_item || "",
-        // Precios y totales se inicializan en 0, serán calculados ahora.
-        precio_unitario: 0,
-        total_linea: 0,
-      })) || [];
-      
-      // Paso 2: Si hay productos, forzamos el recálculo de precios inmediatamente.
-      if (productosParaRecalcular.length > 0) {
-        // La función recalculatePricesForProducts se encargará de llamar a la API
-        // y de hacer el setProductos con los datos frescos y correctos.
-        await recalculatePricesForProducts(productosParaRecalcular);
-      } else {
-        // Si no hay productos, nos aseguramos que el estado quede limpio.
-        setProductos([]);
-      }
+  const cargarFormulario = useCallback(async (pedidoId: number) => {
+      setIsLoading(true);
+      setErrorMensaje('');
+      const token = localStorage.getItem("token");
+      if (!token) { setErrorMensaje("No autenticado."); setIsLoading(false); return; }
+
+      try {
+        const response = await fetch(`https://quimex.sistemataup.online/ventas/obtener/${pedidoId}`, {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+        if (!response.ok) throw new Error((await response.json()).message || "No se pudieron cargar los datos del pedido.");
+        
+        const datosAPI = await response.json();
+        
+        setFormData({
+          // ... (Tu lógica para setFormData se mantiene igual, cargando vendedor, forma de pago, etc.)
+          nombre_vendedor: datosAPI.nombre_vendedor || '',
+          fecha_emision: datosAPI.fecha_pedido || "",
+          forma_pago: datosAPI.forma_pago || "efectivo",
+          monto_pagado: datosAPI.monto_pagado_cliente || 0,
+          descuentoTotal: datosAPI.descuento_total_global_porcentaje || 0,
+          vuelto: datosAPI.vuelto_calculado ?? 0,
+          requiere_factura: datosAPI.requiere_factura || false,
+          observaciones: datosAPI.observaciones || "",
+        });
+
+        // Paso 1: Mapeamos los datos básicos de la API (producto y cantidad).
+        // Los precios y totales los ignoramos, porque los vamos a recalcular.
+        const productosParaRecalcular: ProductoPedido[] = datosAPI.detalles?.map((detalle: DetalleAPI) => ({
+          producto_id: detalle.producto_id,
+          cantidad: detalle.cantidad,
+          // Asumimos descuentos guardados si existen, si no, 0.
+          descuento: detalle.descuento_item_porcentaje || 0,
+          observacion_item: detalle.observacion_item || "",
+          // Precios y totales se inicializan en 0, serán calculados ahora.
+          precio_unitario: 0,
+          total_linea: 0,
+        })) || [];
+        
+        // Paso 2: Si hay productos, forzamos el recálculo de precios inmediatamente.
+        if (productosParaRecalcular.length > 0) {
+          // La función recalculatePricesForProducts se encargará de llamar a la API
+          // y de hacer el setProductos con los datos frescos y correctos.
+          await recalculatePricesForProducts(productosParaRecalcular);
+        } else {
+          // Si no hay productos, nos aseguramos que el estado quede limpio.
+          setProductos([]);
+        }
       
     } catch (error) {
       if(error instanceof Error) setErrorMensaje(error.message);

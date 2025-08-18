@@ -146,7 +146,6 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
     } finally {
       setIsLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // id_cliente se maneja en el useEffect de abajo
 
   useEffect(() => {

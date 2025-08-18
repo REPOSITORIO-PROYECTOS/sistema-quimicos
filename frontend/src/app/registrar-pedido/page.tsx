@@ -219,12 +219,7 @@ const resetearFormulario = useCallback(() => {
     if (!formData.clienteId) { setErrorMessage("Seleccione un cliente."); return; }
     if (productos.every(p => p.producto === 0 || p.qx === 0)) { setErrorMessage("Añada al menos un producto."); return; }
     
-    // --- INICIO DE LA VALIDACIÓN CRÍTICA ---
-    if (formData.formaPago === 'efectivo' && formData.montoPagado < displayTotal) {
-        setErrorMessage(`El monto pagado (${formatCurrency(formData.montoPagado)}) no puede ser menor al total del pedido (${formatCurrency(displayTotal)}).`);
-        return;
-    }
-    // --- FIN DE LA VALIDACIÓN CRÍTICA ---
+ 
 
     setIsSubmitting(true);
     const token = localStorage.getItem("token");
@@ -310,7 +305,6 @@ const resetearFormulario = useCallback(() => {
   }
   const baseTotalConRecargos = totalCalculadoApi ? totalCalculadoApi.monto_final_con_recargos : montoBaseProductos;
   const getNumericInputValue = (value: number) => value === 0 ? '' : String(value);
-  const formatCurrency = (value: number) => new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(value);
   
   const ventaDataParaTicket: VentaData = {
       venta_id: lastVentaId,
