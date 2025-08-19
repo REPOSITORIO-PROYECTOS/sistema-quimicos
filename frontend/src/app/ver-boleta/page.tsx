@@ -2,12 +2,12 @@
 
 import BotonVolver from '@/components/BotonVolver';
 import FormularioActualizarPedido from '@/components/formularioActualizacionPedido';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 
 type Boleta = {
   venta_id: number;
   monto_final_con_recargos: number;
-  fecha_pedido: string;
+  fecha_pedido: string; // Se mantiene como string ISO para poder ordenar
   cliente_nombre: string;
   direccion_entrega: string;
 };
@@ -29,11 +29,13 @@ export default function ListaBoletas() {
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
 
+  // --- NUEVO: Estado para el filtro de orden por fecha ---
+  const [ordenarPorFecha, setOrdenarPorFecha] = useState(false);
+
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleteSuccess, setDeleteSuccess] = useState<string | null>(null);
 
-  // --- FUNCIÓN DE CARGA SIMPLIFICADA ---
   const fetchBoletas = async (pageToFetch: number) => {
     setLoading(true);
     setError(null);
@@ -52,31 +54,22 @@ export default function ListaBoletas() {
 
       const data = await response.json();
       const filtrados = data.ventas.filter(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        // eslint-disable-next-line
         (item: any) => item.direccion_entrega && item.direccion_entrega.trim() !== ""
       );
-
-      // Si la página que pedimos está vacía (post-filtro) y no es la primera,
-      // podría ser que el usuario llegó aquí desde una URL o después de borrar todo.
-      // Mostramos el estado vacío para que la lógica de búsqueda se active si el usuario hace clic.
+      
       if (filtrados.length === 0 && pageToFetch > 1 && !data.pagination.has_next) {
          setBoletas([]);
       } else {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const boletasConFechaFormateada = filtrados.map((item: any) => ({
-          ...item,
-          fecha_pedido: new Date(item.fecha_pedido).toLocaleDateString("es-AR", {
-            day: "2-digit", month: "2-digit", year: "numeric",
-          }),
-        }));
-         setBoletas(boletasConFechaFormateada);
+        // CAMBIO: Se guardan las boletas sin formatear la fecha para permitir el ordenamiento
+        setBoletas(filtrados);
       }
       
       setPagination(data.pagination);
       setPage(pageToFetch);
 
     } catch (err) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line
       setError((err as any).message || 'Error desconocido al cargar boletas.');
     } finally {
       setLoading(false);
@@ -86,16 +79,13 @@ export default function ListaBoletas() {
   useEffect(() => {
     fetchBoletas(page);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Cargar solo en el montaje inicial
+  }, []);
 
-  // --- NUEVAS FUNCIONES DE BÚSQUEDA PARA LOS BOTONES ---
   const buscarSiguientePaginaConContenido = async () => {
     if (!pagination || loading) return;
-
     setLoading(true);
     setError(null);
     let paginaDeBusqueda = pagination.current_page;
-
     while (true) {
       paginaDeBusqueda++;
       try {
@@ -108,29 +98,23 @@ export default function ListaBoletas() {
         
         const data = await response.json();
         const filtrados = data.ventas.filter(
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          // eslint-disable-next-line
             (item: any) => item.direccion_entrega && item.direccion_entrega.trim() !== ""
         );
 
         if (filtrados.length > 0) {
-            // ¡Encontrada! Actualizamos el estado y salimos del bucle.
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            setBoletas(filtrados.map((item: any) => ({
-                ...item,
-                fecha_pedido: new Date(item.fecha_pedido).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" }),
-            })));
+            // CAMBIO: Se guardan las boletas sin formatear la fecha
+            setBoletas(filtrados);
             setPagination(data.pagination);
             setPage(paginaDeBusqueda);
             break;
         }
-
         if (!data.pagination.has_next) {
-            // Llegamos al final sin encontrar nada. Salimos del bucle.
             alert("No hay más pedidos con entrega a domicilio.");
             break;
         }
       } catch (err) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        // eslint-disable-next-line
           setError((err as any).message);
           break;
       }
@@ -140,14 +124,11 @@ export default function ListaBoletas() {
 
   const buscarAnteriorPaginaConContenido = async () => {
     if (!pagination || loading) return;
-    
     setLoading(true);
     setError(null);
     let paginaDeBusqueda = page;
-
     while (paginaDeBusqueda > 1) {
         paginaDeBusqueda--;
-        // Misma lógica que la búsqueda siguiente, pero hacia atrás
          try {
             const token = localStorage.getItem("token");
             if (!token) throw new Error("Usuario no autenticado.");
@@ -158,28 +139,24 @@ export default function ListaBoletas() {
             
             const data = await response.json();
             const filtrados = data.ventas.filter(
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              // eslint-disable-next-line
                 (item: any) => item.direccion_entrega && item.direccion_entrega.trim() !== ""
             );
 
             if (filtrados.length > 0) {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                setBoletas(filtrados.map((item: any) => ({
-                    ...item,
-                    fecha_pedido: new Date(item.fecha_pedido).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" }),
-                })));
+                // CAMBIO: Se guardan las boletas sin formatear la fecha
+                setBoletas(filtrados);
                 setPagination(data.pagination);
                 setPage(paginaDeBusqueda);
                 setLoading(false);
-                return; // Salir de la función
+                return;
             }
         } catch (err) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          // eslint-disable-next-line
             setError((err as any).message);
             break;
         }
     }
-    // Si el bucle termina, es que no encontró nada, recargamos la página 1
     if(page !== 1) await fetchBoletas(1);
     setLoading(false);
   };
@@ -187,7 +164,6 @@ export default function ListaBoletas() {
   const handleEliminarPedido = async (ventaId: number) => {
     if (deletingId) return;
     if (!window.confirm(`¿Está seguro de que desea eliminar el pedido Nº ${ventaId.toString().padStart(4, '0')}?`)) return;
-
     setDeletingId(ventaId);
     try {
         const token = localStorage.getItem("token");
@@ -201,16 +177,13 @@ export default function ListaBoletas() {
             throw new Error(errorData.error || `Error al eliminar el pedido.`);
         }
         setDeleteSuccess(`Pedido Nº ${ventaId} eliminado.`);
-        
-        // Si al borrar el último item la página queda vacía, recargamos la página actual.
-        // Si esa página ahora está vacía y no es la primera, la lógica de búsqueda se activará.
         if (boletas.length === 1) {
             await fetchBoletas(page);
         } else {
             setBoletas(boletas.filter(b => b.venta_id !== ventaId));
         }
     } catch (err) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line
         setDeleteError((err as any).message);
     } finally {
         setDeletingId(null);
@@ -218,13 +191,25 @@ export default function ListaBoletas() {
     }
   };
 
+  // --- NUEVO: Lógica para ordenar la lista actual de boletas ---
+  const boletasMostradas = useMemo(() => {
+    if (!ordenarPorFecha) {
+      return boletas;
+    }
+    // Retorna una copia ordenada para no mutar el estado original
+    return [...boletas].sort((a, b) => 
+      new Date(b.fecha_pedido).getTime() - new Date(a.fecha_pedido).getTime()
+    );
+  }, [boletas, ordenarPorFecha]);
+
+
   return (
     <>
       {idBoleta === undefined ? (
         <div className="flex flex-col items-center justify-center min-h-screen bg-indigo-900 py-10">
           <div className="bg-white p-6 md:p-8 rounded-lg shadow-xl w-full max-w-5xl lg:max-w-6xl">
             <BotonVolver className="ml-0" />
-            <h2 className="text-3xl font-semibold mb-8 text-center text-indigo-800">
+            <h2 className="text-3xl font-semibold mb-4 text-center text-indigo-800">
               Lista de Pedidos (Entrega a Domicilio)
             </h2>
 
@@ -235,6 +220,20 @@ export default function ListaBoletas() {
 
             {!loading && !error && (
               <>
+                {/* --- NUEVO: Botón para activar/desactivar el filtro --- */}
+                <div className="flex justify-end mb-4">
+                  <button 
+                    onClick={() => setOrdenarPorFecha(prev => !prev)}
+                    className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 ${
+                      ordenarPorFecha 
+                        ? 'bg-indigo-600 text-white shadow-md hover:bg-indigo-700' 
+                        : 'bg-gray-200 text-gray-800 hover:bg-gray-300'
+                    }`}
+                  >
+                    {ordenarPorFecha ? 'Quitar Orden por Fecha' : 'Ordenar por Fecha (Más Reciente)'}
+                  </button>
+                </div>
+
                 <div className="overflow-x-auto">
                   <ul className="space-y-3 min-w-[900px]">
                     <li className="grid grid-cols-6 gap-x-4 items-center bg-indigo-100 p-3 rounded-md font-semibold text-indigo-700 text-xs uppercase tracking-wider">
@@ -245,12 +244,18 @@ export default function ListaBoletas() {
                       <span className="text-center">Cliente</span>
                       <span className="text-center">Acción</span>
                     </li>
-
-                    {boletas.length > 0 ? boletas.map((boleta) => (
+                    
+                    {/* CAMBIO: Se itera sobre la lista potencialmente ordenada */}
+                    {boletasMostradas.length > 0 ? boletasMostradas.map((boleta) => (
                       <li key={boleta.venta_id} className="grid grid-cols-6 gap-x-4 items-center bg-gray-50 hover:bg-gray-100 p-3 rounded-md text-sm transition-colors">
                         <span className="text-center">{`Nº ${boleta.venta_id.toString().padStart(4, '0')}`}</span>
                         <span className="text-center font-medium">${boleta.monto_final_con_recargos.toFixed(2)}</span>
-                        <span className="text-center">{boleta.fecha_pedido}</span>
+                        {/* CAMBIO: La fecha se formatea aquí, al momento de renderizar */}
+                        <span className="text-center">
+                           {new Date(boleta.fecha_pedido).toLocaleDateString("es-AR", {
+                                day: "2-digit", month: "2-digit", year: "numeric",
+                           })}
+                        </span>
                         <span className="text-center truncate" title={boleta.direccion_entrega}>{boleta.direccion_entrega}</span>
                         <span className="text-center truncate" title={boleta.cliente_nombre}>{boleta.cliente_nombre}</span>
                         <div className="flex items-center justify-center gap-3">
