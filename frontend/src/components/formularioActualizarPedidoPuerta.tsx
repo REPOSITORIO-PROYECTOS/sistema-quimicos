@@ -347,6 +347,8 @@ useEffect(() => {
       })),
       total_final: displayTotal, observaciones: formData.observaciones,
       forma_pago: formData.forma_pago,
+      monto_pagado_cliente: formData.monto_pagado,
+      vuelto_calculado: formData.vuelto,
   };
 
   return (

@@ -340,6 +340,8 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
       total_final: displayTotalToShow,
       observaciones: formData.observaciones,
       forma_pago: formData.formaPago, 
+      monto_pagado_cliente: formData.montoPagado,
+      vuelto_calculado: formData.vuelto,
   };
 
   const inputBaseClasses = "shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500";
