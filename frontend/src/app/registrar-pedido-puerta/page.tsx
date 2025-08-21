@@ -251,6 +251,8 @@ export default function RegistrarPedidoPuertaPage() {
         total_final: displayTotal,
         observaciones: formData.observaciones,
         forma_pago: formData.formaPago,
+        monto_pagado_cliente: formData.montoPagado,
+        vuelto_calculado: formData.vuelto,
     };
 
 
