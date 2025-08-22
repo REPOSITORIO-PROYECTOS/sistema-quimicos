@@ -85,11 +85,11 @@ const Ticket: React.FC<TicketProps> = ({ tipo, ventaData }) => {
                             {isFinancial && (
                                 <tr><td>TOTAL FINAL</td><td className="font-bold">$ {formatPrice(ventaData.total_final)}</td></tr>
                             )}
-                            {isFinancial && ventaData.forma_pago?.toLowerCase() === 'efectivo' && ventaData.monto_pagado_cliente && ventaData.monto_pagado_cliente > 0 && (
-                                <tr><td>PAGÓ CON</td><td className="font-bold">$ {formatPrice(ventaData.monto_pagado_cliente)}</td></tr>
+                            {isFinancial && ventaData.forma_pago?.toLowerCase() === 'efectivo' && (ventaData.monto_pagado_cliente ?? 0) > 0 && (
+                                <tr><td>PAGÓ CON</td><td className="font-bold">$ {formatPrice(ventaData.monto_pagado_cliente!)}</td></tr>
                             )}
-                            {isFinancial && ventaData.forma_pago?.toLowerCase() === 'efectivo' && ventaData.vuelto_calculado && ventaData.vuelto_calculado > 0 && (
-                                <tr><td>SU VUELTO</td><td className="font-bold">$ {formatPrice(ventaData.vuelto_calculado)}</td></tr>
+                            {isFinancial && ventaData.forma_pago?.toLowerCase() === 'efectivo' && (ventaData.vuelto_calculado ?? 0) > 0 && (
+                                <tr><td>SU VUELTO</td><td className="font-bold">$ {formatPrice(ventaData.vuelto_calculado!)}</td></tr>
                             )}
                         </tbody>
                     </table>

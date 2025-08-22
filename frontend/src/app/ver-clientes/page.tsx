@@ -1,10 +1,12 @@
 "use client";
 
 import BotonVolver from '@/components/BotonVolver';
+import { useRouter } from 'next/navigation';
 import FormularioActualizacionCliente from '@/components/formularioActualizacionCliente';
 import { useState, useEffect } from 'react';
-import { FaTrash, FaPencilAlt, FaDownload, FaArrowUp, FaArrowDown } from 'react-icons/fa';
+import { FaTrash, FaPencilAlt, FaDownload, FaArrowUp, FaArrowDown, FaUpload, FaSearch } from 'react-icons/fa'; 
 import * as XLSX from 'xlsx';
+
 
 type Cliente = {
   id: number;
@@ -29,6 +31,7 @@ type Pagination = {
 
 export default function ListaClientes() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
+  const router = useRouter();
   const [pagination, setPagination] = useState<Pagination | null>(null);
   const [loading, setLoading] = useState(true);
   const [id_cliente, setIdClienteEditar] = useState<number | undefined>();
@@ -36,39 +39,64 @@ export default function ListaClientes() {
   const [page, setPage] = useState(1);
   const [isDownloading, setIsDownloading] = useState(false);
 
+    // --- ESTADO PARA EL BUSCADOR (NUEVO) ---
+  const [searchTerm, setSearchTerm] = useState(''); // Lo que el usuario escribe
+
   const [porcentaje, setPorcentaje] = useState('');
   const [isUpdatingPrices, setIsUpdatingPrices] = useState(false);
   const [priceUpdateError, setPriceUpdateError] = useState<string | null>(null);
   const [priceUpdateSuccess, setPriceUpdateSuccess] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchClientes = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        const token = localStorage.getItem("token")
-        
-        const apiUrl = `https://quimex.sistemataup.online/clientes/obtener_todos`; 
-        
-        const response = await fetch(apiUrl,{headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`}});
-        if (!response.ok) {
-          throw new Error(`Error al traer clientes: ${response.statusText} (${response.status})`);
+useEffect(() => {
+    // 1. Inicia un temporizador cada vez que el usuario teclea algo.
+    const timerId = setTimeout(() => {
+      // 2. Si el usuario no ha tecleado nada más en 500ms, esta función se ejecuta.
+      
+      const fetchClientes = async () => {
+        try {
+          setLoading(true);
+          setError(null);
+          const token = localStorage.getItem("token");
+          
+          const params = new URLSearchParams();
+          params.append('page', String(page)); 
+          if (searchTerm) {
+            params.append('search_term', searchTerm);
+          }
+          
+          const apiUrl = `https://quimex.sistemataup.online/clientes/obtener_todos?${params.toString()}`; 
+          
+          const response = await fetch(apiUrl, { headers: {"Content-Type":"application/json", "Authorization":`Bearer ${token}`} });
+          if (!response.ok) {
+            throw new Error(`Error al traer clientes: ${response.statusText}`);
+          }
+          const data = await response.json();
+          
+          setClientes(data.clientes);
+          setPagination(data.pagination);
+        } catch (error: unknown) { 
+          if (error instanceof Error) {
+            setError(error.message);
+          }
+        } finally {
+          setLoading(false);
         }
-        const data = await response.json();
-        
-        setClientes(data.clientes);
-        setPagination(data.pagination);
-        // eslint-disable-next-line
-      } catch (err: any) {
-        console.error("Error en fetchClientes:", err);
-        setError(err.message || 'Error desconocido al cargar los clientes.');
-      } finally {
-        setLoading(false);
-      }
+      };
+
+      fetchClientes();
+
+    }, 500); // 500ms de retraso
+  return () => {
+      clearTimeout(timerId);
     };
 
-    fetchClientes();
-  }, [page]);
+  }, [searchTerm, page]);
+
+ const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(e.target.value);
+    setPage(1); // Vuelve a la página 1 cada vez que se inicia una nueva búsqueda
+  };
+
 
   const handleDownloadExcel = async () => {
     setIsDownloading(true);
@@ -261,17 +289,38 @@ export default function ListaClientes() {
               {priceUpdateError && <p className="text-center text-red-600 mt-3 font-medium">{priceUpdateError}</p>}
               {priceUpdateSuccess && <p className="text-center text-green-600 mt-3 font-medium">{priceUpdateSuccess}</p>}
             </div>
-            
-            <div className="mb-4 flex justify-end">
-              <button
-                onClick={handleDownloadExcel}
-                disabled={loading || isDownloading || clientes.length === 0}
-                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-wait"
-              >
-                <FaDownload />
-                {isDownloading ? 'Descargando...' : 'Descargar Clientes'}
-              </button>
+            <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+              {/* Buscador */}
+              <div className="relative">
+                <span className="absolute inset-y-0 left-0 flex items-center pl-3">
+                  <FaSearch className="text-gray-400" />
+                </span>
+                <input
+                  type="text"
+                  placeholder="Buscar por nombre, teléfono, email..."
+                  value={searchTerm}
+                  onChange={handleSearchChange}
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              {/* Botones */}
+              <div className="flex justify-end gap-4">
+                <button
+                  onClick={() => router.push('/admin/carga-masiva')}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                >
+                  <FaUpload /> Carga Masiva
+                </button>
+                <button
+                  onClick={handleDownloadExcel}
+                  disabled={loading || isDownloading || clientes.length === 0}
+                  className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-wait"
+                >
+                  <FaDownload /> Descargar
+                </button>
+              </div>
             </div>
+
 
             {loading && <p className="text-center text-gray-600 py-4">Cargando clientes...</p>}
             {error && <p className="text-center text-red-600 py-4 bg-red-100 rounded border border-red-400">{error}</p>}
@@ -282,6 +331,7 @@ export default function ListaClientes() {
 
             {!loading && !error && clientes.length > 0 && (
               <>
+              
                 <div className="overflow-x-auto">
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-indigo-100">

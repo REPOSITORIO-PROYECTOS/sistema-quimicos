@@ -51,7 +51,6 @@ const initialProductos: ProductoPedido[] = [{ producto: 0, qx: 0, precio: 0, des
 const VENDEDOR_FIJO = "pedidos";
 
 export default function RegistrarPedidoPage() {
-  const { clientes, loading: loadingClientes, error: errorClientes } = useClientesContext();
   const router = useRouter();
   const [formData, setFormData] = useState<IFormData>(initialFormData);
   const [productos, setProductos] = useState<ProductoPedido[]>(initialProductos);
@@ -63,13 +62,15 @@ export default function RegistrarPedidoPage() {
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const productosContext = useProductsContextActivos();
+  const { clientes, loading: loadingClientes, error: errorClientes } = useClientesContext(); 
 
-  const opcionesDeProductoParaSelect = useMemo(() =>
+const opcionesDeProductoParaSelect = useMemo(() =>
     productosContext?.productos.map((prod: ProductoContextType) => ({
       value: prod.id,
       label: prod.nombre,
     })) || [],
   [productosContext?.productos]);
+
 
 const resetearFormulario = useCallback(() => {
     const now = new Date();
@@ -250,15 +251,24 @@ const resetearFormulario = useCallback(() => {
     }
     setFormData(prev => ({ ...prev, [name]: val, ...(name === 'formaPago' && { requiereFactura: val === 'factura' }) }));
   };
-  const handleClienteSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const selectedId = e.target.value;
-    const selectedCliente = clientes.find(c => String(c.id) === selectedId);
+
+
+  const handleClienteSelectChange = (selectedOption: { value: Cliente; label: string } | null) => {
+    const selectedCliente = selectedOption ? selectedOption.value : null;
     setFormData(prev => ({
-      ...prev, clienteId: selectedId || null,
+      ...prev, 
+      clienteId: selectedCliente ? String(selectedCliente.id) : null,
       nombre: selectedCliente?.nombre_razon_social || "",
       direccion: selectedCliente?.direccion || "",
     }));
   };
+  
+  const opcionesDeClienteParaSelect = useMemo(() =>
+    clientes.map((cli: Cliente) => ({
+      value: cli,
+      label: `${cli.nombre_razon_social || `ID: ${cli.id}`}${cli.cuit ? ` (${cli.cuit})` : ''}`
+    })),
+  [clientes]);
   
   const handleSubmit = async (e: React.FormEvent ) => {
     e.preventDefault();
@@ -391,11 +401,20 @@ return (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="clienteId">Cliente*</label>
-                  <select id="clienteId" name="clienteId" value={formData.clienteId || ""} onChange={handleClienteSelectChange} required
-                    className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500" disabled={loadingClientes}>
-                    <option value="">-- Selecciona Cliente --</option>
-                    {clientes.map((cli: Cliente) => <option key={cli.id} value={String(cli.id)}>{cli.nombre_razon_social || `ID: ${cli.id}`}</option>)}
-                  </select>
+                  <Select
+                    id="clienteId"
+                    name="clienteId"
+                    options={opcionesDeClienteParaSelect}
+                    value={opcionesDeClienteParaSelect.find(opt => String(opt.value.id) === formData.clienteId) || null}
+                    onChange={handleClienteSelectChange}
+                    placeholder="Buscar cliente por nombre o CUIT..."
+                    isClearable
+                    isSearchable
+                    isLoading={loadingClientes} // Asegúrate de tener este estado
+                    noOptionsMessage={() => "No se encontraron clientes"}
+                    className="text-sm react-select-container"
+                    classNamePrefix="react-select"
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="direccion">Dirección</label>
