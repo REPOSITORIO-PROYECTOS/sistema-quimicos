@@ -72,8 +72,11 @@ export default function TotalPedidos() {
   const [selectedBoletas, setSelectedBoletas] = useState<Set<number>>(new Set());
   const [isPrinting, setIsPrinting] = useState(false);
   const [printingMessage, setPrintingMessage] = useState<string | null>(null);
+  const [fechaSeleccionada, setFechaSeleccionada] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [boletas, setBoletas] = useState<BoletaParaLista[]>([]);
 
 
+  
   useEffect(() => {
     const fetchBoletasResumen = async () => {
       try {
@@ -89,12 +92,13 @@ export default function TotalPedidos() {
         setBoletasApiOriginales((data.ventas || []) as Partial<BoletaOriginal>[]);
       } 
       // eslint-disable-next-line
-      catch (err: any) {
-        setError(err.message || 'Error desconocido');
-        setBoletasApiOriginales([]);
-      } finally {
-        setLoading(false);
-      }
+    catch (error: unknown) {
+        if (error instanceof Error) {
+            setError(error.message); // O cualquier otro manejo de error
+        } else {
+            setError('Ocurrió un error desconocido.');
+        }
+    }
     };
 
     fetchBoletasResumen();
@@ -203,7 +207,73 @@ export default function TotalPedidos() {
     });
   };
   
-  const isAllOnPageSelected = boletasPaginadas.length > 0 && boletasPaginadas.every(b => selectedBoletas.has(b.venta_id));
+  useEffect(() => {
+    const fetchBoletasPorFecha = async () => {
+      // Si no hay fecha seleccionada, no hacemos nada.
+      if (!fechaSeleccionada) return;
+
+      try {
+        setLoading(true);
+        setError(null);
+        setBoletas([]); // Limpiamos la lista anterior
+        setPagination(null);
+        
+        const token = localStorage.getItem("token");
+
+        // --- CONSTRUIMOS LA URL CON LA FECHA Y LA PAGINACIÓN ---
+        const params = new URLSearchParams();
+        params.append('fecha_desde', fechaSeleccionada);
+        params.append('fecha_hasta', fechaSeleccionada);
+        params.append('page', String(page));
+        
+        // Llamamos al endpoint que trae boletas CON entrega
+        const apiUrl = `https://quimex.sistemataup.online/ventas/con_entrega?${params.toString()}`;
+        
+        const response = await fetch(apiUrl, {headers:{"content-type":"application/json","Authorization":`Bearer ${token}`}});
+        if (!response.ok) {
+          throw new Error(`Error al traer boletas: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        
+        // Procesamos los datos recibidos para la lista
+        const boletasProcesadas = (data.ventas || []).map((item: BoletaOriginal): BoletaParaLista => {
+            const fechaFormateada = item.fecha_pedido
+              ? new Date(item.fecha_pedido).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" })
+              : "N/A";
+            return { 
+              venta_id: item.venta_id,
+              monto_final_con_recargos: item.monto_final_con_recargos,
+              fecha_pedido: item.fecha_pedido,
+              fecha_pedido_formateada: fechaFormateada,
+              cliente_nombre: item.cliente_nombre,
+              direccion_entrega: item.direccion_entrega,
+            };
+        });
+
+        setBoletas(boletasProcesadas);
+        setPagination(data.pagination);
+
+} catch (err: unknown) {
+        let errorMessage = 'Error desconocido al cargar los pedidos.';
+        if (err instanceof Error) {
+          errorMessage = err.message;
+        }
+        setError(errorMessage);
+        setBoletas([]);
+        setPagination(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchBoletasPorFecha();
+  }, [fechaSeleccionada, page]);
+
+  const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFechaSeleccionada(e.target.value);
+    setPage(1); // Muy importante: resetea a la página 1 con cada nueva fecha
+  };
 
   const renderBoletaParaImprimir = (boletaData: BoletaOriginal) => {
     const montoBase = boletaData.monto_total_base || 0;
@@ -591,14 +661,28 @@ export default function TotalPedidos() {
     <>
       {idBoleta === undefined ? (
         <div className="flex flex-col items-center justify-center min-h-screen bg-indigo-900 py-10 px-4">
-          
           <div className="bg-white p-6 md:p-8 rounded-lg shadow-md w-full max-w-6xl">
             <BotonVolver className="ml-0" />
-            <div className="flex flex-col sm:flex-row justify-between items-center mb-6">
-                <h2 className="text-2xl md:text-3xl font-semibold text-indigo-800">
-                Pedidos para Entregar Mañana
+
+            {/* --- SECCIÓN DE CABECERA MODIFICADA --- */}
+            <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
+                <h2 className="text-2xl md:text-3xl font-semibold text-indigo-800 text-center sm:text-left">
+                  Pedidos para Entregar
                 </h2>
-                <div className="flex flex-col sm:flex-row gap-2 mt-4 sm:mt-0">
+
+                {/* --- NUEVO: SELECTOR DE FECHA --- */}
+                <div className="flex items-center gap-2">
+                  <label htmlFor="fecha-entrega" className="font-medium text-gray-700 whitespace-nowrap">Ver fecha:</label>
+                  <input
+                    type="date"
+                    id="fecha-entrega"
+                    value={fechaSeleccionada}
+                    onChange={handleDateChange} // Asegúrate de tener esta función en tu componente
+                    className="border border-gray-300 rounded-md p-2 shadow-sm focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                   <button
                       onClick={handleImprimirSeleccionados}
                       disabled={selectedBoletas.size === 0 || isPrinting}
@@ -628,7 +712,7 @@ export default function TotalPedidos() {
                 </div>
             </div>
 
-            {loading && <p className="text-center text-gray-600 my-4">Cargando lista de pedidos...</p>}
+            {loading && <p className="text-center text-gray-600 my-4">Buscando pedidos para la fecha seleccionada...</p>}
             {error && <pre className="whitespace-pre-wrap text-center text-red-600 my-4 bg-red-100 p-3 rounded-md text-sm">Error: {error}</pre>}
 
 
@@ -642,9 +726,9 @@ export default function TotalPedidos() {
                             type="checkbox"
                             className="form-checkbox h-4 w-4 text-indigo-600 transition duration-150 ease-in-out cursor-pointer"
                             onChange={handleSelectAllOnPage}
-                            checked={isAllOnPageSelected}
-                            disabled={boletasPaginadas.length === 0}
-                            title={isAllOnPageSelected ? "Deseleccionar todos en esta página" : "Seleccionar todos en esta página"}
+                            checked={boletas.length > 0 && boletas.every(b => selectedBoletas.has(b.venta_id))} // Lógica de 'checked' corregida
+                            disabled={boletas.length === 0}
+                            title="Seleccionar/Deseleccionar todos en esta página"
                         />
                       </div>
                       <span className="col-span-3">Nombre / Razón Social</span>
@@ -654,8 +738,8 @@ export default function TotalPedidos() {
                       <span className="col-span-1 text-center">Acción</span>
                     </li>
 
-                    {boletasPaginadas.length > 0 ? (
-                        boletasPaginadas.map((boleta) => (
+                    {boletas.length > 0 ? (
+                        boletas.map((boleta) => (
                             <li key={boleta.venta_id} className="grid grid-cols-12 gap-3 items-center bg-gray-50 hover:bg-gray-100 p-3 rounded-md transition duration-150 ease-in-out">
                             <div className="col-span-1 flex items-center justify-center">
                                 <input 
@@ -683,7 +767,9 @@ export default function TotalPedidos() {
                             </li>
                         ))
                     ) : (
-                        <li className="text-center text-gray-500 py-4 col-span-12">No se encontraron pedidos para entregar mañana.</li>
+                        <li className="text-center text-gray-500 py-8 col-span-12">
+                          No se encontraron pedidos con entrega para la fecha seleccionada.
+                        </li>
                     )}
                   </ul>
                 </div>

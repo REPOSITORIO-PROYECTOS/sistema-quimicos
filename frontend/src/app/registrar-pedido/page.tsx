@@ -147,9 +147,6 @@ const resetearFormulario = useCallback(() => {
         return; 
     }
 
-    // --- INICIO DE LA LÓGICA CORRECTA Y DEFINITIVA ---
-
-    // 1. Agrupar cantidades totales por cada ID de producto.
     const productQuantities = new Map<number, { totalQuantity: number; indices: number[] }>();
     currentProducts.forEach((p, index) => {
         if (p.producto > 0) {
@@ -160,21 +157,19 @@ const resetearFormulario = useCallback(() => {
         }
     });
 
-    // 2. Crear una promesa por cada producto ÚNICO para obtener su precio unitario correcto.
     const pricePromises = Array.from(productQuantities.entries()).map(async ([productoId, { totalQuantity, indices }]) => {
         if (totalQuantity <= 0) {
-            return { precioUnitario: 0, indices };
+            // Devolvemos todos los campos esperados
+            return { precioUnitario: 0, precioTotalCalculado: 0, indices };
         }
         try {
-            // Obtenemos el clienteId del estado del formulario
             const clienteId = formData.clienteId ? parseInt(formData.clienteId) : null;
-
             const precioRes = await fetch(`https://quimex.sistemataup.online/productos/calcular_precio/${productoId}`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
                 body: JSON.stringify({ 
                     producto_id: productoId, 
-                    quantity: totalQuantity, // Se usa la cantidad TOTAL acumulada
+                    quantity: totalQuantity,
                     cliente_id: clienteId      
                 }),
             });
@@ -183,27 +178,37 @@ const resetearFormulario = useCallback(() => {
                 throw new Error(errorData.message);
             }
             const precioData = await precioRes.json();
-            return { precioUnitario: precioData.precio_venta_unitario_ars || 0, indices };
+            // --- CAPTURAMOS AMBOS VALORES DE LA API ---
+            return { 
+                precioUnitario: precioData.precio_venta_unitario_ars || 0, 
+                precioTotalCalculado: precioData.precio_total_calculado_ars || 0,
+                indices 
+            };
         } catch (error) {
             if (error instanceof Error) {
                 setErrorMessage(prev => `${prev}\nError al calcular precio para Prod ID ${productoId}: ${error.message}`);
             }
-            return { precioUnitario: 0, indices };
+            return { precioUnitario: 0, precioTotalCalculado: 0, indices };
         }
     });
 
-    // 3. Esperar todas las respuestas de precios.
     const priceResults = await Promise.all(pricePromises);
-    
-    // 4. Construir el nuevo estado de productos con los precios actualizados.
     const newProducts = [...currentProducts];
 
-    priceResults.forEach(({ precioUnitario, indices }) => {
+    priceResults.forEach(({ precioUnitario, precioTotalCalculado, indices }) => {
+        const totalQuantityForProduct = indices.reduce((sum, index) => sum + (newProducts[index].qx || 0), 0);
+
         indices.forEach(index => {
             const item = newProducts[index];
             if (item) {
                 item.precio = precioUnitario;
-                const totalBruto = precioUnitario * item.qx;
+                
+                // --- CÁLCULO PROPORCIONAL CORRECTO ---
+                // Se calcula el total de la línea como una proporción del total correcto de la API
+                const totalBruto = totalQuantityForProduct > 0 
+                    ? (precioTotalCalculado / totalQuantityForProduct) * item.qx
+                    : 0;
+
                 item.total = totalBruto * (1 - (item.descuento / 100));
             }
         });
