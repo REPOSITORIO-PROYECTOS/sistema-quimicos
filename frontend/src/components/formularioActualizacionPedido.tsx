@@ -185,7 +185,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     } finally {
       setIsLoading(false);
     }
-  }, [recalculatePricesForProducts]);
+  }, []);
 
   useEffect(() => {
     if (id) cargarFormulario(id);
