@@ -76,24 +76,29 @@ export default function RegistrarPedidoPuertaPage() {
                 });
                 if (!precioRes.ok) throw new Error((await precioRes.json()).message || "Error en API de precios.");
                 const precioData = await precioRes.json();
-                return { precioUnitario: precioData.precio_venta_unitario_ars || 0, indices };
+                return { 
+                    precioUnitario: precioData.precio_venta_unitario_ars || 0,
+                    // El total de la API se divide por la cantidad total para obtener el total por línea
+                    precioTotalPorLinea: (precioData.precio_total_calculado_ars || 0) / totalQuantity,
+                    indices 
+                };
           } catch (error) {
               if (error instanceof Error) {
                   setErrorMessage(prev => `${prev}\nError Prod ID ${productoId}: ${error.message}`);
               } else {
                   setErrorMessage(prev => `${prev}\nError Prod ID ${productoId}: Error desconocido.`);
               }
-              return { precioUnitario: 0, indices };
+              return { precioUnitario: 0,  precioTotalPorLinea: 0, indices };
           }
         });
         const priceResults = await Promise.all(pricePromises);
         const updatedProducts = [...currentProducts];
-        priceResults.forEach(({ precioUnitario, indices }) => {
+        priceResults.forEach(({ precioUnitario, precioTotalPorLinea,  indices }) => {
             indices.forEach(index => {
                 const item = updatedProducts[index];
                 item.precio = precioUnitario;
                 // CAMBIO: Se aplica el descuento individual del ítem
-                const totalBruto = precioUnitario * item.qx;
+                const totalBruto = precioTotalPorLinea * item.qx;
                 item.total = totalBruto * (1 - (item.descuento / 100));
             });
         });
