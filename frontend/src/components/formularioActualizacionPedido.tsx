@@ -82,31 +82,29 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     return productos.reduce((sum, item) => sum + (item.total || 0), 0);
   }, [productos]);
 
-  const recalculatePricesForProducts = useCallback(async (currentProducts: ProductoPedido[], clienteId: number | null) => {
+const recalculatePricesForProducts = useCallback(async (currentProducts: ProductoPedido[], clienteId: number | null) => {
     const token = localStorage.getItem("token");
     if (!token) { 
         setErrorMensaje("No autenticado."); 
         return; 
     }
 
-    // --- INICIO DE LA LÓGICA CORRECTA Y DEFINITIVA ---
-
     // 1. Agrupar cantidades totales por cada ID de producto.
     const productQuantities = new Map<number, { totalQuantity: number; indices: number[] }>();
     currentProducts.forEach((p, index) => {
-        // Usamos 'p.producto' y 'p.qx'
+        // --- CORRECCIÓN: Usar los nombres de propiedad correctos del tipo ProductoPedido ---
         if (p.producto > 0) {
             const existing = productQuantities.get(p.producto) || { totalQuantity: 0, indices: [] };
-            existing.totalQuantity += p.qx;
+            existing.totalQuantity += p.qx; // Se usa 'cantidad'
             existing.indices.push(index);
             productQuantities.set(p.producto, existing);
         }
     });
 
-    // 2. Crear una promesa por cada producto ÚNICO para obtener su precio unitario correcto.
+    // 2. Crear una promesa por cada producto ÚNICO para obtener sus precios correctos.
     const pricePromises = Array.from(productQuantities.entries()).map(async ([productoId, { totalQuantity, indices }]) => {
         if (totalQuantity <= 0) {
-            return { precioUnitario: 0, indices };
+            return { precioUnitario: 0, precioTotalCalculado: 0, indices };
         }
         try {
             const precioRes = await fetch(`https://quimex.sistemataup.online/productos/calcular_precio/${productoId}`, {
@@ -114,8 +112,8 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
                 headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
                 body: JSON.stringify({ 
                     producto_id: productoId, 
-                    quantity: totalQuantity, // Se usa la cantidad TOTAL acumulada
-                    cliente_id: clienteId      // Se pasa el ID del cliente
+                    quantity: totalQuantity,
+                    cliente_id: clienteId      
                 }),
             });
             if (!precioRes.ok) {
@@ -123,12 +121,18 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
                 throw new Error(errorData.message);
             }
             const precioData = await precioRes.json();
-            return { precioUnitario: precioData.precio_venta_unitario_ars || 0, indices };
+            
+            // --- CAMBIO CLAVE: Capturamos AMBOS valores de la API ---
+            return { 
+                precioUnitario: precioData.precio_venta_unitario_ars || 0,
+                precioTotalCalculado: precioData.precio_total_calculado_ars || 0,
+                indices 
+            };
         } catch (error) {
             if (error instanceof Error) {
                 setErrorMensaje(prev => `${prev}\nError al calcular precio para Prod ID ${productoId}: ${error.message}`);
             }
-            return { precioUnitario: 0, indices };
+            return { precioUnitario: 0, precioTotalCalculado: 0, indices };
         }
     });
 
@@ -138,21 +142,27 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     // 4. Construir el nuevo estado de productos con los precios actualizados.
     const newProducts = [...currentProducts];
 
-    priceResults.forEach(({ precioUnitario, indices }) => {
+    priceResults.forEach(({ precioUnitario, precioTotalCalculado, indices }) => {
+        const totalQuantityForProduct = indices.reduce((sum, index) => sum + (newProducts[index].qx || 0), 0);
         indices.forEach(index => {
             const item = newProducts[index];
             if (item) {
+                // --- CORRECCIÓN FINAL: Se usan los nombres y la lógica correctos ---
                 item.precio = precioUnitario;
-                const totalBruto = precioUnitario * item.qx;
+                
+                const totalBruto = totalQuantityForProduct > 0 
+                    ? (precioTotalCalculado / totalQuantityForProduct) * item.qx
+                    : 0;
+                
                 item.total = totalBruto * (1 - (item.descuento / 100));
             }
         });
     });
 
-    // 5. Actualizar el estado del componente con los precios correctos.
+    // 5. Actualizar el estado del componente.
     setProductos(newProducts);
 
-  }, [setErrorMensaje, setProductos]); 
+}, [setErrorMensaje]);
 
   const cargarFormulario = useCallback(async (pedidoId: number) => {
     setIsLoading(true);
