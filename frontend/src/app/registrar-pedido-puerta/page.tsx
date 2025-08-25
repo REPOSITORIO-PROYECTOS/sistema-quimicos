@@ -5,9 +5,10 @@ import Select from 'react-select';
 import { useRouter } from 'next/navigation';
 import BotonVolver from "@/components/BotonVolver";
 import Ticket, { VentaData } from '@/components/Ticket';
+import { ProductoVenta } from "@/types/ventas";
+
 
 // --- CAMBIO: Se actualizan los tipos para incluir descuentos ---
-type ProductoPedido = { producto: number; qx: number; precio: number; descuento: number; total: number; observacion?: string; };
 interface IFormData { 
     clienteId: string | null; 
     cuit: string; 
@@ -22,12 +23,12 @@ interface IFormData {
 interface TotalCalculadoAPI { monto_base: number; forma_pago_aplicada: string; requiere_factura_aplicada: boolean; recargos: { transferencia: number; factura_iva: number; }; monto_final_con_recargos: number; }
 
 const initialFormData: IFormData = { clienteId: null, cuit: "", fechaEmision: "", formaPago: "efectivo", montoPagado: 0, descuentoTotal: 0, vuelto: 0, requiereFactura: false, observaciones: "" };
-const initialProductos: ProductoPedido[] = [{ producto: 0, qx: 0, precio: 0, descuento: 0, total: 0, observacion: "" }];
+const initialProductos: ProductoVenta[] = [{ producto: 0, qx: 0, precio: 0, descuento: 0, total: 0, observacion: "" }];
 const VENDEDORES = ["martin", "moises", "sergio", "gabriel", "mauricio", "elias", "ardiles", "redonedo"];
 
 export default function RegistrarPedidoPuertaPage() {
     const [formData, setFormData] = useState<IFormData>(initialFormData);
-    const [productos, setProductos] = useState<ProductoPedido[]>(initialProductos);
+    const [productos, setProductos] = useState<ProductoVenta[]>(initialProductos);
     const [totalCalculadoApi, setTotalCalculadoApi] = useState<TotalCalculadoAPI | null>(null);
     const [isCalculatingTotal, setIsCalculatingTotal] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -55,7 +56,7 @@ export default function RegistrarPedidoPuertaPage() {
 
     const montoBaseProductos = useMemo(() => productos.reduce((sum, item) => sum + (item.total || 0), 0), [productos]);
 
-    const recalculatePricesForProducts = useCallback(async (currentProducts: ProductoPedido[]) => {
+    const recalculatePricesForProducts = useCallback(async (currentProducts: ProductoVenta[]) => {
         const token = localStorage.getItem("token");
         if (!token) { setErrorMessage("No autenticado."); return; }
 

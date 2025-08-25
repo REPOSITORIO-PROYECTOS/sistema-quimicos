@@ -1,0 +1,63 @@
+// Ruta: src/types/ventas.d.ts
+
+/**
+ * Representa una línea de producto dentro de un formulario de venta en el frontend.
+ * Este es el "tipo de trabajo" para los arrays de productos.
+ */
+export type ProductoVenta = {
+  id_detalle?: number;      // El ID del detalle de venta (solo existe al actualizar)
+  producto: number;         // El ID del producto (ej: 10)
+  qx: number;               // La cantidad del producto en la línea (ej: 0.1)
+  precio: number;           // El precio unitario calculado
+  descuento: number;        // El descuento en % para esta línea (ej: 10 para un 10%)
+  total: number;            // El total de la línea (precio * qx - descuento)
+  observacion?: string;     // Observaciones específicas de esta línea
+};
+
+/**
+ * Representa los datos del formulario principal de una venta.
+ */
+export interface FormDataVenta {
+  // --- Datos del Cliente ---
+  clienteId: number | null;
+  nombre: string;
+  cuit: string;
+  direccion: string;
+  
+  // --- Datos del Pedido ---
+  fechaEmision: string;
+  fechaEntrega: string;
+  observaciones?: string;
+
+  // --- Datos de Pago ---
+  formaPago: 'efectivo' | 'transferencia' | 'factura';
+  montoPagado: number;
+  descuentoTotal: number;
+  vuelto: number;
+  requiereFactura: boolean;
+}
+
+/**
+ * Representa el objeto de datos que se usa para generar un Ticket o Comprobante.
+ * Es una versión simplificada de todos los datos de la venta.
+ */
+export interface VentaDataParaTicket {
+  venta_id?: number;
+  fecha_emision: string;
+  cliente: {
+    nombre: string;
+    direccion?: string;
+  };
+  nombre_vendedor: string;
+  items: Array<{
+    producto_id: number;
+    producto_nombre: string;
+    cantidad: number;
+    precio_total_item_ars: number;
+  }>;
+  total_final: number;
+  observaciones?: string;
+  forma_pago?: string;
+  monto_pagado_cliente?: number;
+  vuelto_calculado?: number;
+}

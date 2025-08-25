@@ -4,42 +4,9 @@ import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useProductsContextActivos, Producto as ProductoContextType } from "@/context/ProductsContextActivos";
 import { useRouter } from 'next/navigation';
 import BotonVolver from './BotonVolver';
-import Ticket, { VentaData } from './Ticket';
+import Ticket from './Ticket';
 import Select from 'react-select';
-
-// --- Tipos Estrictos (Sin 'any') ---
-type ProductoPedido = {
-  id_detalle?: number;
-  producto: number;
-  qx: number;
-  precio: number;
-  descuento: number;
-  total: number;
-  observacion?: string;
-};
-type DetalleAPI = {
-  id: number;
-  producto_id: number;
-  cantidad: number;
-  precio_unitario_venta_ars: number;
-  descuento_item_porcentaje: number;
-  precio_total_item_ars: number;
-  observacion_item?: string;
-};
-interface IFormData {
-  nombre: string;
-  cuit: string;
-  direccion: string;
-  fechaEmision: string;
-  fechaEntrega: string;
-  formaPago: string;
-  montoPagado: number;
-  descuentoTotal: number;
-  vuelto: number;
-  cliente_id: number | null;
-  requiereFactura: boolean;
-  observaciones?: string;
-}
+import { ProductoVenta, FormDataVenta, VentaDataParaTicket } from "@/types/ventas";
 interface TotalCalculadoAPI {
   monto_base: number;
   forma_pago_aplicada: string;
@@ -50,17 +17,25 @@ interface TotalCalculadoAPI {
   };
   monto_final_con_recargos: number;
 }
-const initialProductoItem: ProductoPedido = { producto: 0, qx: 0, precio: 0, descuento: 0, total: 0, observacion: "" };
-
-export default function DetalleActualizarPedidoPage({ id }: { id: number | undefined }) {
-  const [formData, setFormData] = useState<IFormData>({
+const initialProductoItem: ProductoVenta = { producto: 0, qx: 0, precio: 0, descuento: 0, total: 0, observacion: "" };
+const initialFormData: FormDataVenta = {
     nombre: "", cuit: "", direccion: "", fechaEmision: "", fechaEntrega: "",
     formaPago: "efectivo", montoPagado: 0, descuentoTotal: 0, vuelto: 0,
-    cliente_id: null, requiereFactura: false, observaciones: "",
-  });
+    clienteId: null, requiereFactura: false, observaciones: "",
+};
+
+
+
+// Clases base para inputs y labels
+const labelBaseClasses = "block text-sm font-medium text-gray-700 mb-1";
+const inputBaseClasses = "w-full bg-white border border-gray-300 rounded px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
+const inputReadOnlyClasses = "w-full bg-gray-100 border border-gray-200 rounded px-3 py-2 text-gray-500 cursor-not-allowed";
+
+export default function DetalleActualizarPedidoPage({ id }: { id: number | undefined }) {
+  const [formData, setFormData] = useState<FormDataVenta>(initialFormData);
   const router = useRouter();
   const irAcciones = () => router.push('/acciones');
-  const [productos, setProductos] = useState<ProductoPedido[]>([initialProductoItem]);
+  const [productos, setProductos] = useState<ProductoVenta[]>([initialProductoItem]);
   const [totalCalculadoApi, setTotalCalculadoApi] = useState<TotalCalculadoAPI | null>(null);
   const [isCalculatingTotal, setIsCalculatingTotal] = useState(false);
   const [errorMensaje, setErrorMensaje] = useState('');
@@ -68,7 +43,6 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const productosContext = useProductsContextActivos();
-  // NUEVO: Estado para controlar qué se imprime
   const [documentosAImprimir, setDocumentosAImprimir] = useState<string[]>([]);
   
   const opcionesDeProductoParaSelect = useMemo(() =>
@@ -82,26 +56,23 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     return productos.reduce((sum, item) => sum + (item.total || 0), 0);
   }, [productos]);
 
-const recalculatePricesForProducts = useCallback(async (currentProducts: ProductoPedido[], clienteId: number | null) => {
+  const recalculatePricesForProducts = useCallback(async (currentProducts: ProductoVenta[], clienteId: number | null) => {
     const token = localStorage.getItem("token");
     if (!token) { 
         setErrorMensaje("No autenticado."); 
         return; 
     }
 
-    // 1. Agrupar cantidades totales por cada ID de producto.
     const productQuantities = new Map<number, { totalQuantity: number; indices: number[] }>();
     currentProducts.forEach((p, index) => {
-        // --- CORRECCIÓN: Usar los nombres de propiedad correctos del tipo ProductoPedido ---
         if (p.producto > 0) {
             const existing = productQuantities.get(p.producto) || { totalQuantity: 0, indices: [] };
-            existing.totalQuantity += p.qx; // Se usa 'cantidad'
+            existing.totalQuantity += p.qx;
             existing.indices.push(index);
             productQuantities.set(p.producto, existing);
         }
     });
 
-    // 2. Crear una promesa por cada producto ÚNICO para obtener sus precios correctos.
     const pricePromises = Array.from(productQuantities.entries()).map(async ([productoId, { totalQuantity, indices }]) => {
         if (totalQuantity <= 0) {
             return { precioUnitario: 0, precioTotalCalculado: 0, indices };
@@ -122,7 +93,6 @@ const recalculatePricesForProducts = useCallback(async (currentProducts: Product
             }
             const precioData = await precioRes.json();
             
-            // --- CAMBIO CLAVE: Capturamos AMBOS valores de la API ---
             return { 
                 precioUnitario: precioData.precio_venta_unitario_ars || 0,
                 precioTotalCalculado: precioData.precio_total_calculado_ars || 0,
@@ -136,33 +106,26 @@ const recalculatePricesForProducts = useCallback(async (currentProducts: Product
         }
     });
 
-    // 3. Esperar todas las respuestas de precios.
     const priceResults = await Promise.all(pricePromises);
-    
-    // 4. Construir el nuevo estado de productos con los precios actualizados.
     const newProducts = [...currentProducts];
 
     priceResults.forEach(({ precioUnitario, precioTotalCalculado, indices }) => {
         const totalQuantityForProduct = indices.reduce((sum, index) => sum + (newProducts[index].qx || 0), 0);
+        
         indices.forEach(index => {
             const item = newProducts[index];
             if (item) {
-                // --- CORRECCIÓN FINAL: Se usan los nombres y la lógica correctos ---
                 item.precio = precioUnitario;
-                
                 const totalBruto = totalQuantityForProduct > 0 
                     ? (precioTotalCalculado / totalQuantityForProduct) * item.qx
                     : 0;
-                
                 item.total = totalBruto * (1 - (item.descuento / 100));
             }
         });
     });
 
-    // 5. Actualizar el estado del componente.
     setProductos(newProducts);
-
-}, [setErrorMensaje]);
+  }, [setErrorMensaje]);
 
   const cargarFormulario = useCallback(async (pedidoId: number) => {
     setIsLoading(true);
@@ -175,27 +138,61 @@ const recalculatePricesForProducts = useCallback(async (currentProducts: Product
       });
       if (!response.ok) throw new Error((await response.json()).message || "No se pudieron cargar los datos.");
       const datosAPI = await response.json();
+      
+      const clienteId = datosAPI.cliente_id || null;
+
       setFormData({
-        nombre: datosAPI.cliente_nombre || "Cliente", cuit: datosAPI.cuit_cliente || "",
-        direccion: datosAPI.direccion_entrega || "", fechaEmision: datosAPI.fecha_registro || "",
-        fechaEntrega: datosAPI.fecha_pedido || "", formaPago: datosAPI.forma_pago || "efectivo",
-        montoPagado: datosAPI.monto_pagado_cliente || 0, descuentoTotal: datosAPI.descuento_total_global_porcentaje || 0,
-        vuelto: datosAPI.vuelto_calculado ?? 0, cliente_id: datosAPI.cliente_id || null,
-        requiereFactura: datosAPI.requiere_factura || false, observaciones: datosAPI.observaciones || "",
+        nombre: datosAPI.cliente_nombre || "Cliente",
+        cuit: datosAPI.cuit_cliente || "",
+        direccion: datosAPI.direccion_entrega || "",
+        fechaEmision: datosAPI.fecha_registro || "",
+        fechaEntrega: datosAPI.fecha_pedido || "",
+        formaPago: datosAPI.forma_pago || "efectivo",
+        montoPagado: datosAPI.monto_pagado_cliente || 0,
+        descuentoTotal: datosAPI.descuento_total_global_porcentaje || 0,
+        vuelto: datosAPI.vuelto_calculado ?? 0,
+        clienteId: clienteId,
+        requiereFactura: datosAPI.requiere_factura || false,
+        observaciones: datosAPI.observaciones || "",
       });
-      const productosCargados: ProductoPedido[] = datosAPI.detalles?.map((detalle: DetalleAPI) => ({
-        id_detalle: detalle.id, producto: detalle.producto_id, qx: detalle.cantidad,
-        precio: detalle.precio_unitario_venta_ars || 0, descuento: detalle.descuento_item_porcentaje || 0,
-        total: detalle.precio_total_item_ars || 0, observacion: detalle.observacion_item || "",
+
+
+      type DetalleFromAPI = {
+      detalle_id?: number;
+      producto_id: number;
+      cantidad: number;
+      precio_unitario_venta_ars: number;
+      descuento_item_porcentaje: number;
+      precio_total_item_ars: number;
+      observacion_item?: string;
+    };
+      // Paso 1: Mapeamos los datos básicos de la API (producto, cantidad, descuento).
+      const productosParaRecalcular: ProductoVenta[] = datosAPI.detalles?.map((detalle: DetalleFromAPI) => ({
+        id_detalle: detalle.detalle_id,
+        producto: detalle.producto_id,
+        qx: detalle.cantidad,
+        descuento: detalle.descuento_item_porcentaje || 0,
+        observacion: detalle.observacion_item || "",
+        // Precios y totales se inicializan en 0, serán calculados ahora.
+        precio: 0,
+        total: 0,
       })) || [];
-      setProductos(productosCargados.length > 0 ? productosCargados : [initialProductoItem]);
+      
+      // Paso 2: Forzamos el recálculo de precios inmediatamente con los productos cargados.
+      // Esto asegura que los precios se actualicen al abrir el formulario.
+      if (productosParaRecalcular.length > 0) {
+        await recalculatePricesForProducts(productosParaRecalcular, clienteId);
+      } else {
+        setProductos([initialProductoItem]);
+      }
+
     } catch (error) {
       if (error instanceof Error) setErrorMensaje(error.message);
       else setErrorMensaje("Error desconocido al cargar el pedido.");
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [recalculatePricesForProducts]); 
 
   useEffect(() => {
     if (id) cargarFormulario(id);
@@ -264,22 +261,21 @@ const recalculatePricesForProducts = useCallback(async (currentProducts: Product
         }
         return { ...item, [name]: newValue };
     });
-    recalculatePricesForProducts(nuevosProductos, formData.cliente_id);
+    recalculatePricesForProducts(nuevosProductos, formData.clienteId);
   };
   
   const handleProductSelectChange = (index: number, selectedOption: { value: number; label: string } | null) => {
     const nuevosProductos = [...productos];
     nuevosProductos[index].producto = selectedOption?.value || 0;
-    recalculatePricesForProducts(nuevosProductos, formData.cliente_id);
+    recalculatePricesForProducts(nuevosProductos, formData.clienteId);
   };
 
   const agregarProducto = () => setProductos([...productos, { ...initialProductoItem }]);
   const eliminarProducto = (index: number) => {
     const nuevosProductos = productos.filter((_, i) => i !== index);
-    recalculatePricesForProducts(nuevosProductos.length > 0 ? nuevosProductos : [{ ...initialProductoItem }], formData.cliente_id);
+    recalculatePricesForProducts(nuevosProductos.length > 0 ? nuevosProductos : [{ ...initialProductoItem }], formData.clienteId);
   };
 
-  // --- NUEVA LÓGICA DE IMPRESIÓN MODULAR ---
   const handleImprimir = useCallback((documentos: string[]) => {
     setDocumentosAImprimir(documentos);
   }, []);
@@ -288,10 +284,9 @@ const recalculatePricesForProducts = useCallback(async (currentProducts: Product
     if (documentosAImprimir.length > 0) {
       document.title = `Pedido ${id} - ${formData.nombre}`;
       window.print();
-      setDocumentosAImprimir([]); // Limpia para la próxima impresión
+      setDocumentosAImprimir([]);
     }
   }, [documentosAImprimir, id, formData.nombre]);
-  // --- FIN DE LA LÓGICA DE IMPRESIÓN ---
 
   const handleSubmit = async (e: React.FormEvent ) => {
     e.preventDefault();
@@ -302,15 +297,24 @@ const recalculatePricesForProducts = useCallback(async (currentProducts: Product
     const usuarioId = localStorage.getItem("usuario_id");
     if (!token || !usuarioId) { setErrorMensaje("No autenticado."); setIsSubmitting(false); return; }
     const dataToUpdate = {
-      cliente_id: formData.cliente_id, fecha_pedido: formData.fechaEntrega || formData.fechaEmision,
-      direccion_entrega: formData.direccion, monto_pagado_cliente: formData.montoPagado,
-      forma_pago: formData.formaPago, vuelto: formData.vuelto, observaciones: formData.observaciones || "",
-      requiere_factura: formData.requiereFactura, usuario_interno_id: parseInt(usuarioId),
+      cliente_id: formData.clienteId,
+      fecha_pedido: formData.fechaEntrega || formData.fechaEmision,
+      direccion_entrega: formData.direccion,
+      monto_pagado_cliente: formData.montoPagado,
+      forma_pago: formData.formaPago,
+      vuelto: formData.vuelto,
+      observaciones: formData.observaciones || "",
+      requiere_factura: formData.requiereFactura,
+      usuario_interno_id: parseInt(usuarioId),
       items: productos.filter(item => item.producto > 0 && item.qx > 0).map(item => ({
-          id_detalle: item.id_detalle, producto_id: item.producto, cantidad: item.qx,
-          descuento_item_porcentaje: item.descuento, observacion_item: item.observacion || "",
+          id_detalle: item.id_detalle,
+          producto_id: item.producto,
+          cantidad: item.qx,
+          descuento_item_porcentaje: item.descuento,
+          observacion_item: item.observacion || "",
         })),
-      monto_total_base: montoBaseProductos, descuento_total_global_porcentaje: formData.descuentoTotal,
+      monto_total_base: montoBaseProductos,
+      descuento_total_global_porcentaje: formData.descuentoTotal,
       monto_final_con_recargos: parseFloat(displayTotalToShow.toFixed(2)),
     };
     try {
@@ -321,7 +325,6 @@ const recalculatePricesForProducts = useCallback(async (currentProducts: Product
       const result = await response.json();
       if(!response.ok) throw new Error(result?.message || 'Error al actualizar.');
       setSuccessMensaje("¡Pedido actualizado con éxito!");
-      // Al actualizar, se imprime el set completo
       handleImprimir(['comprobante', 'comprobante', 'orden_de_trabajo']);
       setTimeout(irAcciones, 2000);
     } catch (err) {
@@ -334,7 +337,7 @@ const recalculatePricesForProducts = useCallback(async (currentProducts: Product
   
   const getNumericInputValue = (value: number) => value === 0 ? '' : String(value);
 
-  const ventaDataParaTicket: VentaData = {
+  const ventaDataParaTicket: VentaDataParaTicket = {
       venta_id: id,
       fecha_emision: formData.fechaEmision,
       cliente: { nombre: formData.nombre, direccion: formData.direccion },
@@ -343,8 +346,10 @@ const recalculatePricesForProducts = useCallback(async (currentProducts: Product
               const pInfo = productosContext?.productos.find(p => p.id === item.producto);
               const totalConRecargosItem = (item.total || 0) * (totalCalculadoApi && montoBaseProductos > 0 ? totalCalculadoApi.monto_final_con_recargos / montoBaseProductos : 1);
               return {
-                  producto_id: item.producto, producto_nombre: pInfo?.nombre || `ID: ${item.producto}`,
-                  cantidad: item.qx, precio_total_item_ars: totalConRecargosItem,
+                  producto_id: item.producto,
+                  producto_nombre: pInfo?.nombre || `ID: ${item.producto}`,
+                  cantidad: item.qx,
+                  precio_total_item_ars: totalConRecargosItem,
               };
           }),
       total_final: displayTotalToShow,
@@ -354,10 +359,6 @@ const recalculatePricesForProducts = useCallback(async (currentProducts: Product
       vuelto_calculado: formData.vuelto,
   };
 
-  const inputBaseClasses = "shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500";
-  const inputReadOnlyClasses = `${inputBaseClasses} bg-gray-100 cursor-not-allowed`;
-  const labelBaseClasses = "block text-sm font-medium text-gray-700 mb-1";
-  
   return (
     <>
       <div className="flex items-center justify-center min-h-screen bg-indigo-900 py-10 px-4 print:hidden">

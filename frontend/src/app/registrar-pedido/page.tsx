@@ -7,30 +7,8 @@ import Select from 'react-select';
 import { useRouter } from 'next/navigation';
 import BotonVolver from "@/components/BotonVolver";
 import Ticket, { VentaData } from '@/components/Ticket';
+import { ProductoVenta, FormDataVenta } from '@/types/ventas';
 
-// --- Tipos y Constantes ---
-type ProductoPedido = {
-  producto: number;
-  qx: number;
-  precio: number;
-  descuento: number;
-  total: number;
-  observacion?: string;
-};
-interface IFormData {
-  clienteId: string | null;
-  cuit: string;
-  nombre: string;
-  direccion: string;
-  fechaEmision: string;
-  fechaEntrega: string;
-  formaPago: string;
-  montoPagado: number;
-  descuentoTotal: number;
-  vuelto: number;
-  requiereFactura: boolean;
-  observaciones?: string;
-}
 interface TotalCalculadoAPI {
   monto_base: number;
   forma_pago_aplicada: string;
@@ -41,19 +19,19 @@ interface TotalCalculadoAPI {
   };
   monto_final_con_recargos: number;
 }
-const initialFormData: IFormData = {
+const initialFormData: FormDataVenta = {
   clienteId: null, cuit: "", nombre: "", direccion: "",
   fechaEmision: "", fechaEntrega: "", formaPago: "efectivo",
   montoPagado: 0, descuentoTotal: 0, vuelto: 0,
   requiereFactura: false, observaciones: "",
 };
-const initialProductos: ProductoPedido[] = [{ producto: 0, qx: 0, precio: 0, descuento: 0, total: 0, observacion: "" }];
+const initialProductos: ProductoVenta[] = [{ producto: 0, qx: 0, precio: 0, descuento: 0, total: 0, observacion: "" }];
 const VENDEDOR_FIJO = "pedidos";
 
 export default function RegistrarPedidoPage() {
   const router = useRouter();
-  const [formData, setFormData] = useState<IFormData>(initialFormData);
-  const [productos, setProductos] = useState<ProductoPedido[]>(initialProductos);
+  const [formData, setFormData] = useState<FormDataVenta>(initialFormData);
+  const [productos, setProductos] = useState<ProductoVenta[]>(initialProductos);
   const [lastVentaId, setLastVentaId] = useState<number | undefined>();
   const irAccionesPedidos = () => router.push('/acciones');
   const [totalCalculadoApi, setTotalCalculadoApi] = useState<TotalCalculadoAPI | null>(null);
@@ -139,8 +117,8 @@ const resetearFormulario = useCallback(() => {
           }
       }
   }, [formData.montoPagado, displayTotal, formData.formaPago]);
-  
-  const recalculatePricesForProducts = useCallback(async (currentProducts: ProductoPedido[]) => {
+
+  const recalculatePricesForProducts = useCallback(async (currentProducts: ProductoVenta[]) => {
     const token = localStorage.getItem("token");
     if (!token) { 
         setErrorMessage("No autenticado."); 
@@ -163,7 +141,7 @@ const resetearFormulario = useCallback(() => {
             return { precioUnitario: 0, precioTotalCalculado: 0, indices };
         }
         try {
-            const clienteId = formData.clienteId ? parseInt(formData.clienteId) : null;
+            const clienteId = formData.clienteId ? parseInt(String(formData.clienteId)) : null;
             const precioRes = await fetch(`https://quimex.sistemataup.online/productos/calcular_precio/${productoId}`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
@@ -262,7 +240,7 @@ const resetearFormulario = useCallback(() => {
     const selectedCliente = selectedOption ? selectedOption.value : null;
     setFormData(prev => ({
       ...prev, 
-      clienteId: selectedCliente ? String(selectedCliente.id) : null,
+      clienteId: selectedCliente ? selectedCliente.id : null,
       nombre: selectedCliente?.nombre_razon_social || "",
       direccion: selectedCliente?.direccion || "",
     }));
@@ -296,7 +274,7 @@ const resetearFormulario = useCallback(() => {
         producto_id: item.producto, cantidad: item.qx,
         observacion_item: item.observacion || "", descuento_item_porcentaje: item.descuento,
       })),
-      cliente_id: formData.clienteId ? parseInt(formData.clienteId) : null, 
+      cliente_id: formData.clienteId ? parseInt(String(formData.clienteId)) : null, 
       fecha_pedido: formData.fechaEmision, 
       direccion_entrega: formData.direccion,
       nombre_vendedor: VENDEDOR_FIJO,
@@ -410,7 +388,7 @@ return (
                     id="clienteId"
                     name="clienteId"
                     options={opcionesDeClienteParaSelect}
-                    value={opcionesDeClienteParaSelect.find(opt => String(opt.value.id) === formData.clienteId) || null}
+                    value={opcionesDeClienteParaSelect.find(opt => String(opt.value.id) === (formData.clienteId !== null ? String(formData.clienteId) : "")) || null}
                     onChange={handleClienteSelectChange}
                     placeholder="Buscar cliente por nombre o CUIT..."
                     isClearable
