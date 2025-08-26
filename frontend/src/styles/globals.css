@@ -41,19 +41,18 @@
   --color-card: var(--card);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
+  --radius-lg: 10px;
   --radius-xl: calc(var(--radius) + 4px);
-}
 
 /* TEMA CLARO (LIGHT MODE) */
 :root {
-  --radius: 0.625rem;
+  --radius: 10px;
   --background: #FFFFFF;
   --foreground: #252525;
   --card: #FFFFFF;
   --card-foreground: #252525;
-  --popover: #FFFFFF;
-  --popover-foreground: #252525;
+  --popover: var(--card); 
+  --popover-foreground: var(--card-foreground);
   --primary: #333333;
   --primary-foreground: #FAFAFA;
   --secondary: #F7F7F7;
@@ -79,7 +78,6 @@
   --sidebar-accent-foreground: #333333;
   --sidebar-border: #EBEBEB;
   --sidebar-ring: #B3B3B3;
-}
 
 /* TEMA OSCURO (DARK MODE) */
 .dark {
@@ -87,8 +85,8 @@
   --foreground: #FAFAFA;
   --card: #333333;
   --card-foreground: #FAFAFA;
-  --popover: #333333;
-  --popover-foreground: #FAFAFA;
+  --popover: var(--card); 
+  --popover-foreground: var(--card-foreground);
   --primary: #EBEBEB;
   --primary-foreground: #333333;
   --secondary: #444444;
@@ -112,15 +110,16 @@
   --sidebar-primary-foreground: #FAFAFA;
   --sidebar-accent: #444444;
   --sidebar-accent-foreground: #FAFAFA;
-  --sidebar-border: rgba(255, 255, 255, 0.1);
+    --sidebar-ring: #8E8E8E;
+  }
   --sidebar-ring: #8E8E8E;
 }
-
 /* --- ESTILOS BASE DE LA APLICACIÓN --- */
 @layer base {
   *, ::before, ::after {
     border-color: var(--color-border);
     outline-color: color-mix(in srgb, var(--color-ring) 50%, transparent);
+    box-sizing: border-box;
   }
   html {
     scroll-behavior: smooth;
@@ -133,6 +132,33 @@
     font-feature-settings: "liga" on, "kern" on;
     font-family: var(--font-sans, system-ui);
   }
+select {
+    background-color: #FFFFFF !important;
+    color: #252525 !important;
+    border-radius: 10px !important; /* ¡AQUÍ AÑADIMOS EL REDONDEO! */
+}
+.dark select {
+    background-color: #333333 !important;
+    color: #FAFAFA !important;
+    border-radius: 10px !important; /* ¡AQUÍ AÑADIMOS EL REDONDEO! */
+}
+
+/* --- Menús Desplegables del Navbar (ej. "Ventas") --- */
+[data-radix-popper-content-wrapper] div[role="menu"] {
+    background-color: #FFFFFF !important;
+    border-radius: 10px !important; /* ¡AQUÍ AÑADIMOS EL REDONDEO! */
+}
+.dark [data-radix-popper-content-wrapper] div[role="menu"] {
+    background-color: #333333 !important;
+    border-radius: 10px !important; /* ¡AQUÍ AÑADIMOS EL REDONDEO! */
+}
+
+select:focus {
+    /* El :focus solo se encarga de cambiar el borde y el shadow */
+    outline: none;
+    border-color: var(--color-ring);
+    box-shadow: 0 0 0 2px var(--color-ring);
+};
 }
 
 /* --- CLASES DE UTILIDAD PERSONALIZADAS --- */
@@ -290,4 +316,5 @@
     padding-top: 5px !important;
     font-size: 0.9em !important;
   }
+}
 }
