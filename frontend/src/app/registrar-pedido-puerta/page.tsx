@@ -234,33 +234,46 @@ export default function RegistrarPedidoPuertaPage() {
         window.print();
         setTimeout(() => { resetearFormulario(); irAccionesPuerta(); }, 1500);
     };
-
-    const baseTotalConRecargos = totalCalculadoApi ? totalCalculadoApi.monto_final_con_recargos : montoBaseProductos;
-    const displayTotal = Math.max(0, baseTotalConRecargos * (1 - (formData.descuentoTotal / 100)));
+    const displayTotal = useMemo(() => {
+        const montoConRecargos = totalCalculadoApi ? totalCalculadoApi.monto_final_con_recargos : montoBaseProductos;
+        const montoBrutoFinal = Math.max(0, montoConRecargos * (1 - (formData.descuentoTotal || 0) / 100));
+        if (montoBrutoFinal > 0) {
+            // Redondear siempre hacia arriba a la centena más cercana
+            return Math.ceil(montoBrutoFinal / 100) * 100;
+        }
+        return 0;
+    }, [totalCalculadoApi, montoBaseProductos, formData.descuentoTotal]);
 
     const ventaDataParaTicket: VentaData = {
-        venta_id: lastVentaId,
-        fecha_emision: formData.fechaEmision,
-        cliente: { nombre: "CONSUMIDOR FINAL" },
-        nombre_vendedor: nombreVendedor.trim(),
-         items: productos.filter(p => p.producto && p.qx > 0).map(item => {
+    venta_id: lastVentaId,
+    fecha_emision: formData.fechaEmision,
+    cliente: { nombre: "CONSUMIDOR FINAL" },
+    nombre_vendedor: nombreVendedor.trim(),
+    items: productos
+        .filter(p => p.producto && p.qx > 0)
+        .map(item => {
             const pInfo = productosContext?.productos.find(p => p.id === item.producto);
-            // El total del item ya tiene el descuento individual aplicado, solo falta el recargo
-            const totalItemConRecargo = item.total * (totalCalculadoApi && montoBaseProductos > 0 ? totalCalculadoApi.monto_final_con_recargos / montoBaseProductos : 1);
+            const subtotalRedondeadoBase = item.total || 0;
+            let subtotalFinalParaTicket = subtotalRedondeadoBase;
+            if (totalCalculadoApi && montoBaseProductos > 0) {
+                const factorRecargo = totalCalculadoApi.monto_final_con_recargos / montoBaseProductos;
+                const subtotalConRecargo = subtotalRedondeadoBase * factorRecargo;
+                subtotalFinalParaTicket = Math.ceil(subtotalConRecargo / 100) * 100;
+            }
             return {
                 producto_id: item.producto,
                 producto_nombre: pInfo?.nombre || `ID: ${item.producto}`,
                 cantidad: item.qx,
-                precio_total_item_ars: totalItemConRecargo,
+                // 5. Usamos el valor final calculado
+                precio_total_item_ars: subtotalFinalParaTicket,
             };
         }),
-        total_final: displayTotal,
-        observaciones: formData.observaciones,
-        forma_pago: formData.formaPago,
-        monto_pagado_cliente: formData.montoPagado,
-        vuelto_calculado: formData.vuelto,
-    };
-
+    total_final: displayTotal, // Esto ya es correcto (es el total final redondeado)
+    observaciones: formData.observaciones,
+    forma_pago: formData.formaPago,
+    monto_pagado_cliente: formData.montoPagado,
+    vuelto_calculado: formData.vuelto,
+};
 
 return (
   <>
