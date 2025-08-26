@@ -47,6 +47,7 @@ export interface VentaDataParaTicket {
   cliente: {
     nombre: string;
     direccion?: string;
+    localidad?: string; // <-- CAMPO AÑADIDO
   };
   nombre_vendedor: string;
   items: Array<{
