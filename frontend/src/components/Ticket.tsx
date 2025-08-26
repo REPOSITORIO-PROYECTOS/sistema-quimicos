@@ -7,6 +7,7 @@ import Image from 'next/image';
 // --- Definiciones de Tipos de Datos ---
 type ProductoVenta = {
   producto_id: number;
+  observacion_item: string;
   producto_nombre: string;
   cantidad: number;
   precio_total_item_ars: number;
@@ -98,17 +99,27 @@ const Ticket: React.FC<TicketProps> = ({ tipo, ventaData }) => {
                     </thead>
                     <tbody>
                         {ventaData.items.map((item, index) => (
-                            <tr key={`item-${item.producto_id}-${index}`}>
-                                <td className="col-cantidad">{item.cantidad}</td>
-                                <td className="col-producto">{item.producto_nombre}</td>
-                                {isFinancial ? (
-                                    <td className="col-subtotal">$ {formatPrice(item.precio_total_item_ars)}</td>
-                                ) : null}
-                            </tr>
+                            <React.Fragment key={`item-fragment-${item.producto_id}-${index}`}>
+                                {/* Fila principal del producto (sin cambios) */}
+                                <tr className="product-row">
+                                    <td className="col-cantidad">{item.cantidad}</td>
+                                    <td className="col-producto">{item.producto_nombre}</td>
+                                    {isFinancial && (
+                                        <td className="col-subtotal">$ {formatPrice(item.precio_total_item_ars)}</td>
+                                    )}
+                                </tr>
+
+                                {/* --- INICIO DE LA NUEVA LÓGICA --- */}
+                                {item.observacion_item && (
+                                    <tr className="observation-row">
+                                        <td></td> 
+                                        <td colSpan={isFinancial ? 2 : 1} className="col-observacion">
+                                            ↳ {item.observacion_item}
+                                        </td>
+                                    </tr>
+                                )}
+                            </React.Fragment>
                         ))}
-                        
-                        {/* ELIMINADO: La lógica de relleno de filas ha sido removida. */}
-                        
                     </tbody>
                 </table>
             </section>

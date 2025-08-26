@@ -280,7 +280,8 @@ const handleSubmit = async (e: React.FormEvent ) => {
       usuario_interno_id: parseInt(usuarioId),
       items: productos.filter(item => item.producto > 0 && item.qx > 0).map(item => ({
         producto_id: item.producto, cantidad: item.qx,
-        observacion_item: item.observacion || "", descuento_item_porcentaje: item.descuento,
+        observacion_item: item.observacion || "", 
+        descuento_item_porcentaje: item.descuento,
       })),
       cliente_id: formData.clienteId ? parseInt(String(formData.clienteId)) : null, 
       fecha_pedido: formData.fechaEntrega ? new Date(formData.fechaEntrega).toISOString() : formData.fechaEmision,
@@ -388,6 +389,7 @@ const handleSubmit = async (e: React.FormEvent ) => {
                 producto_nombre: pInfo?.nombre || `ID: ${item.producto}`,
                 cantidad: item.qx,
                 precio_total_item_ars: subtotalFinalParaTicket,
+                observacion_item: item.observacion || "", 
             };
         }),
       total_final: displayTotal,
