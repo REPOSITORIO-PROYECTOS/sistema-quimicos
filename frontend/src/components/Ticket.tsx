@@ -122,6 +122,12 @@ const Ticket: React.FC<TicketProps> = ({ tipo, ventaData }) => {
                                 <td>TOTAL:</td>
                                 <td>$ {formatPrice(ventaData.total_final)}</td>
                             </tr>
+                            {ventaData.forma_pago && (
+                            <tr>
+                                <td>FORMA PAGO:</td>
+                                <td>{ventaData.forma_pago.charAt(0).toUpperCase() + ventaData.forma_pago.slice(1)}</td>
+                            </tr>
+                            )}
                             {(ventaData.monto_pagado_cliente ?? 0) > 0 && (
                                 <tr>
                                     <td>PAGÓ CON:</td>

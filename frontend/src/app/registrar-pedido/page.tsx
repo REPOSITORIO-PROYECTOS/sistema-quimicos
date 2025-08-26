@@ -253,7 +253,7 @@ const resetearFormulario = useCallback(() => {
     })),
   [clientes]);
   
-  const handleSubmit = async (e: React.FormEvent ) => {
+const handleSubmit = async (e: React.FormEvent ) => {
     e.preventDefault();
     setSuccessMessage('');
     setErrorMessage('');
@@ -261,12 +261,14 @@ const resetearFormulario = useCallback(() => {
     if (!formData.clienteId) { setErrorMessage("Seleccione un cliente."); return; }
     if (productos.every(p => p.producto === 0 || p.qx === 0)) { setErrorMessage("Añada al menos un producto."); return; }
     
- 
-
     setIsSubmitting(true);
     const token = localStorage.getItem("token");
     const usuarioId = localStorage.getItem("usuario_id");
     if (!token || !usuarioId) { setErrorMessage("Sesión inválida."); setIsSubmitting(false); return; }
+    const montoFinalBruto = displayTotal;
+    const montoFinalRedondeado = Math.ceil(montoFinalBruto / 100) * 100;
+
+    // --- FIN DE LA CORRECCIÓN ---
 
     const dataPayload = {
       usuario_interno_id: parseInt(usuarioId),
@@ -275,7 +277,7 @@ const resetearFormulario = useCallback(() => {
         observacion_item: item.observacion || "", descuento_item_porcentaje: item.descuento,
       })),
       cliente_id: formData.clienteId ? parseInt(String(formData.clienteId)) : null, 
-      fecha_pedido: formData.fechaEmision, 
+      fecha_pedido: formData.fechaEntrega ? new Date(formData.fechaEntrega).toISOString() : formData.fechaEmision,
       direccion_entrega: formData.direccion,
       nombre_vendedor: VENDEDOR_FIJO,
       monto_pagado_cliente: formData.montoPagado, 
@@ -284,7 +286,9 @@ const resetearFormulario = useCallback(() => {
       requiere_factura: formData.requiereFactura, 
       monto_total_base: montoBaseProductos, 
       descuento_total_global_porcentaje: formData.descuentoTotal,
-      monto_final_con_recargos: parseFloat(displayTotal.toFixed(2)), 
+      
+      monto_final_con_recargos: montoFinalRedondeado, 
+      
       observaciones: formData.observaciones || "",
     };
 
