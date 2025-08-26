@@ -264,7 +264,7 @@ export default function RegistrarPedidoPuertaPage() {
                 producto_id: item.producto,
                 producto_nombre: pInfo?.nombre || `ID: ${item.producto}`,
                 cantidad: item.qx,
-                // 5. Usamos el valor final calculado
+                observacion_item: item.observacion || "",
                 precio_total_item_ars: subtotalFinalParaTicket,
             };
         }),

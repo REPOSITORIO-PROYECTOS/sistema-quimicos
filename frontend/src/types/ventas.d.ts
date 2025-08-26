@@ -11,7 +11,9 @@ export type ProductoVenta = {
   precio: number;           // El precio unitario calculado
   descuento: number;        // El descuento en % para esta línea (ej: 10 para un 10%)
   total: number;            // El total de la línea (precio * qx - descuento)
-  observacion?: string;     // Observaciones específicas de esta línea
+  observacion?: string;    
+  observacion_item?: string; // <-- AÑADIR SIGNO DE INTERROGACIÓN
+ // Observaciones específicas de esta línea
 };
 
 /**

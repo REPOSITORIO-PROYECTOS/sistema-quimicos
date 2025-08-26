@@ -119,7 +119,8 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
                 const totalBruto = totalQuantityForProduct > 0 
                     ? (precioTotalCalculado / totalQuantityForProduct) * item.qx
                     : 0;
-                item.total = totalBruto * (1 - (item.descuento / 100));
+                    const subtotalBrutoConDescuento = totalBruto * (1 - (item.descuento / 100));
+                    item.total = Math.ceil(subtotalBrutoConDescuento / 100) * 100;
             }
         });
     });
@@ -173,7 +174,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         producto: detalle.producto_id,
         qx: detalle.cantidad,
         descuento: detalle.descuento_item_porcentaje || 0,
-        observacion: detalle.observacion_item || "",
+        observacion_item: detalle.observacion_item || "",
         // Precios y totales se inicializan en 0, serán calculados ahora.
         precio: 0,
         total: 0,
@@ -200,10 +201,16 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     else { setIsLoading(false); setErrorMensaje("ID de pedido no proporcionado."); }
   }, [id, cargarFormulario]);
 
-  const displayTotalToShow = useMemo(() => {
+const displayTotalToShow = useMemo(() => {
     const montoConRecargosBruto = totalCalculadoApi ? totalCalculadoApi.monto_final_con_recargos : montoBaseProductos;
-    return Math.max(0, montoConRecargosBruto * (1 - (formData.descuentoTotal / 100)));
-  }, [totalCalculadoApi, montoBaseProductos, formData.descuentoTotal]);
+    const montoBrutoFinal = Math.max(0, montoConRecargosBruto * (1 - (formData.descuentoTotal / 100)));
+
+    if (montoBrutoFinal > 0) {
+        return Math.ceil(montoBrutoFinal / 100) * 100;
+    }
+    return 0;
+
+}, [totalCalculadoApi, montoBaseProductos, formData.descuentoTotal]);
 
   useEffect(() => {
     const recalcularTodo = async () => {
@@ -344,15 +351,23 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
       cliente: { nombre: formData.nombre, direccion: formData.direccion },
       nombre_vendedor: "pedidos",
       items: productos.filter(p => p.producto && p.qx > 0).map(item => {
-              const pInfo = productosContext?.productos.find(p => p.id === item.producto);
-              const totalConRecargosItem = (item.total || 0) * (totalCalculadoApi && montoBaseProductos > 0 ? totalCalculadoApi.monto_final_con_recargos / montoBaseProductos : 1);
-              return {
-                  producto_id: item.producto,
-                  producto_nombre: pInfo?.nombre || `ID: ${item.producto}`,
-                  cantidad: item.qx,
-                  precio_total_item_ars: totalConRecargosItem,
-              };
-          }),
+          const pInfo = productosContext?.productos.find(p => p.id === item.producto);
+          const subtotalRedondeadoBase = item.total || 0;
+          let subtotalFinalParaTicket = subtotalRedondeadoBase;
+
+          if (totalCalculadoApi && montoBaseProductos > 0) {
+              const factorRecargo = totalCalculadoApi.monto_final_con_recargos / montoBaseProductos;
+              const subtotalConRecargo = subtotalRedondeadoBase * factorRecargo;
+              subtotalFinalParaTicket = Math.ceil(subtotalConRecargo / 100) * 100;
+          }
+          return {
+              producto_id: item.producto,
+              producto_nombre: pInfo?.nombre || `ID: ${item.producto}`,
+              cantidad: item.qx,
+              precio_total_item_ars: subtotalFinalParaTicket,
+              observacion_item: item.observacion || item.observacion_item || ""
+          };
+      }),
       total_final: displayTotalToShow,
       observaciones: formData.observaciones,
       forma_pago: formData.formaPago, 

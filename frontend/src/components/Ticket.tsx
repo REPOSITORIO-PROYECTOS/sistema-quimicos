@@ -7,7 +7,7 @@ import Image from 'next/image';
 // --- Definiciones de Tipos de Datos ---
 type ProductoVenta = {
   producto_id: number;
-  observacion_item: string;
+  observacion_item?: string;
   producto_nombre: string;
   cantidad: number;
   precio_total_item_ars: number;
