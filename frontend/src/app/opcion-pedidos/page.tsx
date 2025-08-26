@@ -78,7 +78,15 @@ export default function TotalPedidos() {
   const [estadoSeleccionado, setEstadoSeleccionado] = useState('Listo para Entregar');
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   
-  const [fechaSeleccionada, setFechaSeleccionada] = useState<string>(() => {
+const [fechaSeleccionada, setFechaSeleccionada] = useState<string>(() => {
+    // 1. Intentamos leer la fecha guardada desde el localStorage
+    if (typeof window !== 'undefined') {
+      const fechaGuardada = localStorage.getItem('ultimaFechaPedidos');
+      if (fechaGuardada) {
+        return fechaGuardada;
+      }
+    }
+    // 2. Si no hay nada guardado, usamos la fecha de hoy como valor por defecto
     const hoy = new Date();
     return hoy.toISOString().split('T')[0];
   });
@@ -122,8 +130,13 @@ export default function TotalPedidos() {
   }, [fetchBoletasPorFecha]);
 
   const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFechaSeleccionada(e.target.value);
-    setPage(1);
+    const nuevaFecha = e.target.value;
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('ultimaFechaPedidos', nuevaFecha);
+    }
+    
+    setFechaSeleccionada(nuevaFecha);
+    setPage(1); // Reseteamos la paginación a la primera página
   };
 
   const handleCheckboxChange = (ventaId: number) => {
