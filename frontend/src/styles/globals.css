@@ -43,7 +43,7 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: 10px;
   --radius-xl: calc(var(--radius) + 4px);
-
+}
 /* TEMA CLARO (LIGHT MODE) */
 :root {
   --radius: 10px;
@@ -78,7 +78,7 @@
   --sidebar-accent-foreground: #333333;
   --sidebar-border: #EBEBEB;
   --sidebar-ring: #B3B3B3;
-
+}
 /* TEMA OSCURO (DARK MODE) */
 .dark {
   --background: #252525;
@@ -111,7 +111,6 @@
   --sidebar-accent: #444444;
   --sidebar-accent-foreground: #FAFAFA;
     --sidebar-ring: #8E8E8E;
-  }
   --sidebar-ring: #8E8E8E;
 }
 /* --- ESTILOS BASE DE LA APLICACIÓN --- */
@@ -174,7 +173,7 @@ select:focus {
 }
 
 /* --- ========================================================== --- */
-/* --- ESTILOS OPTIMIZADOS PARA IMPRESIÓN EN TICKET TÉRMICO 80mm --- */
+/* ---      ESTILO DE IMPRESIÓN FLEXIBLE CON ESTÉTICA TICKET    --- */
 /* --- ========================================================== --- */
 @media print {
   
@@ -184,57 +183,65 @@ select:focus {
     margin: 0 !important;
     padding: 0 !important;
     background: white !important;
-    font-family: 'IBM Plex Mono', monospace !important;
+    font-family: 'IBM Plex Mono', monospace !important; /* Estética de ticket */
     font-size: 9pt !important;
     color: black !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
+
+  /* Dejamos que el tamaño y los márgenes los defina el driver de la impresora */
   @page {
-    size: 80mm auto !important;
-    margin: 0 !important;
+    size: auto !important;
+    margin: 0 !important; 
   }
 
-  /* --- 2. VISIBILIDAD Y LAYOUT DEL CONTENEDOR DEL TICKET --- */
+  /* --- 2. VISIBILIDAD Y LAYOUT DEL CONTENEDOR PRINCIPAL --- */
   #presupuesto-imprimible,
   #presupuesto-imprimible * {
     visibility: visible !important;
   }
+  
   #presupuesto-imprimible {
     position: static !important;
     display: block !important;
-    width: 80mm !important;
-    min-width: 80mm !important;
-    max-width: 80mm !important;
+    
+    /* --- CORRECCIÓN CLAVE 1: Ancho flexible al 100% --- */
+    width: 100% !important;
+    min-width: unset !important;
+    max-width: unset !important;
+    
+    /* Pequeño padding interno para que no se pegue a los bordes del papel */
+    padding: 2mm !important; 
+    
+    box-sizing: border-box !important; /* Importante para que el padding no desborde */
     height: auto !important;
     margin: 0 !important;
-    padding: 2mm !important;
-    box-sizing: border-box !important;
     background: white !important;
     box-shadow: none !important;
-    font-weight: bold !important;
+    font-weight: bold !important; /* Mantenemos letra gruesa para legibilidad en tickets */
   }
+  
   .ticket-page-break {
-    display: block !important;
     page-break-before: always !important;
-    break-before: page !important;
-    height: 0 !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    border: none !important;
   }
 
-  /* --- 3. ESTILOS DE LOS BLOQUES DEL TICKET --- */
-
-  /* CAMBIO: Encabezado y sus elementos ahora explícitamente centrados */
+  /* --- 3. ESTILOS DE BLOQUES CON ESTÉTICA DE TICKET --- */
+  
   .presupuesto-header, .logo-container, .info-empresa {
     text-align: center !important;
     display: block !important;
+    border: none !important;
   }
+  
+  /* --- CORRECCIÓN CLAVE 2: Logo con tamaño máximo pero flexible --- */
   .logo-container .logo {
-    max-width: 160px !important;
-    margin: 0 auto 5px auto !important; /* Centra el logo horizontalmente */
+    max-width: 160px !important; /* Define un tamaño máximo para que no se agrande demasiado en A4 */
+    width: 50% !important; /* Ocupa el 50% del contenedor, pero sin pasar de 160px */
+    height: auto !important; /* Mantiene la proporción */
+    margin: 0 auto 5px auto !important;
   }
+  
   .info-empresa {
     font-size: 0.9em !important;
     margin-bottom: 8px !important;
@@ -242,26 +249,46 @@ select:focus {
     border-bottom: 1px dashed black !important;
     padding: 5px 0 !important;
   }
-  .info-empresa p { margin: 1px 0 !important; }
-
-  /* MANTENIDO: Tablas de datos se mantienen alineadas a la izquierda para legibilidad */
+  
   .tabla-datos-principales,
   .tabla-datos-secundarios {
     width: 100% !important;
-    border-collapse: collapse !important;
     margin-bottom: 8px !important;
     font-size: 1.0em !important;
   }
-  .tabla-datos-principales td,
-  .tabla-datos-secundarios td {
+  
+  /* --- CORRECCIÓN CLAVE 3: Ancho de columna flexible pero con mínimo --- */
+  .tabla-datos-principales td {
     padding: 1px !important;
     border: none !important;
-    vertical-align: top !important;
   }
   .tabla-datos-principales td:first-child {
-    width: 85px !important;
+    width: 30% !important; /* Usa porcentaje en vez de píxeles fijos */
+    min-width: 85px !important; /* Pero asegura un mínimo para que no se rompa en anchos pequeños */
     font-weight: bold !important;
   }
+  
+  .tabla-items {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    font-size: 0.95em !important;
+    margin-top: 10px !important;
+  }
+  
+  .tabla-items th, .tabla-items td {
+    padding: 3px 2px !important;
+    text-align: left !important;
+    border: none !important;
+    background: none !important;
+  }
+  .tabla-items th {
+    border-bottom: 1.5px solid black !important;
+    border-top: 1.5px solid black !important;
+  }
+  .tabla-items td {
+    border-bottom: 1px dashed #666 !important;
+  }
+  
   .total-row td {
       font-size: 1.2em !important;
       font-weight: bold !important;
@@ -271,50 +298,18 @@ select:focus {
       padding-bottom: 4px !important;
   }
 
-  /* Tabla de productos (se mantiene igual) */
-  .tabla-items {
-    width: 100% !important;
-    border-collapse: collapse !important;
-    font-size: 0.95em !important;
-    margin-top: 10px !important;
-  }
-  .tabla-items th {
-    border-bottom: 1.5px solid black !important;
-    border-top: 1.5px solid black !important;
-    padding: 4px 2px !important;
-    text-align: left !important;
-  }
-  .tabla-items td {
-    padding: 3px 2px !important;
-    vertical-align: top !important;
-    border-bottom: 1px dashed #666 !important;
-  }
-  .tabla-items tr:last-child td {
-    border-bottom: none !important;
-  }
-  .tabla-items .col-cantidad,
-  .tabla-items .col-precio,
-  .tabla-items .col-subtotal {
-      text-align: right !important;
-  }
-  .tabla-items .col-producto {
-      word-break: break-word;
-  }
-
-  /* Observaciones (se mantiene igual) */
   .ticket-observaciones {
       margin-top: 10px;
       padding-top: 5px;
+      border: none !important;
+      background: none !important;
       border-top: 1px dashed black;
   }
 
-  /* CAMBIO: Pie de página ahora explícitamente centrado */
   .ticket-footer {
     text-align: center !important;
-    border-top: 1px dashed #000 !important;
     margin-top: 10px !important;
     padding-top: 5px !important;
-    font-size: 0.9em !important;
+    border-top: 1px dashed #000 !important;
   }
-}
 }

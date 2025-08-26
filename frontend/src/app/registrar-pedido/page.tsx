@@ -248,6 +248,7 @@ const displayTotal = useMemo(() => {
       clienteId: selectedCliente ? selectedCliente.id : null,
       nombre: selectedCliente?.nombre_razon_social || "",
       direccion: selectedCliente?.direccion || "",
+      localidad: selectedCliente?.localidad || "",
     }));
   };
   
@@ -361,7 +362,11 @@ const handleSubmit = async (e: React.FormEvent ) => {
   const ventaDataParaTicket: VentaData = {
       venta_id: lastVentaId,
       fecha_emision: formData.fechaEmision,
-      cliente: { nombre: formData.nombre, direccion: formData.direccion },
+      cliente: { 
+          nombre: formData.nombre, 
+          direccion: formData.direccion,
+          localidad: formData.localidad // <-- LÍNEA AÑADIDA
+      },
       nombre_vendedor: VENDEDOR_FIJO,
       items: productos
         .filter(p => p.producto && p.qx > 0)
