@@ -21,7 +21,7 @@ const initialProductoItem: ProductoVenta = { producto: 0, qx: 0, precio: 0, desc
 const initialFormData: FormDataVenta = {
     nombre: "", cuit: "", direccion: "", fechaEmision: "", fechaEntrega: "",
     formaPago: "efectivo", montoPagado: 0, descuentoTotal: 0, vuelto: 0,
-    clienteId: null, requiereFactura: false, observaciones: "",
+    clienteId: null, requiereFactura: false, observaciones: "",localidad: "",
 };
 
 
@@ -154,6 +154,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         clienteId: clienteId,
         requiereFactura: datosAPI.requiere_factura || false,
         observaciones: datosAPI.observaciones || "",
+        localidad: datosAPI.localidad || "",
       });
 
 

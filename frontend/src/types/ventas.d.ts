@@ -22,6 +22,7 @@ export interface FormDataVenta {
   clienteId: number | null;
   nombre: string;
   cuit: string;
+  localidad: string;
   direccion: string;
   
   // --- Datos del Pedido ---

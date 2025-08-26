@@ -21,6 +21,7 @@ interface TotalCalculadoAPI {
 }
 const initialFormData: FormDataVenta = {
   clienteId: null, cuit: "", nombre: "", direccion: "",
+  localidad: "",
   fechaEmision: "", fechaEntrega: "", formaPago: "efectivo",
   montoPagado: 0, descuentoTotal: 0, vuelto: 0,
   requiereFactura: false, observaciones: "",
@@ -68,10 +69,15 @@ const resetearFormulario = useCallback(() => {
     return productos.reduce((sum, item) => sum + (item.total || 0), 0);
   }, [productos]);
     
-  const displayTotal = useMemo(() => {
-    const baseTotalConRecargos = totalCalculadoApi ? totalCalculadoApi.monto_final_con_recargos : montoBaseProductos;
-    return Math.max(0, baseTotalConRecargos * (1 - (formData.descuentoTotal || 0) / 100));
-  }, [totalCalculadoApi, montoBaseProductos, formData.descuentoTotal]);
+const displayTotal = useMemo(() => {
+    const montoConRecargos = totalCalculadoApi ? totalCalculadoApi.monto_final_con_recargos : montoBaseProductos;
+    const montoBrutoFinal = Math.max(0, montoConRecargos * (1 - (formData.descuentoTotal || 0) / 100));
+    if (montoBrutoFinal > 0) {
+        return Math.ceil(montoBrutoFinal / 100) * 100;
+    }
+    return 0;
+    
+}, [totalCalculadoApi, montoBaseProductos, formData.descuentoTotal]);
 
   useEffect(() => {
     const recalcularTodo = async () => {
@@ -173,24 +179,23 @@ const resetearFormulario = useCallback(() => {
     const priceResults = await Promise.all(pricePromises);
     const newProducts = [...currentProducts];
 
-    priceResults.forEach(({ precioUnitario, precioTotalCalculado, indices }) => {
-        const totalQuantityForProduct = indices.reduce((sum, index) => sum + (newProducts[index].qx || 0), 0);
+  priceResults.forEach(({ precioUnitario, precioTotalCalculado, indices }) => {
+      const totalQuantityForProduct = indices.reduce((sum, index) => sum + (newProducts[index].qx || 0), 0);
 
-        indices.forEach(index => {
-            const item = newProducts[index];
-            if (item) {
-                item.precio = precioUnitario;
-                
-                // --- CÁLCULO PROPORCIONAL CORRECTO ---
-                // Se calcula el total de la línea como una proporción del total correcto de la API
-                const totalBruto = totalQuantityForProduct > 0 
-                    ? (precioTotalCalculado / totalQuantityForProduct) * item.qx
-                    : 0;
+      indices.forEach(index => {
+          const item = newProducts[index];
+          if (item) {
+              item.precio = precioUnitario;
+              
+              const totalBruto = totalQuantityForProduct > 0 
+                  ? (precioTotalCalculado / totalQuantityForProduct) * item.qx
+                  : 0;
 
-                item.total = totalBruto * (1 - (item.descuento / 100));
-            }
-        });
-    });
+              const subtotalBrutoConDescuento = totalBruto * (1 - (item.descuento / 100));
+              item.total = Math.ceil(subtotalBrutoConDescuento / 100) * 100;
+          }
+      });
+  });
 
     // 5. Actualizar el estado del componente con los precios correctos.
     setProductos(newProducts);
@@ -279,6 +284,7 @@ const handleSubmit = async (e: React.FormEvent ) => {
       cliente_id: formData.clienteId ? parseInt(String(formData.clienteId)) : null, 
       fecha_pedido: formData.fechaEntrega ? new Date(formData.fechaEntrega).toISOString() : formData.fechaEmision,
       direccion_entrega: formData.direccion,
+      localidad: formData.localidad,
       nombre_vendedor: VENDEDOR_FIJO,
       monto_pagado_cliente: formData.montoPagado, 
       forma_pago: formData.formaPago, 
@@ -358,15 +364,27 @@ const handleSubmit = async (e: React.FormEvent ) => {
       cliente: { nombre: formData.nombre, direccion: formData.direccion },
       nombre_vendedor: VENDEDOR_FIJO,
       items: productos
-          .filter(p => p.producto && p.qx > 0)
-          .map(item => {
-              const pInfo = productosContext?.productos.find(p => p.id === item.producto);
-              const totalConRecargosItem = (item.total || 0) * (totalCalculadoApi && montoBaseProductos > 0 ? totalCalculadoApi.monto_final_con_recargos / montoBaseProductos : 1);
-              return {
-                  producto_id: item.producto, producto_nombre: pInfo?.nombre || `ID: ${item.producto}`,
-                  cantidad: item.qx, precio_total_item_ars: totalConRecargosItem,
-              };
-          }),
+        .filter(p => p.producto && p.qx > 0)
+        .map(item => {
+            const pInfo = productosContext?.productos.find(p => p.id === item.producto);
+            
+            // --- LÓGICA CORREGIDA PARA EL TICKET ---
+            const subtotalRedondeadoBase = item.total || 0;
+            let subtotalFinalParaTicket = subtotalRedondeadoBase;
+
+            if (totalCalculadoApi && montoBaseProductos > 0) {
+                const factorRecargo = totalCalculadoApi.monto_final_con_recargos / montoBaseProductos;
+                const subtotalConRecargo = subtotalRedondeadoBase * factorRecargo;
+                subtotalFinalParaTicket = Math.ceil(subtotalConRecargo / 100) * 100;
+            }
+
+            return {
+                producto_id: item.producto,
+                producto_nombre: pInfo?.nombre || `ID: ${item.producto}`,
+                cantidad: item.qx,
+                precio_total_item_ars: subtotalFinalParaTicket,
+            };
+        }),
       total_final: displayTotal,
       observaciones: formData.observaciones,
       forma_pago: formData.formaPago, // Se añade la forma de pago

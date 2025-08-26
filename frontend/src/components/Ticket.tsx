@@ -77,7 +77,7 @@ const Ticket: React.FC<TicketProps> = ({ tipo, ventaData }) => {
                             <tr><td>DIRECCIÓN:</td><td>{ventaData.cliente.direccion.toUpperCase()}</td></tr>
                         )}
                         {isFinancial && ventaData.cliente.localidad && (
-                            <tr><td>ZONA:</td><td>{ventaData.cliente.localidad.toUpperCase()}</td></tr>
+                            <tr><td>LOCALIDAD:</td><td>{ventaData.cliente.localidad.toUpperCase()}</td></tr>
                         )}
 
                         {!(isFinancial && ventaData.nombre_vendedor === 'pedidos') && (
