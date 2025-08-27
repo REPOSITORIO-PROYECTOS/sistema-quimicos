@@ -404,8 +404,8 @@ const displayTotalToShow = useMemo(() => {
                 {productos.map((item, index) => (
                   <div key={item.id_detalle || `new-${index}`} className="grid grid-cols-1 md:grid-cols-[1fr_80px_80px_1fr_100px_100px_40px] items-center gap-2 border-b pb-2 last:border-b-0">
                     <Select options={opcionesDeProductoParaSelect} value={opcionesDeProductoParaSelect.find(opt => opt.value === item.producto) || null} onChange={(opt) => handleProductSelectChange(index, opt)} className="text-sm react-select-container" classNamePrefix="react-select"/>
-                    <input type="number" name="qx" value={item.qx === 0 ? '' : item.qx} onChange={(e) => handleProductRowChange(index, e)} className={`${inputBaseClasses} text-center no-spinners`}/>
-                    <input type="number" name="descuento" value={item.descuento === 0 ? '' : item.descuento} onChange={(e) => handleProductRowChange(index, e)} className={`${inputBaseClasses} text-center no-spinners`}/>
+                    <input type="number" name="qx" value={item.qx === 0 ? '' : item.qx} onChange={(e) => handleProductRowChange(index, e)} className={`${inputBaseClasses} text-center no-spinners`} onWheel={(e) => (e.target as HTMLInputElement).blur()}/>
+                    <input type="number" name="descuento" value={item.descuento === 0 ? '' : item.descuento} onChange={(e) => handleProductRowChange(index, e)} className={`${inputBaseClasses} text-center no-spinners`} onWheel={(e) => (e.target as HTMLInputElement).blur()}/>
                     <input type="text" name="observacion" value={item.observacion || ''} onChange={(e) => handleProductRowChange(index, e)} className={`${inputBaseClasses} text-sm`}/>
                     <input type="text" readOnly value={`$ ${(item.precio || 0).toFixed(2)}`} className={`${inputReadOnlyClasses} text-sm text-right`}/>
                     <input type="text" readOnly value={`$ ${(item.total || 0).toFixed(2)}`} className={`${inputReadOnlyClasses} text-sm text-right`}/>

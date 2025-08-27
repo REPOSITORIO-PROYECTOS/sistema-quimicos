@@ -394,9 +394,9 @@ useEffect(() => {
                     <Select options={opcionesDeProductoParaSelect} value={opcionesDeProductoParaSelect.find(opt => opt.value === item.producto_id) || null}
                         onChange={(selectedOption) => handleProductRowChange(index, 'producto_id', selectedOption?.value || 0)}
                         className="text-sm react-select-container" classNamePrefix="react-select"/>
-                    <input type="number" value={item.cantidad} onChange={(e) => handleProductRowChange(index, 'cantidad', parseFloat(e.target.value) || 0)}
+                    <input type="number" value={item.cantidad} onChange={(e) => handleProductRowChange(index, 'cantidad', parseFloat(e.target.value) || 0)} onWheel={(e) => (e.target as HTMLInputElement).blur()}
                       className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 text-center focus:outline-none focus:ring-1 focus:ring-indigo-500 no-spinners" min="0" step="any"/>
-                    <input type="number" value={item.descuento} onChange={(e) => handleProductRowChange(index, 'descuento', parseFloat(e.target.value) || 0)}
+                    <input type="number" value={item.descuento} onChange={(e) => handleProductRowChange(index, 'descuento', parseFloat(e.target.value) || 0)} onWheel={(e) => (e.target as HTMLInputElement).blur()}
                       className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 text-center focus:outline-none focus:ring-1 focus:ring-indigo-500 no-spinners" min="0" max="100"/>
                     <input type="text" value={item.observacion_item || ''} onChange={(e) => handleProductRowChange(index, 'observacion_item', e.target.value)} className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"/>
                     <input type="text" readOnly disabled value={`$ ${(item.precio_unitario || 0).toFixed(2)}`} className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 bg-gray-100 text-right"/>

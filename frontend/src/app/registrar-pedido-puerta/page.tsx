@@ -316,7 +316,7 @@ return (
                                     onChange={(selectedOption) => handleProductSelectChange(index, selectedOption)} placeholder="Buscar producto..." isClearable isSearchable
                                     isLoading={productosContext.loading} className="text-sm react-select-container" classNamePrefix="react-select" />
                                 <input type="number" name="qx" placeholder="Cant." value={item.qx === 0 ? '' : item.qx} onChange={(e) => handleProductRowInputChange(index, e)} min="0" step="any" required
-                                    className="shadow-sm border border-gray-300 rounded-md w-full py-2 px-2 text-gray-700 text-center focus:outline-none focus:ring-2 focus:ring-indigo-500 no-spinners"/>
+                                    className="shadow-sm border border-gray-300 rounded-md w-full py-2 px-2 text-gray-700 text-center focus:outline-none focus:ring-2 focus:ring-indigo-500 no-spinners" onWheel={(e) => (e.target as HTMLInputElement).blur()}/>
                                 <input type="text" name="observacion" placeholder="Obs. ítem" value={item.observacion || ''} onChange={(e) => handleProductRowInputChange(index, e)}
                                     className="shadow-sm border border-gray-300 rounded-md w-full py-2 px-2 text-gray-700 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
                                 <input type="text" value={`$ ${item.precio.toFixed(2)}`} readOnly className="shadow-sm border border-gray-300 rounded-md w-full py-2 px-2 text-gray-700 text-right bg-gray-100 cursor-not-allowed"/>
