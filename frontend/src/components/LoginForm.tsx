@@ -2,7 +2,6 @@
 "use client";
 
 import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/providers/auth-provider'; // Asegúrate que la ruta a auth-provider sea correcta
 
 // Reutilizamos la definición de ROLES_DISPONIBLES, idealmente esto estaría en un archivo compartido
