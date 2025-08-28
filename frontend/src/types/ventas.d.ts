@@ -50,7 +50,7 @@ export interface VentaDataParaTicket {
   cliente: {
     nombre: string;
     direccion?: string;
-    localidad?: string; // <-- CAMPO AÑADIDO
+    localidad?: string;
   };
   nombre_vendedor: string;
   items: Array<{
@@ -58,10 +58,15 @@ export interface VentaDataParaTicket {
     producto_nombre: string;
     cantidad: number;
     precio_total_item_ars: number;
+    descuento_item_porcentaje?: number;
+    subtotal_bruto_item_ars?: number;
+    observacion_item?: string;
   }>;
   total_final: number;
   observaciones?: string;
   forma_pago?: string;
   monto_pagado_cliente?: number;
   vuelto_calculado?: number;
+  descuento_total_global_porcentaje?: number;
+  total_bruto_sin_descuento?: number;
 }

@@ -318,10 +318,12 @@ const displayTotalToShow = useMemo(() => {
           id_detalle: item.id_detalle,
           producto_id: item.producto,
           cantidad: item.qx,
+          descuento_item_porcentaje: item.descuento || 0,
           observacion_item: item.observacion || "",
         })),
       monto_total_base: montoBaseProductos,
       monto_final_con_recargos: parseFloat(displayTotalToShow.toFixed(2)),
+      descuento_total_global_porcentaje: formData.descuentoTotal || 0,
     };
     try {
       const response = await fetch(`https://quimex.sistemataup.online/ventas/actualizar/${id}`, {
@@ -344,33 +346,49 @@ const displayTotalToShow = useMemo(() => {
   const getNumericInputValue = (value: number) => value === 0 ? '' : String(value);
 
   const ventaDataParaTicket: VentaDataParaTicket = {
-      venta_id: id,
-      fecha_emision: formData.fechaEmision,
-      cliente: { nombre: formData.nombre, direccion: formData.direccion },
-      nombre_vendedor: "pedidos",
-      items: productos.filter(p => p.producto && p.qx > 0).map(item => {
-          const pInfo = productosContext?.productos.find(p => p.id === item.producto);
-          const subtotalRedondeadoBase = item.total || 0;
-          let subtotalFinalParaTicket = subtotalRedondeadoBase;
-
-          if (totalCalculadoApi && montoBaseProductos > 0) {
-              const factorRecargo = totalCalculadoApi.monto_final_con_recargos / montoBaseProductos;
-              const subtotalConRecargo = subtotalRedondeadoBase * factorRecargo;
-              subtotalFinalParaTicket = Math.ceil(subtotalConRecargo / 100) * 100;
-          }
-          return {
-              producto_id: item.producto,
-              producto_nombre: pInfo?.nombre || `ID: ${item.producto}`,
-              cantidad: item.qx,
-              precio_total_item_ars: subtotalFinalParaTicket,
-              observacion_item: item.observacion || item.observacion_item || ""
-          };
-      }),
-      total_final: displayTotalToShow,
-      observaciones: formData.observaciones,
-      forma_pago: formData.formaPago, 
-      monto_pagado_cliente: formData.montoPagado,
-      vuelto_calculado: formData.vuelto,
+    venta_id: id,
+    fecha_emision: formData.fechaEmision,
+    cliente: { nombre: formData.nombre, direccion: formData.direccion },
+    nombre_vendedor: "pedidos",
+    items: productos.filter(p => p.producto && p.qx > 0).map(item => {
+      const pInfo = productosContext?.productos.find(p => p.id === item.producto);
+      const subtotalRedondeadoBase = item.total || 0;
+      let subtotalFinalParaTicket = subtotalRedondeadoBase;
+      if (totalCalculadoApi && montoBaseProductos > 0) {
+        const factorRecargo = totalCalculadoApi.monto_final_con_recargos / montoBaseProductos;
+        const subtotalConRecargo = subtotalRedondeadoBase * factorRecargo;
+        subtotalFinalParaTicket = Math.ceil(subtotalConRecargo / 100) * 100;
+      }
+      const descuentoPorc = item.descuento || 0;
+      const subtotalBruto = descuentoPorc > 0 ? (subtotalFinalParaTicket / (1 - descuentoPorc / 100)) : subtotalFinalParaTicket;
+      return {
+        producto_id: item.producto,
+        producto_nombre: pInfo?.nombre || `ID: ${item.producto}`,
+        cantidad: item.qx,
+        precio_total_item_ars: subtotalFinalParaTicket,
+        observacion_item: item.observacion || item.observacion_item || "",
+        descuento_item_porcentaje: descuentoPorc,
+        subtotal_bruto_item_ars: subtotalBruto,
+      };
+    }),
+    total_final: displayTotalToShow,
+    observaciones: formData.observaciones,
+    forma_pago: formData.formaPago, 
+    monto_pagado_cliente: formData.montoPagado,
+    vuelto_calculado: formData.vuelto,
+    descuento_total_global_porcentaje: formData.descuentoTotal || 0,
+    total_bruto_sin_descuento: productos.filter(p => p.producto && p.qx > 0).reduce((sum, item) => {
+      const subtotalRedondeadoBase = item.total || 0;
+      let subtotalFinalParaTicket = subtotalRedondeadoBase;
+      if (totalCalculadoApi && montoBaseProductos > 0) {
+        const factorRecargo = totalCalculadoApi.monto_final_con_recargos / montoBaseProductos;
+        const subtotalConRecargo = subtotalRedondeadoBase * factorRecargo;
+        subtotalFinalParaTicket = Math.ceil(subtotalConRecargo / 100) * 100;
+      }
+      const descuentoPorc = item.descuento || 0;
+      const subtotalBruto = descuentoPorc > 0 ? (subtotalFinalParaTicket / (1 - descuentoPorc / 100)) : subtotalFinalParaTicket;
+      return sum + subtotalBruto;
+    }, 0),
   };
 
   return (

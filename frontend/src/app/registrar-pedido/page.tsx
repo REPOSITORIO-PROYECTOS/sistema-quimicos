@@ -281,6 +281,7 @@ const handleSubmit = async (e: React.FormEvent ) => {
       items: productos.filter(item => item.producto > 0 && item.qx > 0).map(item => ({
         producto_id: item.producto,
         cantidad: item.qx,
+        descuento_item_porcentaje: item.descuento || 0,
         observacion_item: item.observacion || ""
       })),
       cliente_id: formData.clienteId ? parseInt(String(formData.clienteId)) : null, 
@@ -295,6 +296,7 @@ const handleSubmit = async (e: React.FormEvent ) => {
       monto_total_base: montoBaseProductos, 
       monto_final_con_recargos: montoFinalRedondeado, 
       observaciones: formData.observaciones || "",
+      descuento_total_global_porcentaje: formData.descuentoTotal || 0,
     };
 
     try {
@@ -358,42 +360,58 @@ const handleSubmit = async (e: React.FormEvent ) => {
   const getNumericInputValue = (value: number) => value === 0 ? '' : String(value);
   
   const ventaDataParaTicket: VentaData = {
-      venta_id: lastVentaId,
-      fecha_emision: formData.fechaEmision,
-      cliente: { 
-          nombre: formData.nombre, 
-          direccion: formData.direccion,
-          localidad: formData.localidad // <-- LÍNEA AÑADIDA
-      },
-      nombre_vendedor: VENDEDOR_FIJO,
-      items: productos
-        .filter(p => p.producto && p.qx > 0)
-        .map(item => {
-            const pInfo = productosContext?.productos.find(p => p.id === item.producto);
-            
-            // --- LÓGICA CORREGIDA PARA EL TICKET ---
-            const subtotalRedondeadoBase = item.total || 0;
-            let subtotalFinalParaTicket = subtotalRedondeadoBase;
-
-            if (totalCalculadoApi && montoBaseProductos > 0) {
-                const factorRecargo = totalCalculadoApi.monto_final_con_recargos / montoBaseProductos;
-                const subtotalConRecargo = subtotalRedondeadoBase * factorRecargo;
-                subtotalFinalParaTicket = Math.ceil(subtotalConRecargo / 100) * 100;
-            }
-
-            return {
-                producto_id: item.producto,
-                producto_nombre: pInfo?.nombre || `ID: ${item.producto}`,
-                cantidad: item.qx,
-                precio_total_item_ars: subtotalFinalParaTicket,
-                observacion_item: item.observacion || "", 
-            };
-        }),
-      total_final: displayTotal,
-      observaciones: formData.observaciones,
-      forma_pago: formData.formaPago, // Se añade la forma de pago
-      monto_pagado_cliente: formData.montoPagado,
-      vuelto_calculado: formData.vuelto,
+    venta_id: lastVentaId,
+    fecha_emision: formData.fechaEmision,
+    cliente: { 
+      nombre: formData.nombre, 
+      direccion: formData.direccion,
+      localidad: formData.localidad
+    },
+    nombre_vendedor: VENDEDOR_FIJO,
+    items: productos
+    .filter(p => p.producto && p.qx > 0)
+    .map(item => {
+      const pInfo = productosContext?.productos.find(p => p.id === item.producto);
+      const subtotalRedondeadoBase = item.total || 0;
+      let subtotalFinalParaTicket = subtotalRedondeadoBase;
+      if (totalCalculadoApi && montoBaseProductos > 0) {
+        const factorRecargo = totalCalculadoApi.monto_final_con_recargos / montoBaseProductos;
+        const subtotalConRecargo = subtotalRedondeadoBase * factorRecargo;
+        subtotalFinalParaTicket = Math.ceil(subtotalConRecargo / 100) * 100;
+      }
+      // Calcular subtotal bruto antes de descuento
+      const descuentoPorc = item.descuento || 0;
+      const subtotalBruto = descuentoPorc > 0 ? (subtotalFinalParaTicket / (1 - descuentoPorc / 100)) : subtotalFinalParaTicket;
+      return {
+        producto_id: item.producto,
+        producto_nombre: pInfo?.nombre || `ID: ${item.producto}`,
+        cantidad: item.qx,
+        precio_total_item_ars: subtotalFinalParaTicket,
+        observacion_item: item.observacion || "",
+        descuento_item_porcentaje: descuentoPorc,
+        subtotal_bruto_item_ars: subtotalBruto,
+      };
+    }),
+    total_final: displayTotal,
+    observaciones: formData.observaciones,
+    forma_pago: formData.formaPago,
+    monto_pagado_cliente: formData.montoPagado,
+    vuelto_calculado: formData.vuelto,
+    descuento_total_global_porcentaje: formData.descuentoTotal || 0,
+    total_bruto_sin_descuento: productos
+    .filter(p => p.producto && p.qx > 0)
+    .reduce((sum, item) => {
+      const subtotalRedondeadoBase = item.total || 0;
+      let subtotalFinalParaTicket = subtotalRedondeadoBase;
+      if (totalCalculadoApi && montoBaseProductos > 0) {
+        const factorRecargo = totalCalculadoApi.monto_final_con_recargos / montoBaseProductos;
+        const subtotalConRecargo = subtotalRedondeadoBase * factorRecargo;
+        subtotalFinalParaTicket = Math.ceil(subtotalConRecargo / 100) * 100;
+      }
+      const descuentoPorc = item.descuento || 0;
+      const subtotalBruto = descuentoPorc > 0 ? (subtotalFinalParaTicket / (1 - descuentoPorc / 100)) : subtotalFinalParaTicket;
+      return sum + subtotalBruto;
+    }, 0),
   };
 
 return (

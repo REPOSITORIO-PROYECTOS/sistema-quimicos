@@ -6,11 +6,13 @@ import Image from 'next/image';
 
 // --- Definiciones de Tipos de Datos ---
 type ProductoVenta = {
-  producto_id: number;
-  observacion_item?: string;
-  producto_nombre: string;
-  cantidad: number;
-  precio_total_item_ars: number;
+    producto_id: number;
+    observacion_item?: string;
+    producto_nombre: string;
+    cantidad: number;
+    precio_total_item_ars: number;
+    descuento_item_porcentaje?: number; // opcional, para mostrar en ticket
+    subtotal_bruto_item_ars?: number; // opcional, para mostrar el subtotal antes de descuento
 };
 
 export interface VentaData {
@@ -23,11 +25,13 @@ export interface VentaData {
   };
   nombre_vendedor: string;
   items: ProductoVenta[];
-  total_final: number;
-  observaciones?: string;
-  forma_pago?: string;
-  monto_pagado_cliente?: number;
-  vuelto_calculado?: number;
+    total_final: number;
+    observaciones?: string;
+    forma_pago?: string;
+    monto_pagado_cliente?: number;
+    vuelto_calculado?: number;
+    descuento_total_global_porcentaje?: number;
+    total_bruto_sin_descuento?: number; // opcional, para mostrar el total antes de descuento global
 }
 
 interface TicketProps {
@@ -45,6 +49,19 @@ const Ticket: React.FC<TicketProps> = ({ tipo, ventaData }) => {
             maximumFractionDigits: 2,
         }).format(value);
     };
+
+    // Calcular totales brutos y descuentos si no vienen en el objeto
+    const totalBrutoSinDescuento = ventaData.total_bruto_sin_descuento ?? ventaData.items.reduce((sum, item) => {
+        // Si el subtotal bruto viene, usarlo, si no, estimar a partir del total y descuento
+        if (item.subtotal_bruto_item_ars !== undefined) return sum + item.subtotal_bruto_item_ars;
+        if (item.descuento_item_porcentaje && item.descuento_item_porcentaje > 0) {
+            return sum + (item.precio_total_item_ars / (1 - item.descuento_item_porcentaje / 100));
+        }
+        return sum + item.precio_total_item_ars;
+    }, 0);
+
+    const descuentoGlobalPorc = ventaData.descuento_total_global_porcentaje || 0;
+    const descuentoGlobalEnPlata = descuentoGlobalPorc > 0 ? totalBrutoSinDescuento * (descuentoGlobalPorc / 100) : 0;
 
     const isFinancial = tipo === 'comprobante';
 
@@ -98,28 +115,43 @@ const Ticket: React.FC<TicketProps> = ({ tipo, ventaData }) => {
                         </tr>
                     </thead>
                     <tbody>
-                        {ventaData.items.map((item, index) => (
-                            <React.Fragment key={`item-fragment-${item.producto_id}-${index}`}>
-                                {/* Fila principal del producto (sin cambios) */}
-                                <tr className="product-row">
-                                    <td className="col-cantidad">{item.cantidad}</td>
-                                    <td className="col-producto">{item.producto_nombre}</td>
-                                    {isFinancial && (
-                                        <td className="col-subtotal">$ {formatPrice(item.precio_total_item_ars)}</td>
-                                    )}
-                                </tr>
-
-                                {/* --- INICIO DE LA NUEVA LÓGICA --- */}
-                                {item.observacion_item && (
-                                    <tr className="observation-row">
-                                        <td></td> 
-                                        <td colSpan={isFinancial ? 2 : 1} className="col-observacion">
-                                            ↳ {item.observacion_item}
-                                        </td>
+                        {ventaData.items.map((item, index) => {
+                            // Calcular subtotal bruto y descuento en plata por ítem
+                            const descuentoPorc = item.descuento_item_porcentaje || 0;
+                            const subtotalBruto = descuentoPorc > 0 ? (item.precio_total_item_ars / (1 - descuentoPorc / 100)) : item.precio_total_item_ars;
+                            const descuentoEnPlata = descuentoPorc > 0 ? subtotalBruto - item.precio_total_item_ars : 0;
+                            return (
+                                <React.Fragment key={`item-fragment-${item.producto_id}-${index}`}>
+                                    <tr className="product-row">
+                                        <td className="col-cantidad">{item.cantidad}</td>
+                                        <td className="col-producto">{item.producto_nombre}</td>
+                                        {isFinancial && (
+                                            <td className="col-subtotal">$ {formatPrice(item.precio_total_item_ars)}</td>
+                                        )}
                                     </tr>
-                                )}
-                            </React.Fragment>
-                        ))}
+                                    {/* Mostrar descuento por ítem si existe */}
+                                    {isFinancial && descuentoPorc > 0 && (
+                                        <tr className="discount-row">
+                                            <td></td>
+                                            <td colSpan={1} className="col-descuento text-xs text-red-700">
+                                                Desc. {descuentoPorc}%
+                                            </td>
+                                            <td className="col-descuento text-xs text-red-700">
+                                                -$ {formatPrice(descuentoEnPlata)}
+                                            </td>
+                                        </tr>
+                                    )}
+                                    {item.observacion_item && (
+                                        <tr className="observation-row">
+                                            <td></td>
+                                            <td colSpan={isFinancial ? 2 : 1} className="col-observacion">
+                                                ↳ {item.observacion_item}
+                                            </td>
+                                        </tr>
+                                    )}
+                                </React.Fragment>
+                            );
+                        })}
                     </tbody>
                 </table>
             </section>
@@ -129,6 +161,20 @@ const Ticket: React.FC<TicketProps> = ({ tipo, ventaData }) => {
                 <section className="datos-totales">
                     <table className="tabla-datos-secundarios">
                         <tbody>
+                            {/* Mostrar total bruto si hay descuento global */}
+                            {descuentoGlobalPorc > 0 && (
+                                <tr>
+                                    <td>Total sin descuento:</td>
+                                    <td>$ {formatPrice(totalBrutoSinDescuento)}</td>
+                                </tr>
+                            )}
+                            {/* Mostrar descuento global si existe */}
+                            {descuentoGlobalPorc > 0 && (
+                                <tr>
+                                    <td>Desc. global {descuentoGlobalPorc}%:</td>
+                                    <td className="text-red-700">-$ {formatPrice(descuentoGlobalEnPlata)}</td>
+                                </tr>
+                            )}
                             <tr className="total-row">
                                 <td>TOTAL:</td>
                                 <td>$ {formatPrice(ventaData.total_final)}</td>
