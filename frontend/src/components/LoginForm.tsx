@@ -18,7 +18,6 @@ type UserRole = typeof ROLES_DISPONIBLES[number]['value'];
 
 const LoginForm: React.FC = () => {
     const { login } = useAuth();
-    const router = useRouter();
 
     const [loginUsuario, setLoginUsuario] = useState<string>('');
     const [loginContrasena, setLoginContrasena] = useState<string>('');
@@ -142,19 +141,6 @@ const LoginForm: React.FC = () => {
                     </div>
                 </form>
 
-                <div className="mt-6 text-center">
-                    <p className="text-sm text-muted-foreground">
-                        ¿No tienes una cuenta?{' '}
-                        <button
-                            type="button"
-                            onClick={() => router.push('/register')} // Cambiado a button con onClick para consistencia
-                            className="font-medium text-primary hover:underline focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 rounded-sm"
-                            disabled={loginIsLoading} // Deshabilitar durante la carga
-                        >
-                            Regístrate aquí
-                        </button>
-                    </p>
-                </div>
             </div>
         </div>
     );
