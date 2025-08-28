@@ -10,7 +10,7 @@ const ROLES_DISPONIBLES = [
     { value: "ADMIN", label: "Administrador" },
     { value: "ALMACEN", label: "Almacén" },
     { value: "VENTAS_LOCAL", label: "Ventas Local" },
-    { value: "VENTAS_PEDIDOS", label: "Ventas Pedidos" },
+    { value: "VENTAS_PEDIDOS", label: "Ventas Pedidos" }, 
     { value: "CONTABLE", label: "Contable" },
 ] as const;
 
