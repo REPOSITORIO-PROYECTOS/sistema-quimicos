@@ -318,11 +318,9 @@ const displayTotalToShow = useMemo(() => {
           id_detalle: item.id_detalle,
           producto_id: item.producto,
           cantidad: item.qx,
-          descuento_item_porcentaje: item.descuento,
           observacion_item: item.observacion || "",
         })),
       monto_total_base: montoBaseProductos,
-      descuento_total_global_porcentaje: formData.descuentoTotal,
       monto_final_con_recargos: parseFloat(displayTotalToShow.toFixed(2)),
     };
     try {

@@ -29,6 +29,7 @@ interface FormState {
 }
 
 export default function RegistrarCliente() {
+  const [mostrarPreciosEspeciales, setMostrarPreciosEspeciales] = useState(false);
   // Consume tu contexto usando el hook personalizado
   const {
     productos: productosDisponibles, // Renombrado para claridad (lista de todos los productos)
@@ -47,7 +48,7 @@ export default function RegistrarCliente() {
     telefono: '',
     email: '',
     contacto_principal: 0,
-    productos: [{ producto_id: '', valor: 0 }], // Productos asociados a este cliente específico
+  productos: [], // Por defecto vacío, solo se agregan si el usuario lo pide
     observaciones: '',
   });
 
@@ -82,16 +83,16 @@ export default function RegistrarCliente() {
   const agregarProducto = () => {
     setForm(prev => ({
       ...prev,
-      productos: [...prev.productos, { producto_id: '', valor: 0 }]
+      productos: [
+        ...prev.productos.filter(p => p.producto_id !== ''),
+        { producto_id: '', valor: 0 }
+      ]
     }));
   };
 
   const eliminarProducto = (index: number) => {
     const list = [...form.productos];
     list.splice(index, 1);
-    if (list.length === 0) {
-      list.push({ producto_id: '', valor: 0 });
-    }
     setForm(prev => ({ ...prev, productos: list }));
   };
 
@@ -111,12 +112,14 @@ export default function RegistrarCliente() {
     contacto_principal: form.contacto_principal,
     observaciones: form.observaciones,
    
-    productos_con_precio_especial: form.productos
-      .filter(p => p.producto_id !== '' && p.valor >= 0 && Number(p.producto_id) > 0) // Asegurar producto_id válido
-      .map(p => ({
-        producto_id: Number(p.producto_id), // Asegurar que es un número
-        precio_unitario_fijo_ars: p.valor,   
-      })),
+    productos_con_precio_especial: mostrarPreciosEspeciales
+      ? form.productos
+          .filter(p => p.producto_id !== '' && p.valor >= 0 && Number(p.producto_id) > 0)
+          .map(p => ({
+            producto_id: Number(p.producto_id),
+            precio_unitario_fijo_ars: p.valor,
+          }))
+      : [],
   };
 
 
@@ -142,47 +145,54 @@ export default function RegistrarCliente() {
 
  
     if (clienteCreado.id && form.productos.length > 0) {
-      const preciosEspecialesPromises = form.productos
-        .filter(p => p.producto_id !== '' && p.valor >= 0 && Number(p.producto_id) > 0)
-        .map(item => {
-          const payloadPrecioEspecial = {
-            cliente_id: clienteCreado.id, // ID del cliente recién creado
-            producto_id: Number(item.producto_id),
-            precio_unitario_fijo_ars: item.valor,
-            activo: true, // O como lo manejes
-          };
-          return fetch(`https://quimex.sistemataup.online/precios_especiales/crear`, { 
-            method: 'POST',
-            headers: {"Content-Type":"application/json","Authorization":`Bearer ${token}`},
-            body: JSON.stringify(payloadPrecioEspecial),
-          }).then(res => {
-            if (!res.ok) {
-              return res.json().then(err => Promise.reject({ ...err, producto_id: item.producto_id }));
-            }
-            return res.json();
-          });
-        });
-
-      try {
-        const resultadosPrecios = await Promise.all(preciosEspecialesPromises);
-        console.log('Precios especiales registrados:', resultadosPrecios);
-      } catch (errorPrecios) {
-        console.error('Error al registrar uno o más precios especiales:', errorPrecios);
-        // Aquí podrías informar al usuario que el cliente se creó pero hubo problemas con algunos precios
-        // O incluso considerar un "rollback" o eliminación del cliente si los precios son cruciales.
-        alert(`Cliente registrado, pero hubo errores al guardar algunos precios especiales. Revise la consola. Error: ${JSON.stringify(errorPrecios)}`);
+      if (mostrarPreciosEspeciales && form.productos.length > 0) {
+        try {
+          const preciosEspecialesPromises = form.productos
+            .filter(p => p.producto_id !== '' && p.valor >= 0 && Number(p.producto_id) > 0)
+            .map(item => {
+              const payloadPrecioEspecial = {
+                cliente_id: clienteCreado.id,
+                producto_id: Number(item.producto_id),
+                precio_unitario_fijo_ars: item.valor,
+                activo: true,
+              };
+              return fetch(`https://quimex.sistemataup.online/precios_especiales/crear`, {
+                method: 'POST',
+                headers: {"Content-Type":"application/json","Authorization":`Bearer ${token}`},
+                body: JSON.stringify(payloadPrecioEspecial),
+              }).then(res => {
+                if (!res.ok) {
+                  return res.json().then(err => Promise.reject({ ...err, producto_id: item.producto_id }));
+                }
+                return res.json();
+              });
+            });
+          const resultadosPrecios = await Promise.all(preciosEspecialesPromises);
+          console.log('Precios especiales registrados:', resultadosPrecios);
+        } catch (errorPrecios) {
+          console.error('Error al registrar uno o más precios especiales:', errorPrecios);
+          alert(`Cliente registrado, pero hubo errores al guardar algunos precios especiales. Revise la consola. Error: ${JSON.stringify(errorPrecios)}`);
+        }
       }
-    }
     
 
     // Resetear formulario y dar feedback
     setForm({
-      nombre_razon_social: '', cuit: 0, direccion: '', localidad: '', provincia: '',
-      codigo_postal: 0, telefono: '', email: '', contacto_principal: 0,
-      productos: [{ producto_id: '', valor: 0 }], observaciones: '',
+      nombre_razon_social: '',
+      cuit: 0,
+      direccion: '',
+      localidad: '',
+      provincia: '',
+      codigo_postal: 0,
+      telefono: '',
+      email: '',
+      contacto_principal: 0,
+      productos: [],
+      observaciones: '',
     });
     alert('Cliente registrado con éxito!');
 
+    }
   } catch (error) {
     console.error('Error en handleSubmit:', error);
     alert(`Error al guardar el cliente: ${error instanceof Error ? error.message : String(error)}`);
@@ -238,80 +248,88 @@ export default function RegistrarCliente() {
 
 
           {/* --- SECCIÓN DE PRODUCTOS (Usando datos del Contexto) --- */}
-          <fieldset className="border p-4 rounded-md mt-4">
-             <legend className="text-lg font-medium text-gray-700 px-2">Productos Asociados</legend>
+          {/* Botón para mostrar precios especiales */}
+          <div className="mt-4">
+            <button
+              type="button"
+              className="bg-yellow-500 text-black px-4 py-2 rounded hover:bg-yellow-600 text-sm font-semibold shadow-sm"
+              onClick={() => {
+                setMostrarPreciosEspeciales(true);
+                if (form.productos.length === 0) {
+                  setForm(prev => ({ ...prev, productos: [{ producto_id: '', valor: 0 }] }));
+                }
+              }}
+              disabled={mostrarPreciosEspeciales}
+            >
+              Precio Especial
+            </button>
+          </div>
+          {mostrarPreciosEspeciales && (
+            <fieldset className="border p-4 rounded-md mt-4">
+              <legend className="text-lg font-medium text-gray-700 px-2">Productos Asociados</legend>
               <div className="mb-2 hidden md:grid md:grid-cols-[minmax(0,1fr)_120px_32px] items-center gap-2 font-semibold text-sm text-gray-600 px-3">
                 <span>Producto</span>
                 <span className="text-right">Valor Asignado</span>
                 <span />
               </div>
-
               <div className="space-y-3">
                 {form.productos.map((item, index) => (
-                    <div key={index} className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_120px_32px] items-center gap-2 border-b pb-2 last:border-b-0 md:border-none md:pb-0">
-                        {/* Selector de Producto */}
-                        <div className="w-full">
-                            <label className="md:hidden text-xs font-medium text-gray-500">Producto (ID)</label>
-                            <select
-                                name="producto_id"
-                                value={item.producto_id}
-                                onChange={(e) => handleProductoItemChange(index, e)}
-                                className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                                required
-                            >
-                                <option value="" disabled> -- Seleccionar -- </option>
-                                {/* Lógica condicional para mostrar opciones */}
-                                {cargandoProductos && <option disabled>Cargando productos...</option>}
-                                {errorProductos && <option disabled>Error al cargar productos</option>}
-                                {!cargandoProductos && !errorProductos  && (
-                                    <option disabled>No hay productos disponibles</option>
-                                )}
-                             {!cargandoProductos && !errorProductos && productosDisponibles && ( // <-- Añade esta comprobación
-                                productosDisponibles.map((producto: Producto) => (
-                                    <option value={producto.id} key={producto.id}>
-                                        {/* Muestra nombre y opcionalmente código o ID */}
-                                        {producto.nombre} {producto.codigo ? `(${producto.codigo})` : `(ID: ${producto.id})`}
-                                    </option>
-                                ))
-                            )}
-                            </select>
-                            {/* Mostrar error del contexto si existe */}
-                            {index === 0 && errorProductos && <p className="text-xs text-red-600 mt-1">{errorProductos}</p>}
-                        </div>
-
-                        {/* Input para el Valor */}
-                         <div className="w-full">
-                            <label className="md:hidden text-xs font-medium text-gray-500">Valor</label>
-                            <input
-                                className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-right focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                                type="number"
-                                name="valor"
-                                placeholder="Valor"
-                                value={item.valor === 0 ? '' : item.valor}
-                                onChange={(e) => handleProductoItemChange(index, e)}
-                                min="0" // Permitir valor 0 si es válido
-                                step="0.01" // Para precios con decimales
-                                required
-                            />
-                        </div>
-
-                        {/* Botón Eliminar Fila */}
-                        <div className="flex justify-end md:justify-center items-center">
-                            {form.productos.length > 1 && (
-                                <button
-                                    type="button"
-                                    onClick={() => eliminarProducto(index)}
-                                    className="text-red-500 hover:text-red-700 font-bold text-xl leading-none p-1 rounded-full hover:bg-red-100"
-                                    title="Eliminar producto"
-                                >
-                                    ×
-                                </button>
-                            )}
-                        </div>
+                  <div key={index} className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_120px_32px] items-center gap-2 border-b pb-2 last:border-b-0 md:border-none md:pb-0">
+                    {/* Selector de Producto */}
+                    <div className="w-full">
+                      <label className="md:hidden text-xs font-medium text-gray-500">Producto (ID)</label>
+                      <select
+                        name="producto_id"
+                        value={item.producto_id}
+                        onChange={(e) => handleProductoItemChange(index, e)}
+                        className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      >
+                        <option value="" disabled> -- Seleccionar -- </option>
+                        {cargandoProductos && <option disabled>Cargando productos...</option>}
+                        {errorProductos && <option disabled>Error al cargar productos</option>}
+                        {!cargandoProductos && !errorProductos  && (
+                          <option disabled>No hay productos disponibles</option>
+                        )}
+                        {!cargandoProductos && !errorProductos && productosDisponibles && (
+                          productosDisponibles.map((producto: Producto) => (
+                            <option value={producto.id} key={producto.id}>
+                              {producto.nombre} {producto.codigo ? `(${producto.codigo})` : `(ID: ${producto.id})`}
+                            </option>
+                          ))
+                        )}
+                      </select>
+                      {index === 0 && errorProductos && <p className="text-xs text-red-600 mt-1">{errorProductos}</p>}
                     </div>
+                    {/* Input para el Valor */}
+                    <div className="w-full">
+                      <label className="md:hidden text-xs font-medium text-gray-500">Valor</label>
+                      <input
+                        className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-right focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        type="number"
+                        name="valor"
+                        placeholder="Valor"
+                        value={item.valor === 0 ? '' : item.valor}
+                        onChange={(e) => handleProductoItemChange(index, e)}
+                        min="0"
+                        step="0.01"
+                      />
+                    </div>
+                    {/* Botón Eliminar Fila */}
+                    <div className="flex justify-end md:justify-center items-center">
+                      {form.productos.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => eliminarProducto(index)}
+                          className="text-red-500 hover:text-red-700 font-bold text-xl leading-none p-1 rounded-full hover:bg-red-100"
+                          title="Eliminar producto"
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 ))}
               </div>
-
               {/* Botón para agregar más productos */}
               <button
                 type="button"
@@ -320,7 +338,8 @@ export default function RegistrarCliente() {
               >
                 + Agregar Producto
               </button>
-          </fieldset>
+            </fieldset>
+          )}
           {/* --- FIN SECCIÓN DE PRODUCTOS --- */}
 
 

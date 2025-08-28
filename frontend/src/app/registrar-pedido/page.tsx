@@ -279,9 +279,9 @@ const handleSubmit = async (e: React.FormEvent ) => {
     const dataPayload = {
       usuario_interno_id: parseInt(usuarioId),
       items: productos.filter(item => item.producto > 0 && item.qx > 0).map(item => ({
-        producto_id: item.producto, cantidad: item.qx,
-        observacion_item: item.observacion || "", 
-        descuento_item_porcentaje: item.descuento,
+        producto_id: item.producto,
+        cantidad: item.qx,
+        observacion_item: item.observacion || ""
       })),
       cliente_id: formData.clienteId ? parseInt(String(formData.clienteId)) : null, 
       fecha_pedido: formData.fechaEntrega ? new Date(formData.fechaEntrega).toISOString() : formData.fechaEmision,
@@ -293,10 +293,7 @@ const handleSubmit = async (e: React.FormEvent ) => {
       vuelto: formData.vuelto, 
       requiere_factura: formData.requiereFactura, 
       monto_total_base: montoBaseProductos, 
-      descuento_total_global_porcentaje: formData.descuentoTotal,
-      
       monto_final_con_recargos: montoFinalRedondeado, 
-      
       observaciones: formData.observaciones || "",
     };
 
