@@ -73,6 +73,9 @@ export default function PaginaDeImpresion() {
       {printJob.boletas.map((boleta, index) => (
         <React.Fragment key={boleta.venta_id}>
           <Ticket tipo={printJob.tipo} ventaData={boleta} />
+          <div className="ticket-page-break" />
+          <Ticket tipo={printJob.tipo} ventaData={boleta} />
+          {/* Solo poner page break entre pares de boletas, no después del último par */}
           {index < printJob.boletas.length - 1 && <div className="ticket-page-break" />}
         </React.Fragment>
       ))}

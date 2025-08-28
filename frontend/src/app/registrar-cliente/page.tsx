@@ -208,41 +208,40 @@ export default function RegistrarCliente() {
         <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-4">
           {/* --- Campos del Cliente (sin cambios) --- */}
            {/* ... (todos los <label> e <input> para nombre, cuit, etc. van aquí) ... */}
-           <label className="block">
-            <span className="font-medium">Nombre o Razón Social</span>
+          <label className="block">
+            <span className="font-medium">Nombre o Razón Social <span className="text-red-600">(obligatorio)</span></span>
             <input type="text" name="nombre_razon_social" value={form.nombre_razon_social} onChange={handleChange} className="w-full p-2 mt-1 border border-gray-300 rounded" required />
           </label>
           <label className="block">
-            <span className="font-medium">CUIT</span>
+            <span className="font-medium">CUIT <span className="text-gray-500">(opcional)</span></span>
             <input type="number" name="cuit" value={form.cuit === 0 ? '' : form.cuit} onChange={handleChange} className="w-full p-2 mt-1 border border-gray-300 rounded" />
           </label>
-          {/* ... más campos ... */}
           <label className="block">
-            <span className="font-medium">Dirección</span>
+            <span className="font-medium">Dirección <span className="text-gray-500">(opcional)</span></span>
             <input type="text" name="direccion" value={form.direccion} onChange={handleChange} className="w-full p-2 mt-1 border border-gray-300 rounded"/>
           </label>
-           <label className="block">
-            <span className="font-medium">Localidad</span>
-            <input type="text" name="localidad" value={form.localidad} onChange={handleChange} className="w-full p-2 mt-1 border border-gray-300 rounded"/>
+          <label className="block">
+            <span className="font-medium">Localidad <span className="text-red-600">(obligatorio)</span></span>
+            <input type="text" name="localidad" value={form.localidad} onChange={handleChange} className="w-full p-2 mt-1 border border-gray-300 rounded" required />
           </label>
-           <label className="block">
-            <span className="font-medium">Provincia</span>
+          <label className="block">
+            <span className="font-medium">Provincia <span className="text-gray-500">(opcional)</span></span>
             <input type="text" name="provincia" value={form.provincia} onChange={handleChange} className="w-full p-2 mt-1 border border-gray-300 rounded"/>
           </label>
-           <label className="block">
-            <span className="font-medium">Código Postal</span>
+          <label className="block">
+            <span className="font-medium">Código Postal <span className="text-gray-500">(opcional)</span></span>
             <input type="number" name="codigo_postal" value={form.codigo_postal === 0 ? '' : form.codigo_postal} onChange={handleChange} className="w-full p-2 mt-1 border border-gray-300 rounded"/>
           </label>
-           <label className="block">
-            <span className="font-medium">Teléfono</span>
+          <label className="block">
+            <span className="font-medium">Teléfono <span className="text-gray-500">(opcional)</span></span>
             <input type="tel" name="telefono" value={form.telefono} onChange={handleChange} className="w-full p-2 mt-1 border border-gray-300 rounded"/>
           </label>
-           <label className="block">
-            <span className="font-medium">Email</span>
+          <label className="block">
+            <span className="font-medium">Email <span className="text-gray-500">(opcional)</span></span>
             <input type="email" name="email" value={form.email} onChange={handleChange} className="w-full p-2 mt-1 border border-gray-300 rounded"/>
           </label>
-           <label className="block">
-            <span className="font-medium">Contacto Principal</span>
+          <label className="block">
+            <span className="font-medium">Contacto Principal <span className="text-gray-500">(opcional)</span></span>
             <input type="number" name="contacto_principal" value={form.contacto_principal === 0 ? '' : form.contacto_principal} onChange={handleChange} className="w-full p-2 mt-1 border border-gray-300 rounded"/>
           </label>
 

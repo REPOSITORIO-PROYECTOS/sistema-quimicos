@@ -283,39 +283,39 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
             <legend className="text-xl font-semibold text-gray-700 px-2 mb-2">Datos del Cliente</legend>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700">Nombre o Razón Social*</label>
+                <label className="block text-sm font-medium text-gray-700">Nombre o Razón Social <span className="text-red-600">(obligatorio)</span></label>
                 <input type="text" name="nombre_razon_social" value={form.nombre_razon_social} onChange={handleChange} className="w-full p-2 mt-1 border border-gray-300 rounded shadow-sm focus:ring-indigo-500 focus:border-indigo-500" required />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">CUIT</label>
+                <label className="block text-sm font-medium text-gray-700">CUIT <span className="text-gray-500">(opcional)</span></label>
                 <input type="text" name="cuit" value={form.cuit} onChange={handleChange} className="w-full p-2 mt-1 border border-gray-300 rounded shadow-sm focus:ring-indigo-500 focus:border-indigo-500" placeholder="Ej: 20123456789"/>
               </div>
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700">Dirección</label>
+                <label className="block text-sm font-medium text-gray-700">Dirección <span className="text-gray-500">(opcional)</span></label>
                 <input type="text" name="direccion" value={form.direccion} onChange={handleChange} className="w-full p-2 mt-1 border border-gray-300 rounded shadow-sm focus:ring-indigo-500 focus:border-indigo-500"/>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">Localidad</label>
-                <input type="text" name="localidad" value={form.localidad} onChange={handleChange} className="w-full p-2 mt-1 border border-gray-300 rounded shadow-sm focus:ring-indigo-500 focus:border-indigo-500"/>
+                <label className="block text-sm font-medium text-gray-700">Localidad <span className="text-red-600">(obligatorio)</span></label>
+                <input type="text" name="localidad" value={form.localidad} onChange={handleChange} className="w-full p-2 mt-1 border border-gray-300 rounded shadow-sm focus:ring-indigo-500 focus:border-indigo-500" required />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">Provincia</label>
+                <label className="block text-sm font-medium text-gray-700">Provincia <span className="text-gray-500">(opcional)</span></label>
                 <input type="text" name="provincia" value={form.provincia} onChange={handleChange} className="w-full p-2 mt-1 border border-gray-300 rounded shadow-sm focus:ring-indigo-500 focus:border-indigo-500"/>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">Código Postal</label>
+                <label className="block text-sm font-medium text-gray-700">Código Postal <span className="text-gray-500">(opcional)</span></label>
                 <input type="text" name="codigo_postal" value={form.codigo_postal} onChange={handleChange} className="w-full p-2 mt-1 border border-gray-300 rounded shadow-sm focus:ring-indigo-500 focus:border-indigo-500"/>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">Teléfono</label>
+                <label className="block text-sm font-medium text-gray-700">Teléfono <span className="text-gray-500">(opcional)</span></label>
                 <input type="tel" name="telefono" value={form.telefono} onChange={handleChange} className="w-full p-2 mt-1 border border-gray-300 rounded shadow-sm focus:ring-indigo-500 focus:border-indigo-500"/>
               </div>
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700">Email</label>
+                <label className="block text-sm font-medium text-gray-700">Email <span className="text-gray-500">(opcional)</span></label>
                 <input type="email" name="email" value={form.email} onChange={handleChange} className="w-full p-2 mt-1 border border-gray-300 rounded shadow-sm focus:ring-indigo-500 focus:border-indigo-500"/>
               </div>
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700">Contacto Principal</label>
+                <label className="block text-sm font-medium text-gray-700">Contacto Principal <span className="text-gray-500">(opcional)</span></label>
                 <input type="text" name="contacto_principal" value={form.contacto_principal} onChange={handleChange} className="w-full p-2 mt-1 border border-gray-300 rounded shadow-sm focus:ring-indigo-500 focus:border-indigo-500"/>
               </div>
             </div>

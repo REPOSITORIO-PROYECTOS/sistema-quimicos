@@ -132,7 +132,7 @@ export default function ListaBoletas() {
          try {
             const token = localStorage.getItem("token");
             if (!token) throw new Error("Usuario no autenticado.");
-            const response = await fetch(`https://quimex.sistemataup.online/ventascon_entrega?page=${paginaDeBusqueda}&per_page=20`, {
+            const response = await fetch(`https://quimex.sistemataup.online/ventas/con_entrega?page=${paginaDeBusqueda}&per_page=20`, {
                 headers: { "Authorization": `Bearer ${token}` }
             });
             if (!response.ok) throw new Error("Error en la búsqueda");
