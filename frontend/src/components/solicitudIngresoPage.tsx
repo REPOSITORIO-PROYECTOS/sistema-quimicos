@@ -39,6 +39,21 @@ export default function SolicitudIngresoPage({ id }: any) {
   const router = useRouter();
 
 
+
+  const cargarCamposProducto = useCallback(async (id_producto:number) => {
+    try {
+      const response = await fetch(`https://quimex.sistemataup.online/productos/obtener/${id_producto}`,{headers: { "Authorization": `Bearer ${token}` }});
+      if (!response.ok) return;
+      const dataProd = await response.json();
+      const unidad = dataProd.unidad_venta;
+      if (unidad === 'LT') setTipo('Litro');
+      else if (unidad === 'KG') setTipo('Kilo');
+      else setTipo('Unidad');
+    } catch (err) {
+      console.error("Error cargando tipo de producto:", err);
+    }
+  }, [token]);
+
   const cargarFormulario = useCallback(async () => {
     try {
       setErrorMensaje('');
@@ -73,7 +88,7 @@ export default function SolicitudIngresoPage({ id }: any) {
       setFormaPago(data.forma_pago || 'Efectivo');
       
       if (itemPrincipal.producto_id) {
-    await cargarCamposProducto(itemPrincipal.producto_id);
+        await cargarCamposProducto(itemPrincipal.producto_id);
       }
       //eslint-disable-next-line
     } catch (err: any) {
@@ -95,21 +110,6 @@ export default function SolicitudIngresoPage({ id }: any) {
       setImporteTotal(total.toFixed(2));
     }
   }, [cantidad, precioUnitario]);
-
-
-  async function cargarCamposProducto(id_producto:number){
-    try {
-      const response = await fetch(`https://quimex.sistemataup.online/productos/obtener/${id_producto}`,{headers: { "Authorization": `Bearer ${token}` }});
-      if (!response.ok) return;
-      const dataProd = await response.json();
-      const unidad = dataProd.unidad_venta;
-      if (unidad === 'LT') setTipo('Litro');
-      else if (unidad === 'KG') setTipo('Kilo');
-      else setTipo('Unidad');
-    } catch (err) {
-      console.error("Error cargando tipo de producto:", err);
-    }
-  }
 
   const formatearFecha = (fechaOriginal: string | Date | undefined): string => {
     if (!fechaOriginal) return '';

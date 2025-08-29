@@ -193,7 +193,8 @@ export default function RegistrarCliente() {
       productos: [],
       observaciones: '',
     });
-    alert('Cliente registrado con éxito!');
+  alert('Cliente registrado con éxito!');
+  window.location.reload();
 
     }
   } catch (error) {
