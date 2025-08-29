@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, ChangeEvent, FormEvent } from 'react';
+import { useRouter } from 'next/navigation';
 // Importa tu hook y el tipo Producto desde la ubicación correcta
 
 import { useProductsContext, Producto } from "@/context/ProductsContext"; // <-- Asegúrate que incluya , Producto
@@ -29,158 +30,14 @@ interface FormState {
 }
 
 export default function RegistrarCliente() {
-  const [mostrarPreciosEspeciales, setMostrarPreciosEspeciales] = useState(false);
-  // Consume tu contexto usando el hook personalizado
-  const {
-    productos: productosDisponibles, // Renombrado para claridad (lista de todos los productos)
-    loading: cargandoProductos,      // Estado de carga del contexto
-    error: errorProductos,          // Error del contexto
-    // refetch // No lo usamos aquí, pero está disponible si se necesita recargar
-  } = useProductsContext();
-
-  const [form, setForm] = useState<FormState>({
-    nombre_razon_social: '',
-    cuit: 0,
-    direccion: '',
-    localidad: '',
-    provincia: '',
-    codigo_postal: 0,
-    telefono: '',
-    email: '',
-    contacto_principal: 0,
-  productos: [], // Por defecto vacío, solo se agregan si el usuario lo pide
-    observaciones: '',
-  });
-
-  const token = localStorage.getItem("token");
-
-  // --- Manejadores de estado (sin cambios respecto a la versión anterior) ---
-  const handleChange = (
-    e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
-  ) => {
-    const { name, value, type } = e.target;
-    setForm((prev) => ({
-      ...prev,
-      [name]: type === 'number' ? Number(value) : value,
-    }));
-  };
-
-  const handleProductoItemChange = (
-    index: number,
-    e: ChangeEvent<HTMLInputElement | HTMLSelectElement>
-  ) => {
-    const { name, value } = e.target;
-    const list = [...form.productos];
-    if (name === 'producto_id') {
-      // El value del select siempre es string, aunque el ID original sea number
-      list[index].producto_id = value;
-    } else if (name === 'valor') {
-      list[index].valor = Number(value) || 0;
-    }
-    setForm(prev => ({ ...prev, productos: list }));
-  };
-
-  const agregarProducto = () => {
-    setForm(prev => ({
-      ...prev,
-      productos: [
-        ...prev.productos.filter(p => p.producto_id !== ''),
-        { producto_id: '', valor: 0 }
-      ]
-    }));
-  };
-
-  const eliminarProducto = (index: number) => {
-    const list = [...form.productos];
-    list.splice(index, 1);
-    setForm(prev => ({ ...prev, productos: list }));
-  };
-
- const handleSubmit = async (e: FormEvent) => {
-  e.preventDefault();
-
-  // 1. Preparar los datos del cliente
-  const datosCliente: Record<string, unknown> = {
-    nombre_razon_social: form.nombre_razon_social,
-    direccion: form.direccion,
-    localidad: form.localidad,
-    provincia: form.provincia,
-    codigo_postal: form.codigo_postal,
-    telefono: form.telefono,
-    email: form.email,
-    contacto_principal: form.contacto_principal,
-    observaciones: form.observaciones,
-    productos_con_precio_especial: mostrarPreciosEspeciales
-      ? form.productos
-          .filter(p => p.producto_id !== '' && p.valor >= 0 && Number(p.producto_id) > 0)
-          .map(p => ({
-            producto_id: Number(p.producto_id),
-            precio_unitario_fijo_ars: p.valor,
-          }))
-      : [],
-  };
-
-  // Solo agrega CUIT si es distinto de 0 y no vacío
-  if (form.cuit && form.cuit !== 0) {
-    datosCliente.cuit = form.cuit;
-  }
-
-
-  try {
-    // Petición para crear el cliente Y sus precios especiales asociados
-    const resCliente = await fetch(`https://quimex.sistemataup.online/clientes/crear`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        // Aquí iría tu token si es necesario para crear clientes
-        // 'Authorization': `Bearer ${tuToken}`,
-      },
-      body: JSON.stringify(datosCliente),
-    });
-
-    if (!resCliente.ok) {
-      const errorData = await resCliente.json().catch(() => ({ message: 'Error en la respuesta del servidor al crear cliente.' }));
-      console.error("Error response (crear cliente):", errorData);
-      throw new Error(errorData.message || `Error ${resCliente.status}: ${resCliente.statusText}`);
-    }
-
-    const clienteCreado = await resCliente.json();
-
- 
-    if (clienteCreado.id && form.productos.length > 0) {
-      if (mostrarPreciosEspeciales && form.productos.length > 0) {
-        try {
-          const preciosEspecialesPromises = form.productos
-            .filter(p => p.producto_id !== '' && p.valor >= 0 && Number(p.producto_id) > 0)
-            .map(item => {
-              const payloadPrecioEspecial = {
-                cliente_id: clienteCreado.id,
-                producto_id: Number(item.producto_id),
-                precio_unitario_fijo_ars: item.valor,
-                activo: true,
-              };
-              return fetch(`https://quimex.sistemataup.online/precios_especiales/crear`, {
-                method: 'POST',
-                headers: {"Content-Type":"application/json","Authorization":`Bearer ${token}`},
-                body: JSON.stringify(payloadPrecioEspecial),
-              }).then(res => {
-                if (!res.ok) {
-                  return res.json().then(err => Promise.reject({ ...err, producto_id: item.producto_id }));
-                }
-                return res.json();
-              });
-            });
-          const resultadosPrecios = await Promise.all(preciosEspecialesPromises);
-          console.log('Precios especiales registrados:', resultadosPrecios);
-        } catch (errorPrecios) {
-          console.error('Error al registrar uno o más precios especiales:', errorPrecios);
-          alert(`Cliente registrado, pero hubo errores al guardar algunos precios especiales. Revise la consola. Error: ${JSON.stringify(errorPrecios)}`);
-        }
-      }
-    
-
-    // Resetear formulario y dar feedback
-    setForm({
+    const router = useRouter();
+    const [mostrarPreciosEspeciales, setMostrarPreciosEspeciales] = useState(false);
+    const {
+      productos: productosDisponibles,
+      loading: cargandoProductos,
+      error: errorProductos,
+    } = useProductsContext();
+    const [form, setForm] = useState<FormState>({
       nombre_razon_social: '',
       cuit: 0,
       direccion: '',
@@ -193,25 +50,131 @@ export default function RegistrarCliente() {
       productos: [],
       observaciones: '',
     });
-  alert('Cliente registrado con éxito!');
-  window.location.reload();
-
-    }
-  } catch (error) {
-    console.error('Error en handleSubmit:', error);
-    alert(`Error al guardar el cliente: ${error instanceof Error ? error.message : String(error)}`);
-  }
-};
-
-  // ----- Renderizado -----
+    const token = localStorage.getItem("token");
+    const handleChange = (
+      e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+    ) => {
+      const { name, value, type } = e.target;
+      setForm((prev) => ({
+        ...prev,
+        [name]: type === 'number' ? Number(value) : value,
+      }));
+    };
+    const handleProductoItemChange = (
+      index: number,
+      e: ChangeEvent<HTMLInputElement | HTMLSelectElement>
+    ) => {
+      const { name, value } = e.target;
+      const list = [...form.productos];
+      if (name === 'producto_id') {
+        list[index].producto_id = value;
+      } else if (name === 'valor') {
+        list[index].valor = Number(value) || 0;
+      }
+      setForm(prev => ({ ...prev, productos: list }));
+    };
+    const agregarProducto = () => {
+      setForm(prev => ({
+        ...prev,
+        productos: [
+          ...prev.productos.filter(p => p.producto_id !== ''),
+          { producto_id: '', valor: 0 }
+        ]
+      }));
+    };
+    const eliminarProducto = (index: number) => {
+      const list = [...form.productos];
+      list.splice(index, 1);
+      setForm(prev => ({ ...prev, productos: list }));
+    };
+    const handleSubmit = async (e: FormEvent) => {
+      e.preventDefault();
+      const datosCliente: Record<string, unknown> = {
+        nombre_razon_social: form.nombre_razon_social,
+        direccion: form.direccion,
+        localidad: form.localidad,
+        provincia: form.provincia,
+        codigo_postal: form.codigo_postal,
+        telefono: form.telefono,
+        email: form.email,
+        contacto_principal: form.contacto_principal,
+        observaciones: form.observaciones,
+        productos_con_precio_especial: mostrarPreciosEspeciales
+          ? form.productos
+              .filter(p => p.producto_id !== '' && p.valor >= 0 && Number(p.producto_id) > 0)
+              .map(p => ({
+                producto_id: Number(p.producto_id),
+                precio_unitario_fijo_ars: p.valor,
+              }))
+          : [],
+      };
+      if (form.cuit && form.cuit !== 0) {
+        datosCliente.cuit = form.cuit;
+      }
+      try {
+        const resCliente = await fetch(`https://quimex.sistemataup.online/clientes/crear`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(datosCliente),
+        });
+        if (!resCliente.ok) {
+          const errorData = await resCliente.json().catch(() => ({ message: 'Error en la respuesta del servidor al crear cliente.' }));
+          throw new Error(errorData.message || `Error ${resCliente.status}: ${resCliente.statusText}`);
+        }
+        const clienteCreado = await resCliente.json();
+        if (clienteCreado.id && mostrarPreciosEspeciales && form.productos.length > 0) {
+          try {
+            const productosValidos = form.productos.filter(p => p.producto_id !== '' && p.valor >= 0 && Number(p.producto_id) > 0);
+            for (const item of productosValidos) {
+              const payloadPrecioEspecial = {
+                cliente_id: clienteCreado.id,
+                producto_id: Number(item.producto_id),
+                precio_unitario_fijo_ars: item.valor,
+                activo: true,
+              };
+              const res = await fetch(`https://quimex.sistemataup.online/precios_especiales/crear`, {
+                method: 'POST',
+                headers: {"Content-Type":"application/json","Authorization":`Bearer ${token}`},
+                body: JSON.stringify(payloadPrecioEspecial),
+              });
+              if (!res.ok) {
+                const err = await res.json();
+                throw new Error(`Error en producto ${item.producto_id}: ${JSON.stringify(err)}`);
+              }
+            }
+          } catch (errorPrecios) {
+            alert(`Cliente registrado, pero hubo errores al guardar algunos precios especiales. Revise la consola. Error: ${errorPrecios}`);
+          }
+        }
+        setForm({
+          nombre_razon_social: '',
+          cuit: 0,
+          direccion: '',
+          localidad: '',
+          provincia: '',
+          codigo_postal: 0,
+          telefono: '',
+          email: '',
+          contacto_principal: 0,
+          productos: [],
+          observaciones: '',
+        });
+        alert('Cliente registrado con éxito!');
+        setTimeout(() => {
+          router.push('/opciones-cliente');
+        }, 100);
+      } catch (error) {
+        alert(`Error al guardar el cliente: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    };
   return (
     <main className="min-h-screen bg-[#312b81] text-white p-8">
       <div className="max-w-xl mx-auto bg-white text-black p-6 rounded-lg shadow-md">
         <BotonVolver className="ml-0" />
         <h1 className="text-2xl font-bold mb-8 text-center">Registrar Cliente</h1>
         <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-4">
-          {/* --- Campos del Cliente (sin cambios) --- */}
-           {/* ... (todos los <label> e <input> para nombre, cuit, etc. van aquí) ... */}
           <label className="block">
             <span className="font-medium">Nombre o Razón Social <span className="text-red-600">(obligatorio)</span></span>
             <input type="text" name="nombre_razon_social" value={form.nombre_razon_social} onChange={handleChange} className="w-full p-2 mt-1 border border-gray-300 rounded" required />
@@ -248,10 +211,7 @@ export default function RegistrarCliente() {
             <span className="font-medium">Contacto Principal <span className="text-gray-500">(opcional)</span></span>
             <input type="number" name="contacto_principal" value={form.contacto_principal === 0 ? '' : form.contacto_principal} onChange={handleChange} className="w-full p-2 mt-1 border border-gray-300 rounded"/>
           </label>
-
-
-          {/* --- SECCIÓN DE PRODUCTOS (Usando datos del Contexto) --- */}
-          {/* Botón para mostrar precios especiales */}
+          {/* --- SECCIÓN DE PRODUCTOS (opcional) --- */}
           <div className="mt-4">
             <button
               type="button"
@@ -278,7 +238,6 @@ export default function RegistrarCliente() {
               <div className="space-y-3">
                 {form.productos.map((item, index) => (
                   <div key={index} className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_120px_32px] items-center gap-2 border-b pb-2 last:border-b-0 md:border-none md:pb-0">
-                    {/* Selector de Producto */}
                     <div className="w-full">
                       <label className="md:hidden text-xs font-medium text-gray-500">Producto (ID)</label>
                       <select
@@ -303,7 +262,6 @@ export default function RegistrarCliente() {
                       </select>
                       {index === 0 && errorProductos && <p className="text-xs text-red-600 mt-1">{errorProductos}</p>}
                     </div>
-                    {/* Input para el Valor */}
                     <div className="w-full">
                       <label className="md:hidden text-xs font-medium text-gray-500">Valor</label>
                       <input
@@ -317,7 +275,6 @@ export default function RegistrarCliente() {
                         step="0.01"
                       />
                     </div>
-                    {/* Botón Eliminar Fila */}
                     <div className="flex justify-end md:justify-center items-center">
                       {form.productos.length > 1 && (
                         <button
@@ -333,7 +290,6 @@ export default function RegistrarCliente() {
                   </div>
                 ))}
               </div>
-              {/* Botón para agregar más productos */}
               <button
                 type="button"
                 onClick={agregarProducto}
@@ -344,9 +300,6 @@ export default function RegistrarCliente() {
             </fieldset>
           )}
           {/* --- FIN SECCIÓN DE PRODUCTOS --- */}
-
-
-          {/* --- Observaciones y Botón Submit (sin cambios) --- */}
           <label className="block mt-4">
             <span className="font-medium">Observaciones</span>
             <textarea name="observaciones" value={form.observaciones} onChange={handleChange} className="w-full p-2 mt-1 border border-gray-300 rounded" rows={3} />
@@ -359,3 +312,4 @@ export default function RegistrarCliente() {
     </main>
   );
 }
+
