@@ -100,9 +100,8 @@ export default function RegistrarCliente() {
   e.preventDefault();
 
   // 1. Preparar los datos del cliente
-  const datosCliente = {
+  const datosCliente: Record<string, unknown> = {
     nombre_razon_social: form.nombre_razon_social,
-    cuit: form.cuit,
     direccion: form.direccion,
     localidad: form.localidad,
     provincia: form.provincia,
@@ -111,7 +110,6 @@ export default function RegistrarCliente() {
     email: form.email,
     contacto_principal: form.contacto_principal,
     observaciones: form.observaciones,
-   
     productos_con_precio_especial: mostrarPreciosEspeciales
       ? form.productos
           .filter(p => p.producto_id !== '' && p.valor >= 0 && Number(p.producto_id) > 0)
@@ -121,6 +119,11 @@ export default function RegistrarCliente() {
           }))
       : [],
   };
+
+  // Solo agrega CUIT si es distinto de 0 y no vacío
+  if (form.cuit && form.cuit !== 0) {
+    datosCliente.cuit = form.cuit;
+  }
 
 
   try {

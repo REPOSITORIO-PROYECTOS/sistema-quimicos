@@ -293,7 +293,7 @@ export default function ContabilidadTable() {
             setIsLoading(false);
             setLoadingStage("Proceso completado.");
         }
-    }, [token]); 
+    }, [token, error]);
 
     useEffect(() => {
         if (token) {

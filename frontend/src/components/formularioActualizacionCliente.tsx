@@ -229,7 +229,8 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
 
     const datosClienteActualizar = {
       nombre_razon_social: form.nombre_razon_social,
-      cuit: form.cuit || null, // Enviar null si está vacío, o la API debe permitir string vacío
+  // Solo agrega CUIT si no está vacío ni es null
+  ...(form.cuit ? { cuit: form.cuit } : {}),
       direccion: form.direccion,
       localidad: form.localidad,
       provincia: form.provincia,

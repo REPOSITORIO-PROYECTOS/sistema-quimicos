@@ -2,7 +2,7 @@
 
 import { useProductsContext } from "@/context/ProductsContext";
 import { useProveedoresContext } from "@/context/ProveedoresContext";
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import jsPDF from 'jspdf';
 //eslint-disable-next-line
@@ -38,22 +38,8 @@ export default function SolicitudIngresoPage({ id }: any) {
   const token = typeof window !== 'undefined' ? localStorage.getItem("token") : null;
   const router = useRouter();
 
-  useEffect(() => {
-    if (id && token) {
-      cargarFormulario();
-    }
-  }, [id, token]);
 
-  useEffect(() => {
-    const cantNum = parseFloat(cantidad);
-    const precioNum = parseFloat(precioUnitario);
-    if (!isNaN(cantNum) && !isNaN(precioNum) && cantNum > 0 && precioNum >= 0) {
-      const total = cantNum * precioNum;
-      setImporteTotal(total.toFixed(2));
-    }
-  }, [cantidad, precioUnitario]);
-
-  async function cargarFormulario() {
+  const cargarFormulario = useCallback(async () => {
     try {
       setErrorMensaje('');
       const response = await fetch(`https://quimex.sistemataup.online/ordenes_compra/obtener/${id}`,{headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }});
@@ -87,13 +73,29 @@ export default function SolicitudIngresoPage({ id }: any) {
       setFormaPago(data.forma_pago || 'Efectivo');
       
       if (itemPrincipal.producto_id) {
-        await cargarCamposProducto(itemPrincipal.producto_id);
+    await cargarCamposProducto(itemPrincipal.producto_id);
       }
       //eslint-disable-next-line
     } catch (err: any) {
       setErrorMensaje(err.message);
     }
-  }
+  }, [id, token, cargarCamposProducto]);
+
+  useEffect(() => {
+    if (id && token) {
+      cargarFormulario();
+    }
+  }, [id, token, cargarFormulario]);
+
+  useEffect(() => {
+    const cantNum = parseFloat(cantidad);
+    const precioNum = parseFloat(precioUnitario);
+    if (!isNaN(cantNum) && !isNaN(precioNum) && cantNum > 0 && precioNum >= 0) {
+      const total = cantNum * precioNum;
+      setImporteTotal(total.toFixed(2));
+    }
+  }, [cantidad, precioUnitario]);
+
 
   async function cargarCamposProducto(id_producto:number){
     try {
