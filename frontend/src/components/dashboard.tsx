@@ -9,10 +9,24 @@ interface DashboardData {
     primera_fila: {
         ingreso_puerta_hoy: number;
         ingreso_pedido_hoy: number;
-        ingreso_pedido_manana: number;
+        pedidos_pendientes_manana: number;
         kgs_manana: number;
         deuda_proveedores: number;
         compras_por_recibir: number;
+        // Desglose de ventas de puerta y pedidos por forma de pago
+        puerta_efectivo?: number;
+        puerta_transferencia?: number;
+        puerta_factura?: number;
+        pedido_efectivo?: number;
+        pedido_transferencia?: number;
+        pedido_factura?: number;
+        // Unidades por forma de pago
+        puerta_efectivo_unidades?: number;
+        puerta_transferencia_unidades?: number;
+        puerta_factura_unidades?: number;
+        pedido_efectivo_unidades?: number;
+        pedido_transferencia_unidades?: number;
+        pedido_factura_unidades?: number;
     };
     segunda_fila: {
         ventas_mes: number;
@@ -40,6 +54,19 @@ export default function DashboardPage() {
     const [error, setError] = useState<string | null>(null);
     const [selectedDate, setSelectedDate] = useState<string>(getISODate(new Date()));
     const [isDownloading, setIsDownloading] = useState(false);
+    const [showPuertaMontos, setShowPuertaMontos] = useState(false);
+    const [showPedidoMontos, setShowPedidoMontos] = useState(false);
+    // Unidades por forma de pago
+    const puertaUnidades = {
+        efectivo: data ? (data.primera_fila.puerta_efectivo_unidades ?? 0) : 0,
+        transferencia: data ? (data.primera_fila.puerta_transferencia_unidades ?? 0) : 0,
+        factura: data ? (data.primera_fila.puerta_factura_unidades ?? 0) : 0,
+    };
+    const pedidoUnidades = {
+        efectivo: data ? (data.primera_fila.pedido_efectivo_unidades ?? 0) : 0,
+        transferencia: data ? (data.primera_fila.pedido_transferencia_unidades ?? 0) : 0,
+        factura: data ? (data.primera_fila.pedido_factura_unidades ?? 0) : 0,
+    };
     const token = typeof window !== 'undefined' ? localStorage.getItem("token") : null;
 
     const fetchDashboardData = useCallback(async (fecha: string) => {
@@ -164,9 +191,80 @@ export default function DashboardPage() {
             {data && (
             <>
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-                    <Card><CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Ingreso Puerta {tituloDia}</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{formatCurrency(data.primera_fila.ingreso_puerta_hoy)}</p></CardContent></Card>
-                    <Card><CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Ingreso Pedidos {tituloDia}</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{formatCurrency(data.primera_fila.ingreso_pedido_hoy)}</p></CardContent></Card>
-                    <Card><CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Pedidos a Cobrar (Mañana)</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{formatCurrency(data.primera_fila.ingreso_pedido_manana)}</p></CardContent></Card>
+                    <Card>
+                        <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Ingreso Puerta {tituloDia}</CardTitle></CardHeader>
+                        <CardContent>
+                            <p className="text-2xl font-bold">{formatCurrency(data.primera_fila.ingreso_puerta_hoy)}</p>
+                            <div className="mt-2 text-xs text-gray-600">
+                                <div>Efectivo: <b>{formatCurrency(data.primera_fila.puerta_efectivo ?? 0)}</b></div>
+                                <div>Transferencia: <b>{formatCurrency(data.primera_fila.puerta_transferencia ?? 0)}</b></div>
+                                <div>Factura: <b>{formatCurrency(data.primera_fila.puerta_factura ?? 0)}</b></div>
+                            </div>
+                            <button
+                                className="mt-2 px-3 py-1 bg-blue-100 text-blue-800 rounded text-xs hover:bg-blue-200"
+                                onClick={() => setShowPuertaMontos((v) => !v)}
+                            >
+                                {showPuertaMontos ? 'Ocultar montos' : 'Ver montos detallados'}
+                            </button>
+                            {showPuertaMontos && (
+                                <div className="mt-2 p-2 bg-blue-50 rounded text-sm space-y-1">
+                                    <div>
+                                        <b>Efectivo:</b> <span style={{color:'#16a34a', fontWeight:'bold'}}>{formatCurrency(data.primera_fila.puerta_efectivo ?? 0)}</span>
+                                        <span className="ml-2 text-xs text-gray-700">({puertaUnidades.efectivo} ventas)</span>
+                                    </div>
+                                    <div>
+                                        <b>Transferencia:</b> <span style={{color:'#2563eb', fontWeight:'bold'}}>{formatCurrency(data.primera_fila.puerta_transferencia ?? 0)}</span>
+                                        <span className="ml-2 text-xs text-gray-700">({puertaUnidades.transferencia} ventas)</span>
+                                    </div>
+                                    <div>
+                                        <b>Factura:</b> <span style={{color:'#f59e42', fontWeight:'bold'}}>{formatCurrency(data.primera_fila.puerta_factura ?? 0)}</span>
+                                        <span className="ml-2 text-xs text-gray-700">({puertaUnidades.factura} ventas)</span>
+                                    </div>
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+                    <Card>
+                        <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Ingreso Pedidos {tituloDia}</CardTitle></CardHeader>
+                        <CardContent>
+                            <p className="text-2xl font-bold">{formatCurrency(data.primera_fila.ingreso_pedido_hoy)}</p>
+                            <div className="mt-2 text-xs text-gray-600">
+                                <div>Efectivo: <b>{formatCurrency(data.primera_fila.pedido_efectivo ?? 0)}</b></div>
+                                <div>Transferencia: <b>{formatCurrency(data.primera_fila.pedido_transferencia ?? 0)}</b></div>
+                                <div>Factura: <b>{formatCurrency(data.primera_fila.pedido_factura ?? 0)}</b></div>
+                            </div>
+                            <button
+                                className="mt-2 px-3 py-1 bg-blue-100 text-blue-800 rounded text-xs hover:bg-blue-200"
+                                onClick={() => setShowPedidoMontos((v) => !v)}
+                            >
+                                {showPedidoMontos ? 'Ocultar montos' : 'Ver montos detallados'}
+                            </button>
+                            {showPedidoMontos && (
+                                <div className="mt-2 p-2 bg-blue-50 rounded text-sm space-y-1">
+                                    <div>
+                                        <b>Efectivo:</b> <span style={{color:'#16a34a', fontWeight:'bold'}}>{formatCurrency(data.primera_fila.pedido_efectivo ?? 0)}</span>
+                                        <span className="ml-2 text-xs text-gray-700">({pedidoUnidades.efectivo} ventas)</span>
+                                    </div>
+                                    <div>
+                                        <b>Transferencia:</b> <span style={{color:'#2563eb', fontWeight:'bold'}}>{formatCurrency(data.primera_fila.pedido_transferencia ?? 0)}</span>
+                                        <span className="ml-2 text-xs text-gray-700">({pedidoUnidades.transferencia} ventas)</span>
+                                    </div>
+                                    <div>
+                                        <b>Factura:</b> <span style={{color:'#f59e42', fontWeight:'bold'}}>{formatCurrency(data.primera_fila.pedido_factura ?? 0)}</span>
+                                        <span className="ml-2 text-xs text-gray-700">({pedidoUnidades.factura} ventas)</span>
+                                    </div>
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+                    <Card>
+                        <CardHeader className="pb-2">
+                            <CardTitle className="text-sm font-medium">Pedidos Pendientes para Entregar Mañana</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <p className="text-2xl font-bold">{data.primera_fila.pedidos_pendientes_manana}</p>
+                        </CardContent>
+                    </Card>
                     <Card><CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Kgs a Entregar (Mañana)</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{data.primera_fila.kgs_manana.toFixed(2)} Kg</p></CardContent></Card>
                     <Card><CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Deuda a Proveedores</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold text-orange-600">{formatCurrency(data.primera_fila.deuda_proveedores)}</p></CardContent></Card>
                     <Card><CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Compras por Recibir</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{formatCurrency(data.primera_fila.compras_por_recibir)}</p></CardContent></Card>
