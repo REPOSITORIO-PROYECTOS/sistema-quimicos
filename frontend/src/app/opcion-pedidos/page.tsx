@@ -1,6 +1,5 @@
 "use client";
 
-import FormularioActualizarPedido from '@/components/formularioActualizacionPedido';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import BotonVolver from '@/components/BotonVolver';
 // import { useRouter } from 'next/navigation';
@@ -71,7 +70,7 @@ export default function TotalPedidos() {
   const [boletas, setBoletas] = useState<BoletaParaLista[]>([]);
   const [pagination, setPagination] = useState<Pagination | null>(null);
   const [loading, setLoading] = useState(true);
-  const [idBoleta, setIdBoleta] = useState<number | undefined>();
+  // Eliminado idBoleta y setIdBoleta porque ya no se usa edición
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [selectedBoletas, setSelectedBoletas] = useState<Set<number>>(new Set());
@@ -99,10 +98,9 @@ const [fechaSeleccionada, setFechaSeleccionada] = useState<string>(() => {
     if (!token) { setError("No autenticado."); setLoading(false); return; }
     try {
       const params = new URLSearchParams({
-        fecha_desde: fechaSeleccionada,
-        fecha_hasta: fechaSeleccionada,
         page: String(page),
-        per_page: '20'
+        per_page: '20',
+        fecha: fechaSeleccionada
       });
       const apiUrl = `https://quimex.sistemataup.online/ventas/con_entrega?${params.toString()}`;
       const response = await fetch(apiUrl, { headers: { "Authorization": `Bearer ${token}` } });
@@ -290,7 +288,7 @@ const handlePrint = async (tipo: 'comprobante' | 'orden_de_trabajo') => {
 
   return (
     <>
-      {idBoleta === undefined ? (
+  {/* Render único, sin edición de boleta */}
         <div className="flex flex-col items-center justify-center min-h-screen bg-indigo-900 py-10 px-4">
           <div className="bg-white p-6 md:p-8 rounded-lg shadow-md w-full max-w-7xl">
             <BotonVolver className="ml-0" />
@@ -332,7 +330,7 @@ const handlePrint = async (tipo: 'comprobante' | 'orden_de_trabajo') => {
                     <span className="col-span-2">Monto</span>
                     <span className="col-span-3">Dirección</span>
                     <span className="col-span-2">Estado</span>
-                    <span className="col-span-1 text-center">Editar</span>
+                    {/* <span className="col-span-1 text-center">Editar</span> */}
                   </li>
                   {boletas.length > 0 ? boletas.map((boleta) => {
                       const isFinalState = boleta.estado === 'Entregado' || boleta.estado === 'Cancelado';
@@ -343,18 +341,18 @@ const handlePrint = async (tipo: 'comprobante' | 'orden_de_trabajo') => {
                           <span className="col-span-2">$ {Math.round(boleta.monto_final_con_recargos / 100) * 100}</span>
                           <span className="col-span-3 truncate">{boleta.direccion_entrega}</span>
                           <span className="col-span-2"><span className={`px-2 py-1 text-xs font-semibold rounded-full ${getColorForStatus(boleta.estado)}`}>{boleta.estado}</span></span>
-                          <div className="col-span-1 text-center">
-                              <button 
-                                  onClick={() => setIdBoleta(boleta.venta_id)} 
-                                  className="text-indigo-600 hover:text-indigo-800"
-                                  title={`Actualizar Pedido #${boleta.venta_id}`}
-                                  aria-label={`Actualizar Pedido #${boleta.venta_id}`}
-                              >
-                                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                      <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
-                                  </svg>
-                              </button>
-                          </div>
+              {/* <div className="col-span-1 text-center">
+                <button 
+                  onClick={() => setIdBoleta(boleta.venta_id)} 
+                  className="text-indigo-600 hover:text-indigo-800"
+                  title={`Actualizar Pedido #${boleta.venta_id}`}
+                  aria-label={`Actualizar Pedido #${boleta.venta_id}`}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                  </svg>
+                </button>
+              </div> */}
                         </li>
                       );
                   }) : (
@@ -372,9 +370,6 @@ const handlePrint = async (tipo: 'comprobante' | 'orden_de_trabajo') => {
             )}
           </div>
         </div>
-      ) : (
-        <FormularioActualizarPedido id={idBoleta} />
-      )}
-    </>
+      </>
   );
 }

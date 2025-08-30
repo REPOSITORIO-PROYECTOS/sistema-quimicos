@@ -31,13 +31,29 @@ export default function ListaBoletasPuerta() {
   const [idBoleta, setIdBoleta] = useState<number | undefined>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
   const [currentPage, setCurrentPage] = useState(1);
   const [paginationInfo, setPaginationInfo] = useState<PaginationInfo | null>(null);
-
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleteSuccess, setDeleteSuccess] = useState<string | null>(null);
+  // Obtener el rol del usuario desde localStorage
+  const [rol, setRol] = useState<string | null>(null);
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setRol(localStorage.getItem('rol'));
+    }
+  }, []);
+
+  // Función para saber si la boleta es del día
+  const esBoletaDelDia = (fecha_pedido: string) => {
+    const hoy = new Date();
+    const fecha = new Date(fecha_pedido);
+    return (
+      hoy.getFullYear() === fecha.getFullYear() &&
+      hoy.getMonth() === fecha.getMonth() &&
+      hoy.getDate() === fecha.getDate()
+    );
+  };
 
   const fetchBoletas = useCallback(async (pageToFetch: number) => {
     setLoading(true);
@@ -187,18 +203,49 @@ return (
                           }
                         </span>
                         <div className="flex items-center justify-center gap-3">
-                          <button
-                            title="Editar Pedido"
-                            className="text-indigo-600 hover:text-indigo-800 text-xl transition-colors disabled:opacity-50"
-                            onClick={() => setIdBoleta(boleta.venta_id)}
-                            disabled={!!deletingId}
-                          >⚙️</button>
-                          <button
-                            title="Eliminar Pedido"
-                            className={`text-red-500 hover:text-red-700 text-xl transition-colors ${deletingId === boleta.venta_id ? 'opacity-50 cursor-wait' : ''}`}
-                            onClick={() => handleEliminarPedido(boleta.venta_id)}
-                            disabled={!!deletingId}
-                          >🗑️</button>
+                          {/* Si el usuario es PUERTA, solo puede editar boletas del día, no eliminar */}
+                          {rol === 'admin' ? (
+                            <>
+                              <button
+                                title="Editar Pedido"
+                                className="text-indigo-600 hover:text-indigo-800 text-xl transition-colors disabled:opacity-50"
+                                onClick={() => setIdBoleta(boleta.venta_id)}
+                                disabled={!!deletingId}
+                              >⚙️</button>
+                              <button
+                                title="Eliminar Pedido"
+                                className={`text-red-500 hover:text-red-700 text-xl transition-colors ${deletingId === boleta.venta_id ? 'opacity-50 cursor-wait' : ''}`}
+                                onClick={() => handleEliminarPedido(boleta.venta_id)}
+                                disabled={!!deletingId}
+                              >🗑️</button>
+                            </>
+                          ) : rol === 'puerta' ? (
+                            <>
+                              {esBoletaDelDia(boleta.fecha_pedido) && (
+                                <button
+                                  title="Editar Pedido"
+                                  className="text-indigo-600 hover:text-indigo-800 text-xl transition-colors disabled:opacity-50"
+                                  onClick={() => setIdBoleta(boleta.venta_id)}
+                                  disabled={!!deletingId}
+                                >⚙️</button>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                title="Editar Pedido"
+                                className="text-indigo-600 hover:text-indigo-800 text-xl transition-colors disabled:opacity-50"
+                                onClick={() => setIdBoleta(boleta.venta_id)}
+                                disabled={!!deletingId}
+                              >⚙️</button>
+                              <button
+                                title="Eliminar Pedido"
+                                className={`text-red-500 hover:text-red-700 text-xl transition-colors ${deletingId === boleta.venta_id ? 'opacity-50 cursor-wait' : ''}`}
+                                onClick={() => handleEliminarPedido(boleta.venta_id)}
+                                disabled={!!deletingId}
+                              >🗑️</button>
+                            </>
+                          )}
                         </div>
                       </li>
                     )) : (
