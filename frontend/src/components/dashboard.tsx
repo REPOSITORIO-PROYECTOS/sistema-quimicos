@@ -102,9 +102,19 @@ export default function DashboardPage() {
         if (!token) { alert("No autenticado."); return; }
         setIsDownloading(true);
         try {
-            const fecha = new Date(selectedDate + 'T00:00:00');
-            const primerDiaMes = getISODate(new Date(fecha.getFullYear(), fecha.getMonth(), 1));
-            const ultimoDiaMes = getISODate(new Date(fecha.getFullYear(), fecha.getMonth() + 1, 0));
+            // Construir fechas base en zona horaria de Argentina
+            const [anio, mes] = selectedDate.split('-');
+            // Primer día del mes en Argentina
+            const primerDiaMesStr = `${anio}-${mes}-01T00:00:00-03:00`;
+            const primerDiaMesDate = new Date(primerDiaMesStr);
+            // Último día del mes en Argentina
+            const ultimoDia = new Date(Number(anio), Number(mes), 0).getDate();
+            const ultimoDiaMesStr = `${anio}-${mes}-${String(ultimoDia).padStart(2, '0')}T00:00:00-03:00`;
+            const ultimoDiaMesDate = new Date(ultimoDiaMesStr);
+            // Formatear a YYYY-MM-DD
+            const toISODate = (date: Date) => date.toISOString().slice(0, 10);
+            const primerDiaMes = toISODate(primerDiaMesDate);
+            const ultimoDiaMes = toISODate(ultimoDiaMesDate);
             const url = `https://quimex.sistemataup.online/reportes/movimientos-excel?fecha_desde=${primerDiaMes}&fecha_hasta=${ultimoDiaMes}`;
             
             const response = await fetch(url, { headers: { "Authorization": `Bearer ${token}` } });
