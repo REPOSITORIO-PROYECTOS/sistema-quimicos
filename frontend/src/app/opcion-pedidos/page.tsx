@@ -76,8 +76,11 @@ export default function TotalPedidos() {
   const [selectedBoletas, setSelectedBoletas] = useState<Set<number>>(new Set());
   const [estadoSeleccionado, setEstadoSeleccionado] = useState('Listo para Entregar');
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
-  
-const [fechaSeleccionada, setFechaSeleccionada] = useState<string>(() => {
+  // Estados para filtro manual
+  const [searchCliente, setSearchCliente] = useState("");
+  const [filterEstado, setFilterEstado] = useState("");
+
+  const [fechaSeleccionada, setFechaSeleccionada] = useState<string>(() => {
     // 1. Intentamos leer la fecha guardada desde el localStorage
     if (typeof window !== 'undefined') {
       const fechaGuardada = localStorage.getItem('ultimaFechaPedidos');
@@ -318,9 +321,31 @@ const handlePrint = async (tipo: 'comprobante' | 'orden_de_trabajo') => {
                 </div>
             </div>
 
+            {/* Filtros de búsqueda automáticos */}
+            <div className="flex flex-col md:flex-row gap-2 mb-4 items-center">
+              <input
+                type="text"
+                className="border p-2 rounded w-full md:w-64"
+                placeholder="Buscar cliente..."
+                value={searchCliente}
+                onChange={e => setSearchCliente(e.target.value)}
+              />
+              <select
+                className="border p-2 rounded w-full md:w-48"
+                value={filterEstado}
+                onChange={e => setFilterEstado(e.target.value)}
+              >
+                <option value="">Todos los estados</option>
+                <option value="Pendiente">Pendiente</option>
+                <option value="Listo para Entregar">Listo para Entregar</option>
+                <option value="Entregado">Entregado</option>
+                <option value="Cancelado">Cancelado</option>
+              </select>
+            </div>
+
             {error && <pre className="text-red-600 bg-red-100 p-3 rounded-md">{error}</pre>}
             {loading && !isUpdatingStatus && <p className="text-center text-gray-600 my-4">Cargando pedidos...</p>}
-            
+
             {!loading && !error && (
               <div className="overflow-x-auto">
                 <ul className="min-w-full space-y-2">
@@ -330,9 +355,47 @@ const handlePrint = async (tipo: 'comprobante' | 'orden_de_trabajo') => {
                     <span className="col-span-2">Monto</span>
                     <span className="col-span-3">Dirección</span>
                     <span className="col-span-2">Estado</span>
-                    {/* <span className="col-span-1 text-center">Editar</span> */}
                   </li>
-                  {boletas.length > 0 ? boletas.map((boleta) => {
+                  {boletas
+                    .filter(b => {
+                      // Búsqueda por similitud automática
+                      const input = searchCliente.trim().toLowerCase();
+                      const nombre = b.cliente_nombre.toLowerCase();
+                      if (!input) return filterEstado ? b.estado === filterEstado : true;
+                      // Coincidencia directa o fuzzy simple
+                      const incluye = nombre.includes(input);
+                      // Fuzzy: permite hasta 1 letra de diferencia si input >= 3
+                      function fuzzy(str: string, pattern: string) {
+                        if (pattern.length < 3) return str.includes(pattern);
+                        let mismatches = 0, i = 0, j = 0;
+                        while (i < str.length && j < pattern.length) {
+                          if (str[i] === pattern[j]) { j++; } else { mismatches++; }
+                          i++;
+                        }
+                        return (j === pattern.length && mismatches <= 1) || str.includes(pattern);
+                      }
+                      const fuzzyMatch = fuzzy(nombre, input);
+                      return (incluye || fuzzyMatch) && (filterEstado ? b.estado === filterEstado : true);
+                    })
+                    .length > 0 ? boletas
+                    .filter(b => {
+                      const input = searchCliente.trim().toLowerCase();
+                      const nombre = b.cliente_nombre.toLowerCase();
+                      if (!input) return filterEstado ? b.estado === filterEstado : true;
+                      const incluye = nombre.includes(input);
+                      function fuzzy(str: string, pattern: string) {
+                        if (pattern.length < 3) return str.includes(pattern);
+                        let mismatches = 0, i = 0, j = 0;
+                        while (i < str.length && j < pattern.length) {
+                          if (str[i] === pattern[j]) { j++; } else { mismatches++; }
+                          i++;
+                        }
+                        return (j === pattern.length && mismatches <= 1) || str.includes(pattern);
+                      }
+                      const fuzzyMatch = fuzzy(nombre, input);
+                      return (incluye || fuzzyMatch) && (filterEstado ? b.estado === filterEstado : true);
+                    })
+                    .map((boleta) => {
                       const isFinalState = boleta.estado === 'Entregado' || boleta.estado === 'Cancelado';
                       return (
                         <li key={boleta.venta_id} className={`grid grid-cols-12 gap-3 items-center p-2 rounded-md ${isFinalState ? 'bg-gray-200 opacity-70' : 'bg-gray-50'}`}>
@@ -341,18 +404,6 @@ const handlePrint = async (tipo: 'comprobante' | 'orden_de_trabajo') => {
                           <span className="col-span-2">$ {Math.round(boleta.monto_final_con_recargos / 100) * 100}</span>
                           <span className="col-span-3 truncate">{boleta.direccion_entrega}</span>
                           <span className="col-span-2"><span className={`px-2 py-1 text-xs font-semibold rounded-full ${getColorForStatus(boleta.estado)}`}>{boleta.estado}</span></span>
-              {/* <div className="col-span-1 text-center">
-                <button 
-                  onClick={() => setIdBoleta(boleta.venta_id)} 
-                  className="text-indigo-600 hover:text-indigo-800"
-                  title={`Actualizar Pedido #${boleta.venta_id}`}
-                  aria-label={`Actualizar Pedido #${boleta.venta_id}`}
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                    <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
-                  </svg>
-                </button>
-              </div> */}
                         </li>
                       );
                   }) : (

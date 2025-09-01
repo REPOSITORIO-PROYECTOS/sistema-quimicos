@@ -173,7 +173,7 @@ export default function UsuariosPage() {
     try {
       const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
       if (!token) throw new Error("No autenticado");
-      const res = await fetch("/usuarios", {
+      const res = await fetch("/auth/register", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
