@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 // Definición de roles
-type UserRole = "ADMIN" | "ALMACEN" | "VENTAS_LOCAL" | "VENTAS_PEDIDOS" | "CONTABLE" | "GUEST";
+type UserRole = "ADMIN" | "ALMACEN" | "VENTAS_LOCAL" | "VENTAS_PEDIDOS" | "CONTABLE" | "PUERTA" | "GUEST";
 
 interface NavItemConfig {
     href: string;
@@ -30,22 +30,24 @@ const navItemsConfig: NavItemConfig[] = [
     {
         href: "/",
         label: "Home",
-        roles: ["ADMIN"], // CAMBIO: Solo ADMIN puede ver Home
+        roles: ["ADMIN"],
     },
+    // Ventas/Pedidos/Puerta según rol
     {
         href: "/acciones",
-        label: "Ventas",
-        roles: ["ADMIN", "VENTAS_LOCAL", "VENTAS_PEDIDOS"],
-        isDropdown: true,
-        subItems: [
-            { href: "/acciones", label: "Pedidos", roles: ["ADMIN", "VENTAS_PEDIDOS"] },
-            { href: "/acciones-puerta", label: "Puerta", roles: ["ADMIN", "VENTAS_LOCAL"] },
-        ],
+        label: "Pedidos",
+        roles: ["ADMIN", "VENTAS_PEDIDOS"],
+    },
+    {
+        href: "/acciones-puerta",
+        label: "Puerta",
+        roles: ["ADMIN", "VENTAS_LOCAL", "VENTAS_PEDIDOS", "PUERTA"],
     },
     { href: "/lista", label: "Lista", roles: ["ADMIN"] },
     { href: "/compras", label: "Compras", roles: ["ADMIN", "ALMACEN","CONTABLE" ] },
     { href: "/movimientos", label: "Movimientos", roles: ["ADMIN", "CONTABLE"] },
     { href: "/proveedores-acciones", label: "Proveedores", roles: ["ADMIN", "ALMACEN"] },
+    { href: "/usuarios", label: "Usuarios", roles: ["ADMIN"] },
 ];
 
 type IndicatorStyle = {
