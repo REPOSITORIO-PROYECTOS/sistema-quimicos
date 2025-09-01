@@ -37,6 +37,7 @@ type BoletaParaLista = {
   fecha_pedido_formateada: string;
   cliente_nombre: string;
   direccion_entrega: string;
+  cliente_zona?: string; // Localidad
 };
 
 type Pagination = {
@@ -116,6 +117,7 @@ export default function TotalPedidos() {
         fecha_pedido_formateada: new Date(item.fecha_pedido).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" }),
         cliente_nombre: item.cliente_nombre,
         direccion_entrega: item.direccion_entrega,
+        cliente_zona: item.cliente_zona || '',
       }));
       setBoletas(boletasProcesadas);
       setPagination(data.pagination);
@@ -349,11 +351,12 @@ const handlePrint = async (tipo: 'comprobante' | 'orden_de_trabajo') => {
             {!loading && !error && (
               <div className="overflow-x-auto">
                 <ul className="min-w-full space-y-2">
-                  <li className="grid grid-cols-12 gap-3 items-center bg-indigo-100 p-2 rounded-md font-semibold text-indigo-800 text-xs uppercase">
+                  <li className="grid grid-cols-13 gap-3 items-center bg-indigo-100 p-2 rounded-md font-semibold text-indigo-800 text-xs uppercase">
                     <div className="col-span-1 flex justify-center"><input type="checkbox" onChange={handleSelectAllOnPage} checked={isAllOnPageSelected} /></div>
                     <span className="col-span-3">Cliente</span>
                     <span className="col-span-2">Monto</span>
                     <span className="col-span-3">Dirección</span>
+                    <span className="col-span-2">Localidad</span>
                     <span className="col-span-2">Estado</span>
                   </li>
                   {boletas
@@ -398,11 +401,12 @@ const handlePrint = async (tipo: 'comprobante' | 'orden_de_trabajo') => {
                     .map((boleta) => {
                       const isFinalState = boleta.estado === 'Entregado' || boleta.estado === 'Cancelado';
                       return (
-                        <li key={boleta.venta_id} className={`grid grid-cols-12 gap-3 items-center p-2 rounded-md ${isFinalState ? 'bg-gray-200 opacity-70' : 'bg-gray-50'}`}>
+                        <li key={boleta.venta_id} className={`grid grid-cols-13 gap-3 items-center p-2 rounded-md ${isFinalState ? 'bg-gray-200 opacity-70' : 'bg-gray-50'}`}>
                           <div className="col-span-1 flex justify-center"><input type="checkbox" checked={selectedBoletas.has(boleta.venta_id)} onChange={() => handleCheckboxChange(boleta.venta_id)} disabled={isFinalState} className={isFinalState ? 'cursor-not-allowed' : ''}/></div>
                           <span className="col-span-3 truncate font-medium">{boleta.cliente_nombre}</span>
                           <span className="col-span-2">$ {Math.round(boleta.monto_final_con_recargos / 100) * 100}</span>
                           <span className="col-span-3 truncate">{boleta.direccion_entrega}</span>
+                          <span className="col-span-2 truncate">{boleta.cliente_zona || '-'}</span>
                           <span className="col-span-2"><span className={`px-2 py-1 text-xs font-semibold rounded-full ${getColorForStatus(boleta.estado)}`}>{boleta.estado}</span></span>
                         </li>
                       );
