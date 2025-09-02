@@ -31,6 +31,7 @@ export default function ListaBoletas() {
 
   // --- NUEVO: Estado para el filtro de orden por fecha ---
   const [ordenarPorFecha, setOrdenarPorFecha] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
 
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -192,15 +193,21 @@ export default function ListaBoletas() {
   };
 
   // --- NUEVO: Lógica para ordenar la lista actual de boletas ---
-  const boletasMostradas = useMemo(() => {
-    if (!ordenarPorFecha) {
-      return boletas;
-    }
-    // Retorna una copia ordenada para no mutar el estado original
-    return [...boletas].sort((a, b) => 
-      new Date(b.fecha_pedido).getTime() - new Date(a.fecha_pedido).getTime()
+  const boletasFiltradas = useMemo(() => {
+    if (!searchTerm.trim()) return boletas;
+    const term = searchTerm.trim().toLowerCase();
+    return boletas.filter(b =>
+      b.cliente_nombre.toLowerCase().includes(term) ||
+      b.venta_id.toString().includes(term)
     );
-  }, [boletas, ordenarPorFecha]);
+  }, [boletas, searchTerm]);
+
+  const boletasMostradas = useMemo(() => {
+    const lista = ordenarPorFecha
+      ? [...boletasFiltradas].sort((a, b) => new Date(b.fecha_pedido).getTime() - new Date(a.fecha_pedido).getTime())
+      : boletasFiltradas;
+    return lista;
+  }, [boletasFiltradas, ordenarPorFecha]);
 
 
   return (
@@ -220,8 +227,15 @@ export default function ListaBoletas() {
 
             {!loading && !error && (
               <>
-                {/* --- NUEVO: Botón para activar/desactivar el filtro --- */}
-                <div className="flex justify-end mb-4">
+                {/* --- NUEVO: Buscador y botón para activar/desactivar el filtro --- */}
+                <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-2">
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={e => setSearchTerm(e.target.value)}
+                    placeholder="Buscar por cliente o Nº boleta..."
+                    className="border border-gray-300 rounded-md p-2 w-full md:w-1/2"
+                  />
                   <button 
                     onClick={() => setOrdenarPorFecha(prev => !prev)}
                     className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 ${
