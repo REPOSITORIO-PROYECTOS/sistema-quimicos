@@ -11,7 +11,6 @@ type ProductoPedido = {
   producto_id: number;
   cantidad: number;
   precio_unitario: number;
-  descuento: number;
   total_linea: number;
   observacion_item?: string;
 };
@@ -46,7 +45,7 @@ interface FormularioProps {
   onVolver: () => void;
 }
 const VENDEDORES = ["martin", "moises", "sergio", "gabriel", "mauricio", "elias", "ardiles", "redonedo"];
-const initialProductoItem : ProductoPedido = { producto_id: 0, cantidad: 0, precio_unitario: 0, descuento: 0, total_linea: 0, observacion_item: "" };
+const initialProductoItem : ProductoPedido = { producto_id: 0, cantidad: 0, precio_unitario: 0, total_linea: 0, observacion_item: "" };
 
 // --- Componente Principal ---
 export default function FormularioActualizarPedidoPuerta({ id, onVolver }: FormularioProps) {
@@ -137,7 +136,7 @@ export default function FormularioActualizarPedidoPuerta({ id, onVolver }: Formu
                     ? (precioTotalCalculado / totalQuantityForProduct) * item.cantidad
                     : 0;
                 
-                item.total_linea = totalBruto * (1 - (item.descuento / 100)); // Asigna a 'total_linea'
+                item.total_linea = totalBruto;
             }
         });
     });
@@ -280,9 +279,7 @@ useEffect(() => {
   const handleProductRowChange = (index: number, field: keyof ProductoPedido, value: string | number) => {
     const nuevosProductos = productos.map((item, idx) => {
         if (index !== idx) return item;
-        let newValue = value;
-        if (field === 'descuento') newValue = Math.max(0, Math.min(100, Number(value)));
-        return { ...item, [field]: newValue };
+  return { ...item, [field]: value };
     });
     recalculatePricesForProducts(nuevosProductos);
   };
@@ -316,11 +313,10 @@ useEffect(() => {
       nombre_vendedor: formData.nombre_vendedor.trim(), forma_pago: formData.forma_pago,
       monto_pagado_cliente: formData.monto_pagado, requiere_factura: formData.requiere_factura,
       observaciones: formData.observaciones || "", monto_total_base: montoBaseProductos,
-      descuento_total_global_porcentaje: formData.descuentoTotal,
       monto_total_final_con_recargos: displayTotal,
       items: productos.filter(item => item.producto_id > 0 && item.cantidad > 0).map(item => ({
           producto_id: item.producto_id, cantidad: item.cantidad,
-          observacion_item: item.observacion_item || "", descuento_item_porcentaje: item.descuento,
+          observacion_item: item.observacion_item || "",
       })),
     };
     try {
@@ -385,19 +381,17 @@ useEffect(() => {
 
             <fieldset className="border p-4 rounded-md">
               <legend className="text-lg font-medium text-gray-700 px-2">Productos</legend>
-              <div className="mb-2 hidden md:grid md:grid-cols-[1fr_80px_80px_1fr_100px_100px_40px] items-center gap-2 font-semibold text-sm text-gray-600 px-3">
-                <span>Producto</span><span className="text-center">Cant.</span><span className="text-center">Desc.%</span><span>Observación</span><span className="text-right">P. Unit.</span><span className="text-right">Total</span><span></span>
+              <div className="mb-2 hidden md:grid md:grid-cols-[1fr_80px_1fr_100px_100px_40px] items-center gap-2 font-semibold text-sm text-gray-600 px-3">
+                <span>Producto</span><span className="text-center">Cant.</span><span>Observación</span><span className="text-right">P. Unit.</span><span className="text-right">Total</span><span></span>
               </div>
               <div className="space-y-3">
                 {productos.map((item, index) => (
-                  <div key={index} className="grid grid-cols-1 md:grid-cols-[1fr_80px_80px_1fr_100px_100px_40px] items-center gap-2 border-b pb-2 last:border-b-0">
+                  <div key={index} className="grid grid-cols-1 md:grid-cols-[1fr_80px_1fr_100px_100px_40px] items-center gap-2 border-b pb-2 last:border-b-0">
                     <Select options={opcionesDeProductoParaSelect} value={opcionesDeProductoParaSelect.find(opt => opt.value === item.producto_id) || null}
                         onChange={(selectedOption) => handleProductRowChange(index, 'producto_id', selectedOption?.value || 0)}
                         className="text-sm react-select-container" classNamePrefix="react-select"/>
                     <input type="number" value={item.cantidad} onChange={(e) => handleProductRowChange(index, 'cantidad', parseFloat(e.target.value) || 0)} onWheel={(e) => (e.target as HTMLInputElement).blur()}
                       className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 text-center focus:outline-none focus:ring-1 focus:ring-indigo-500 no-spinners" min="0" step="any"/>
-                    <input type="number" value={item.descuento} onChange={(e) => handleProductRowChange(index, 'descuento', parseFloat(e.target.value) || 0)} onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                      className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 text-center focus:outline-none focus:ring-1 focus:ring-indigo-500 no-spinners" min="0" max="100"/>
                     <input type="text" value={item.observacion_item || ''} onChange={(e) => handleProductRowChange(index, 'observacion_item', e.target.value)} className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"/>
                     <input type="text" readOnly disabled value={`$ ${(item.precio_unitario || 0).toFixed(2)}`} className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 bg-gray-100 text-right"/>
                     <input type="text" readOnly disabled value={`$ ${(item.total_linea || 0).toFixed(2)}`} className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 bg-gray-100 text-right"/>
@@ -416,12 +410,18 @@ useEffect(() => {
                     <option value="efectivo">Efectivo</option><option value="transferencia">Transferencia</option><option value="factura">Factura</option>
                   </select>
                 </div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1">Desc. Total (%)</label><input type="number" name="descuentoTotal" value={formData.descuentoTotal} onChange={handleFormChange} className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 no-spinners" min="0" max="100" /></div>
+
                 {formData.forma_pago === 'efectivo' && (
-                    <>
-                    <div><label className="block text-sm font-medium text-gray-700 mb-1">Monto Pagado</label><input type="number" name="monto_pagado" value={formData.monto_pagado} onChange={handleFormChange} className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 no-spinners" min="0" step="0.01"/></div>
-                    <div><label className="block text-sm font-medium text-gray-700 mb-1">Vuelto</label><input type="text" readOnly value={`$ ${formData.vuelto.toFixed(2)}`} className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 bg-gray-100 text-right"/></div>
-                    </>
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Monto Pagado *</label>
+                      <input type="number" name="monto_pagado" value={formData.monto_pagado} onChange={handleFormChange} className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 no-spinners" min="0" step="0.01" required />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Vuelto</label>
+                      <input type="text" readOnly value={`$ ${formData.vuelto.toFixed(2)}`} className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 bg-gray-100 text-right"/>
+                    </div>
+                  </>
                 )}
               </div>
               <div className="mt-4 text-right">
