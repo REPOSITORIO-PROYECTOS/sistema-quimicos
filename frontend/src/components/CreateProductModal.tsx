@@ -77,6 +77,12 @@ const unidadesDeVenta = ["LT", "KG", "UNIDAD"];
 const CreateProductModal: React.FC<CreateProductModalProps> = ({
     onClose, onProductCreatedOrUpdated, productIdToEdit, comboIdToEdit, isInitiallyCombo
 }) => {
+    useEffect(() => {
+        document.body.classList.add('hide-navbar-when-modal');
+        return () => {
+            document.body.classList.remove('hide-navbar-when-modal');
+        };
+    }, []);
     const isEditMode = !!(productIdToEdit || comboIdToEdit);
     const token = localStorage.getItem("token");
 
@@ -386,10 +392,6 @@ return (
                         <div className="flex items-center">
                             <input id="esReceta" name="esReceta" type="checkbox" checked={formData.esReceta} onChange={handleInputChange} className={`h-4 w-4 text-indigo-600 rounded ${isProductFieldsDisabled ? 'cursor-not-allowed opacity-50' : ''}`} disabled={isProductFieldsDisabled} />
                             <label htmlFor="esReceta" className={`ml-2 text-sm ${isProductFieldsDisabled ? 'text-gray-400' : ''}`}>Es Receta</label>
-                        </div>
-                        <div className="flex items-center">
-                            <input id="esCombo" name="esCombo" type="checkbox" checked={esCombo} onChange={handleInputChange} className="h-4 w-4 text-indigo-600 rounded" />
-                            <label htmlFor="esCombo" className="ml-2 text-sm">Es Combo</label>
                         </div>
                         <div className="flex items-center">
                             <input id="activo" name="activo" type="checkbox" checked={formData.activo} onChange={handleInputChange} className="h-4 w-4 text-indigo-600 rounded" />

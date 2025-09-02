@@ -313,3 +313,8 @@ select:focus {
     border-top: 1px dashed #000 !important;
   }
 }
+
+/* Oculta el navbar cuando el modal de crear producto está abierto */
+.hide-navbar-when-modal nav {
+  display: none !important;
+}
