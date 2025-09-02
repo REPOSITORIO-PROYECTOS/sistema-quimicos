@@ -174,6 +174,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         producto: detalle.producto_id,
         qx: detalle.cantidad,
         descuento: detalle.descuento_item_porcentaje || 0,
+        observacion: detalle.observacion_item || "",
         observacion_item: detalle.observacion_item || "",
         // Precios y totales se inicializan en 0, serán calculados ahora.
         precio: 0,

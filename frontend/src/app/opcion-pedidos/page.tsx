@@ -104,7 +104,8 @@ export default function TotalPedidos() {
       const params = new URLSearchParams({
         page: String(page),
         per_page: '20',
-        fecha: fechaSeleccionada
+        fecha_desde: fechaSeleccionada,
+        fecha_hasta: fechaSeleccionada
       });
       const apiUrl = `https://quimex.sistemataup.online/ventas/con_entrega?${params.toString()}`;
       const response = await fetch(apiUrl, { headers: { "Authorization": `Bearer ${token}` } });
