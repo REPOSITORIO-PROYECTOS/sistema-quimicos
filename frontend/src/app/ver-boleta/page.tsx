@@ -8,8 +8,10 @@ type Boleta = {
   venta_id: number;
   monto_final_con_recargos: number;
   fecha_pedido: string; // Se mantiene como string ISO para poder ordenar
+  fecha_registro?: string;
   cliente_nombre: string;
   direccion_entrega: string;
+  estado?: string;
 };
 
 type Pagination = {
@@ -250,28 +252,46 @@ export default function ListaBoletas() {
 
                 <div className="overflow-x-auto">
                   <ul className="space-y-3 min-w-[900px]">
-                    <li className="grid grid-cols-6 gap-x-4 items-center bg-indigo-100 p-3 rounded-md font-semibold text-indigo-700 text-xs uppercase tracking-wider">
+                    <li className="grid grid-cols-8 gap-x-4 items-center bg-indigo-100 p-3 rounded-md font-semibold text-indigo-700 text-xs uppercase tracking-wider">
                       <span className="text-center">Nº Boleta</span>
                       <span className="text-center">Monto</span>
                       <span className="text-center">Fecha Pedido</span>
+                      <span className="text-center">Fecha Registro</span>
                       <span className="text-center">Dirección</span>
                       <span className="text-center">Cliente</span>
+                      <span className="text-center">Estado</span>
                       <span className="text-center">Acción</span>
                     </li>
                     
                     {/* CAMBIO: Se itera sobre la lista potencialmente ordenada */}
                     {boletasMostradas.length > 0 ? boletasMostradas.map((boleta) => (
-                      <li key={boleta.venta_id} className="grid grid-cols-6 gap-x-4 items-center bg-gray-50 hover:bg-gray-100 p-3 rounded-md text-sm transition-colors">
+                      <li key={boleta.venta_id} className="grid grid-cols-8 gap-x-4 items-center bg-gray-50 hover:bg-gray-100 p-3 rounded-md text-sm transition-colors">
                         <span className="text-center">{`Nº ${boleta.venta_id.toString().padStart(4, '0')}`}</span>
                         <span className="text-center font-medium">${boleta.monto_final_con_recargos.toFixed(2)}</span>
-                        {/* CAMBIO: La fecha se formatea aquí, al momento de renderizar */}
                         <span className="text-center">
                            {new Date(boleta.fecha_pedido).toLocaleDateString("es-AR", {
                                 day: "2-digit", month: "2-digit", year: "numeric",
                            })}
                         </span>
+                        <span className="text-center">
+                          {boleta.fecha_registro
+                            ? new Date(boleta.fecha_registro).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" })
+                            : '-'}
+                        </span>
                         <span className="text-center truncate" title={boleta.direccion_entrega}>{boleta.direccion_entrega}</span>
                         <span className="text-center truncate" title={boleta.cliente_nombre}>{boleta.cliente_nombre}</span>
+                        <span
+                          className={`text-center font-semibold px-2 py-1 rounded-full
+                            ${boleta.estado === 'Pendiente' ? 'bg-yellow-100 text-yellow-800' : ''}
+                            ${boleta.estado === 'Entregado' ? 'bg-green-100 text-green-800' : ''}
+                            ${boleta.estado === 'Cancelado' ? 'bg-red-100 text-red-800' : ''}
+                            ${boleta.estado === 'Listo para Entregar' ? 'bg-blue-100 text-blue-800' : ''}
+                            ${!['Pendiente','Entregado','Cancelado','Listo para Entregar'].includes(boleta.estado || '') ? 'bg-gray-100 text-gray-800' : ''}
+                          `}
+                          title={boleta.estado}
+                        >
+                          {boleta.estado || '-'}
+                        </span>
                         <div className="flex items-center justify-center gap-3">
                           <button
                             title="Editar Pedido"

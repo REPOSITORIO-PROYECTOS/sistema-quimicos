@@ -253,14 +253,25 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
         throw new Error(errorData.message || `Error ${resCliente.status} actualizando cliente`);
       }
 
-    // Sincronizar precios especiales
-    // ...existing precios especiales logic...
-  } catch (error) {
-    setSubmitErrorMessage(error instanceof Error ? error.message : "Error desconocido al actualizar el cliente.");
-  } finally {
-    setIsSubmitting(false);
-  }
-};
+      // Mostrar mensaje de éxito con detalles del cliente actualizado
+      const clienteActualizado = await resCliente.json();
+      setSubmitSuccessMessage(
+        `Cliente actualizado correctamente.\n` +
+        `Nombre/Razón Social: ${clienteActualizado.nombre_razon_social}\n` +
+        `CUIT: ${clienteActualizado.cuit || '-'}\n` +
+        `Dirección: ${clienteActualizado.direccion || '-'}\n` +
+        `Localidad: ${clienteActualizado.localidad || '-'}\n` +
+        `Email: ${clienteActualizado.email || '-'}`
+      );
+
+      // Sincronizar precios especiales
+      // ...existing precios especiales logic...
+    } catch (error) {
+      setSubmitErrorMessage(error instanceof Error ? error.message : "Error desconocido al actualizar el cliente.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   if (isLoading) {
     return <div className="text-center p-10 text-white">Cargando datos del cliente...</div>;
