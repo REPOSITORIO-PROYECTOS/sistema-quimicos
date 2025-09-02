@@ -3,25 +3,13 @@
 
 import React, { useState } from 'react';
 import { useAuth } from '@/components/providers/auth-provider'; // Asegúrate que la ruta a auth-provider sea correcta
-
-// Reutilizamos la definición de ROLES_DISPONIBLES, idealmente esto estaría en un archivo compartido
-const ROLES_DISPONIBLES = [
-    { value: "ADMIN", label: "Administrador" },
-    { value: "ALMACEN", label: "Almacén" },
-    { value: "VENTAS_LOCAL", label: "Ventas Local" },
-    { value: "VENTAS_PEDIDOS", label: "Ventas Pedidos" }, 
-    { value: "CONTABLE", label: "Contable" },
-] as const;
-
-type UserRole = typeof ROLES_DISPONIBLES[number]['value'];
+import Image from 'next/image';
 
 const LoginForm: React.FC = () => {
     const { login } = useAuth();
 
     const [loginUsuario, setLoginUsuario] = useState<string>('');
     const [loginContrasena, setLoginContrasena] = useState<string>('');
-    // Establecer un rol inicial, por ejemplo, el más común o el primero
-    const [loginRole] = useState<UserRole>(ROLES_DISPONIBLES[1].value); // 'ALMACEN' por defecto, ajústalo si es necesario
     const [loginIsLoading, setLoginIsLoading] = useState<boolean>(false);
     const [loginError, setLoginError] = useState<string | null>(null); // Para mostrar errores en el UI
 
@@ -31,16 +19,11 @@ const LoginForm: React.FC = () => {
         setLoginError(null); // Limpiar errores previos
 
         try {
-            // La función `login` de AuthProvider espera 'usuario', 'password', y opcionalmente 'role'.
-            // El backend determinará el rol real del usuario. El 'role' aquí
-            // es más una formalidad si tu AuthProvider lo requiere en su firma.
-            const loginSuccess = await login(loginUsuario, loginContrasena, loginRole);
+            const loginSuccess = await login(loginUsuario, loginContrasena);
 
             if (!loginSuccess) {
-                // El AuthProvider ya debería manejar la lógica de mostrar errores si se comunica con el backend.
-                // Si AuthProvider no devuelve un mensaje específico, puedes poner uno genérico aquí.
-                setLoginError('Usuario, contraseña o rol incorrectos. Por favor, verifica los datos.');
-                alert('Usuario, contraseña o rol incorrectos. Por favor, verifica los datos.');
+                setLoginError('Usuario o contraseña incorrectos. Por favor, verifica los datos.');
+                alert('Usuario o contraseña incorrectos. Por favor, verifica los datos.');
             } else {
                 // No es necesario redirigir desde aquí si AuthProvider ya lo hace.
             }
@@ -57,18 +40,35 @@ const LoginForm: React.FC = () => {
 
     const labelClasses = "block text-sm font-medium text-muted-foreground mb-1.5";
     const inputClasses = "h-10 px-3 py-2 text-sm w-full bg-input text-foreground border border-input rounded-md shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50";
-  
-    const buttonClasses = "w-full inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 h-10 px-4 py-2";
-    const primaryButtonClasses = `${buttonClasses} bg-primary text-primary-foreground hover:bg-primary/90`;
 
     return (
-        <div className="flex items-center justify-center min-h-screen bg-background px-4 py-8">
-            <div className="w-full max-w-md p-6 md:p-8 bg-card rounded-xl shadow-lg border border-border">
-                <h2 className="text-2xl md:text-3xl font-semibold text-center text-card-foreground mb-6 md:mb-8">
-                    Iniciar Sesión
-                </h2>
+        <div className="relative min-h-screen flex items-center justify-center bg-gray-100">
+            <Image
+                src="/login-bg.jpg"
+                alt="Fondo Login Quimex"
+                layout="fill"
+                objectFit="cover"
+                className="z-0 opacity-80"
+                priority
+            />
+            <div className="absolute inset-0 flex items-center justify-center z-10">
+                <form
+                    onSubmit={handleLoginSubmit}
+                    className="bg-white bg-opacity-95 rounded-xl shadow-2xl p-8 w-full max-w-md flex flex-col gap-6 border-4 border-[#1a237e]"
+                >
+                    <div className="flex flex-col items-center mb-2">
+                        <span className="text-4xl font-bold tracking-wide mb-1" style={{ color: '#1a237e', fontFamily: 'inherit', display: 'inline-block' }}>
+                          Qu
+                          <span style={{ position: 'relative', display: 'inline-block' }}>
+                            <span style={{ color: '#1a237e' }}>i</span>
+                            <span style={{ position: 'absolute', left: '50%', top: '0.12em', transform: 'translateX(-50%)', color: '#d32f2f', fontSize: '1em', fontWeight: 'bold', lineHeight: 0 }}>•</span>
+                          </span>
+                          mex
+                        </span>
+                        <span className="text-lg font-semibold text-[#1a237e] mb-2">SISTEMA DE GESTIÓN</span>
+                        <span className="text-base text-[#1a237e] font-medium">Ingresá tus datos para acceder</span>
+                    </div>
 
-                <form onSubmit={handleLoginSubmit} className="space-y-5">
                     <div>
                         <label htmlFor="loginUsuario" className={labelClasses}>Usuario</label>
                         <input
@@ -99,25 +99,6 @@ const LoginForm: React.FC = () => {
                         />
                     </div>
 
-                    {/*<div>
-                        <label htmlFor="loginRole" className={labelClasses}>Rol (Referencial)</label>
-                        <select
-                            id="loginRole"
-                            value={loginRole}
-                            onChange={(e) => setLoginRole(e.target.value as UserRole)}
-                            disabled={loginIsLoading}
-                            required // Si tu AuthProvider lo necesita
-                            className={selectClasses}
-                        >
-                            {ROLES_DISPONIBLES.map(r => (
-                                <option key={r.value} value={r.value}>{r.label}</option>
-                            ))}
-                        </select>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                            Nota: El sistema verificará tu rol real al iniciar sesión.
-                        </p>
-                    </div>*/}
-
                     {/* Mostrar mensajes de error */}
                     {loginError && (
                         <p className="text-sm font-medium text-destructive text-center bg-destructive/10 p-2 rounded-md border border-destructive/30">
@@ -126,20 +107,15 @@ const LoginForm: React.FC = () => {
                     )}
 
                     <div>
-                        <button type="submit" disabled={loginIsLoading} className={primaryButtonClasses}>
-                            {loginIsLoading ? (
-                                <>
-                                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                    </svg>
-                                    Ingresando...
-                                </>
-                            ) : 'Ingresar'}
+                        <button
+                            type="submit"
+                            disabled={loginIsLoading}
+                            className="w-full mt-2 py-2 rounded-lg bg-[#d32f2f] text-white font-bold text-lg shadow-md hover:bg-[#b71c1c] transition-colors duration-200"
+                        >
+                            {loginIsLoading ? 'Ingresando...' : 'INGRESAR'}
                         </button>
                     </div>
                 </form>
-
             </div>
         </div>
     );
