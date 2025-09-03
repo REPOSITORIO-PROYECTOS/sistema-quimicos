@@ -81,10 +81,6 @@ export default function TotalPedidos() {
   const [searchCliente, setSearchCliente] = useState("");
   const [filterEstado, setFilterEstado] = useState("");
 
-    // Estado para actualización de precios pendientes
-    const [isUpdatingPrices, setIsUpdatingPrices] = useState(false);
-    const [updatePricesMsg, setUpdatePricesMsg] = useState<string | null>(null);
-
   const [fechaSeleccionada, setFechaSeleccionada] = useState<string>(() => {
     // 1. Intentamos leer la fecha guardada desde el localStorage
     if (typeof window !== 'undefined') {
@@ -169,39 +165,6 @@ export default function TotalPedidos() {
       return newSelected;
     });
   };
-
-    // Función para actualizar precios pendientes
-    const handleActualizarPreciosPendientes = async () => {
-        setIsUpdatingPrices(true);
-        setUpdatePricesMsg(null);
-        setError(null);
-        const token = localStorage.getItem("token");
-        try {
-          const response = await fetch('https://quimex.sistemataup.online/ventas/actualizar_precios_pendientes', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-            body: JSON.stringify({})
-          });
-          const result = await response.json();
-          if (!response.ok) throw new Error(result.error || 'Error al actualizar precios.');
-
-          // Esperamos que el backend devuelva un array de cambios: [{venta_id, monto_anterior, monto_nuevo}]
-          if (Array.isArray(result.cambios) && result.cambios.length > 0) {
-            const cambiosMsg = result.cambios.map((c: {venta_id: number, monto_anterior: number, monto_nuevo: number}) =>
-              `Boleta #${c.venta_id}: $${c.monto_anterior} → $${c.monto_nuevo}`
-            ).join('\n');
-            setUpdatePricesMsg(`¡Precios actualizados! Cambios:\n${cambiosMsg}`);
-          } else {
-            setUpdatePricesMsg('¡Precios de boletas pendientes actualizados correctamente! (Sin detalles de cambios)');
-          }
-          await fetchBoletasPorFecha();
-        } catch (err) {
-          setUpdatePricesMsg(null);
-          setError(err instanceof Error ? err.message : 'Error desconocido al actualizar precios.');
-        } finally {
-          setIsUpdatingPrices(false);
-        }
-    };
 
   const handleCambiarEstado = async () => {
     if (selectedBoletas.size === 0) return;
@@ -357,10 +320,8 @@ const handlePrint = async (tipo: 'comprobante' | 'orden_de_trabajo') => {
                 </div>
                 <div className="flex items-center gap-2">
                     <button onClick={() => handlePrint('comprobante')} disabled={loading || isUpdatingStatus || selectedBoletas.size === 0} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded disabled:opacity-50">Imprimir Boletas</button>
-                    <button onClick={() => handlePrint('orden_de_trabajo')} disabled={loading || isUpdatingStatus || selectedBoletas.size === 0} className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded disabled:opacity-50">Imprimir OT</button>
-                      <button onClick={handleActualizarPreciosPendientes} disabled={loading || isUpdatingStatus || isUpdatingPrices} className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded disabled:opacity-50">
-                        {isUpdatingPrices ? 'Actualizando...' : 'Actualizar Precios Pendientes'}
-                      </button>
+                    <button onClick={() => handlePrint('orden_de_trabajo')} disabled={loading || isUpdatingStatus || selectedBoletas.size === 0} className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded disabled:opacity-50">Imprimir OT
+                    </button>
                 </div>
             </div>
 
@@ -386,8 +347,6 @@ const handlePrint = async (tipo: 'comprobante' | 'orden_de_trabajo') => {
               </select>
             </div>
 
-            {error && <pre className="text-red-600 bg-red-100 p-3 rounded-md">{error}</pre>}
-              {updatePricesMsg && <pre className="text-green-700 bg-green-100 p-3 rounded-md">{updatePricesMsg}</pre>}
             {loading && !isUpdatingStatus && <p className="text-center text-gray-600 my-4">Cargando pedidos...</p>}
 
             {!loading && !error && (
