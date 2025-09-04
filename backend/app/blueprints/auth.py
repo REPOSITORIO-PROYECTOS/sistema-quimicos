@@ -43,7 +43,7 @@ def login():
         }
         secret_key = 'J2z8KJdN8UfU8g6wKXgk4Q6nfsDF8wMnezLp8xsdWbNQqZ4RkOzZulX8wA==' #current_app.config.get('SECRET_KEY')
         if not secret_key:
-            print("ERROR FATAL: SECRET_KEY no configurada.")
+            print("ERROR FATAL: SECRET_KEY no configurada./prueba")
             return jsonify({'message': 'Error de configuración'}), 500
 
         token = jwt.encode(payload, secret_key, algorithm='HS256')
