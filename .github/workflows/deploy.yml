@@ -1,48 +1,49 @@
+# Nombre del workflow
 name: Deploy Backend to Server
 
+# Se activa con un push a la rama main si hay cambios en la carpeta backend/
 on:
   push:
     branches:
-      - main # O la rama que uses
+      - main
     paths:
       - 'backend/**'
 
 jobs:
   deploy:
-    name: Deploy to Server
+    name: Deploy and Restart
     runs-on: ubuntu-latest
 
     steps:
+      # 1. Descargar el código del repositorio al runner
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Sync files and restart service
+      # 2. (NUEVO) Sincronizar archivos usando una acción rsync dedicada
+      # Esta acción se ejecuta en el runner y EMPUJA los archivos a tu servidor
+      - name: Sync files to server
+        uses: burnett01/rsync-deploy@v7
+        with:
+          # Argumentos para rsync: archivar, verboso, comprimir, borrar archivos no existentes
+          switches: -avzr --delete
+          # Ruta de origen en el runner (la carpeta backend)
+          path: backend/
+          # Credenciales para la conexión SSH
+          remote_user: ${{ secrets.SERVER_USERNAME }}
+          remote_host: ${{ secrets.SERVER_HOST }}
+          remote_key: ${{ secrets.SSH_PRIVATE_KEY }}
+          # Ruta de destino en TU servidor
+          remote_path: /root/quimex_2.0/sistema_quimicos/
+
+      # 3. (MODIFICADO) Reiniciar el servicio usando SSH
+      # Esta acción solo ejecuta el comando de reinicio ahora que los archivos están actualizados
+      - name: Restart remote service
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: 22
-          
-          # Script mejorado con 'set -e' y depuración
           script: |
-            # 1. (MEJORA) Salir inmediatamente si un comando falla
-            set -e
-            
-            # 2. (NUEVO) Paso de depuración: listar archivos en el runner de GitHub
-            echo "--- Listando archivos en el espacio de trabajo ---"
-            ls -R ${{ github.workspace }}
-            echo "------------------------------------------------"
-
-            # 3. Navegar al directorio de destino en tu servidor
-            cd /root/quimex_2.0/sistema_quimicos
-            
-            # 4. Sincronizar los archivos
-            #    La ruta ${{ github.workspace }}/backend/ debería ser correcta,
-            #    pero el paso anterior nos lo confirmará.
-            rsync -avz --delete ${{ github.workspace }}/backend/ .
-            
-            # 5. Reiniciar el servicio
-            echo "Archivos actualizados. Reiniciando el servicio..."
+            echo "Archivos sincronizados. Reiniciando el servicio..."
             sudo systemctl restart quimex.service
             echo "Servicio reiniciado con éxito."
