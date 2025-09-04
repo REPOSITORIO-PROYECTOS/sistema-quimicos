@@ -6,6 +6,7 @@ import BotonVolver from '@/components/BotonVolver';
 
 // --- TIPOS COMPLETOS Y ESTRICTOS ---
 type DetalleProducto = {
+  subtotal_proporcional_con_recargos: number;
   producto_id: number;
   producto_nombre: string;
   cantidad: number;
@@ -213,13 +214,11 @@ const handlePrint = async (tipo: 'comprobante' | 'orden_de_trabajo') => {
         throw new Error(errorData.error || `No se pudieron cargar los detalles.`);
       }
       
-      const boletasDetalladas = await response.json();
+      const boletasDetalladas: BoletaOriginal[] = await response.json();
 
       // --- AQUÍ ESTÁ LA CORRECCIÓN ---
       // 2. Mapeamos la respuesta de la API al formato exacto que espera VentaData
     // Redondear a múltiplos de 100
-    const redondear = (valor: number | undefined) =>
-      typeof valor === 'number' ? Math.round(valor / 100) * 100 : undefined;
     const boletasAImprimir: VentaData[] = boletasDetalladas.map((data: BoletaOriginal) => {
       return {
         venta_id: data.venta_id,
@@ -234,13 +233,14 @@ const handlePrint = async (tipo: 'comprobante' | 'orden_de_trabajo') => {
           producto_id: detalle.producto_id,
           producto_nombre: detalle.producto_nombre,
           cantidad: detalle.cantidad,
-          precio_total_item_ars: redondear(detalle.precio_total_item_ars),
+          precio_total_item_ars: detalle.subtotal_proporcional_con_recargos,
+          subtotal_proporcional_con_recargos: detalle.subtotal_proporcional_con_recargos,
         })),
-        total_final: redondear(data.monto_final_con_recargos),
+        total_final: data.monto_final_con_recargos,
         observaciones: data.observaciones,
         forma_pago: data.forma_pago,
-        monto_pagado_cliente: redondear(data.monto_pagado_cliente),
-        vuelto_calculado: redondear(data.vuelto_calculado)
+        monto_pagado_cliente: data.monto_pagado_cliente,
+        vuelto_calculado: data.vuelto_calculado
       };
     });
       
@@ -405,7 +405,7 @@ const handlePrint = async (tipo: 'comprobante' | 'orden_de_trabajo') => {
                         <li key={boleta.venta_id} className={`grid grid-cols-13 gap-3 items-center p-2 rounded-md ${isFinalState ? 'bg-gray-200 opacity-70' : 'bg-gray-50'}`}>
                           <div className="col-span-1 flex justify-center"><input type="checkbox" checked={selectedBoletas.has(boleta.venta_id)} onChange={() => handleCheckboxChange(boleta.venta_id)} disabled={isFinalState} className={isFinalState ? 'cursor-not-allowed' : ''}/></div>
                           <span className="col-span-3 truncate font-medium">{boleta.cliente_nombre}</span>
-                          <span className="col-span-2">$ {Math.round(boleta.monto_final_con_recargos / 100) * 100}</span>
+                          <span className="col-span-2">$ {boleta.monto_final_con_recargos}</span>
                           <span className="col-span-3 truncate">{boleta.direccion_entrega}</span>
                           <span className="col-span-2 truncate">{boleta.cliente_zona || '-'}</span>
                           <span className="col-span-2"><span className={`px-2 py-1 text-xs font-semibold rounded-full ${getColorForStatus(boleta.estado)}`}>{boleta.estado}</span></span>

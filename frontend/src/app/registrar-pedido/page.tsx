@@ -73,7 +73,7 @@ const displayTotal = useMemo(() => {
     const montoConRecargos = totalCalculadoApi ? totalCalculadoApi.monto_final_con_recargos : montoBaseProductos;
     const montoBrutoFinal = Math.max(0, montoConRecargos * (1 - (formData.descuentoTotal || 0) / 100));
     if (montoBrutoFinal > 0) {
-        return Math.ceil(montoBrutoFinal / 100) * 100;
+        return montoBrutoFinal;
     }
     return 0;
     
@@ -192,7 +192,7 @@ const displayTotal = useMemo(() => {
                   : 0;
 
               const subtotalBrutoConDescuento = totalBruto * (1 - (item.descuento / 100));
-              item.total = Math.ceil(subtotalBrutoConDescuento / 100) * 100;
+              item.total = subtotalBrutoConDescuento;
           }
       });
   });
@@ -377,7 +377,7 @@ const handleSubmit = async (e: React.FormEvent ) => {
       if (totalCalculadoApi && montoBaseProductos > 0) {
         const factorRecargo = totalCalculadoApi.monto_final_con_recargos / montoBaseProductos;
         const subtotalConRecargo = subtotalRedondeadoBase * factorRecargo;
-        subtotalFinalParaTicket = Math.ceil(subtotalConRecargo / 100) * 100;
+        subtotalFinalParaTicket = subtotalConRecargo;
       }
       // Calcular subtotal bruto antes de descuento
       const descuentoPorc = item.descuento || 0;
@@ -406,7 +406,7 @@ const handleSubmit = async (e: React.FormEvent ) => {
       if (totalCalculadoApi && montoBaseProductos > 0) {
         const factorRecargo = totalCalculadoApi.monto_final_con_recargos / montoBaseProductos;
         const subtotalConRecargo = subtotalRedondeadoBase * factorRecargo;
-        subtotalFinalParaTicket = Math.ceil(subtotalConRecargo / 100) * 100;
+        subtotalFinalParaTicket = subtotalConRecargo;
       }
       const descuentoPorc = item.descuento || 0;
       const subtotalBruto = descuentoPorc > 0 ? (subtotalFinalParaTicket / (1 - descuentoPorc / 100)) : subtotalFinalParaTicket;
