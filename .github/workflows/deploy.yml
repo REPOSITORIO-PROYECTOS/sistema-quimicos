@@ -1,53 +1,48 @@
-# Nombre del workflow que aparecerá en la pestaña "Actions" de GitHub
 name: Deploy Backend to Server
 
-# Disparador (trigger): Este workflow se ejecutará en cada 'push'
 on:
   push:
-    # Solamente para la rama 'main' (o la que uses, ej: 'master')
     branches:
-      - main
-    # Y solamente si los cambios ocurrieron dentro de la carpeta 'backend/'
+      - main # O la rama que uses
     paths:
       - 'backend/**'
 
-# Trabajos (jobs) que se ejecutarán
 jobs:
   deploy:
-    # El nombre del trabajo
     name: Deploy to Server
-    # Usar la última versión de Ubuntu como sistema operativo del corredor
     runs-on: ubuntu-latest
 
-    # Pasos (steps) que se ejecutarán en secuencia
     steps:
-      # 1. Descargar el código del repositorio al corredor de GitHub
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Sincronizar archivos y reiniciar el servicio usando SSH
       - name: Sync files and restart service
-        # Usamos una acción popular de la comunidad para ejecutar comandos SSH
         uses: appleboy/ssh-action@master
         with:
-          # Usamos los secretos que configuramos en el Paso 4
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: 22 # Puerto SSH, usualmente 22
+          port: 22
           
-          # Script que se ejecutará en el servidor remoto
+          # Script mejorado con 'set -e' y depuración
           script: |
-            # 1. Navegar al directorio de destino en el servidor
+            # 1. (MEJORA) Salir inmediatamente si un comando falla
+            set -e
+            
+            # 2. (NUEVO) Paso de depuración: listar archivos en el runner de GitHub
+            echo "--- Listando archivos en el espacio de trabajo ---"
+            ls -R ${{ github.workspace }}
+            echo "------------------------------------------------"
+
+            # 3. Navegar al directorio de destino en tu servidor
             cd /root/quimex_2.0/sistema_quimicos
             
-            # 2. Usar rsync para sincronizar los archivos de forma eficiente.
-            #    -avz: archiva, verboso, comprime
-            #    --delete: borra archivos en el destino que ya no existen en el origen
-            #    El origen es la carpeta 'backend/' del repo y el destino es el directorio actual '.'
+            # 4. Sincronizar los archivos
+            #    La ruta ${{ github.workspace }}/backend/ debería ser correcta,
+            #    pero el paso anterior nos lo confirmará.
             rsync -avz --delete ${{ github.workspace }}/backend/ .
             
-            # 3. Reiniciar el servicio usando el comando que configuramos con sudo
+            # 5. Reiniciar el servicio
             echo "Archivos actualizados. Reiniciando el servicio..."
             sudo systemctl restart quimex.service
             echo "Servicio reiniciado con éxito."
