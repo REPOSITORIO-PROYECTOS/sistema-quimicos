@@ -11,6 +11,7 @@ type DetalleProducto = {
   producto_nombre: string;
   cantidad: number;
   precio_total_item_ars: number;
+  observacion_item?: string;
 };
 
 type BoletaOriginal = {
@@ -233,6 +234,7 @@ const handlePrint = async (tipo: 'comprobante' | 'orden_de_trabajo') => {
           producto_id: detalle.producto_id,
           producto_nombre: detalle.producto_nombre,
           cantidad: detalle.cantidad,
+          observacion_item: detalle.observacion_item, // <-- nombre correcto para Ticket
           precio_total_item_ars: detalle.subtotal_proporcional_con_recargos,
           subtotal_proporcional_con_recargos: detalle.subtotal_proporcional_con_recargos,
         })),
