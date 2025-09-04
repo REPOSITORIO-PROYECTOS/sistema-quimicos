@@ -11,48 +11,52 @@ on:
 
 jobs:
   deploy:
-    name: Deploy and Restart (Manual Method)
+    name: Deploy and Restart Backend
     runs-on: ubuntu-latest
     
     steps:
-      # 1. Descargar el código del repositorio al runner. Esto no cambia.
+      # 1. Descargar el código del repositorio
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. (NUEVO) Instalar la clave SSH privada manualmente
-      # En lugar de depender de una acción, creamos el archivo de clave nosotros mismos.
+      # 2. Instalar la clave SSH
       - name: Install SSH Key
         run: |
-          # Crear el directorio .ssh si no existe
           mkdir -p ~/.ssh
-          # Escribir la clave privada (que está en los secrets) en un archivo
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-          # Establecer los permisos correctos para la clave. SSH es muy estricto con esto.
           chmod 600 ~/.ssh/id_rsa
 
-      # 3. (NUEVO) Sincronizar archivos usando rsync directamente
-      # Ejecutamos el comando rsync nosotros mismos, sin acciones de terceros.
-      - name: Sync files via rsync
+      # 3. Sincronizar solo la carpeta backend al servidor
+      - name: Sync backend files via rsync
         run: |
-          # rsync [opciones] [origen] [destino]
-          # -avzr: archive, verbose, compress, recursive
-          # --delete: borra archivos en el destino que no están en el origen
-          # -e 'ssh ...': especifica el comando SSH a usar
-          #   -o StrictHostKeyChecking=no: deshabilita la pregunta interactiva sobre la clave del host
-          #   -o UserKnownHostsFile=/dev/null: no guarda la clave del host
           rsync -avzr --delete \
             -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
             ./backend/ \
             ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_HOST }}:/root/quimex_2.0/sistema_quimicos/
 
-      # 4. Reiniciar el servicio remoto. Usamos esta acción porque ya vimos que SÍ se descarga correctamente.
-      - name: Restart remote service
+      # 4. Instalar dependencias y reiniciar el servicio remoto
+      - name: Install dependencies and restart service
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            echo "Archivos sincronizados con éxito. Reiniciando el servicio..."
+            echo "🚀 Archivos sincronizados. Verificando dependencias..."
+            cd /root/quimex_2.0/sistema_quimicos
+
+            # Activar el entorno virtual
+            source venv/bin/activate
+
+            # Instalar dependencias siempre que haya cambios en requirements.txt
+            if [ -f requirements.txt ]; then
+              echo "📦 Instalando dependencias..."
+              pip install --upgrade -r requirements.txt
+            fi
+
+            deactivate
+
+            # Reiniciar el servicio
+            echo "🔄 Reiniciando servicio..."
             sudo systemctl restart quimex.service
-            echo "Servicio reiniciado."
+            echo "✅ Backend desplegado y servicio reiniciado con éxito."
