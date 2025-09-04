@@ -117,7 +117,7 @@ def register(): # Recibe el     ADMIN que está haciendo el registro
 #        print(f"INFO [auth]: Usuario {current_ADMIN_user.nombre_usuario} registró a {nuevo_usuario.nombre_usuario} (Rol: {nuevo_usuario.rol})")
         # Devolver info básica del usuario creado
         return jsonify({
-            'message': 'Usuario registrado con éxito',
+            'message': 'Usuario registrado con éxitoo',
             'user': {'id': nuevo_usuario.id, 'nombre_usuario': nuevo_usuario.nombre_usuario, 'rol': nuevo_usuario.rol}
             }), 201
     except Exception as e:
