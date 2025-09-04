@@ -34,7 +34,7 @@ jobs:
             ./backend/ \
             ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_HOST }}:/root/quimex_2.0/sistema_quimicos/
 
-      # 4. Instalar dependencias y reiniciar el servicio remoto
+      # 4. Crear entorno virtual (si no existe), instalar dependencias y reiniciar servicio
       - name: Install dependencies and restart service
         uses: appleboy/ssh-action@master
         with:
@@ -42,21 +42,28 @@ jobs:
           username: ${{ secrets.SERVER_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            echo "🚀 Archivos sincronizados. Verificando dependencias..."
+            echo "🚀 Archivos sincronizados. Preparando entorno..."
             cd /root/quimex_2.0/sistema_quimicos
 
-            # Activar el entorno virtual
+            # Crear venv si no existe
+            if [ ! -d "venv" ]; then
+              echo "⚙️ Creando entorno virtual..."
+              python3 -m venv venv
+            fi
+
+            # Activar entorno
             source venv/bin/activate
 
-            # Instalar dependencias siempre que haya cambios en requirements.txt
+            # Actualizar dependencias si existe requirements.txt
             if [ -f requirements.txt ]; then
               echo "📦 Instalando dependencias..."
+              pip install --upgrade pip
               pip install --upgrade -r requirements.txt
             fi
 
             deactivate
 
-            # Reiniciar el servicio
+            # Reiniciar servicio
             echo "🔄 Reiniciando servicio..."
             sudo systemctl restart quimex.service
             echo "✅ Backend desplegado y servicio reiniciado con éxito."
