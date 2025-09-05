@@ -16,6 +16,7 @@ venv/
 # Archivos de base de datos
 *.sqlite3
 *.db
+*.sql
 
 # Archivos de logs
 *.log
