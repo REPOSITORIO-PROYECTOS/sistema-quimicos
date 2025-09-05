@@ -4,6 +4,7 @@ from ..utils.permissions import ROLES
 # blueprints/clientes.py
 
 from flask import Blueprint, request, jsonify
+from app import cache
 from datetime import datetime, timezone # Asegúrate de importar datetime y timezone si no lo haces globalmente
 from .. import db # Ajusta esta importación según la estructura de tu proyecto (donde inicializas db)
 from ..models import Cliente # Ajusta esta importación según dónde esté tu modelo Cliente
@@ -84,6 +85,7 @@ def crear_cliente():
 
 # READ - Obtener todos los clientes (o filtrar por activos/inactivos)
 @clientes_bp.route('/obtener_todos', methods=['GET'])
+@cache.cached(timeout=180)
 def obtener_clientes():
     """
     [ACTUALIZADO] Obtiene una lista de clientes con filtros, paginación y BÚSQUEDA.

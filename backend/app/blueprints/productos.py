@@ -1,6 +1,7 @@
 # app/blueprints/productos.py
 
 from flask import Blueprint, request, jsonify, make_response, current_app, send_file
+from app import cache
 # Ajusta el import de db y modelos según tu estructura final.
 # Si __init__.py está en 'app/' y este archivo está en 'app/blueprints/', '..' es correcto.
 from .. import db, models
@@ -282,6 +283,7 @@ def obtener_productos_paginado_activos():
         return jsonify({"error": "Error interno del servidor al obtener productos"}), 500
 
 @productos_bp.route('/obtener_todos', methods=['GET'])
+@cache.cached(timeout=240)
 def obtener_productos():
     """Obtiene una lista de todos los productos."""
     try:

@@ -8,6 +8,7 @@ from decimal import Decimal
 import traceback
 from flask_migrate import Migrate
 from flask_login import LoginManager
+from flask_caching import Cache
 
 # Imports para los filtros (Babel)
 try:
@@ -22,14 +23,14 @@ except ImportError:
     def babel_format_datetime(value, format, locale): return str(value)
     import datetime
 
-# 1. Crear instancias de extensiones
 db = SQLAlchemy()
 migrate = Migrate()
 login_manager = LoginManager()
 login_manager.login_view = 'auth.login'
 login_manager.login_message = "Por favor, inicia sesión para acceder."
 login_manager.login_message_category = "info"
-print("--- INFO [app/__init__.py]: Instancias SQLAlchemy y LoginManager creadas.")
+cache = Cache(config={'CACHE_TYPE': 'SimpleCache'})
+print("--- INFO [app/__init__.py]: Instancias SQLAlchemy, LoginManager y Cache creadas.")
 
 # 2. User Loader
 @login_manager.user_loader
@@ -89,7 +90,8 @@ def create_app(config_object='config.Config'):
     db.init_app(app)
     migrate.init_app(app, db)
     login_manager.init_app(app)
-    print("--- INFO [app/__init__.py]: Extensiones (SQLAlchemy, Migrate, LoginManager) inicializadas.")
+    cache.init_app(app)
+    print("--- INFO [app/__init__.py]: Extensiones (SQLAlchemy, Migrate, LoginManager, Cache) inicializadas.")
 
     # --- Registrar Filtros Jinja2 ---
     print("--- INFO [app/__init__.py]: Registrando filtros de plantilla...")
