@@ -238,15 +238,14 @@ def registrar_venta(current_user):
                 try:
                     precio_u_bruto = Decimal(str(precio_u_bruto))
                     precio_t_bruto = Decimal(str(precio_t_bruto))
-                    precio_t_neto_item = precio_t_bruto
                 except Exception:
                     return jsonify({"error": f"Precio unitario o total inválido para Prod ID {producto_id}"}), 400
             else:
                 precio_u_bruto, precio_t_bruto, costo_u, _, error_msg, _ = calcular_precio_item_venta(producto_id, cantidad, cliente_id)
                 if error_msg:
                     return jsonify({"error": f"Error en Prod ID {producto_id}: {error_msg}"}), 400
-                precio_t_neto_item = precio_t_bruto * (Decimal(1) - descuento_item_porc / Decimal(100))
-            # Redondear precio_total_item_ars a múltiplo de 100
+            # Aplicar descuento y redondeo SOLO al ítem
+            precio_t_neto_item = precio_t_bruto * (Decimal(1) - descuento_item_porc / Decimal(100))
             if precio_t_neto_item % 100 != 0:
                 precio_t_neto_item = Decimal(math.ceil(precio_t_neto_item / 100) * 100)
             detalle = DetalleVenta(
@@ -264,8 +263,7 @@ def registrar_venta(current_user):
         monto_total_base_neto = monto_total_base_neto.quantize(Decimal("0.01"), ROUND_HALF_UP)
         monto_con_recargos, recargo_t_calc, recargo_f_calc, _, _ = calcular_monto_final_y_vuelto(monto_total_base_neto, forma_pago, requiere_factura)
         monto_final_a_pagar = monto_con_recargos * (Decimal(1) - descuento_total_global_porc / Decimal(100))
-        # Redondear a múltiplo de 100 hacia arriba
-        monto_final_a_pagar = Decimal(math.ceil(monto_final_a_pagar / 100) * 100)
+        # NO redondear el total general, solo sumar los ítems ya redondeados
         print(f"Suma monto_total_base_neto después de redondear: {monto_total_base_neto}")
         print(f"Recargos calculados: transferencia={recargo_t_calc}, factura={recargo_f_calc}")
         print(f"Monto final a pagar (redondeado): {monto_final_a_pagar}")
@@ -952,33 +950,30 @@ def obtener_detalles_lote(current_user):
             if 'observaciones' not in venta:
                 venta['observaciones'] = ''
             monto_total_items = Decimal('0.00')
-            # Recalcular precios de ítems con descuentos y redondeo
+            # Recalcular precios de ítems: aplicar descuento por ítem antes de redondear
             for detalle in venta.get('detalles', []):
                 if 'descuento_item_porcentaje' in detalle:
                     detalle['descuento_item_porcentaje'] = round(detalle.get('descuento_item_porcentaje', 0.0))
                 if 'observacion_item' not in detalle:
                     detalle['observacion_item'] = ''
-                # Recalcular precio total del ítem con descuento
                 precio_total_item = Decimal(str(detalle.get('precio_total_item_ars', 0.0)))
                 descuento_item = Decimal(str(detalle.get('descuento_item_porcentaje', 0.0)))
-                precio_total_item_neto = precio_total_item * (Decimal('1.0') - descuento_item / Decimal('100'))
-                # Redondear a múltiplo de 100 hacia arriba
-                if precio_total_item_neto % 100 != 0:
-                    precio_total_item_neto = Decimal(math.ceil(precio_total_item_neto / 100) * 100)
-                detalle['precio_total_item_ars'] = float(precio_total_item_neto)
-                monto_total_items += precio_total_item_neto
-            # Aplicar recargos y descuento global al total
+                # Aplica descuento por ítem antes de redondear
+                precio_total_item_desc = precio_total_item * (Decimal('1.0') - descuento_item / Decimal('100'))
+                if precio_total_item_desc % 100 != 0:
+                    precio_total_item_desc = Decimal(math.ceil(precio_total_item_desc / 100) * 100)
+                detalle['precio_total_item_ars'] = float(precio_total_item_desc)
+                monto_total_items += precio_total_item_desc
+            # Aplicar descuento global sobre la suma de ítems ya redondeados
+            descuento_global = Decimal(str(venta.get('descuento_total_global_porcentaje', 0.0)))
+            monto_total_items_con_descuento = monto_total_items * (Decimal('1.0') - descuento_global / Decimal('100'))
+            # Aplicar recargos al total con descuento global
             forma_pago = venta.get('forma_pago')
             requiere_factura = venta.get('requiere_factura', False)
-            descuento_global = Decimal(str(venta.get('descuento_total_global_porcentaje', 0.0)))
             monto_final_con_recargos, recargo_t, recargo_f, _, _ = calcular_monto_final_y_vuelto(
-                monto_total_items, forma_pago, requiere_factura, None, multiplicador_lote
+                monto_total_items_con_descuento, forma_pago, requiere_factura, None, multiplicador_lote
             )
-            monto_final_a_pagar = monto_final_con_recargos * (Decimal('1.0') - descuento_global / Decimal('100'))
-            # Redondear a múltiplo de 100 hacia arriba
-            if monto_final_a_pagar % 100 != 0:
-                monto_final_a_pagar = Decimal(math.ceil(monto_final_a_pagar / 100) * 100)
-            venta['monto_final_con_recargos'] = float(monto_final_a_pagar)
+            venta['monto_final_con_recargos'] = float(monto_final_con_recargos)
             venta['recargos'] = {
                 'transferencia': float(recargo_t),
                 'factura_iva': float(recargo_f)
@@ -989,7 +984,7 @@ def obtener_detalles_lote(current_user):
                 precio = Decimal(str(detalle.get('precio_total_item_ars', 0.0)))
                 if suma_items > Decimal('0.00'):
                     proporcion = precio / suma_items
-                    subtotal = monto_final_a_pagar * proporcion
+                    subtotal = monto_final_con_recargos * proporcion
                     detalle['subtotal_proporcional_con_recargos'] = float(subtotal)
                 else:
                     detalle['subtotal_proporcional_con_recargos'] = 0.0
