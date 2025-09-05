@@ -1,1 +1,40 @@
-node_modules
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+
+# Entornos virtuales
+venv/
+.env/
+
+# Archivos de configuración locales
+*.env
+*.local
+
+# Archivos de base de datos
+*.sqlite3
+*.db
+
+# Archivos de logs
+*.log
+
+# Archivos de migraciones compilados
+migrations/__pycache__/
+
+# Archivos de Jupyter y notebooks temporales
+*.ipynb_checkpoints
+
+# Archivos de sistema
+.DS_Store
+Thumbs.db
+
+# Otros
+*.bak
+*.swp
+*.swo
+
+# IDEs
+.vscode/
+.idea/
