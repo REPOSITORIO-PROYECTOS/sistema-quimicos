@@ -836,6 +836,11 @@ def detalle_venta_a_dict(detalle, monto_final_real=None, monto_total_base=None):
     if not detalle:
         return None
     precio_total_item_ars = float(detalle.precio_total_item_ars or 0)
+    descuento_item_porc = float(getattr(detalle, "descuento_item", 0.0) or 0.0)
+    cantidad = float(detalle.cantidad)
+    # El precio unitario ya viene con descuento aplicado
+    precio_unitario_venta_ars = float(detalle.precio_unitario_venta_ars or 0)
+    # El precio total del ítem ya viene con descuento aplicado y redondeado
     subtotal_proporcional = None
     if monto_final_real is not None and monto_total_base and monto_total_base > 0:
         subtotal_proporcional = monto_final_real * (precio_total_item_ars / monto_total_base)
@@ -843,9 +848,8 @@ def detalle_venta_a_dict(detalle, monto_final_real=None, monto_total_base=None):
         "detalle_id": detalle.id,
         "producto_id": detalle.producto_id,
         "producto_nombre": detalle.producto.nombre if detalle.producto else "Producto no encontrado",
-        "cantidad": float(detalle.cantidad),
-        "descuento_item_porcentaje": float(getattr(detalle, "descuento_item", 0.0) or 0.0),
-        "precio_unitario_venta_ars": float(detalle.precio_unitario_venta_ars or 0),
+        "cantidad": cantidad,
+        "precio_unitario_venta_ars": precio_unitario_venta_ars,
         "precio_total_item_ars": precio_total_item_ars,
         "subtotal_proporcional_con_recargos": subtotal_proporcional,
         "observacion_item": detalle.observacion_item,
