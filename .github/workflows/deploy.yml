@@ -20,34 +20,43 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Instalar la clave SSH
+      # 2. NUEVO PASO: Detectar qué carpetas han cambiado
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v44 # Usar una versión reciente
+        with:
+          files: |
+            backend/**
+            frontend/**
+
+      # 3. Instalar la clave SSH
       - name: Install SSH Key
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
 
-      # 3. Sincronizar la carpeta backend al servidor
+      # 4. Sincronizar la carpeta backend al servidor (Condición CORREGIDA)
       - name: Sync backend files via rsync
-        if: ${{ github.event.head_commit.modified && contains(join(github.event.head_commit.modified, ' '), 'backend/') }}
+        if: steps.changed-files.outputs.backend_files_changed == 'true'
         run: |
           rsync -avzr --delete \
             -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
             ./backend/ \
             ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_HOST }}:/root/quimex_2.0/sistema_quimicos/
 
-      # 4. Sincronizar la carpeta frontend al servidor
+      # 5. Sincronizar la carpeta frontend al servidor (Condición CORREGIDA)
       - name: Sync frontend files via rsync
-        if: ${{ github.event.head_commit.modified && contains(join(github.event.head_commit.modified, ' '), 'frontend/') }}
+        if: steps.changed-files.outputs.frontend_files_changed == 'true'
         run: |
           rsync -avzr --delete \
             -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
             ./frontend/ \
             ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_HOST }}:/root/quimex_2.0/frontend/
 
-      # 5. Instalar dependencias y reiniciar backend
+      # 6. Instalar dependencias y reiniciar backend (Condición CORREGIDA)
       - name: Install backend dependencies and restart service
-        if: ${{ github.event.head_commit.modified && contains(join(github.event.head_commit.modified, ' '), 'backend/') }}
+        if: steps.changed-files.outputs.backend_files_changed == 'true'
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -80,9 +89,9 @@ jobs:
             sudo systemctl restart quimex.service
             echo "✅ Backend desplegado y servicio reiniciado con éxito."
 
-      # 6. Instalar dependencias y hacer build del frontend
+      # 7. Instalar dependencias y hacer build del frontend (Condición CORREGIDA)
       - name: Install frontend dependencies and build
-        if: ${{ github.event.head_commit.modified && contains(join(github.event.head_commit.modified, ' '), 'frontend/') }}
+        if: steps.changed-files.outputs.frontend_files_changed == 'true'
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.SERVER_HOST }}
