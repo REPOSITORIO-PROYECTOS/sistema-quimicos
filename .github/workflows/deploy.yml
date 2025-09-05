@@ -1,17 +1,18 @@
 # Nombre del workflow
-name: Deploy Backend to Server
+name: Deploy Backend and Frontend to Server
 
-# Se activa con un push a la rama main si hay cambios en la carpeta backend/
+# Se activa con un push a la rama main si hay cambios en backend o frontend
 on:
   push:
     branches:
       - main
     paths:
       - 'backend/**'
+      - 'frontend/**'
 
 jobs:
   deploy:
-    name: Deploy and Restart Backend
+    name: Deploy and Restart Backend & Frontend
     runs-on: ubuntu-latest
     
     steps:
@@ -26,23 +27,34 @@ jobs:
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
 
-      # 3. Sincronizar solo la carpeta backend al servidor
+      # 3. Sincronizar la carpeta backend al servidor
       - name: Sync backend files via rsync
+        if: ${{ github.event.head_commit.modified && contains(join(github.event.head_commit.modified, ' '), 'backend/') }}
         run: |
           rsync -avzr --delete \
             -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
             ./backend/ \
             ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_HOST }}:/root/quimex_2.0/sistema_quimicos/
 
-      # 4. Crear entorno virtual (si no existe), instalar dependencias y reiniciar servicio
-      - name: Install dependencies and restart service
+      # 4. Sincronizar la carpeta frontend al servidor
+      - name: Sync frontend files via rsync
+        if: ${{ github.event.head_commit.modified && contains(join(github.event.head_commit.modified, ' '), 'frontend/') }}
+        run: |
+          rsync -avzr --delete \
+            -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
+            ./frontend/ \
+            ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_HOST }}:/root/quimex_2.0/sistema_quimicos_funcionando/
+
+      # 5. Instalar dependencias y reiniciar backend
+      - name: Install backend dependencies and restart service
+        if: ${{ github.event.head_commit.modified && contains(join(github.event.head_commit.modified, ' '), 'backend/') }}
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            echo "🚀 Archivos sincronizados. Preparando entorno..."
+            echo "🚀 Archivos backend sincronizados. Preparando entorno..."
             cd /root/quimex_2.0/sistema_quimicos
 
             # Crear venv si no existe
@@ -64,6 +76,29 @@ jobs:
             deactivate
 
             # Reiniciar servicio
-            echo "🔄 Reiniciando servicio..."
+            echo "🔄 Reiniciando servicio backend..."
             sudo systemctl restart quimex.service
             echo "✅ Backend desplegado y servicio reiniciado con éxito."
+
+      # 6. Instalar dependencias y ejecutar frontend
+      - name: Install frontend dependencies and run
+        if: ${{ github.event.head_commit.modified && contains(join(github.event.head_commit.modified, ' '), 'frontend/') }}
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            echo "🚀 Archivos frontend sincronizados. Preparando entorno..."
+            cd /root/quimex_2.0/sistema_quimicos_funcionando
+
+            # Instalar dependencias de npm
+            if [ -f package.json ]; then
+              echo "📦 Instalando dependencias frontend..."
+              npm install
+            fi
+
+            # Ejecutar frontend (run dev)
+            echo "⚡ Iniciando frontend..."
+            npm run dev &
+            echo "✅ Frontend desplegado y corriendo."
