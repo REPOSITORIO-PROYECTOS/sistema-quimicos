@@ -7,6 +7,7 @@ from sqlalchemy import func
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP, ROUND_UP
 import math
 import traceback
+from ..utils import precios_utils
 from datetime import datetime, timezone, date
 # --- Imports locales ---
 from .. import db
@@ -946,47 +947,40 @@ def obtener_detalles_lote(current_user):
             return jsonify({"error": "No se encontraron ventas con los IDs proporcionados."}), 404
        
         ventas_completas = [venta_a_dict_completo(v) for v in ventas_db]
-        # Asegurar que las observaciones generales y de ítem estén presentes
+        # Recalcular precios de cada ítem usando precios_utils.calculate_price
         for venta in ventas_completas:
-            # Redondeo del descuento global
             if 'descuento_total_global_porcentaje' in venta:
                 venta['descuento_total_global_porcentaje'] = round(venta['descuento_total_global_porcentaje'])
             if 'observaciones' not in venta:
                 venta['observaciones'] = ''
+            monto_total_items = 0.0
             for detalle in venta.get('detalles', []):
                 # Redondeo del descuento por ítem
                 if 'descuento_item_porcentaje' in detalle:
                     detalle['descuento_item_porcentaje'] = round(detalle['descuento_item_porcentaje'])
                 if 'observacion_item' not in detalle:
                     detalle['observacion_item'] = ''
-        # Redondear el precio_total_item_ars de cada detalle si no es múltiplo de 100 y recalcular el total
-        for venta in ventas_completas:
-                monto_total_items = 0.0
-                precios_redondeados = []
-                for detalle in venta.get('detalles', []):
-                    precio = detalle.get('precio_total_item_ars')
-                    if precio is not None:
-                        # Si no es múltiplo de 100, redondear hacia arriba al siguiente múltiplo de 100
-                        if precio % 100 != 0:
-                            precio_redondeado = float((int(precio // 100) * 100 + 100))
-                            detalle['precio_total_item_ars'] = precio_redondeado
-                        else:
-                            precio_redondeado = precio
-                        precios_redondeados.append(precio_redondeado)
-                monto_total_items = sum(precios_redondeados)
-                # Calcular el subtotal proporcional de cada ítem usando la suma de los ítems redondeados
-                for idx, detalle in enumerate(venta.get('detalles', [])):
-                    precio_redondeado = precios_redondeados[idx] if idx < len(precios_redondeados) else 0.0
-                    if monto_total_items > 0:
-                        subtotal = monto_total_items * (precio_redondeado / monto_total_items)
-                        # El subtotal será igual al precio redondeado (proporción 1:1)
-                        if subtotal % 100 != 0:
-                            subtotal = float((int(subtotal // 100) * 100 + 100))
-                        detalle['subtotal_proporcional_con_recargos'] = subtotal
-                    else:
-                        detalle['subtotal_proporcional_con_recargos'] = 0.0
-                # Actualizar el total de la venta con la suma de los ítems redondeados
-                venta['monto_final_con_recargos'] = monto_total_items
+                # Recalcular precio usando precios_utils
+                calc_result = precios_utils.calculate_price(
+                    product_id=detalle.get('producto_id'),
+                    quantity=detalle.get('cantidad'),
+                    cliente_id=venta.get('cliente_id'),
+                    db=db
+                )
+                if calc_result.get('status') == 'success':
+                    detalle['precio_total_item_ars'] = calc_result['precio_total_calculado_ars']
+                else:
+                    # Si hay error, dejar el precio original
+                    pass
+                monto_total_items += detalle.get('precio_total_item_ars', 0.0)
+            # Calcular el subtotal proporcional de cada ítem usando la suma de los ítems
+            for detalle in venta.get('detalles', []):
+                precio = detalle.get('precio_total_item_ars', 0.0)
+                if monto_total_items > 0:
+                    detalle['subtotal_proporcional_con_recargos'] = precio # proporción 1:1
+                else:
+                    detalle['subtotal_proporcional_con_recargos'] = 0.0
+            venta['monto_final_con_recargos'] = monto_total_items
         return jsonify(ventas_completas)
 
     except Exception as e:
