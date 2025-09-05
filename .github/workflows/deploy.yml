@@ -12,7 +12,7 @@ on:
 
 jobs:
   deploy:
-    name: Deploy and Restart Backend & Frontend
+    name: Deploy Backend & Frontend
     runs-on: ubuntu-latest
     
     steps:
@@ -43,7 +43,7 @@ jobs:
           rsync -avzr --delete \
             -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
             ./frontend/ \
-            ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_HOST }}:/root/quimex_2.0/sistema_quimicos_funcionando/
+            ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_HOST }}:/root/quimex_2.0/frontend/
 
       # 5. Instalar dependencias y reiniciar backend
       - name: Install backend dependencies and restart service
@@ -80,8 +80,8 @@ jobs:
             sudo systemctl restart quimex.service
             echo "✅ Backend desplegado y servicio reiniciado con éxito."
 
-      # 6. Instalar dependencias y ejecutar frontend
-      - name: Install frontend dependencies and run
+      # 6. Instalar dependencias y hacer build del frontend
+      - name: Install frontend dependencies and build
         if: ${{ github.event.head_commit.modified && contains(join(github.event.head_commit.modified, ' '), 'frontend/') }}
         uses: appleboy/ssh-action@master
         with:
@@ -89,8 +89,8 @@ jobs:
           username: ${{ secrets.SERVER_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            echo "🚀 Archivos frontend sincronizados. Preparando entorno..."
-            cd /root/quimex_2.0/sistema_quimicos_funcionando
+            echo "🚀 Archivos frontend sincronizados. Preparando build..."
+            cd /root/quimex_2.0/frontend
 
             # Instalar dependencias de npm
             if [ -f package.json ]; then
@@ -98,7 +98,13 @@ jobs:
               npm install
             fi
 
-            # Ejecutar frontend (run dev)
-            echo "⚡ Iniciando frontend..."
-            npm run dev &
-            echo "✅ Frontend desplegado y corriendo."
+            # Build de producción
+            echo "⚡ Compilando frontend..."
+            npm run build
+
+            # Copiar build a la carpeta de Nginx
+            echo "📂 Moviendo build a /var/www/quimex_frontend..."
+            sudo rm -rf /var/www/quimex_frontend/*
+            sudo cp -r build/* /var/www/quimex_frontend/
+
+            echo "✅ Frontend compilado y desplegado."
