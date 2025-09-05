@@ -294,9 +294,9 @@ const handleSubmit = async (e: React.FormEvent ) => {
       vuelto: formData.vuelto, 
       requiere_factura: formData.requiereFactura, 
       monto_total_base: montoBaseProductos, 
-      descuento_general_porcentaje: formData.descuentoTotal || 0,
       monto_final_con_recargos: montoFinalRedondeado, 
       observaciones: formData.observaciones || "",
+      descuento_total_global_porcentaje: formData.descuentoTotal,
     };
 
     try {
