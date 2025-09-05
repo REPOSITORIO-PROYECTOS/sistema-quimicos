@@ -963,13 +963,25 @@ def obtener_detalles_lote(current_user):
                 else:
                     pass
                 monto_total_items += detalle.get('precio_total_item_ars', 0.0)
+            # Aplicar recargos al monto total de los ítems
+            forma_pago = venta.get('forma_pago')
+            requiere_factura = venta.get('requiere_factura', False)
+            monto_final_con_recargos, recargo_t, recargo_f, _, _ = calcular_monto_final_y_vuelto(
+                Decimal(str(monto_total_items)), forma_pago, requiere_factura, None, multiplicador_lote
+            )
+            venta['monto_final_con_recargos'] = float(monto_final_con_recargos)
+            venta['recargos'] = {
+                'transferencia': float(recargo_t),
+                'factura_iva': float(recargo_f)
+            }
+            # Recalcular subtotales proporcionales con recargos
+            suma_items = sum([d.get('precio_total_item_ars', 0.0) for d in venta.get('detalles', [])])
             for detalle in venta.get('detalles', []):
                 precio = detalle.get('precio_total_item_ars', 0.0)
-                if monto_total_items > 0:
-                    detalle['subtotal_proporcional_con_recargos'] = precio
+                if suma_items > 0:
+                    detalle['subtotal_proporcional_con_recargos'] = precio * (float(monto_final_con_recargos) / suma_items)
                 else:
                     detalle['subtotal_proporcional_con_recargos'] = 0.0
-            venta['monto_final_con_recargos'] = monto_total_items * float(multiplicador_lote)
         return jsonify(ventas_completas)
 
     except Exception as e:
