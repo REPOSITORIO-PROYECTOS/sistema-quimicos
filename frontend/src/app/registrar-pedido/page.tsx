@@ -386,7 +386,6 @@ const handleSubmit = async (e: React.FormEvent ) => {
         cantidad: item.qx,
         precio_total_item_ars: subtotalFinalParaTicket,
         observacion_item: item.observacion || "",
-        descuento_item_porcentaje: descuentoPorc,
         subtotal_bruto_item_ars: subtotalBruto,
       };
     }),
@@ -395,7 +394,6 @@ const handleSubmit = async (e: React.FormEvent ) => {
     forma_pago: formData.formaPago,
     monto_pagado_cliente: formData.montoPagado,
     vuelto_calculado: formData.vuelto,
-    descuento_total_global_porcentaje: formData.descuentoTotal || 0,
     total_bruto_sin_descuento: productos
     .filter(p => p.producto && p.qx > 0)
     .reduce((sum, item) => {
