@@ -202,7 +202,7 @@ export default function RegistrarIngreso() {
                 disabled={productsLoading}
               >
                 <option value="" disabled>
-                    {productsLoading ? "Cargando productos...." : "Seleccionar producto"}
+                    {productsLoading ? "Cargando productos..." : "Seleccionar producto"}
                 </option>
                 {productsError && <option value="" disabled>Error al cargar productos</option>}
                 {!productsLoading && !productsError && productos.map((prod) => (
