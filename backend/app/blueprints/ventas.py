@@ -979,11 +979,21 @@ def obtener_detalles_lote(current_user):
                 'factura_iva': float(recargo_f)
             }
             # Recalcular subtotales proporcionales con recargos
-            suma_items = sum([Decimal(str(d.get('precio_total_item_ars', 0.0))) for d in venta.get('detalles', [])])
+            # Agrupar ítems iguales por producto_id para el cálculo proporcional
+            from collections import defaultdict
+            agrupados = defaultdict(lambda: {'cantidad': Decimal('0.00'), 'precio_total': Decimal('0.00')})
+            for d in venta.get('detalles', []):
+                producto_id = d.get('producto_id')
+                agrupados[producto_id]['cantidad'] += Decimal(str(d.get('cantidad', 0.0)))
+                agrupados[producto_id]['precio_total'] += Decimal(str(d.get('precio_total_item_ars', 0.0)))
+            suma_items = sum([v['precio_total'] for v in agrupados.values()])
+            # Calcular el subtotal proporcional usando el total agrupado
             for detalle in venta.get('detalles', []):
+                producto_id = detalle.get('producto_id')
                 precio = Decimal(str(detalle.get('precio_total_item_ars', 0.0)))
+                total_producto = agrupados[producto_id]['precio_total']
                 if suma_items > Decimal('0.00'):
-                    proporcion = precio / suma_items
+                    proporcion = total_producto / suma_items
                     subtotal = monto_final_con_recargos * proporcion
                     detalle['subtotal_proporcional_con_recargos'] = float(subtotal)
                 else:
