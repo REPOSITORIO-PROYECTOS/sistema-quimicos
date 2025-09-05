@@ -507,13 +507,13 @@ def actualizar_venta(current_user, venta_id):
             if error_msg:
                 db.session.rollback()
                 return jsonify({"error": f"Error al recalcular ítem (Prod ID {producto_id}): {error_msg}"}), 400
-            # Aplicar descuento y redondeo al precio total
-            precio_t_neto_item = precio_t_bruto * (Decimal(1) - descuento_item_porc / Decimal(100))
-            if precio_t_neto_item % 100 != 0:
-                precio_t_neto_item = Decimal(math.ceil(precio_t_neto_item / 100) * 100)
+            # Aplicar descuento por ítem antes de redondear
+            precio_t_descuento = precio_t_bruto * (Decimal(1) - descuento_item_porc / Decimal(100))
+            if precio_t_descuento % 100 != 0:
+                precio_t_descuento = Decimal(math.ceil(precio_t_descuento / 100) * 100)
             # Calcular el precio unitario redondeado
             if cantidad > 0:
-                precio_u_neto_item = (precio_t_neto_item / cantidad).quantize(Decimal("0.01"), ROUND_HALF_UP)
+                precio_u_neto_item = (precio_t_descuento / cantidad).quantize(Decimal("0.01"), ROUND_HALF_UP)
             else:
                 precio_u_neto_item = precio_u_bruto
             detalle_nuevo = DetalleVenta(
@@ -521,13 +521,13 @@ def actualizar_venta(current_user, venta_id):
                 producto_id=producto_id,
                 cantidad=cantidad,
                 precio_unitario_venta_ars=precio_u_neto_item,
-                precio_total_item_ars=precio_t_neto_item,
+                precio_total_item_ars=precio_t_descuento,
                 costo_unitario_momento_ars=costo_u,
                 descuento_item=descuento_item_porc,  # Guardar el porcentaje real
                 observacion_item=item_data.get("observacion_item")
             )
             detalles_venta_nuevos.append(detalle_nuevo)
-            monto_total_base_nuevo += precio_t_neto_item
+            monto_total_base_nuevo += precio_t_descuento
 
         # --- BLOQUE 2: GUARDAR LOS MONTOS ENVIADOS POR EL FRONTEND SI ESTÁN PRESENTES ---
         forma_pago_nueva = data.get('forma_pago', venta_db.forma_pago)
