@@ -43,7 +43,7 @@ def login():
         }
         secret_key = 'J2z8KJdN8UfU8g6wKXgk4Q6nfsDF8wMnezLp8xsdWbNQqZ4RkOzZulX8wA==' #current_app.config.get('SECRET_KEY')
         if not secret_key:
-            print("ERROR FATAL: SECRET_KEY no configurada./prueba2")
+            print("ERROR FATAL: SECRET_KEY no configurada.")
             return jsonify({'message': 'Error de configuración'}), 500
 
         token = jwt.encode(payload, secret_key, algorithm='HS256')
@@ -117,7 +117,7 @@ def register(): # Recibe el     ADMIN que está haciendo el registro
 #        print(f"INFO [auth]: Usuario {current_ADMIN_user.nombre_usuario} registró a {nuevo_usuario.nombre_usuario} (Rol: {nuevo_usuario.rol})")
         # Devolver info básica del usuario creado
         return jsonify({
-            'message': 'Usuario registrado con exitooo',
+            'message': 'Usuario registrado con éxito',
             'user': {'id': nuevo_usuario.id, 'nombre_usuario': nuevo_usuario.nombre_usuario, 'rol': nuevo_usuario.rol}
             }), 201
     except Exception as e:
