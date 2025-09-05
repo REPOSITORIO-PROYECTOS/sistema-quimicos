@@ -295,7 +295,7 @@ def registrar_venta(current_user):
             requiere_factura=requiere_factura,
             recargo_transferencia=recargo_t_calc,
             recargo_factura=recargo_f_calc,
-            monto_final_con_recargos=data.get('monto_final_con_recargos'),
+            monto_final_con_recargos=monto_final_a_pagar,
             monto_final_redondeado=monto_final_a_pagar,
             monto_pagado_cliente=Decimal(str(monto_pagado_str)).quantize(Decimal("0.01")) if monto_pagado_str else None,
             vuelto_calculado=vuelto_final_calc.quantize(Decimal("0.01"), ROUND_HALF_UP),
