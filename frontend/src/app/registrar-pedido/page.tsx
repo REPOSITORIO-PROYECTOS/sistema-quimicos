@@ -281,7 +281,6 @@ const handleSubmit = async (e: React.FormEvent ) => {
       items: productos.filter(item => item.producto > 0 && item.qx > 0).map(item => ({
         producto_id: item.producto,
         cantidad: item.qx,
-        descuento_item_porcentaje: item.descuento || 0,
         observacion_item: item.observacion || ""
       })),
       cliente_id: formData.clienteId ? parseInt(String(formData.clienteId)) : null, 
@@ -296,7 +295,6 @@ const handleSubmit = async (e: React.FormEvent ) => {
       monto_total_base: montoBaseProductos, 
       monto_final_con_recargos: montoFinalRedondeado, 
       observaciones: formData.observaciones || "",
-      descuento_total_global_porcentaje: formData.descuentoTotal || 0,
     };
 
     try {
