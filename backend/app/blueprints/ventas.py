@@ -162,6 +162,8 @@ def calcular_monto_final_y_vuelto(monto_base, forma_pago=None, requiere_factura=
         print(f"DEBUG [calc_final]: Recargo Factura aplicado: {recargo_f}")
 
     monto_final = monto_actual.quantize(Decimal("0.01"), ROUND_HALF_UP)
+    # Redondear a múltiplo de 100 al final
+    monto_final = Decimal(math.ceil(monto_final / 100) * 100)
 
     # Calcular vuelto
     if monto_pagado is not None:
@@ -972,7 +974,11 @@ def obtener_detalles_lote(current_user):
             monto_final_con_recargos, recargo_t, recargo_f, _, _ = calcular_monto_final_y_vuelto(
                 monto_total_items_con_descuento, forma_pago, requiere_factura, None, multiplicador_lote
             )
-            venta['monto_final_con_recargos'] = float(monto_final_con_recargos)
+            # Redondear monto final del lote a múltiplo de 100
+            monto_final_redondeado = monto_final_con_recargos
+            if monto_final_redondeado % 100 != 0:
+                monto_final_redondeado = Decimal(math.ceil(monto_final_redondeado / 100) * 100)
+            venta['monto_final_con_recargos'] = float(monto_final_redondeado)
             venta['recargos'] = {
                 'transferencia': float(recargo_t),
                 'factura_iva': float(recargo_f)
