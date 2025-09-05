@@ -136,7 +136,6 @@ def calcular_monto_final_y_vuelto(monto_base, forma_pago=None, requiere_factura=
     Retorna: (monto_final, recargo_transf, recargo_fact, vuelto, error_msg)
     """
     try:
-
         if not isinstance(monto_base, Decimal):
             monto_base = Decimal(str(monto_base))
     except (InvalidOperation, TypeError):
@@ -234,16 +233,16 @@ def registrar_venta(current_user):
             precio_t_bruto = item_data.get("precio_total_item_ars")
             costo_u = None
             error_msg = None
-            if precio_u_bruto is not None and precio_t_bruto is not None:
-                try:
+            try:
+                if precio_u_bruto is not None and precio_t_bruto is not None:
                     precio_u_bruto = Decimal(str(precio_u_bruto))
                     precio_t_bruto = Decimal(str(precio_t_bruto))
-                except Exception:
-                    return jsonify({"error": f"Precio unitario o total inválido para Prod ID {producto_id}"}), 400
-            else:
-                precio_u_bruto, precio_t_bruto, costo_u, _, error_msg, _ = calcular_precio_item_venta(producto_id, cantidad, cliente_id)
-                if error_msg:
-                    return jsonify({"error": f"Error en Prod ID {producto_id}: {error_msg}"}), 400
+                else:
+                    precio_u_bruto, precio_t_bruto, costo_u, _, error_msg, _ = calcular_precio_item_venta(producto_id, cantidad, cliente_id)
+                    if error_msg:
+                        return jsonify({"error": f"Error en Prod ID {producto_id}: {error_msg}"}), 400
+            except Exception:
+                return jsonify({"error": f"Precio unitario o total inválido para Prod ID {producto_id}"}), 400
             # Aplicar descuento y redondeo SOLO al ítem
             precio_t_neto_item = precio_t_bruto * (Decimal(1) - descuento_item_porc / Decimal(100))
             if precio_t_neto_item % 100 != 0:
@@ -263,7 +262,9 @@ def registrar_venta(current_user):
         monto_total_base_neto = monto_total_base_neto.quantize(Decimal("0.01"), ROUND_HALF_UP)
         monto_con_recargos, recargo_t_calc, recargo_f_calc, _, _ = calcular_monto_final_y_vuelto(monto_total_base_neto, forma_pago, requiere_factura)
         monto_final_a_pagar = monto_con_recargos * (Decimal(1) - descuento_total_global_porc / Decimal(100))
-        # NO redondear el total general, solo sumar los ítems ya redondeados
+        # Redondear el total general a múltiplo de 100 hacia arriba
+        import math
+        monto_final_a_pagar = Decimal(math.ceil(monto_final_a_pagar / 100) * 100)
         print(f"Suma monto_total_base_neto después de redondear: {monto_total_base_neto}")
         print(f"Recargos calculados: transferencia={recargo_t_calc}, factura={recargo_f_calc}")
         print(f"Monto final a pagar (redondeado): {monto_final_a_pagar}")
