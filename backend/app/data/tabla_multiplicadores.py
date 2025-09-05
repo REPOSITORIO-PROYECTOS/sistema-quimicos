@@ -2,7 +2,7 @@
 # Contiene los datos RAW para las matrices PL y PD.
 
 # -*- coding: utf-8 -*-
-print("--- INFO [data/tabla_multiplicadores.py]: Cargando datos de tablas PL y PD...")
+print("--- INFO [data/tabla_multiplicadores.py]: Cargando datos de tablas PL y PD....")
 
 # --- DATOS MATRIZ PL ---
 # Copia de la tabla 'matriz pl' original

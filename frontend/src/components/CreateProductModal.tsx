@@ -34,7 +34,7 @@ const ModalFooter: React.FC<{ isSaving: boolean; isLoadingData: boolean; isEditM
         <div className="flex gap-2">
             <button type="button" onClick={onClose} className="px-4 py-2 text-sm bg-white border rounded hover:bg-gray-50">Cancelar</button>
             <button type="submit" disabled={isSaving || isLoadingData} className={`px-4 py-2 text-sm text-white rounded flex items-center ${(isSaving || isLoadingData) ? 'bg-indigo-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'}`}>
-                {isSaving ? 'Guardando...' : (isLoadingData ? 'Cargando...' : (isEditMode ? 'Guardar Cambios' : (esCombo ? 'Crear Combo' : 'Crear Producto')))}
+                {isSaving ? 'Guardando..' : (isLoadingData ? 'Cargando...' : (isEditMode ? 'Guardar Cambios' : (esCombo ? 'Crear Combo' : 'Crear Producto')))}
             </button>
         </div>
     </div>
