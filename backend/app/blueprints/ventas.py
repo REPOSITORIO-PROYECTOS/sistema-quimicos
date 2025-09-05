@@ -130,33 +130,34 @@ def calcular_precio_item_venta(producto_id, cantidad_decimal, cliente_id=None):
         return None, None, None, None, "Error interno al calcular precio del item.", False
 
 # --- Función Auxiliar para calcular recargos y total final (sin cambios) ---
-def calcular_monto_final_y_vuelto(monto_base, forma_pago=None, requiere_factura=False, monto_pagado=None):
+def calcular_monto_final_y_vuelto(monto_base, forma_pago=None, requiere_factura=False, monto_pagado=None, multiplicador_lote=Decimal("1.0")):
     """
     Calcula los recargos, el monto final y el vuelto.
     Retorna: (monto_final, recargo_transf, recargo_fact, vuelto, error_msg)
     """
     try:
+
         if not isinstance(monto_base, Decimal):
             monto_base = Decimal(str(monto_base))
     except (InvalidOperation, TypeError):
         return None, None, None, None, "Monto base inválido."
 
-    monto_actual = monto_base
+    monto_actual = monto_base * multiplicador_lote
     recargo_t = Decimal(0)
     recargo_f = Decimal(0)
     vuelto = None
     error = None
 
-    # Aplicar recargo transferencia
+    # Aplicar recargo transferencia (con multiplicador)
     if forma_pago and isinstance(forma_pago, str) and forma_pago.strip().lower() == 'transferencia':
-        recargo_calculado = (monto_actual * RECARGO_TRANSFERENCIA_PORC / Decimal(100)).quantize(Decimal("0.01"), ROUND_HALF_UP)
+        recargo_calculado = (monto_actual * RECARGO_TRANSFERENCIA_PORC / Decimal(100) * multiplicador_lote).quantize(Decimal("0.01"), ROUND_HALF_UP)
         recargo_t = recargo_calculado
         monto_actual += recargo_t
         print(f"DEBUG [calc_final]: Recargo Transferencia aplicado: {recargo_t}")
 
-    # Aplicar recargo factura/IVA
+    # Aplicar recargo factura/IVA (con multiplicador)
     if requiere_factura: # Asume booleano
-        recargo_calculado = (monto_actual * RECARGO_FACTURA_PORC / Decimal(100)).quantize(Decimal("0.01"), ROUND_HALF_UP)
+        recargo_calculado = (monto_actual * RECARGO_FACTURA_PORC / Decimal(100) * multiplicador_lote).quantize(Decimal("0.01"), ROUND_HALF_UP)
         recargo_f = recargo_calculado
         monto_actual += recargo_f
         print(f"DEBUG [calc_final]: Recargo Factura aplicado: {recargo_f}")
@@ -166,21 +167,15 @@ def calcular_monto_final_y_vuelto(monto_base, forma_pago=None, requiere_factura=
     # Calcular vuelto
     if monto_pagado is not None:
         try:
-            # Convertir monto_pagado a Decimal (viene como string o None)
             monto_pagado_decimal = Decimal(str(monto_pagado)).quantize(Decimal("0.01"))
             if monto_pagado_decimal < monto_final:
                 vuelto = Decimal("0.00")
-                # faltante = (monto_final - monto_pagado_decimal).quantize(Decimal("0.01"), ROUND_HALF_UP)
-                # error = f"Pago insuficiente. Monto pagado: {monto_pagado_decimal:.2f}, Total final: {monto_final:.2f}, Faltan: {faltante:.2f}"
-                # print(f"WARN [calc_final]: {error}")
-                # return monto_final, recargo_t, recargo_f, None, error
             else:
                 vuelto = (monto_pagado_decimal - monto_final).quantize(Decimal("0.01"), ROUND_HALF_UP)
                 print(f"DEBUG [calc_final]: Vuelto calculado: {vuelto}")
         except (InvalidOperation, TypeError):
              error = f"Monto pagado ('{monto_pagado}') inválido."
              print(f"WARN [calc_final]: {error}")
-             # Devolver los montos calculados hasta ahora, pero indicar error en vuelto
              return monto_final, recargo_t, recargo_f, None, error
 
     return monto_final, recargo_t, recargo_f, vuelto, error # Devuelve error=None si todo ok
@@ -917,7 +912,6 @@ def actualizar_estado_lote(current_user):
         return jsonify({"error": "Error interno del servidor al actualizar los estados.", "detalle": str(e)}), 500
 
 
-
 @ventas_bp.route('/obtener-detalles-lote', methods=['POST'])
 @token_required
 @roles_required(ROLES['ADMIN'], ROLES['VENTAS_PEDIDOS']) # O los roles que correspondan
@@ -935,8 +929,8 @@ def obtener_detalles_lote(current_user):
         return jsonify({"error": "'venta_ids' debe ser una lista."}), 400
 
     try:
+        multiplicador_lote = Decimal(str(data.get('multiplicador_lote', '1.0')))
         # --- CONSULTA EFICIENTE ---
-        # Hacemos una única consulta para obtener todas las ventas y sus relaciones
         ventas_db = db.session.query(Venta).options(
             selectinload(Venta.detalles).selectinload(DetalleVenta.producto),
             selectinload(Venta.cliente),
@@ -945,9 +939,8 @@ def obtener_detalles_lote(current_user):
 
         if not ventas_db:
             return jsonify({"error": "No se encontraron ventas con los IDs proporcionados."}), 404
-       
+
         ventas_completas = [venta_a_dict_completo(v) for v in ventas_db]
-        # Recalcular precios de cada ítem usando precios_utils.calculate_price
         for venta in ventas_completas:
             if 'descuento_total_global_porcentaje' in venta:
                 venta['descuento_total_global_porcentaje'] = round(venta['descuento_total_global_porcentaje'])
@@ -955,12 +948,10 @@ def obtener_detalles_lote(current_user):
                 venta['observaciones'] = ''
             monto_total_items = 0.0
             for detalle in venta.get('detalles', []):
-                # Redondeo del descuento por ítem
                 if 'descuento_item_porcentaje' in detalle:
                     detalle['descuento_item_porcentaje'] = round(detalle['descuento_item_porcentaje'])
                 if 'observacion_item' not in detalle:
                     detalle['observacion_item'] = ''
-                # Recalcular precio usando precios_utils
                 calc_result = precios_utils.calculate_price(
                     product_id=detalle.get('producto_id'),
                     quantity=detalle.get('cantidad'),
@@ -968,19 +959,17 @@ def obtener_detalles_lote(current_user):
                     db=db
                 )
                 if calc_result.get('status') == 'success':
-                    detalle['precio_total_item_ars'] = calc_result['precio_total_calculado_ars']
+                    detalle['precio_total_item_ars'] = calc_result['precio_total_calculado_ars'] * float(multiplicador_lote)
                 else:
-                    # Si hay error, dejar el precio original
                     pass
                 monto_total_items += detalle.get('precio_total_item_ars', 0.0)
-            # Calcular el subtotal proporcional de cada ítem usando la suma de los ítems
             for detalle in venta.get('detalles', []):
                 precio = detalle.get('precio_total_item_ars', 0.0)
                 if monto_total_items > 0:
-                    detalle['subtotal_proporcional_con_recargos'] = precio # proporción 1:1
+                    detalle['subtotal_proporcional_con_recargos'] = precio
                 else:
                     detalle['subtotal_proporcional_con_recargos'] = 0.0
-            venta['monto_final_con_recargos'] = monto_total_items
+            venta['monto_final_con_recargos'] = monto_total_items * float(multiplicador_lote)
         return jsonify(ventas_completas)
 
     except Exception as e:
