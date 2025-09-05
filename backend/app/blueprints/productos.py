@@ -4,7 +4,7 @@ from flask import Blueprint, request, jsonify, make_response, current_app, send_
 # Ajusta el import de db y modelos según tu estructura final.
 # Si __init__.py está en 'app/' y este archivo está en 'app/blueprints/', '..' es correcto.
 from .. import db, models
-from ..models import Producto, TipoCambio, Receta, RecetaItem, Cliente, PrecioEspecialCliente # Importa TODOS los modelos necesarios
+from ..models import Producto, TipoCambio, Receta, RecetaItem, Cliente, PrecioEspecialCliente, DetalleOrdenCompra, DetalleVenta, ComboComponente # Importa TODOS los modelos necesarios
 # Ajusta la ruta a tu módulo core de calculadora
 from ..calculator.core import obtener_coeficiente_por_rango
 from decimal import Decimal, InvalidOperation, DivisionByZero, ROUND_HALF_UP, ROUND_CEILING
@@ -78,6 +78,7 @@ def producto_a_dict(producto):
         "margen": float(producto.margen) if producto.margen is not None else None,
         "costo_referencia_usd": float(producto.costo_referencia_usd) if producto.costo_referencia_usd is not None else None,
         "es_receta": producto.es_receta,
+        "activo": producto.activo,
         "ajusta_por_tc": producto.ajusta_por_tc,
         "fecha_actualizacion_costo": producto.fecha_actualizacion_costo.isoformat() if producto.fecha_actualizacion_costo else None,
     }
@@ -246,6 +247,39 @@ def obtener_productos_paginado():
         print(f"ERROR [obtener_productos]: Excepción inesperada al obtener productos")
         traceback.print_exc()
         return jsonify({"error": "Error interno del servidor al obtener productos"}), 500
+    
+
+@productos_bp.route('/obtener_todos_paginado_activos', methods=['GET'])
+def obtener_productos_paginado_activos():
+    """Obtiene una lista de productos con paginación."""
+    try:
+        query = Producto.query.order_by(Producto.nombre)
+
+        # Paginación
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 20, type=int)
+        paginated_productos = query.paginate(page=page, per_page=per_page, error_out=False)
+        productos_db = paginated_productos.items
+
+        # Serializar Resultados
+        productos_list = [producto_a_dict(p) for p in productos_db if p.activo]
+
+        return jsonify({
+            "productos": productos_list,
+            "pagination": {
+                "total_items": paginated_productos.total,
+                "total_pages": paginated_productos.pages,
+                "current_page": page,
+                "per_page": per_page,
+                "has_next": paginated_productos.has_next,
+                "has_prev": paginated_productos.has_prev
+            }
+        }), 200
+
+    except Exception as e:
+        print(f"ERROR [obtener_productos]: Excepción inesperada al obtener productos")
+        traceback.print_exc()
+        return jsonify({"error": "Error interno del servidor al obtener productos"}), 500
 
 @productos_bp.route('/obtener_todos', methods=['GET'])
 def obtener_productos():
@@ -264,6 +298,23 @@ def obtener_productos():
         traceback.print_exc()
         return jsonify({"error": "Error interno del servidor al obtener productos"}), 500
 
+
+@productos_bp.route('/obtener_todos_activos', methods=['GET'])
+def obtener_productos_activos():
+    """Obtiene una lista de todos los productos."""
+    try:
+        # Considerar añadir paginación para listas potencialmente largas
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 20, type=int)
+        productos_paginados = Producto.query.order_by(Producto.nombre).paginate(page=page, per_page=per_page, error_out=False)
+        productos = productos_paginados.items
+        #pagination_info = {...} # Añadir info de paginación a la respuesta
+        productos = Producto.query.order_by(Producto.nombre).all()
+        return jsonify([producto_a_dict(p) for p in productos if p.activo]), 200
+    except Exception as e:
+        print(f"ERROR: Excepción inesperada al obtener productos")
+        traceback.print_exc()
+        return jsonify({"error": "Error interno del servidor al obtener productos"}), 500
 
 @productos_bp.route('/obtener/<int:producto_id>', methods=['GET'])
 def obtener_producto(producto_id):
@@ -293,6 +344,13 @@ def actualizar_producto(producto_id):
     try:
         # Actualizar campos básicos
         producto.nombre = data.get('nombre', producto.nombre)
+        producto.margen = data.get('margen', producto.margen)
+        
+        producto.ref_calculo = data.get('ref_calculo', producto.ref_calculo)
+        producto.tipo_calculo = data.get('tipo_calculo', producto.tipo_calculo)
+        producto.unidad_venta = data.get('unidad_venta', producto.unidad_venta)
+        producto.ajusta_por_tc = data.get('ajusta_por_tc', producto.ajusta_por_tc)
+        producto.activo = data.get('activo',producto.activo)
         # ... otros campos que actualizas ...
 
         # --- LÓGICA DE ACTUALIZACIÓN DE COSTO Y FLAGS (CORREGIDA Y EXPLÍCITA) ---
@@ -331,32 +389,94 @@ def actualizar_producto(producto_id):
 
 
 @productos_bp.route('/eliminar/<int:producto_id>', methods=['DELETE'])
-def eliminar_producto(producto_id):
-    """Elimina un producto."""
+@token_required
+@roles_required(ROLES['ADMIN'])
+def eliminar_producto(current_user, producto_id):
+    """
+    [VERSIÓN FINAL] Elimina un producto. Analiza TODAS las dependencias (incluyendo combos)
+    y permite forzar la eliminación en cascada.
+    """
     producto = db.session.get(Producto, producto_id)
     if not producto:
         return jsonify({"error": "Producto no encontrado"}), 404
 
-    # Verificación de dependencia: ¿Es ingrediente en alguna receta?
-    # Usar .first() es eficiente para saber si existe al menos uno.
-    if RecetaItem.query.filter_by(ingrediente_id=producto_id).first():
-        return jsonify({"error": f"No se puede eliminar '{producto.nombre}', es ingrediente en una o más recetas."}), 409 # Conflict
+    # --- ETAPA DE ANÁLISIS ---
+    recetas_donde_es_ingrediente = db.session.query(RecetaItem).filter_by(ingrediente_id=producto_id).all()
+    precios_especiales = db.session.query(PrecioEspecialCliente).filter_by(producto_id=producto_id).all()
+    detalles_venta = db.session.query(DetalleVenta).filter_by(producto_id=producto_id).all()
+    detalles_compra = db.session.query(DetalleOrdenCompra).filter_by(producto_id=producto_id).all()
+    componentes_combo = db.session.query(ComboComponente).filter_by(producto_id=producto_id).all()
+    
+    dependencias_encontradas = any([
+        recetas_donde_es_ingrediente, 
+        precios_especiales, 
+        detalles_venta, 
+        detalles_compra,
+        componentes_combo
+    ])
+    
+    forzar_eliminacion = request.args.get('forzar', 'false').lower() == 'true'
 
-    # Si el producto es una receta, la relación Producto->Receta con cascade="all, delete-orphan"
-    # debería eliminar la receta y sus RecetaItems asociados automáticamente al borrar el producto.
+    if dependencias_encontradas and not forzar_eliminacion:
+        # --- MODO ANÁLISIS ---
+        detalle_recetas = []
+        for item in recetas_donde_es_ingrediente:
+            if item.receta and item.receta.producto_final:
+                detalle_recetas.append(f"Receta para '{item.receta.producto_final.nombre}'")
+            else:
+                detalle_recetas.append(f"Receta ID {item.receta_id} (datos inconsistentes)")
+        
+        detalle_combos = []
+        for item in componentes_combo:
+            if item.combo:
+                detalle_combos.append(f"Combo '{item.combo.nombre}'")
 
+        informe = {
+            "error": f"No se puede eliminar '{producto.nombre}' porque tiene dependencias activas.",
+            "mensaje_accion": "Para eliminar este producto y todas sus dependencias, vuelva a realizar esta petición añadiendo el parámetro '?forzar=true'.",
+            "dependencias": {
+                "es_ingrediente_en_recetas": {
+                    "cantidad": len(recetas_donde_es_ingrediente),
+                    "detalle": detalle_recetas
+                },
+                "precios_especiales": { "cantidad": len(precios_especiales) },
+                "detalles_venta": { "cantidad": len(detalles_venta) },
+                "detalles_compra": { "cantidad": len(detalles_compra) },
+                "es_componente_en_combos": {
+                    "cantidad": len(componentes_combo),
+                    "detalle": detalle_combos
+                }
+            }
+        }
+        return jsonify(informe), 409
+
+    # --- MODO EJECUCIÓN ---
     try:
         nombre_eliminado = producto.nombre
-        codigo_eliminado = producto.id
+        items_a_eliminar = (
+            recetas_donde_es_ingrediente + 
+            precios_especiales + 
+            detalles_venta + 
+            detalles_compra +
+            componentes_combo
+        )
+
+        for item in items_a_eliminar:
+            db.session.delete(item)
+            
         db.session.delete(producto)
         db.session.commit()
-        print(f"INFO: Producto eliminado: ID {producto_id}, Código: {codigo_eliminado}, Nombre: {nombre_eliminado}")
-        return jsonify({"message": f"Producto '{nombre_eliminado}' eliminado correctamente"}), 200
+        
+        mensaje = f"Producto '{nombre_eliminado}' eliminado correctamente."
+        if dependencias_encontradas:
+            mensaje += " Todas sus dependencias también fueron eliminadas."
+            
+        return jsonify({"message": mensaje}), 200
+
     except Exception as e:
         db.session.rollback()
-        print(f"ERROR: Excepción inesperada al eliminar producto {producto_id}")
         traceback.print_exc()
-        return jsonify({"error": "Error interno del servidor al eliminar el producto"}), 500
+        return jsonify({"error": "Error interno al procesar la eliminación", "detalle": str(e)}), 500
 
 
 # --- Endpoint para obtener costos calculados ---
@@ -475,14 +595,27 @@ def actualizar_costo_desde_compra(producto_id):
 # --- Endpoint para Calcular Precio de Venta Final ---
 def redondear_a_siguiente_decena(valor_decimal: Decimal) -> Decimal:
     """
-    Redondea un valor Decimal hacia arriba al siguiente múltiplo de 10.
+    Redondea un valor Decimal hacia arriba al siguiente múltiplo de 10 y luego redondea al 100 más cercano.
     """
     if not isinstance(valor_decimal, Decimal):
         valor_decimal = Decimal(str(valor_decimal))
-    # Redondea hacia el techo al múltiplo de 10 más cercano
+
+    # Redondeo hacia arriba al siguiente múltiplo de 10
     valor_redondeado = (valor_decimal / 10).quantize(Decimal('1'), rounding=ROUND_CEILING) * 10
-    # Asegura que el resultado final tenga 2 decimales para consistencia
+
+
     return valor_redondeado.quantize(Decimal("0.01"))
+
+def redondear_a_siguiente_centena(valor_decimal: Decimal) -> Decimal:
+    """
+    Redondea un valor Decimal hacia arriba al siguiente múltiplo de 100.
+    Ejemplo: 333.31 → 400
+    """
+    if not isinstance(valor_decimal, Decimal):
+        valor_decimal = Decimal(str(valor_decimal))
+
+    return (valor_decimal / Decimal('100')).quantize(Decimal('1'), rounding=ROUND_CEILING) * Decimal('100')
+
 
 
 @productos_bp.route('/calcular_precio/<int:product_id>', methods=['POST'])
@@ -570,7 +703,7 @@ def calculate_price(product_id: int):
         if precio_venta_unitario_bruto is None: raise ValueError("Fallo en la lógica: no se pudo determinar un precio.")
 
         precio_venta_unitario_redondeado = redondear_a_siguiente_decena(precio_venta_unitario_bruto)
-        precio_total_final_ars = redondear_a_siguiente_decena(precio_venta_unitario_redondeado * cantidad_decimal)
+        precio_total_final_ars = redondear_a_siguiente_centena(precio_venta_unitario_redondeado * cantidad_decimal)
         detalles_calculo_dinamico['F_PRECIO_UNITARIO_REDONDEADO'] = f"{precio_venta_unitario_redondeado:.2f}"
         detalles_calculo_dinamico['G_PRECIO_TOTAL_FINAL_REDONDEADO'] = f"{precio_total_final_ars:.2f}"
         debug_info_response['etapas_calculo'].append(f"4. Redondeo Final (Unitario): {precio_venta_unitario_bruto:.4f} -> {precio_venta_unitario_redondeado}")

@@ -3,10 +3,13 @@ from flask import Blueprint, request, jsonify
 from sqlalchemy.orm import joinedload # Para cargar datos relacionados eficientemente
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 import traceback
+import pandas as pd
+import io
+import csv
 
 # --- Imports locales ---
 from .. import db
-from ..models import PrecioEspecialCliente, Cliente, Producto
+from ..models import PrecioEspecialCliente, Cliente, Producto, TipoCambio
 from ..utils.decorators import token_required, roles_required
 from ..utils.permissions import ROLES
 from ..utils.math_utils import redondear_a_siguiente_decena_simplificado
@@ -152,7 +155,7 @@ def listar_precios_especiales(current_user):
 
 @precios_especiales_bp.route('/obtener-por-cliente/<int:client_id>', methods=['GET'])
 @token_required
-@roles_required(ROLES['ADMIN'])
+@roles_required(ROLES['ADMIN'], ROLES['VENTAS_PEDIDOS'])
 def obtener_precio_especial(current_user, client_id):
     """Obtiene todos los precios especiales para un cliente por su ID."""
     precios_esp = db.session.query(PrecioEspecialCliente).options(
@@ -167,7 +170,7 @@ def obtener_precio_especial(current_user, client_id):
 
 @precios_especiales_bp.route('/editar/<int:precio_id>', methods=['PUT'])
 @token_required
-@roles_required(ROLES['ADMIN'])
+@roles_required(ROLES['ADMIN'], ROLES['VENTAS_PEDIDOS'])
 def actualizar_precio_especial(current_user, precio_id):
     """Actualiza un precio especial existente (precio o estado activo)."""
     precio_esp = db.session.get(PrecioEspecialCliente, precio_id)
@@ -320,3 +323,147 @@ def actualizar_precios_masivamente(current_user):
         print(f"ERROR [actualizar_precios_masivamente]: Excepción {e}")
         traceback.print_exc()
         return jsonify({"error": "Error interno durante la actualización masiva."}), 500
+
+ 
+    
+@precios_especiales_bp.route('/cargar_csv', methods=['POST'])
+@token_required
+@roles_required(ROLES['ADMIN'])
+def cargar_precios_desde_csv(current_user):
+    """
+    [VERSIÓN CON LÓGICA DE TC SIMPLIFICADA]
+    Crea/actualiza precios masivamente desde un CSV. Si la moneda es 'USD', siempre usa el TC Oficial.
+    Detecta el delimitador y procesa todas las filas válidas, informando errores.
+    """
+    if 'archivo_precios' not in request.files:
+        return jsonify({"error": "No se encontró el archivo. La clave debe ser 'archivo_precios'."}), 400
+    
+    file = request.files['archivo_precios']
+    if file.filename == '':
+        return jsonify({"error": "No se seleccionó ningún archivo."}), 400
+
+    if not file.filename.lower().endswith('.csv'):
+        return jsonify({"error": "El archivo debe tener la extensión .csv"}), 400
+
+    try:
+        # --- 1. LECTURA Y DETECCIÓN DE DELIMITADOR ---
+        contenido_bytes = file.stream.read()
+        if not contenido_bytes:
+            return jsonify({"error": "El archivo está vacío."}), 400
+            
+        contenido_str = contenido_bytes.decode('utf-8-sig')
+        
+        try:
+            dialect = csv.Sniffer().sniff(contenido_str.splitlines()[0], delimiters=',;')
+            delimitador_detectado = dialect.delimiter
+        except csv.Error:
+            return jsonify({"error": "No se pudo determinar el formato del CSV. Use comas (,) o punto y coma (;) como separador."}), 400
+
+        # --- 2. LECTURA CON PANDAS ---
+        df = pd.read_csv(
+            io.StringIO(contenido_str),
+            sep=delimitador_detectado,
+            keep_default_na=False,
+            dtype=str
+        )
+
+        # --- 3. PREPARACIÓN DE DATOS (CACHÉ) ---
+        tc_oficial_obj = TipoCambio.query.filter_by(nombre='Oficial').first()
+        if not tc_oficial_obj or not tc_oficial_obj.valor or tc_oficial_obj.valor <= 0:
+            return jsonify({"error": "El Tipo de Cambio 'Oficial' no está configurado o no es válido."}), 500
+        valor_dolar_oficial = tc_oficial_obj.valor
+        
+        clientes_db = {c.nombre_razon_social.strip().upper(): c for c in Cliente.query.all()}
+        productos_db = {p.nombre.strip().upper(): p for p in Producto.query.all()}
+        precios_existentes = {(pe.cliente_id, pe.producto_id): pe for pe in PrecioEspecialCliente.query.all()}
+
+        # --- 4. PROCESAMIENTO DE FILAS ---
+        registros_creados = 0
+        registros_actualizados = 0
+        filas_fallidas = []
+        required_columns = {'Cliente', 'Producto', 'Precio', 'Moneda'}
+
+        if not required_columns.issubset(df.columns):
+            return jsonify({"error": f"El CSV debe contener las columnas exactas: {', '.join(required_columns)}"}), 400
+
+        for index, row in df.iterrows():
+            linea_num = index + 2
+            
+            def registrar_error(motivo):
+                filas_fallidas.append({
+                    "linea": linea_num, "cliente": row.get('Cliente', 'N/A'),
+                    "producto": row.get('Producto', 'N/A'), "motivo": motivo
+                })
+
+            nombre_cliente_csv = str(row.get('Cliente', '')).strip().upper()
+            nombre_producto_csv = str(row.get('Producto', '')).strip().upper()
+            precio_csv_str = str(row.get('Precio', '')).strip().replace(',', '.')
+            moneda_csv = str(row.get('Moneda', '')).strip().upper()
+
+            # Validaciones
+            cliente = clientes_db.get(nombre_cliente_csv)
+            if not cliente:
+                registrar_error(f"Cliente '{row.get('Cliente')}' no encontrado.")
+                continue
+
+            producto = productos_db.get(nombre_producto_csv)
+            if not producto:
+                registrar_error(f"Producto '{row.get('Producto')}' no encontrado.")
+                continue
+            
+            if moneda_csv not in ['ARS', 'USD']:
+                registrar_error(f"Moneda '{row.get('Moneda')}' no válida. Usar 'ARS' o 'USD'.")
+                continue
+            
+            try:
+                precio_original = Decimal(precio_csv_str)
+                if precio_original < 0: raise ValueError
+            except (InvalidOperation, ValueError):
+                registrar_error(f"Precio '{row.get('Precio')}' no es un número válido.")
+                continue
+
+            # --- LÓGICA DE CONVERSIÓN DE MONEDA SIMPLIFICADA ---
+            precio_final_ars = precio_original
+            if moneda_csv == 'USD':
+                # Si la moneda es USD, siempre multiplica por el TC Oficial.
+                precio_final_ars = precio_original * valor_dolar_oficial
+            
+            # Lógica de creación/actualización
+            precio_esp_existente = precios_existentes.get((cliente.id, producto.id))
+
+            if precio_esp_existente:
+                precio_esp_existente.precio_unitario_fijo_ars = precio_final_ars
+                precio_esp_existente.activo = True
+                registros_actualizados += 1
+            else:
+                nuevo_precio_esp = PrecioEspecialCliente(cliente_id=cliente.id, producto_id=producto.id, precio_unitario_fijo_ars=precio_final_ars, activo=True)
+                db.session.add(nuevo_precio_esp)
+                precios_existentes[(cliente.id, producto.id)] = nuevo_precio_esp
+                registros_creados += 1
+        
+        # --- 5. COMMIT Y RESPUESTA FINAL ---
+        db.session.commit()
+        
+        summary = {
+            "creados": registros_creados, "actualizados": registros_actualizados,
+            "errores": len(filas_fallidas)
+        }
+
+        if filas_fallidas:
+            return jsonify({
+                "status": "completed_with_errors",
+                "message": f"Proceso completado. Se procesaron {registros_creados + registros_actualizados} registros, pero {len(filas_fallidas)} filas tuvieron errores.",
+                "summary": summary, "failed_rows": filas_fallidas
+            }), 207
+        else:
+            return jsonify({
+                "status": "success", "message": "Carga masiva completada exitosamente sin errores.",
+                "summary": summary
+            }), 200
+
+    except pd.errors.ParserError as e:
+        return jsonify({"error": "Error de formato en el archivo CSV.", "detalle": str(e)}), 400
+    except Exception as e:
+        db.session.rollback()
+        traceback.print_exc()
+        return jsonify({"error": "Ocurrió un error crítico durante el proceso.", "detalle": str(e)}), 500

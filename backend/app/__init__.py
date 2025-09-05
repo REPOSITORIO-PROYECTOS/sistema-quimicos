@@ -59,10 +59,8 @@ def create_app(config_object='config.Config'):
     # Esto manejará automáticamente las peticiones OPTIONS (preflight).
     CORS(
         app,
-        resources={r"/*": {"origins": allowed_origins}},
-        allow_headers=["Authorization", "Content-Type", "X-Requested-With"], # <-- LÍNEA CRUCIAL
-        supports_credentials=True,
-        methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"] # Es bueno ser explícito con los métodos también
+        origins=allowed_origins,
+        supports_credentials=True
     )
     print(f"--- INFO [app/__init__.py]: CORS configurado para orígenes: {allowed_origins}")
     # --- FIN DE CONFIGURACIÓN DE CORS ---
@@ -140,6 +138,8 @@ def create_app(config_object='config.Config'):
         from .blueprints.costos import costos_bp
         from .blueprints.precios_especiales import precios_especiales_bp
         from .blueprints.reportes import reportes_bp
+        from .blueprints.dashboard import dashboard_bp
+
         
         app.register_blueprint(auth_bp)
         app.register_blueprint(clientes_bp)
@@ -154,6 +154,8 @@ def create_app(config_object='config.Config'):
         app.register_blueprint(costos_bp)
         app.register_blueprint(precios_especiales_bp)
         app.register_blueprint(reportes_bp)
+        app.register_blueprint(dashboard_bp)
+
         print("--- INFO [app/__init__.py]: Todos los blueprints registrados.")
 
         try:

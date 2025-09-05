@@ -4,7 +4,7 @@ from ..models import Producto, RecetaItem, Receta # Asegúrate de la ruta correc
 from .. import db # Si necesitas acceso a la sesión de DB
 
 # Helper para redondear consistentemente
-def redondear_decimal(valor: Decimal, decimales: int = 4) -> Decimal:
+def redondear_decimal(valor: Decimal, decimales: int = 8) -> Decimal:
     # Usar ROUND_HALF_UP para redondeo estándar (ej: 2.5 -> 3, 2.4 -> 2)
     # El número de decimales puede ser un parámetro de configuración global
     quantizer = Decimal('1e-' + str(decimales))

@@ -65,11 +65,12 @@ class Producto(db.Model):
 #    receta_id = db.Column(db.Integer, db.ForeignKey('recetas.id', ondelete='SET NULL'), nullable=True)
     unidad_venta = db.Column(db.String(50), nullable=True)
     tipo_calculo = db.Column(db.String(2), nullable=True)
+    ajusta_por_tc = db.Column(db.Boolean, default=True, nullable=True)
     ref_calculo = db.Column(db.String(50), nullable=True)
     margen = db.Column(db.Numeric(10, 4), default=Decimal('0.0'))
     costo_referencia_usd = db.Column(db.Numeric(15, 4), nullable=True)
     es_receta = db.Column(db.Boolean, default=False, nullable=False, index=True)
-    ajusta_por_tc = db.Column(db.Boolean, default=False, nullable=False, index=True)
+    activo = db.Column(db.Boolean, default=False, nullable=False, index=True)
     fecha_actualizacion_costo = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     receta = db.relationship("Receta", back_populates="producto_final", uselist=False, cascade="all, delete-orphan")
     usado_en_recetas = db.relationship("RecetaItem", back_populates="ingrediente", lazy='dynamic')
@@ -97,9 +98,6 @@ class Receta(db.Model):
     fecha_creacion = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     fecha_modificacion = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
-    def verificar_porcentajes(self):
-        total_porcentaje = sum(item.porcentaje for item in self.items.all() if item.porcentaje is not None)
-        return abs(total_porcentaje - Decimal(100)) < Decimal('0.001')
 
 # --- Modelo RecetaItem ---
 class RecetaItem(db.Model):
@@ -113,13 +111,6 @@ class RecetaItem(db.Model):
     receta = db.relationship("Receta", back_populates="items")
     ingrediente = db.relationship("Producto", back_populates="usado_en_recetas")
 
-    @validates('porcentaje')
-    def validate_porcentaje(self, key, porcentaje_value):
-        if not isinstance(porcentaje_value, Decimal):
-             porcentaje_value = Decimal(porcentaje_value)
-        if porcentaje_value <= 0 or porcentaje_value > 100:
-             raise ValueError("El porcentaje debe ser mayor que 0 y menor o igual a 100.")
-        return porcentaje_value
 
 
 # --- Modelo TipoCambio ---
@@ -154,11 +145,15 @@ class Venta(db.Model):
     recargo_transferencia = db.Column(db.Numeric(10, 2), nullable=True)
     recargo_factura = db.Column(db.Numeric(10, 2), nullable=True)
     monto_final_con_recargos = db.Column(db.Numeric(15, 2), nullable=True)
+    # Nuevo campo: monto final redondeado por operación (ej. a la centena)
+    monto_final_redondeado = db.Column(db.Numeric(15, 2), nullable=True)
     monto_pagado_cliente = db.Column(db.Numeric(15, 2), nullable=True)
+    descuento_general = db.Column(db.Numeric(5, 2), nullable=True, default=0.00)
+
     vuelto_calculado = db.Column(db.Numeric(15, 2), nullable=True)
     usuario_interno = db.relationship('UsuarioInterno', back_populates='ventas')
     cliente = db.relationship('Cliente', back_populates='ventas')
-    detalles = db.relationship('DetalleVenta', back_populates='venta', cascade="all, delete-orphan", lazy='dynamic')
+    detalles = db.relationship('DetalleVenta', back_populates='venta', lazy='select', cascade="all, delete-orphan")
 
 # --- Modelo DetalleVenta ---
 class DetalleVenta(db.Model):
@@ -175,8 +170,10 @@ class DetalleVenta(db.Model):
     coeficiente_usado = db.Column(db.Numeric(10, 4), nullable=True)
     precio_unitario_venta_ars = db.Column(db.Numeric(15, 4), nullable=False)
     precio_total_item_ars = db.Column(db.Numeric(15, 2), nullable=False)
+    descuento_item = db.Column(db.Numeric(5, 2), nullable=True, default=0.00)
     venta = db.relationship('Venta', back_populates='detalles')
     producto = db.relationship('Producto', back_populates='detalles_venta')
+
 
 
 # --- Modelo OrdenCompra ---

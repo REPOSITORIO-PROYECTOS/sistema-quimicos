@@ -1,3 +1,5 @@
+from ..utils.decorators import token_required, roles_required
+from ..utils.permissions import ROLES
       
 # blueprints/clientes.py
 
@@ -5,11 +7,11 @@ from flask import Blueprint, request, jsonify
 from datetime import datetime, timezone # Asegúrate de importar datetime y timezone si no lo haces globalmente
 from .. import db # Ajusta esta importación según la estructura de tu proyecto (donde inicializas db)
 from ..models import Cliente # Ajusta esta importación según dónde esté tu modelo Cliente
+import pandas as pd
+import io
+import traceback
+from sqlalchemy import or_
 
-# Crea el Blueprint
-# 'clientes_api' es el nombre del blueprint
-# __name__ ayuda a Flask a localizar recursos
-# url_prefix añade '/api/v1/clientes' antes de todas las rutas definidas en este blueprint
 clientes_bp = Blueprint('clientes', __name__, url_prefix='/clientes')
 
 # --- Helper Function ---
@@ -83,27 +85,36 @@ def crear_cliente():
 # READ - Obtener todos los clientes (o filtrar por activos/inactivos)
 @clientes_bp.route('/obtener_todos', methods=['GET'])
 def obtener_clientes():
-    """Obtiene una lista de clientes. Permite filtrar por estado activo y aplicar paginación."""
+    """
+    [ACTUALIZADO] Obtiene una lista de clientes con filtros, paginación y BÚSQUEDA.
+    """
     try:
-        mostrar_activos = request.args.get('activos', default='true', type=str).lower() == 'true'
-
-        query = Cliente.query
-
-        if mostrar_activos:
-            query = query.filter_by(activo=True)
-        else:
-            query = query.filter_by(activo=False)
-
-        query = query.order_by(Cliente.nombre_razon_social)
-
-        # --- Paginación ---
+        # --- Parámetros de la URL (el nuevo es 'search_term') ---
         page = request.args.get('page', default=1, type=int)
         per_page = request.args.get('per_page', default=20, type=int)
+        search_term = request.args.get('search_term', default=None, type=str)
+        
+        # Por defecto, solo muestra activos
+        query = Cliente.query.filter_by(activo=True)
 
+        # --- LÓGICA DE BÚSQUEDA (NUEVO) ---
+        if search_term and search_term.strip():
+            # Preparamos el término de búsqueda para que funcione como un "contiene"
+            search_pattern = f"%{search_term.strip()}%"
+            # Filtramos en varias columnas usando OR
+            query = query.filter(
+                or_(
+                    Cliente.nombre_razon_social.ilike(search_pattern),
+                    Cliente.telefono.ilike(search_pattern),
+                    Cliente.email.ilike(search_pattern),
+                    Cliente.cuit.ilike(search_pattern)
+                )
+            )
+
+        # El resto de la lógica se mantiene igual
+        query = query.order_by(Cliente.nombre_razon_social)
         paginated_clientes = query.paginate(page=page, per_page=per_page, error_out=False)
         clientes_db = paginated_clientes.items
-
-        # Serialización
         clientes_list = [cliente_a_diccionario(c) for c in clientes_db]
 
         return jsonify({
@@ -119,26 +130,10 @@ def obtener_clientes():
         }), 200
 
     except Exception as e:
-        print(f"ERROR [obtener_clientes]: Excepción inesperada")
-        traceback.print_exc()
+        # traceback.print_exc() # Descomentar para depuración si es necesario
         return jsonify({"error": "Error interno al obtener los clientes"}), 500
 
-# def obtener_clientes():
-#     """Obtiene una lista de clientes. Permite filtrar por estado activo."""
-#     mostrar_activos = request.args.get('activos', default='true', type=str).lower() == 'true'
 
-#     if mostrar_activos:
-#         clientes = Cliente.query.filter_by(activo=True).order_by(Cliente.nombre_razon_social).all()
-#     else:
-#         # Si quieres poder ver *todos* (activos e inactivos), podrías tener otro parámetro
-#         # o simplemente quitar el filtro si 'activos' no es 'true'.
-#         # Aquí mostramos solo los inactivos si activos=false.
-#         clientes = Cliente.query.filter_by(activo=False).order_by(Cliente.nombre_razon_social).all()
-#         # O para obtener TODOS:
-#         # clientes = Cliente.query.order_by(Cliente.nombre_razon_social).all()
-
-
-#     return jsonify([cliente_a_diccionario(c) for c in clientes]), 200
 
 # READ - Obtener un cliente específico por ID
 @clientes_bp.route('/obtener/<int:cliente_id>', methods=['GET'])
@@ -149,8 +144,10 @@ def obtener_cliente(cliente_id):
     return jsonify(cliente_a_diccionario(cliente)), 200
 
 # UPDATE - Actualizar un cliente existente por ID
-@clientes_bp.route('/actualizar/<int:cliente_id>', methods=['PUT', 'PATCH']) # Soportamos PUT y PATCH
-def actualizar_cliente(cliente_id):
+@clientes_bp.route('/actualizar/<int:cliente_id>', methods=['PUT', 'PATCH']) 
+@token_required
+@roles_required(ROLES['ADMIN'], ROLES['CONTABLE'], ROLES['VENTAS_PEDIDOS'])
+def actualizar_cliente(current_user, cliente_id):
     """Actualiza un cliente existente."""
     cliente = Cliente.query.get_or_404(cliente_id)
     data = request.get_json()
@@ -181,7 +178,9 @@ def actualizar_cliente(cliente_id):
 
 # DELETE - Marcar un cliente como inactivo (Soft Delete)
 @clientes_bp.route('/desactivar/<int:cliente_id>', methods=['DELETE'])
-def desactivar_cliente(cliente_id):
+@token_required
+@roles_required(ROLES['ADMIN'], ROLES['CONTABLE'])
+def desactivar_cliente(current_user, cliente_id):
     """Marca un cliente como inactivo (Soft Delete)."""
     cliente = Cliente.query.get_or_404(cliente_id)
 
@@ -215,4 +214,83 @@ def reactivar_cliente(cliente_id):
         # Considera loggear el error 'e' aquí
         return jsonify({"error": "Error al reactivar el cliente.", "detalle": str(e)}), 500
 
-    
+@clientes_bp.route('/cargar_csv', methods=['POST'])
+def cargar_clientes_desde_csv():
+    """
+    Crea o actualiza clientes masivamente desde un archivo CSV.
+    El archivo debe ser enviado como 'multipart/form-data' con la clave 'archivo_clientes'.
+    Columnas esperadas: 'NOMBRE', 'TELEFONO', 'DIRECCIÓN', 'LOCALIDAD'.
+    Utiliza el NOMBRE como clave única para buscar y actualizar.
+    """
+    if 'archivo_clientes' not in request.files:
+        return jsonify({"error": "No se encontró el archivo en la solicitud. Usa la clave 'archivo_clientes'."}), 400
+
+    file = request.files['archivo_clientes']
+    if file.filename == '':
+        return jsonify({"error": "No se seleccionó ningún archivo."}), 400
+
+    try:
+        # --- 1. PREPARACIÓN: Cargar clientes existentes en un diccionario para búsqueda rápida ---
+        clientes_existentes = {c.nombre_razon_social.strip().upper(): c for c in Cliente.query.all()}
+        
+        # --- 2. LECTURA Y PROCESAMIENTO DEL CSV ---
+        df = pd.read_csv(io.StringIO(file.stream.read().decode("utf-8-sig")), keep_default_na=False) # keep_default_na=False para no convertir celdas vacías en NaN
+        
+        registros_creados = 0
+        registros_actualizados = 0
+        errores = []
+
+        for index, row in df.iterrows():
+            nombre_csv = str(row.get('NOMBRE', '')).strip()
+            telefono_csv = str(row.get('TELEFONO', '')).strip()
+            direccion_csv = str(row.get('DIRECCIÓN', '')).strip()
+            localidad_csv = str(row.get('LOCALIDAD', '')).strip()
+
+            if not nombre_csv:
+                # Opcional: podrías decidir saltar filas sin nombre en lugar de dar error
+                errores.append(f"Fila {index + 2}: El campo 'NOMBRE' está vacío.")
+                continue
+
+            nombre_upper = nombre_csv.upper()
+            cliente_existente = clientes_existentes.get(nombre_upper)
+
+            if cliente_existente:
+                # --- ACTUALIZAR CLIENTE EXISTENTE ---
+                # Actualiza solo si la información del CSV es más completa
+                cliente_existente.telefono = telefono_csv if telefono_csv else cliente_existente.telefono
+                cliente_existente.direccion = direccion_csv if direccion_csv else cliente_existente.direccion
+                cliente_existente.localidad = localidad_csv if localidad_csv else cliente_existente.localidad
+                cliente_existente.activo = True # Se reactiva si estaba inactivo
+                registros_actualizados += 1
+            else:
+                # --- CREAR NUEVO CLIENTE ---
+                nuevo_cliente = Cliente(
+                    nombre_razon_social=nombre_csv,
+                    telefono=telefono_csv,
+                    direccion=direccion_csv,
+                    localidad=localidad_csv,
+                    activo=True
+                )
+                db.session.add(nuevo_cliente)
+                registros_creados += 1
+        
+        # --- 3. COMMIT Y RESPUESTA ---
+        if errores:
+            db.session.rollback()
+            return jsonify({
+                "error": "El proceso falló debido a errores en el archivo. No se realizó ningún cambio.",
+                "detalles_errores": errores
+            }), 400
+        else:
+            db.session.commit()
+            return jsonify({
+                "message": "Carga de clientes completada exitosamente.",
+                "clientes_creados": registros_creados,
+                "clientes_actualizados": registros_actualizados,
+                "total_filas_procesadas": len(df)
+            }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        traceback.print_exc()
+        return jsonify({"error": "Ocurrió un error inesperado durante el proceso de carga.", "detalle": str(e)}), 500

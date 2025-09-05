@@ -1,3 +1,4 @@
+
 # app/blueprints/auth.py
 
 from flask import Blueprint, request, jsonify, make_response, current_app
@@ -39,7 +40,7 @@ def login():
         payload = {
             'user_id': usuario.id,
             'rol': usuario.rol,
-            'exp': datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=8) # Expiración
+            'exp': datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=10) # Expiración extendida a 10hs
         }
         secret_key = 'J2z8KJdN8UfU8g6wKXgk4Q6nfsDF8wMnezLp8xsdWbNQqZ4RkOzZulX8wA==' #current_app.config.get('SECRET_KEY')
         if not secret_key:
@@ -224,3 +225,61 @@ def logout():
 def verify_token(current_user):
     """Endpoint protegido para verificar si el token actual es válido."""
     return jsonify({'message': 'Token válido', 'user_id': current_user.id, 'rol': current_user.rol}), 200
+
+# --- ENDPOINT: Listar usuarios internos y su rol ---
+@auth_bp.route('/usuarios', methods=['GET'])
+@token_required
+@roles_required(ROLES['ADMIN'])
+def listar_usuarios(current_user):
+    usuarios = UsuarioInterno.query.all()
+    lista = [
+        {
+            'id': u.id,
+            'nombre_usuario': u.nombre_usuario,
+            'nombre': u.nombre,
+            'apellido': u.apellido,
+            'rol': u.rol,
+            'email': u.email
+        }
+        for u in usuarios
+    ]
+    return jsonify({'usuarios': lista})
+
+# --- ENDPOINT: Modificar usuario (solo ADMIN) ---
+@auth_bp.route('/usuarios/<int:usuario_id>', methods=['PUT'])
+@token_required
+@roles_required(ROLES['ADMIN'])
+def modificar_usuario(current_user, usuario_id):
+    usuario = UsuarioInterno.query.get_or_404(usuario_id)
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'Datos requeridos'}), 400
+    # No permitir cambiar nombre_usuario a uno ya existente
+    if 'nombre_usuario' in data and data['nombre_usuario'] != usuario.nombre_usuario:
+        if UsuarioInterno.query.filter_by(nombre_usuario=data['nombre_usuario']).first():
+            return jsonify({'error': 'Ese nombre de usuario ya existe'}), 400
+        usuario.nombre_usuario = data['nombre_usuario']
+    if 'nombre' in data:
+        usuario.nombre = data['nombre']
+    if 'apellido' in data:
+        usuario.apellido = data['apellido']
+    if 'rol' in data:
+        usuario.rol = data['rol']
+    if 'email' in data:
+        usuario.email = data['email']
+    if 'contrasena' in data and data['contrasena']:
+        usuario.contrasena = generate_password_hash(data['contrasena'])
+    db.session.commit()
+    return jsonify({'message': 'Usuario modificado'})
+
+# --- ENDPOINT: Eliminar usuario (solo ADMIN, no permite borrar usuario1) ---
+@auth_bp.route('/usuarios/<int:usuario_id>', methods=['DELETE'])
+@token_required
+@roles_required(ROLES['ADMIN'])
+def eliminar_usuario(current_user, usuario_id):
+    usuario = UsuarioInterno.query.get_or_404(usuario_id)
+    if usuario.nombre_usuario == 'usuario1':
+        return jsonify({'error': 'No se puede eliminar el usuario maestro'}), 403
+    db.session.delete(usuario)
+    db.session.commit()
+    return jsonify({'message': 'Usuario eliminado'})
