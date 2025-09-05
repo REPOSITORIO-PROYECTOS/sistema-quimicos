@@ -1,14 +1,11 @@
 # Nombre del workflow
 name: Deploy Backend and Frontend to Server
 
-# Se activa con un push a la rama main si hay cambios en backend o frontend
+# Se activa con un push a la rama main
 on:
   push:
     branches:
       - main
-    paths:
-      - 'backend/**'
-      - 'frontend/**'
 
 jobs:
   deploy:
@@ -20,43 +17,31 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. NUEVO PASO: Detectar qué carpetas han cambiado
-      - name: Get changed files
-        id: changed-files
-        uses: tj-actions/changed-files@v44 # Usar una versión reciente
-        with:
-          files: |
-            backend/**
-            frontend/**
-
-      # 3. Instalar la clave SSH
+      # 2. Instalar la clave SSH
       - name: Install SSH Key
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
 
-      # 4. Sincronizar la carpeta backend al servidor (Condición CORREGIDA)
+      # 3. Sincronizar SIEMPRE la carpeta backend al servidor
       - name: Sync backend files via rsync
-        if: steps.changed-files.outputs.backend_files_changed == 'true'
         run: |
           rsync -avzr --delete \
             -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
             ./backend/ \
             ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_HOST }}:/root/quimex_2.0/sistema_quimicos/
 
-      # 5. Sincronizar la carpeta frontend al servidor (Condición CORREGIDA)
+      # 4. Sincronizar SIEMPRE la carpeta frontend al servidor
       - name: Sync frontend files via rsync
-        if: steps.changed-files.outputs.frontend_files_changed == 'true'
         run: |
           rsync -avzr --delete \
             -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
             ./frontend/ \
             ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_HOST }}:/root/quimex_2.0/frontend/
 
-      # 6. Instalar dependencias y reiniciar backend (Condición CORREGIDA)
+      # 5. Instalar dependencias y reiniciar SIEMPRE el backend
       - name: Install backend dependencies and restart service
-        if: steps.changed-files.outputs.backend_files_changed == 'true'
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -66,16 +51,13 @@ jobs:
             echo "🚀 Archivos backend sincronizados. Preparando entorno..."
             cd /root/quimex_2.0/sistema_quimicos
 
-            # Crear venv si no existe
             if [ ! -d "venv" ]; then
               echo "⚙️ Creando entorno virtual..."
               python3 -m venv venv
             fi
 
-            # Activar entorno
             source venv/bin/activate
 
-            # Actualizar dependencias si existe requirements.txt
             if [ -f requirements.txt ]; then
               echo "📦 Instalando dependencias..."
               pip install --upgrade pip
@@ -84,14 +66,12 @@ jobs:
 
             deactivate
 
-            # Reiniciar servicio
             echo "🔄 Reiniciando servicio backend..."
             sudo systemctl restart quimex.service
             echo "✅ Backend desplegado y servicio reiniciado con éxito."
 
-      # 7. Instalar dependencias y hacer build del frontend (Condición CORREGIDA)
+      # 6. Instalar dependencias y hacer build SIEMPRE del frontend
       - name: Install frontend dependencies and build
-        if: steps.changed-files.outputs.frontend_files_changed == 'true'
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -101,17 +81,14 @@ jobs:
             echo "🚀 Archivos frontend sincronizados. Preparando build..."
             cd /root/quimex_2.0/frontend
 
-            # Instalar dependencias de npm
             if [ -f package.json ]; then
               echo "📦 Instalando dependencias frontend..."
               npm install
             fi
 
-            # Build de producción
             echo "⚡ Compilando frontend..."
             npm run build
 
-            # Copiar build a la carpeta de Nginx
             echo "📂 Moviendo build a /var/www/quimex_frontend..."
             sudo rm -rf /var/www/quimex_frontend/*
             sudo cp -r build/* /var/www/quimex_frontend/
