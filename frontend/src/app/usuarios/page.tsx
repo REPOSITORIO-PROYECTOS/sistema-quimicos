@@ -108,7 +108,7 @@ export default function UsuariosPage() {
     try {
       const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
       if (!token) throw new Error("No autenticado");
-      const API_URL = `https://quimex.sistemataup.online/auth/usuarios/${user.id}`;
+      const API_URL = `http://127.0.0.1:8001/auth/usuarios/${user.id}`;
       const res = await fetch(API_URL, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
@@ -142,7 +142,7 @@ export default function UsuariosPage() {
         return;
       }
       // Cambia esta URL si tu backend está en otro host/puerto
-      const API_URL = "https://quimex.sistemataup.online/auth/usuarios";
+      const API_URL = "http://127.0.0.1:8001/auth/usuarios";
       const res = await fetch(API_URL, {
         headers: { Authorization: `Bearer ${token}` },
       });

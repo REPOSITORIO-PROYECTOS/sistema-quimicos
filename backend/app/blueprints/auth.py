@@ -64,7 +64,7 @@ def login():
         return jsonify(response_data), 200
 
     except Exception as e:
-         print(f"ERROR [login]: Excepción inesperadaa")
+         print(f"ERROR [login]: Excepción inesperada")
          traceback.print_exc()
          return jsonify({'message': 'Error interno durante el login'}), 500
 

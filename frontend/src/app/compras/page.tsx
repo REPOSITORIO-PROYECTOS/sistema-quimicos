@@ -12,7 +12,7 @@ export default function AccionesPedidos() {
 
   const irAVerDeudasProveedores = () => router.push('/deuda-proveedores');
 
-  console.log("hola");
+
   const irAVerHistorialCompras = () => router.push('/historial-compras');
 
 
