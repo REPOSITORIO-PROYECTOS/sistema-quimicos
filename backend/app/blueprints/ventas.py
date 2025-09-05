@@ -946,34 +946,39 @@ def obtener_detalles_lote(current_user):
 
         ventas_completas = [venta_a_dict_completo(v) for v in ventas_db]
         for venta in ventas_completas:
+            # Redondear y limpiar campos
             if 'descuento_total_global_porcentaje' in venta:
                 venta['descuento_total_global_porcentaje'] = round(venta['descuento_total_global_porcentaje'])
             if 'observaciones' not in venta:
                 venta['observaciones'] = ''
-            monto_total_items = 0.0
+            monto_total_items = Decimal('0.00')
+            # Recalcular precios de ítems con descuentos y redondeo
             for detalle in venta.get('detalles', []):
                 if 'descuento_item_porcentaje' in detalle:
-                    detalle['descuento_item_porcentaje'] = round(detalle['descuento_item_porcentaje'])
+                    detalle['descuento_item_porcentaje'] = round(detalle.get('descuento_item_porcentaje', 0.0))
                 if 'observacion_item' not in detalle:
                     detalle['observacion_item'] = ''
-                calc_result = precios_utils.calculate_price(
-                    product_id=detalle.get('producto_id'),
-                    quantity=detalle.get('cantidad'),
-                    cliente_id=venta.get('cliente_id'),
-                    db=db
-                )
-                if calc_result.get('status') == 'success':
-                    detalle['precio_total_item_ars'] = calc_result['precio_total_calculado_ars'] * float(multiplicador_lote)
-                else:
-                    pass
-                monto_total_items += detalle.get('precio_total_item_ars', 0.0)
-            # Aplicar recargos al monto total de los ítems
+                # Recalcular precio total del ítem con descuento
+                precio_total_item = Decimal(str(detalle.get('precio_total_item_ars', 0.0)))
+                descuento_item = Decimal(str(detalle.get('descuento_item_porcentaje', 0.0)))
+                precio_total_item_neto = precio_total_item * (Decimal('1.0') - descuento_item / Decimal('100'))
+                # Redondear a múltiplo de 100 hacia arriba
+                if precio_total_item_neto % 100 != 0:
+                    precio_total_item_neto = Decimal(math.ceil(precio_total_item_neto / 100) * 100)
+                detalle['precio_total_item_ars'] = float(precio_total_item_neto)
+                monto_total_items += precio_total_item_neto
+            # Aplicar recargos y descuento global al total
             forma_pago = venta.get('forma_pago')
             requiere_factura = venta.get('requiere_factura', False)
+            descuento_global = Decimal(str(venta.get('descuento_total_global_porcentaje', 0.0)))
             monto_final_con_recargos, recargo_t, recargo_f, _, _ = calcular_monto_final_y_vuelto(
-                Decimal(str(monto_total_items)), forma_pago, requiere_factura, None, multiplicador_lote
+                monto_total_items, forma_pago, requiere_factura, None, multiplicador_lote
             )
-            venta['monto_final_con_recargos'] = float(monto_final_con_recargos)
+            monto_final_a_pagar = monto_final_con_recargos * (Decimal('1.0') - descuento_global / Decimal('100'))
+            # Redondear a múltiplo de 100 hacia arriba
+            if monto_final_a_pagar % 100 != 0:
+                monto_final_a_pagar = Decimal(math.ceil(monto_final_a_pagar / 100) * 100)
+            venta['monto_final_con_recargos'] = float(monto_final_a_pagar)
             venta['recargos'] = {
                 'transferencia': float(recargo_t),
                 'factura_iva': float(recargo_f)
@@ -983,7 +988,7 @@ def obtener_detalles_lote(current_user):
             for detalle in venta.get('detalles', []):
                 precio = detalle.get('precio_total_item_ars', 0.0)
                 if suma_items > 0:
-                    detalle['subtotal_proporcional_con_recargos'] = precio * (float(monto_final_con_recargos) / suma_items)
+                    detalle['subtotal_proporcional_con_recargos'] = float(monto_final_a_pagar * (precio / suma_items))
                 else:
                     detalle['subtotal_proporcional_con_recargos'] = 0.0
         return jsonify(ventas_completas)
