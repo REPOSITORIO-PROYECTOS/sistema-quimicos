@@ -368,7 +368,6 @@ const displayTotalToShow = useMemo(() => {
         cantidad: item.qx,
         precio_total_item_ars: subtotalFinalParaTicket,
         observacion_item: item.observacion || item.observacion_item || "",
-        descuento_item_porcentaje: descuentoPorc,
         subtotal_bruto_item_ars: subtotalBruto,
       };
     }),
@@ -377,7 +376,6 @@ const displayTotalToShow = useMemo(() => {
     forma_pago: formData.formaPago, 
     monto_pagado_cliente: formData.montoPagado,
     vuelto_calculado: formData.vuelto,
-    descuento_total_global_porcentaje: formData.descuentoTotal || 0,
     total_bruto_sin_descuento: productos.filter(p => p.producto && p.qx > 0).reduce((sum, item) => {
       const subtotalRedondeadoBase = item.total || 0;
       let subtotalFinalParaTicket = subtotalRedondeadoBase;
