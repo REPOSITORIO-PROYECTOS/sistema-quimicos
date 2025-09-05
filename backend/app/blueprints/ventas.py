@@ -984,11 +984,13 @@ def obtener_detalles_lote(current_user):
                 'factura_iva': float(recargo_f)
             }
             # Recalcular subtotales proporcionales con recargos
-            suma_items = sum([d.get('precio_total_item_ars', 0.0) for d in venta.get('detalles', [])])
+            suma_items = sum([Decimal(str(d.get('precio_total_item_ars', 0.0))) for d in venta.get('detalles', [])])
             for detalle in venta.get('detalles', []):
-                precio = detalle.get('precio_total_item_ars', 0.0)
-                if suma_items > 0:
-                    detalle['subtotal_proporcional_con_recargos'] = float(monto_final_a_pagar * (precio / suma_items))
+                precio = Decimal(str(detalle.get('precio_total_item_ars', 0.0)))
+                if suma_items > Decimal('0.00'):
+                    proporcion = precio / suma_items
+                    subtotal = monto_final_a_pagar * proporcion
+                    detalle['subtotal_proporcional_con_recargos'] = float(subtotal)
                 else:
                     detalle['subtotal_proporcional_con_recargos'] = 0.0
         return jsonify(ventas_completas)
