@@ -99,19 +99,6 @@ def obtener_clientes():
         # Por defecto, solo muestra activos
         query = Cliente.query.filter_by(activo=True)
 
-        # --- LÓGICA DE BÚSQUEDA (NUEVO) ---
-        if search_term and search_term.strip():
-            # Preparamos el término de búsqueda para que funcione como un "contiene"
-            search_pattern = f"%{search_term.strip()}%"
-            # Filtramos en varias columnas usando OR
-            query = query.filter(
-                or_(
-                    Cliente.nombre_razon_social.ilike(search_pattern),
-                    Cliente.telefono.ilike(search_pattern),
-                    Cliente.email.ilike(search_pattern),
-                    Cliente.cuit.ilike(search_pattern)
-                )
-            )
 
         # El resto de la lógica se mantiene igual
         query = query.order_by(Cliente.nombre_razon_social)

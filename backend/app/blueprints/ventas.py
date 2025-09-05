@@ -808,6 +808,7 @@ def venta_a_dict_resumen(venta):
         "monto_total_base": float(venta.monto_total) if venta.monto_total is not None else None,
         "forma_pago": venta.forma_pago,
         "requiere_factura": venta.requiere_factura,
+        "descuento_general": venta.descuento_general,
         "monto_final_con_recargos": float(venta.monto_final_con_recargos) if venta.monto_final_con_recargos is not None else None,
     }
 
@@ -850,6 +851,7 @@ def detalle_venta_a_dict(detalle, monto_final_real=None, monto_total_base=None):
         "cantidad": cantidad,
         "precio_unitario_venta_ars": precio_unitario_venta_ars,
         "precio_total_item_ars": precio_total_item_ars,
+        "descuento_item_porcentaje":detalle.descuento_item,
         "subtotal_proporcional_con_recargos": subtotal_proporcional,
         "observacion_item": detalle.observacion_item,
     }

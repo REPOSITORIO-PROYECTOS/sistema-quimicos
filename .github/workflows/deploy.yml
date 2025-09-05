@@ -23,24 +23,27 @@ jobs:
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
 
-      # 3. Sincronizar backend
+      # 3. Sincronizar backend (excluyendo venv)
       - name: Sync backend files via rsync
         run: |
           rsync -avzr --delete \
+            --exclude 'venv/' \
             -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
             ./backend/ \
             ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_HOST }}:/root/quimex_2.0/sistema_quimicos/
 
-      # 4. Sincronizar frontend
+      # 4. Sincronizar frontend (excluyendo node_modules y .next)
       - name: Sync frontend files via rsync
         run: |
           rsync -avzr --delete \
+            --exclude 'node_modules/' \
+            --exclude '.next/' \
             -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
             ./frontend/ \
             ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_HOST }}:/root/quimex_2.0/sistema_quimicos_funcionando/
 
-      # 5. Instalar dependencias y reiniciar backend
-      - name: Install backend dependencies and restart service
+      # 5. Instalar dependencias, construir y reiniciar todo
+      - name: Install dependencies, Build Frontend, and Restart Service
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -51,44 +54,37 @@ jobs:
             cd /root/quimex_2.0/sistema_quimicos
             
             if [ ! -d "venv" ]; then
+              echo "🐍 Creando entorno virtual..."
               python3 -m venv venv
             fi
+
             source venv/bin/activate
             if [ -f requirements.txt ]; then
+              echo "📦 Instalando/actualizando dependencias del backend..."
               pip install --upgrade pip
               pip install --upgrade -r requirements.txt
             fi
             deactivate
-            sudo systemctl restart quimex.service
-            echo "✅ Backend desplegado."
+            echo "✅ Backend listo."
 
-      # 6. Instalar dependencias y hacer build del frontend
-      - name: Install frontend dependencies and build
-        uses: appleboy/ssh-action@master
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USERNAME }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: |
+            # --- AHORA EL FRONTEND ---
+            echo "🚀 Preparando frontend..."
             # Cargar entorno de NVM para que encuentre el comando 'npm'
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
 
-            echo "🚀 Preparando build del frontend..."
             cd /root/quimex_2.0/sistema_quimicos_funcionando
 
             if [ -f package.json ]; then
-              echo "📦 Instalando dependencias frontend..."
+              echo "📦 Instalando/actualizando dependencias frontend..."
               npm install
             fi
 
-            echo "⚡ Compilando frontend..."
+            echo "⚡ Compilando frontend (build)..."
             npm run build
+            echo "✅ Frontend compilado."
 
-            echo "📂 Moviendo build a /var/www/quimex_frontend..."
-            sudo rm -rf /var/www/quimex_frontend/*
-            # ---- CAMBIO 1: Copiar desde la carpeta 'out' ----
-            sudo cp -r out/* /var/www/quimex_frontend/
-
-            echo "✅ Frontend compilado y desplegado."
+            # --- PASO FINAL Y MÁS IMPORTANTE ---
+            echo "🔄 Reiniciando el servicio para aplicar todos los cambios..."
             sudo systemctl restart quimex.service
+            echo "✅ Despliegue completado."
