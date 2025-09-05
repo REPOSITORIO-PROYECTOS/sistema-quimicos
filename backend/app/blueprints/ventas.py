@@ -7,7 +7,6 @@ from sqlalchemy import func
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP, ROUND_UP
 import math
 import traceback
-import math
 from ..utils import precios_utils
 from datetime import datetime, timezone, date
 # --- Imports locales ---
@@ -264,7 +263,6 @@ def registrar_venta(current_user):
         monto_con_recargos, recargo_t_calc, recargo_f_calc, _, _ = calcular_monto_final_y_vuelto(monto_total_base_neto, forma_pago, requiere_factura)
         monto_final_a_pagar = monto_con_recargos * (Decimal(1) - descuento_total_global_porc / Decimal(100))
         # Redondear el total general a múltiplo de 100 hacia arriba
-        import math
         monto_final_a_pagar = Decimal(math.ceil(monto_final_a_pagar / 100) * 100)
         print(f"Suma monto_total_base_neto después de redondear: {monto_total_base_neto}")
         print(f"Recargos calculados: transferencia={recargo_t_calc}, factura={recargo_f_calc}")
@@ -330,7 +328,6 @@ def calcular_total_venta():
         if error_msg:
             return jsonify({"error": error_msg}), 400
         # Redondear a múltiplo de 100 hacia arriba
-        import math
         monto_final_redondeado = float(Decimal(math.ceil(monto_final / 100) * 100))
         respuesta = {
             "monto_base": float(Decimal(monto_base_str).quantize(Decimal("0.01"))),
