@@ -953,7 +953,7 @@ def obtener_detalles_lote(current_user):
             if 'observaciones' not in venta:
                 venta['observaciones'] = ''
             monto_total_items = Decimal('0.00')
-            # Recalcular precios de ítems: aplicar descuento por ítem antes de redondear
+            # 1. Aplica descuento por ítem y redondea cada ítem
             for detalle in venta.get('detalles', []):
                 if 'descuento_item_porcentaje' in detalle:
                     detalle['descuento_item_porcentaje'] = round(detalle.get('descuento_item_porcentaje', 0.0))
@@ -967,16 +967,16 @@ def obtener_detalles_lote(current_user):
                     precio_total_item_desc = Decimal(math.ceil(precio_total_item_desc / 100) * 100)
                 detalle['precio_total_item_ars'] = float(precio_total_item_desc)
                 monto_total_items += precio_total_item_desc
-            # Aplicar descuento global sobre la suma de ítems ya redondeados
+            # 2. Aplica descuento global sobre la suma de ítems ya descontados y redondeados
             descuento_global = Decimal(str(venta.get('descuento_total_global_porcentaje', 0.0)))
             monto_total_items_con_descuento = monto_total_items * (Decimal('1.0') - descuento_global / Decimal('100'))
-            # Aplicar recargos al total con descuento global
+            # 3. Aplica recargos al total con descuento global
             forma_pago = venta.get('forma_pago')
             requiere_factura = venta.get('requiere_factura', False)
             monto_final_con_recargos, recargo_t, recargo_f, _, _ = calcular_monto_final_y_vuelto(
                 monto_total_items_con_descuento, forma_pago, requiere_factura, None, multiplicador_lote
             )
-            # Redondear monto final del lote a múltiplo de 100
+            # 4. Redondea monto final del lote a múltiplo de 100
             monto_final_redondeado = monto_final_con_recargos
             if monto_final_redondeado % 100 != 0:
                 monto_final_redondeado = Decimal(math.ceil(monto_final_redondeado / 100) * 100)
@@ -985,8 +985,7 @@ def obtener_detalles_lote(current_user):
                 'transferencia': float(recargo_t),
                 'factura_iva': float(recargo_f)
             }
-            # Recalcular subtotales proporcionales con recargos
-            # Agrupar ítems iguales por producto_id para el cálculo proporcional
+            # 5. Recalcula subtotales proporcionales agrupando por producto_id
             from collections import defaultdict
             agrupados = defaultdict(lambda: {'cantidad': Decimal('0.00'), 'precio_total': Decimal('0.00')})
             for d in venta.get('detalles', []):
@@ -994,7 +993,6 @@ def obtener_detalles_lote(current_user):
                 agrupados[producto_id]['cantidad'] += Decimal(str(d.get('cantidad', 0.0)))
                 agrupados[producto_id]['precio_total'] += Decimal(str(d.get('precio_total_item_ars', 0.0)))
             suma_items = sum([v['precio_total'] for v in agrupados.values()])
-            # Calcular el subtotal proporcional usando el total agrupado
             for detalle in venta.get('detalles', []):
                 producto_id = detalle.get('producto_id')
                 precio = Decimal(str(detalle.get('precio_total_item_ars', 0.0)))
