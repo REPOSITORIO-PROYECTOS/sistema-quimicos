@@ -149,7 +149,7 @@ def calcular_monto_final_y_vuelto(monto_base, forma_pago=None, requiere_factura=
 
     # Aplicar recargo transferencia (con multiplicador)
     if forma_pago and isinstance(forma_pago, str) and forma_pago.strip().lower() == 'transferencia':
-        recargo_calculado = (monto_actual * RECARGO_TRANSFERENCIA_PORC / Decimal(100) * multiplicador_lote).quantize(Decimal("0.01"), ROUND_HALF_UP)
+        recargo_calculado = (monto_actual * RECARGO_TRANSFERENCIA_PORC / Decimal(100)).quantize(Decimal("0.01"), ROUND_HALF_UP)
         recargo_t = recargo_calculado
         monto_actual += recargo_t
         print(f"DEBUG [calc_final]: Recargo Transferencia aplicado: {recargo_t}")
