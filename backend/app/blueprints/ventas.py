@@ -687,6 +687,21 @@ def obtener_ventas_con_entrega(current_user):
         # Si tiene un cliente_id, es un pedido.
         query = query.filter(Venta.cliente_id.isnot(None))
 
+        # --- Filtros adicionales ---
+        estado_filtro = request.args.get('estado')
+        if estado_filtro:
+            # El estado se guarda en nombre_vendedor como 'ESTADO-Vendedor'
+            # Filtramos por el prefijo en nombre_vendedor
+            query = query.filter(Venta.nombre_vendedor.ilike(f"{estado_filtro}-%"))
+
+        cliente_nombre_filtro = request.args.get('cliente_nombre')
+        if cliente_nombre_filtro:
+            query = query.join(Venta.cliente).filter(Cliente.nombre_razon_social.ilike(f"%{cliente_nombre_filtro}%"))
+
+        venta_id_filtro = request.args.get('venta_id', type=int)
+        if venta_id_filtro:
+            query = query.filter(Venta.id == venta_id_filtro)
+
         # --- Lógica de filtrado por fecha ---
         fecha_desde_str = request.args.get('fecha_desde')
         if fecha_desde_str:
