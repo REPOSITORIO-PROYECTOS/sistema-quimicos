@@ -50,15 +50,14 @@ const Ticket: React.FC<TicketProps> = ({ tipo, ventaData }) => {
         }).format(value);
     };
 
-    // Calcular totales brutos y descuentos si no vienen en el objeto
-    const totalBrutoSinDescuento = ventaData.total_bruto_sin_descuento ?? ventaData.items.reduce((sum, item) => {
-        // Si el subtotal bruto viene, usarlo, si no, estimar a partir del total y descuento
-        if (item.subtotal_bruto_item_ars !== undefined) return sum + item.subtotal_bruto_item_ars;
-        if (item.descuento_item_porcentaje && item.descuento_item_porcentaje > 0) {
-            return sum + (item.precio_total_item_ars / (1 - item.descuento_item_porcentaje / 100));
-        }
-        return sum + item.precio_total_item_ars;
-    }, 0);
+    // Usar solo los valores que vienen del backend, sin recalcular nada
+    const totalBrutoSinDescuento = ventaData.total_bruto_sin_descuento !== undefined
+        ? ventaData.total_bruto_sin_descuento
+        : ventaData.items.reduce((sum, item) => {
+            // Si el subtotal bruto viene, usarlo, si no, sumar el total directo
+            if (item.subtotal_bruto_item_ars !== undefined) return sum + item.subtotal_bruto_item_ars;
+            return sum + item.precio_total_item_ars;
+        }, 0);
 
     const descuentoGlobalPorc = ventaData.descuento_total_global_porcentaje || 0;
     const descuentoGlobalEnPlata = descuentoGlobalPorc > 0 ? totalBrutoSinDescuento * (descuentoGlobalPorc / 100) : 0;
@@ -116,10 +115,14 @@ const Ticket: React.FC<TicketProps> = ({ tipo, ventaData }) => {
                     </thead>
                     <tbody>
                         {ventaData.items.map((item, index) => {
-                            // Calcular subtotal bruto y descuento en plata por ítem
+                            // Usar solo los valores del backend
                             const descuentoPorc = item.descuento_item_porcentaje || 0;
-                            const subtotalBruto = descuentoPorc > 0 ? (item.precio_total_item_ars / (1 - descuentoPorc / 100)) : item.precio_total_item_ars;
-                            const descuentoEnPlata = descuentoPorc > 0 ? subtotalBruto - item.precio_total_item_ars : 0;
+                            const subtotalBruto = item.subtotal_bruto_item_ars !== undefined
+                                ? item.subtotal_bruto_item_ars
+                                : item.precio_total_item_ars;
+                            const descuentoEnPlata = item.subtotal_bruto_item_ars !== undefined && descuentoPorc > 0
+                                ? subtotalBruto - item.precio_total_item_ars
+                                : 0;
                             return (
                                 <React.Fragment key={`item-fragment-${item.producto_id}-${index}`}>
                                     <tr className="product-row">
@@ -129,8 +132,8 @@ const Ticket: React.FC<TicketProps> = ({ tipo, ventaData }) => {
                                             <td className="col-subtotal">$ {formatPrice(item.precio_total_item_ars)}</td>
                                         )}
                                     </tr>
-                                    {/* Mostrar descuento por ítem si existe */}
-                                    {isFinancial && descuentoPorc > 0 && (
+                                    {/* Mostrar descuento por ítem si existe y viene el subtotal bruto */}
+                                    {isFinancial && descuentoPorc > 0 && item.subtotal_bruto_item_ars !== undefined && (
                                         <tr className="discount-row">
                                             <td></td>
                                             <td colSpan={1} className="col-descuento text-xs text-red-700">

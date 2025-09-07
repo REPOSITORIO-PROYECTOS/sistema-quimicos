@@ -484,11 +484,11 @@ def exportar_formulas_a_excel(current_user):
 def _get_kpis_del_dia(fecha_seleccionada: date):
     # (Las variables base_query_puerta y base_query_pedido deben definirse antes de usarse)
     """Calcula y devuelve los KPIs específicos del día seleccionado."""
-    filtro_dia_actual = func.date(Venta.fecha_registro) == fecha_seleccionada
+    filtro_dia_entrega = func.date(Venta.fecha_pedido) == fecha_seleccionada
 
     # Mejorar el cálculo de ventas de puerta: solo ventas de mostrador, sin cliente y sin estado cancelado/anulado
     base_query_puerta = db.session.query(Venta).filter(
-        filtro_dia_actual,
+    filtro_dia_entrega,
         Venta.cliente_id.is_(None)
     )
 
@@ -499,7 +499,7 @@ def _get_kpis_del_dia(fecha_seleccionada: date):
 
     # Sumar el monto final redondeado de cada venta de puerta
     ventas_puerta = db.session.query(Venta).filter(
-        filtro_dia_actual,
+    filtro_dia_entrega,
         Venta.cliente_id.is_(None)
     ).all()
     ingreso_puerta_hoy = sum(
@@ -509,53 +509,58 @@ def _get_kpis_del_dia(fecha_seleccionada: date):
 
     # Desglose de puerta por forma de pago (MONTOS)
     puerta_efectivo = db.session.query(func.sum(Venta.monto_final_redondeado)).filter(
-        filtro_dia_actual,
+    filtro_dia_entrega,
         Venta.cliente_id.is_(None),
         Venta.forma_pago == 'efectivo'
     ).scalar() or Decimal('0.0')
     puerta_transferencia = db.session.query(func.sum(Venta.monto_final_redondeado)).filter(
-        filtro_dia_actual,
+    filtro_dia_entrega,
         Venta.cliente_id.is_(None),
         Venta.forma_pago == 'transferencia'
     ).scalar() or Decimal('0.0')
     puerta_factura = db.session.query(func.sum(Venta.monto_final_redondeado)).filter(
-        filtro_dia_actual,
+    filtro_dia_entrega,
         Venta.cliente_id.is_(None),
         Venta.forma_pago == 'factura'
     ).scalar() or Decimal('0.0')
 
+    def estado_de_venta(nombre_vendedor):
+        if not nombre_vendedor:
+            return ''
+        partes = nombre_vendedor.split('-', 1)
+        estado = partes[0].strip().upper()
+        return estado
+
     ventas_pedido = db.session.query(Venta).filter(
-        filtro_dia_actual,
+        filtro_dia_entrega,
         Venta.cliente_id.isnot(None)
     ).all()
+    ventas_pedido_filtradas = [v for v in ventas_pedido if estado_de_venta(v.nombre_vendedor) != 'CANCELADO']
     base_query_pedido = db.session.query(Venta).filter(
-        filtro_dia_actual,
+        filtro_dia_entrega,
         Venta.cliente_id.isnot(None)
     )
     pedido_efectivo_unidades = base_query_pedido.filter(Venta.forma_pago == 'efectivo').count()
     pedido_transferencia_unidades = base_query_pedido.filter(Venta.forma_pago == 'transferencia').count()
     pedido_factura_unidades = base_query_pedido.filter(Venta.forma_pago == 'factura').count()
     ingreso_pedido_hoy = sum(
-        Decimal(v.monto_final_con_recargos or 0)
-        for v in ventas_pedido
+        Decimal(v.monto_final_redondeado or 0)
+        for v in ventas_pedido_filtradas
     )
 
     # Desglose de pedidos por forma de pago (MONTOS)
-    pedido_efectivo = db.session.query(func.sum(Venta.monto_final_redondeado)).filter(
-        filtro_dia_actual,
-        Venta.cliente_id.isnot(None),
-        Venta.forma_pago == 'efectivo'
-    ).scalar() or Decimal('0.0')
-    pedido_transferencia = db.session.query(func.sum(Venta.monto_final_redondeado)).filter(
-        filtro_dia_actual,
-        Venta.cliente_id.isnot(None),
-        Venta.forma_pago == 'transferencia'
-    ).scalar() or Decimal('0.0')
-    pedido_factura = db.session.query(func.sum(Venta.monto_final_redondeado)).filter(
-        filtro_dia_actual,
-        Venta.cliente_id.isnot(None),
-        Venta.forma_pago == 'factura'
-    ).scalar() or Decimal('0.0')
+    pedido_efectivo = sum(
+        Decimal(v.monto_final_redondeado or 0)
+        for v in ventas_pedido_filtradas if v.forma_pago == 'efectivo'
+    )
+    pedido_transferencia = sum(
+        Decimal(v.monto_final_redondeado or 0)
+        for v in ventas_pedido_filtradas if v.forma_pago == 'transferencia'
+    )
+    pedido_factura = sum(
+        Decimal(v.monto_final_redondeado or 0)
+        for v in ventas_pedido_filtradas if v.forma_pago == 'factura'
+    )
 
     # KPIs de pedidos listos para entregar: si no hay columna estado, no se puede filtrar por 'Listo'.
     pedidos_listos_cantidad = 0

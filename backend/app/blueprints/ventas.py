@@ -245,20 +245,20 @@ def registrar_venta(current_user):
                         return jsonify({"error": f"Error en Prod ID {producto_id}: {error_msg}"}), 400
             except Exception:
                 return jsonify({"error": f"Precio unitario o total inválido para Prod ID {producto_id}"}), 400
-            # Aplicar descuento y redondeo SOLO al ítem
-            precio_t_neto_item = precio_t_bruto * (Decimal(1) - descuento_item_porc / Decimal(100))
-            if precio_t_neto_item % 100 != 0:
-                precio_t_neto_item = Decimal(math.ceil(precio_t_neto_item / 100) * 100)
+            # Aplicar descuento SOLO al ítem y luego redondear
+            precio_t_descuento = precio_t_bruto * (Decimal(1) - descuento_item_porc / Decimal(100))
+            if precio_t_descuento % 100 != 0:
+                precio_t_descuento = Decimal(math.ceil(precio_t_descuento / 100) * 100)
             detalle = DetalleVenta(
                 producto_id=producto_id, cantidad=cantidad,
                 precio_unitario_venta_ars=precio_u_bruto,
-                precio_total_item_ars=precio_t_neto_item,
+                precio_total_item_ars=precio_t_descuento,
                 costo_unitario_momento_ars=costo_u,
                 descuento_item=descuento_item_porc,  # Guardar el porcentaje real
                 observacion_item=item_data.get("observacion_item")
             )
             detalles_venta_db.append(detalle)
-            monto_total_base_neto += precio_t_neto_item
+            monto_total_base_neto += precio_t_descuento
 
         print(f"Suma monto_total_base_neto antes de redondear: {monto_total_base_neto}")
         monto_total_base_neto = monto_total_base_neto.quantize(Decimal("0.01"), ROUND_HALF_UP)
@@ -508,7 +508,7 @@ def actualizar_venta(current_user, venta_id):
             if error_msg:
                 db.session.rollback()
                 return jsonify({"error": f"Error al recalcular ítem (Prod ID {producto_id}): {error_msg}"}), 400
-            # Aplicar descuento por ítem antes de redondear
+            # Aplicar descuento SOLO al ítem y luego redondear
             precio_t_descuento = precio_t_bruto * (Decimal(1) - descuento_item_porc / Decimal(100))
             if precio_t_descuento % 100 != 0:
                 precio_t_descuento = Decimal(math.ceil(precio_t_descuento / 100) * 100)
@@ -1140,6 +1140,8 @@ def actualizar_precios_pendientes(current_user):
             tc_valor = tipo_cambio.valor if tipo_cambio else None
             tc_usados.append(f"Prod {d.producto_id}: TC '{tc_nombre}'={tc_valor}")
             precio_t_neto_item = precio_t_bruto * (Decimal(1) - (Decimal(str(d.descuento_item or 0)) / Decimal(100)))
+            if precio_t_neto_item % 100 != 0:
+                precio_t_neto_item = Decimal(math.ceil(precio_t_neto_item / 100) * 100)
             detalle_nuevo = DetalleVenta(
                 venta_id=venta.id,
                 producto_id=d.producto_id,
