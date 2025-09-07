@@ -247,8 +247,8 @@ def registrar_venta(current_user):
                 return jsonify({"error": f"Precio unitario o total inválido para Prod ID {producto_id}"}), 400
             # Aplicar descuento SOLO al ítem y luego redondear
             precio_t_descuento = precio_t_bruto * (Decimal(1) - descuento_item_porc / Decimal(100))
-            if precio_t_descuento % 100 != 0:
-                precio_t_descuento = Decimal(math.ceil(precio_t_descuento / 100) * 100)
+            # Redondeo SIEMPRE hacia arriba a la centena
+            precio_t_descuento = Decimal(math.ceil(precio_t_descuento / 100) * 100)
             detalle = DetalleVenta(
                 producto_id=producto_id, cantidad=cantidad,
                 precio_unitario_venta_ars=precio_u_bruto,
@@ -510,8 +510,8 @@ def actualizar_venta(current_user, venta_id):
                 return jsonify({"error": f"Error al recalcular ítem (Prod ID {producto_id}): {error_msg}"}), 400
             # Aplicar descuento SOLO al ítem y luego redondear
             precio_t_descuento = precio_t_bruto * (Decimal(1) - descuento_item_porc / Decimal(100))
-            if precio_t_descuento % 100 != 0:
-                precio_t_descuento = Decimal(math.ceil(precio_t_descuento / 100) * 100)
+            # Redondeo SIEMPRE hacia arriba a la centena
+            precio_t_descuento = Decimal(math.ceil(precio_t_descuento / 100) * 100)
             # Calcular el precio unitario redondeado
             if cantidad > 0:
                 precio_u_neto_item = (precio_t_descuento / cantidad).quantize(Decimal("0.01"), ROUND_HALF_UP)
@@ -1150,8 +1150,8 @@ def actualizar_precios_pendientes(current_user):
             tc_valor = tipo_cambio.valor if tipo_cambio else None
             tc_usados.append(f"Prod {d.producto_id}: TC '{tc_nombre}'={tc_valor}")
             precio_t_neto_item = precio_t_bruto * (Decimal(1) - (Decimal(str(d.descuento_item or 0)) / Decimal(100)))
-            if precio_t_neto_item % 100 != 0:
-                precio_t_neto_item = Decimal(math.ceil(precio_t_neto_item / 100) * 100)
+            # Redondeo SIEMPRE hacia arriba a la centena
+            precio_t_neto_item = Decimal(math.ceil(precio_t_neto_item / 100) * 100)
             detalle_nuevo = DetalleVenta(
                 venta_id=venta.id,
                 producto_id=d.producto_id,
