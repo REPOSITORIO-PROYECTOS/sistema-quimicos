@@ -34,6 +34,7 @@ export default function ListaBoletas() {
   // --- NUEVO: Estado para el filtro de orden por fecha ---
   const [ordenarPorFecha, setOrdenarPorFecha] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [estadoFiltro, setEstadoFiltro] = useState<string>("");
 
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -196,13 +197,19 @@ export default function ListaBoletas() {
 
   // --- NUEVO: Lógica para ordenar la lista actual de boletas ---
   const boletasFiltradas = useMemo(() => {
-    if (!searchTerm.trim()) return boletas;
-    const term = searchTerm.trim().toLowerCase();
-    return boletas.filter(b =>
-      b.cliente_nombre.toLowerCase().includes(term) ||
-      b.venta_id.toString().includes(term)
-    );
-  }, [boletas, searchTerm]);
+    let filtradas = boletas;
+    if (searchTerm.trim()) {
+      const term = searchTerm.trim().toLowerCase();
+      filtradas = filtradas.filter(b =>
+        b.cliente_nombre.toLowerCase().includes(term) ||
+        b.venta_id.toString().includes(term)
+      );
+    }
+    if (estadoFiltro) {
+      filtradas = filtradas.filter(b => (b.estado || "").toLowerCase() === estadoFiltro.toLowerCase());
+    }
+    return filtradas;
+  }, [boletas, searchTerm, estadoFiltro]);
 
   const boletasMostradas = useMemo(() => {
     const lista = ordenarPorFecha
@@ -238,6 +245,17 @@ export default function ListaBoletas() {
                     placeholder="Buscar por cliente o Nº boleta..."
                     className="border border-gray-300 rounded-md p-2 w-full md:w-1/2"
                   />
+                  <select
+                    value={estadoFiltro}
+                    onChange={e => setEstadoFiltro(e.target.value)}
+                    className="border border-gray-300 rounded-md p-2 w-full md:w-1/4"
+                  >
+                    <option value="">Todos los estados</option>
+                    <option value="Pendiente">Pendiente</option>
+                    <option value="Entregado">Entregado</option>
+                    <option value="Cancelado">Cancelado</option>
+                    <option value="Listo para Entregar">Listo para Entregar</option>
+                  </select>
                   <button 
                     onClick={() => setOrdenarPorFecha(prev => !prev)}
                     className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 ${

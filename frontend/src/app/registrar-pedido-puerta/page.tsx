@@ -166,16 +166,22 @@ export default function RegistrarPedidoPuertaPage() {
         await recalculatePricesForProducts(nuevosProductos);
     }, [productos, recalculatePricesForProducts]);
 
-    const handleProductRowInputChange = useCallback(async (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    // Debounce para evitar llamadas excesivas a la API
+    const debounceTimeout = React.useRef<NodeJS.Timeout | null>(null);
+    const DEBOUNCE_DELAY = 400;
+
+    const handleProductRowInputChange = useCallback((index: number, e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
         const nuevosProductos = [...productos];
         const item = nuevosProductos[index];
         if (name === "qx") item.qx = parseFloat(value) || 0;
         else if (name === "observacion") item.observacion = value;
-        else if (name === "descuento") { // <-- NUEVO
-            item.descuento = Math.max(0, Math.min(100, parseFloat(value) || 0));
-        }
-        await recalculatePricesForProducts(nuevosProductos);
+        else if (name === "descuento") { item.descuento = Math.max(0, Math.min(100, parseFloat(value) || 0)); }
+        setProductos(nuevosProductos);
+        if (debounceTimeout.current) clearTimeout(debounceTimeout.current);
+        debounceTimeout.current = setTimeout(() => {
+            recalculatePricesForProducts(nuevosProductos);
+        }, DEBOUNCE_DELAY);
     }, [productos, recalculatePricesForProducts]);
 
     const agregarProducto = () => setProductos([...productos, { ...initialProductos[0] }]);

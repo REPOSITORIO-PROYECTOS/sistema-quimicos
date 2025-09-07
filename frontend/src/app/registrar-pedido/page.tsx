@@ -211,7 +211,6 @@ const displayTotal = useMemo(() => {
 
   // Debounce para evitar llamadas excesivas a la API
   const debounceTimeout = useRef<NodeJS.Timeout | null>(null);
-  const lastEditTimestamp = useRef<number>(0);
   const DEBOUNCE_DELAY = 500;
 
   const handleProductRowInputChange = (index: number, e: React.ChangeEvent<HTMLInputElement>) => {

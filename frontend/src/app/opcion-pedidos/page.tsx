@@ -42,15 +42,6 @@ type BoletaParaLista = {
   cliente_zona?: string; // Localidad
 };
 
-type Pagination = {
-  total_items: number;
-  total_pages: number;
-  current_page: number;
-  per_page: number;
-  has_next: boolean;
-  has_prev: boolean;
-};
-
 type VentaData = {
   venta_id: number;
   fecha_emision: string;
@@ -69,29 +60,25 @@ type VentaData = {
 };
 
 export default function TotalPedidos() {
-  // const router = useRouter();
+  // const [pagination, setPagination] = useState<Pagination | null>(null);
+  // const [page, setPage] = useState(1);
   const [boletas, setBoletas] = useState<BoletaParaLista[]>([]);
-  const [pagination, setPagination] = useState<Pagination | null>(null);
   const [loading, setLoading] = useState(true);
   // Eliminado idBoleta y setIdBoleta porque ya no se usa edición
   const [error, setError] = useState<string | null>(null);
-  const [page, setPage] = useState(1);
   const [selectedBoletas, setSelectedBoletas] = useState<Set<number>>(new Set());
   const [estadoSeleccionado, setEstadoSeleccionado] = useState('Listo para Entregar');
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   // Estados para filtro manual
   const [searchCliente, setSearchCliente] = useState("");
   const [filterEstado, setFilterEstado] = useState("");
-
   const [fechaSeleccionada, setFechaSeleccionada] = useState<string>(() => {
-    // 1. Intentamos leer la fecha guardada desde el localStorage
     if (typeof window !== 'undefined') {
       const fechaGuardada = localStorage.getItem('ultimaFechaPedidos');
       if (fechaGuardada) {
         return fechaGuardada;
       }
     }
-    // 2. Si no hay nada guardado, usamos la fecha de hoy como valor por defecto
     const hoy = new Date();
     return hoy.toISOString().split('T')[0];
   });
@@ -104,8 +91,7 @@ export default function TotalPedidos() {
     if (!token) { setError("No autenticado."); setLoading(false); return; }
     try {
       const params = new URLSearchParams({
-        page: String(page),
-        per_page: '20',
+        per_page: '1000',
         fecha_desde: fechaSeleccionada,
         fecha_hasta: fechaSeleccionada
       });
@@ -123,13 +109,13 @@ export default function TotalPedidos() {
         cliente_zona: item.cliente_zona || '',
       }));
       setBoletas(boletasProcesadas);
-      setPagination(data.pagination);
+      // setPagination(data.pagination); // Ya no se usa paginación
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error desconocido');
     } finally {
       setLoading(false);
     }
-  }, [fechaSeleccionada, page]);
+  }, [fechaSeleccionada]);
 
   useEffect(() => {
     fetchBoletasPorFecha();
@@ -140,9 +126,8 @@ export default function TotalPedidos() {
     if (typeof window !== 'undefined') {
       localStorage.setItem('ultimaFechaPedidos', nuevaFecha);
     }
-    
     setFechaSeleccionada(nuevaFecha);
-    setPage(1); // Reseteamos la paginación a la primera página
+    // Ya no hay paginación
   };
 
   const handleCheckboxChange = (ventaId: number) => {
@@ -402,10 +387,9 @@ const handlePrint = async (tipo: 'comprobante' | 'orden_de_trabajo') => {
                       return (incluye || fuzzyMatch) && (filterEstado ? b.estado === filterEstado : true);
                     })
                     .map((boleta) => {
-                      const isFinalState = boleta.estado === 'Entregado' || boleta.estado === 'Cancelado';
                       return (
-                        <li key={boleta.venta_id} className={`grid grid-cols-13 gap-3 items-center p-2 rounded-md ${isFinalState ? 'bg-gray-200 opacity-70' : 'bg-gray-50'}`}>
-                          <div className="col-span-1 flex justify-center"><input type="checkbox" checked={selectedBoletas.has(boleta.venta_id)} onChange={() => handleCheckboxChange(boleta.venta_id)} disabled={isFinalState} className={isFinalState ? 'cursor-not-allowed' : ''}/></div>
+                        <li key={boleta.venta_id} className={`grid grid-cols-13 gap-3 items-center p-2 rounded-md bg-gray-50`}>
+                          <div className="col-span-1 flex justify-center"><input type="checkbox" checked={selectedBoletas.has(boleta.venta_id)} onChange={() => handleCheckboxChange(boleta.venta_id)} /></div>
                           <span className="col-span-3 truncate font-medium">{boleta.cliente_nombre}</span>
                           <span className="col-span-2">$ {boleta.monto_final_con_recargos}</span>
                           <span className="col-span-3 truncate">{boleta.direccion_entrega}</span>
@@ -419,13 +403,7 @@ const handlePrint = async (tipo: 'comprobante' | 'orden_de_trabajo') => {
                 </ul>
               </div>
             )}
-            {pagination && pagination.total_pages > 1 && (
-              <div className="flex justify-center items-center mt-6 gap-3">
-                <button onClick={() => setPage(p => Math.max(p - 1, 1))} disabled={!pagination.has_prev || loading} className="px-4 py-2 rounded bg-indigo-600 text-white disabled:opacity-50">Anterior</button>
-                <span>Página {pagination.current_page} de {pagination.total_pages}</span>
-                <button onClick={() => setPage(p => p + 1)} disabled={!pagination.has_next || loading} className="px-4 py-2 rounded bg-indigo-600 text-white disabled:opacity-50">Siguiente</button>
-              </div>
-            )}
+            {/* Eliminar el bloque de paginación al final */}
           </div>
         </div>
       </>
