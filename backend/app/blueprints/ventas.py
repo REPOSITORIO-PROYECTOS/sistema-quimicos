@@ -246,9 +246,7 @@ def registrar_venta(current_user):
             except Exception:
                 return jsonify({"error": f"Precio unitario o total inválido para Prod ID {producto_id}"}), 400
             # Aplicar descuento SOLO al ítem y luego redondear
-            precio_t_descuento = precio_t_bruto * (Decimal(1) - descuento_item_porc / Decimal(100))
-            # Redondeo SIEMPRE hacia arriba a la centena
-            precio_t_descuento = Decimal(math.ceil(precio_t_descuento / 100) * 100)
+            precio_t_descuento = aplicar_descuento_y_redondear(precio_t_bruto, descuento_item_porc)
             detalle = DetalleVenta(
                 producto_id=producto_id, cantidad=cantidad,
                 precio_unitario_venta_ars=precio_u_bruto,
@@ -509,9 +507,7 @@ def actualizar_venta(current_user, venta_id):
                 db.session.rollback()
                 return jsonify({"error": f"Error al recalcular ítem (Prod ID {producto_id}): {error_msg}"}), 400
             # Aplicar descuento SOLO al ítem y luego redondear
-            precio_t_descuento = precio_t_bruto * (Decimal(1) - descuento_item_porc / Decimal(100))
-            # Redondeo SIEMPRE hacia arriba a la centena
-            precio_t_descuento = Decimal(math.ceil(precio_t_descuento / 100) * 100)
+            precio_t_descuento = aplicar_descuento_y_redondear(precio_t_bruto, descuento_item_porc)
             # Calcular el precio unitario redondeado
             if cantidad > 0:
                 precio_u_neto_item = (precio_t_descuento / cantidad).quantize(Decimal("0.01"), ROUND_HALF_UP)
@@ -1149,9 +1145,7 @@ def actualizar_precios_pendientes(current_user):
             tipo_cambio = TipoCambio.query.filter_by(nombre=tc_nombre).first()
             tc_valor = tipo_cambio.valor if tipo_cambio else None
             tc_usados.append(f"Prod {d.producto_id}: TC '{tc_nombre}'={tc_valor}")
-            precio_t_neto_item = precio_t_bruto * (Decimal(1) - (Decimal(str(d.descuento_item or 0)) / Decimal(100)))
-            # Redondeo SIEMPRE hacia arriba a la centena
-            precio_t_neto_item = Decimal(math.ceil(precio_t_neto_item / 100) * 100)
+            precio_t_neto_item = aplicar_descuento_y_redondear(precio_t_bruto, d.descuento_item)
             detalle_nuevo = DetalleVenta(
                 venta_id=venta.id,
                 producto_id=d.producto_id,
@@ -1199,3 +1193,13 @@ def actualizar_precios_pendientes(current_user):
         "ventas_actualizadas_data": ventas_actualizadas_data,
         "logs": logs
     })
+    
+    
+# --- Función Auxiliar para aplicar descuento y redondear a la centena ---
+def aplicar_descuento_y_redondear(precio_bruto, descuento_porc):
+    """
+    Aplica el descuento al precio bruto y redondea SIEMPRE hacia arriba a la centena.
+    """
+    precio_desc = precio_bruto * (Decimal(1) - Decimal(descuento_porc) / Decimal(100))
+    return Decimal(math.ceil(precio_desc / 100) * 100)
+    
