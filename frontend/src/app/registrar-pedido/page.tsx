@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useProductsContextActivos, Producto as ProductoContextType } from "@/context/ProductsContextActivos";
 import { useClientesContext, Cliente } from "@/context/ClientesContext";
 import Select from 'react-select';
@@ -209,6 +209,11 @@ const displayTotal = useMemo(() => {
     recalculatePricesForProducts(nuevosProductos);
   };
 
+  // Debounce para evitar llamadas excesivas a la API
+  const debounceTimeout = useRef<NodeJS.Timeout | null>(null);
+  const lastEditTimestamp = useRef<number>(0);
+  const DEBOUNCE_DELAY = 500;
+
   const handleProductRowInputChange = (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     const nuevosProductos = productos.map((item, idx) => {
@@ -220,7 +225,14 @@ const displayTotal = useMemo(() => {
         }
         return { ...item, [name]: newValue };
     });
-    recalculatePricesForProducts(nuevosProductos);
+    setProductos(nuevosProductos);
+    // Solo llamar a la API si cambia cantidad o descuento
+    if (name === 'qx' || name === 'descuento' || name === 'producto') {
+      if (debounceTimeout.current) clearTimeout(debounceTimeout.current);
+      debounceTimeout.current = setTimeout(() => {
+        recalculatePricesForProducts(nuevosProductos);
+      }, DEBOUNCE_DELAY);
+    }
   };
 
   const agregarProducto = () => setProductos([...productos, { ...initialProductos[0] }]);
