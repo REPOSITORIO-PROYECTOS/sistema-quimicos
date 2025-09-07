@@ -953,20 +953,15 @@ def obtener_detalles_lote(current_user):
             if 'observaciones' not in venta:
                 venta['observaciones'] = ''
             monto_total_items = Decimal('0.00')
-            # 1. Aplica descuento por ítem y redondea cada ítem
+            # 1. NO aplicar descuento por ítem nuevamente, solo usar el valor guardado
             for detalle in venta.get('detalles', []):
                 if 'descuento_item_porcentaje' in detalle:
                     detalle['descuento_item_porcentaje'] = round(detalle.get('descuento_item_porcentaje', 0.0))
                 if 'observacion_item' not in detalle:
                     detalle['observacion_item'] = ''
                 precio_total_item = Decimal(str(detalle.get('precio_total_item_ars', 0.0)))
-                descuento_item = Decimal(str(detalle.get('descuento_item_porcentaje', 0.0)))
-                # Aplica descuento por ítem antes de redondear
-                precio_total_item_desc = precio_total_item * (Decimal('1.0') - descuento_item / Decimal('100'))
-                if precio_total_item_desc % 100 != 0:
-                    precio_total_item_desc = Decimal(math.ceil(precio_total_item_desc / 100) * 100)
-                detalle['precio_total_item_ars'] = float(precio_total_item_desc)
-                monto_total_items += precio_total_item_desc
+                detalle['precio_total_item_ars'] = float(precio_total_item)
+                monto_total_items += precio_total_item
             # 2. Aplica descuento global sobre la suma de ítems ya descontados y redondeados
             descuento_global = Decimal(str(venta.get('descuento_total_global_porcentaje', 0.0)))
             monto_total_items_con_descuento = monto_total_items * (Decimal('1.0') - descuento_global / Decimal('100'))
