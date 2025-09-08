@@ -1,7 +1,6 @@
 # app/blueprints/reportes.py
 
 from collections import defaultdict
-from os import sendfile
 from flask import Blueprint, request, jsonify, make_response, current_app
 from sqlalchemy import func, case, and_
 from sqlalchemy.orm import selectinload, joinedload
