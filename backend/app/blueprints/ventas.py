@@ -996,9 +996,10 @@ def obtener_detalles_lote(current_user):
                 descuento_item = Decimal(str(detalle.get('descuento_item_porcentaje', 0.0)))
                 if descuento_item > 0:
                     precio_unitario_con_descuento = precio_unitario_redondeado * (Decimal('1.0') - descuento_item / Decimal('100'))
-                    precio_unitario_con_descuento = redondear_a_siguiente_centena(precio_unitario_con_descuento)
+                    precio_unitario_con_descuento = redondear_a_siguiente_decena(precio_unitario_con_descuento)
                 else:
                     precio_unitario_con_descuento = precio_unitario_redondeado
+                detalle['precio_unitario_con_descuento_ars'] = float(precio_unitario_con_descuento)
                 cantidad = Decimal(str(detalle.get('cantidad', 0.0)))
                 precio_total_item = redondear_a_siguiente_centena(precio_unitario_con_descuento * cantidad)
                 detalle['precio_unitario_venta_ars'] = float(precio_unitario_redondeado)
