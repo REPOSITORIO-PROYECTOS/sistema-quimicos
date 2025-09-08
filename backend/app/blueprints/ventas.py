@@ -540,8 +540,11 @@ def actualizar_venta(current_user, venta_id):
             monto_total_base_nuevo, forma_pago_nueva, requiere_factura_nueva
         )
 
-        # 3. Aplicar descuento global al total con recargos
-        monto_final_a_pagar_nuevo = monto_con_recargos * (Decimal(1) - descuento_total_nuevo_porc / Decimal(100))
+        # 3. Aplicar descuento global al total con recargos y redondear el descuento
+        monto_final_sin_descuento = monto_con_recargos
+        descuento_global_en_plata = (monto_final_sin_descuento * descuento_total_nuevo_porc / Decimal(100)).quantize(Decimal("0.01"), ROUND_HALF_UP)
+        descuento_global_en_plata_redondeado = Decimal(math.ceil(descuento_global_en_plata / 100) * 100)
+        monto_final_a_pagar_nuevo = monto_final_sin_descuento - descuento_global_en_plata_redondeado
         monto_final_a_pagar_nuevo = Decimal(math.ceil(monto_final_a_pagar_nuevo / 100) * 100)
 
         # --- BLOQUE 2: GUARDAR LOS MONTOS ENVIADOS POR EL FRONTEND SI ESTÁN PRESENTES ---
@@ -551,7 +554,7 @@ def actualizar_venta(current_user, venta_id):
         descuento_total_nuevo_porc = Decimal(str(data.get('descuento_total_global_porcentaje', '0.0')))
         fecha_pedido = data.get('fecha_pedido', None)
 
-    # Siempre usar el monto calculado y redondeado por el backend
+        # Siempre usar el monto calculado y redondeado por el backend
 
         # Recargos: si el frontend los envía, los usamos; si no, los calculamos
         recargo_t_nuevo = Decimal(str(data.get('recargo_transferencia', 0.0)))
