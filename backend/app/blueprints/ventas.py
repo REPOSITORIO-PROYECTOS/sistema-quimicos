@@ -491,44 +491,58 @@ def actualizar_venta(current_user, venta_id):
         DetalleVenta.query.filter_by(venta_id=venta_id).delete()
         db.session.flush()
 
+
         monto_total_base_nuevo = Decimal("0.00")
         detalles_venta_nuevos = []
         cliente_id_nuevo = data.get('cliente_id', venta_db.cliente_id)
 
+        # 1. Calcular cada ítem con descuento particular
         for item_data in data.get('items', []):
             producto_id = item_data.get("producto_id")
             cantidad = Decimal(str(item_data.get("cantidad", "0")))
             descuento_item_porc = Decimal(str(item_data.get("descuento_item_porcentaje", "0.0")))
             if not producto_id or cantidad <= 0:
                 continue
-            # SIEMPRE recalcular los valores desde el backend
             precio_u_bruto, precio_t_bruto, costo_u, _, error_msg, _ = calcular_precio_item_venta(
                 producto_id, cantidad, cliente_id_nuevo
             )
             if error_msg:
                 db.session.rollback()
                 return jsonify({"error": f"Error al recalcular ítem (Prod ID {producto_id}): {error_msg}"}), 400
-            # Aplicar descuento SOLO al ítem y luego redondear
+            # Aplicar descuento SOLO al ítem
             precio_t_descuento = precio_t_bruto * (Decimal(1) - descuento_item_porc / Decimal(100))
-            # Redondeo SIEMPRE hacia arriba a la centena
-            precio_t_descuento = Decimal(math.ceil(precio_t_descuento / 100) * 100)
-            # Calcular el precio unitario redondeado
+            # NO redondear aquí, solo sumar
             if cantidad > 0:
                 precio_u_neto_item = (precio_t_descuento / cantidad).quantize(Decimal("0.01"), ROUND_HALF_UP)
             else:
                 precio_u_neto_item = precio_u_bruto
             detalle_nuevo = DetalleVenta(
-                venta_id=venta_id,  # <-- Asignar explícitamente el ID de la venta
+                venta_id=venta_id,
                 producto_id=producto_id,
                 cantidad=cantidad,
                 precio_unitario_venta_ars=precio_u_neto_item,
                 precio_total_item_ars=precio_t_descuento,
                 costo_unitario_momento_ars=costo_u,
-                descuento_item=descuento_item_porc,  # Guardar el porcentaje real
+                descuento_item=descuento_item_porc,
                 observacion_item=item_data.get("observacion_item")
             )
             detalles_venta_nuevos.append(detalle_nuevo)
             monto_total_base_nuevo += precio_t_descuento
+
+        # 2. Aplicar recargos al monto base
+        forma_pago_nueva = data.get('forma_pago', venta_db.forma_pago)
+        requiere_factura_nueva = data.get('requiere_factura', venta_db.requiere_factura)
+        descuento_total_nuevo_porc = Decimal(str(data.get('descuento_total_global_porcentaje', '0.0')))
+        fecha_pedido = data.get('fecha_pedido', None)
+
+        # Calcular recargos
+        monto_con_recargos, recargo_t_nuevo, recargo_f_nuevo, _, _ = calcular_monto_final_y_vuelto(
+            monto_total_base_nuevo, forma_pago_nueva, requiere_factura_nueva
+        )
+
+        # 3. Aplicar descuento global al total con recargos
+        monto_final_a_pagar_nuevo = monto_con_recargos * (Decimal(1) - descuento_total_nuevo_porc / Decimal(100))
+        monto_final_a_pagar_nuevo = Decimal(math.ceil(monto_final_a_pagar_nuevo / 100) * 100)
 
         # --- BLOQUE 2: GUARDAR LOS MONTOS ENVIADOS POR EL FRONTEND SI ESTÁN PRESENTES ---
         forma_pago_nueva = data.get('forma_pago', venta_db.forma_pago)
