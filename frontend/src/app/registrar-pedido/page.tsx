@@ -379,29 +379,30 @@ const handleSubmit = async (e: React.FormEvent ) => {
       localidad: formData.localidad
     },
     nombre_vendedor: VENDEDOR_FIJO,
-    items: productos
-    .filter(p => p.producto && p.qx > 0)
-    .map(item => {
-      const pInfo = productosContext?.productos.find(p => p.id === item.producto);
-      const subtotalRedondeadoBase = item.total || 0;
-      let subtotalFinalParaTicket = subtotalRedondeadoBase;
-      if (totalCalculadoApi && montoBaseProductos > 0) {
-        const factorRecargo = totalCalculadoApi.monto_final_con_recargos / montoBaseProductos;
-        const subtotalConRecargo = subtotalRedondeadoBase * factorRecargo;
-        subtotalFinalParaTicket = subtotalConRecargo;
-      }
-      // Calcular subtotal bruto antes de descuento
-      const descuentoPorc = item.descuento || 0;
-      const subtotalBruto = descuentoPorc > 0 ? (subtotalFinalParaTicket / (1 - descuentoPorc / 100)) : subtotalFinalParaTicket;
-      return {
-        producto_id: item.producto,
-        producto_nombre: pInfo?.nombre || `ID: ${item.producto}`,
-        cantidad: item.qx,
-        precio_total_item_ars: subtotalFinalParaTicket,
-        observacion_item: item.observacion || "",
-        subtotal_bruto_item_ars: subtotalBruto,
-      };
-    }),
+    items: (() => {
+      const itemsFiltrados = productos.filter(p => p.producto && p.qx > 0);
+      // Redondear todos los totales
+      const totalesRedondeados = itemsFiltrados.map(item => Math.ceil((item.total || 0) / 100) * 100);
+      const sumaTotales = totalesRedondeados.reduce((sum, val) => sum + val, 0);
+      // Recargo total desde la API
+      const recargoTotal = (totalCalculadoApi?.recargos.transferencia || 0) + (totalCalculadoApi?.recargos.factura_iva || 0);
+      return itemsFiltrados.map((item, idx) => {
+        const pInfo = productosContext?.productos.find(p => p.id === item.producto);
+        const totalRedondeado = totalesRedondeados[idx];
+        // Proporción del recargo para este ítem
+        const proporcion = sumaTotales > 0 ? totalRedondeado / sumaTotales : 0;
+        const recargoItem = recargoTotal * proporcion;
+        // Total final del ítem con recargo distribuido, sin redondeo extra
+        const totalFinalItem = totalRedondeado + recargoItem;
+        return {
+          producto_id: item.producto,
+          producto_nombre: pInfo?.nombre || `ID: ${item.producto}`,
+          cantidad: item.qx,
+          precio_total_item_ars: totalFinalItem,
+          observacion_item: item.observacion || ""
+        };
+      });
+    })(),
     total_final: displayTotal,
     observaciones: formData.observaciones,
     forma_pago: formData.formaPago,

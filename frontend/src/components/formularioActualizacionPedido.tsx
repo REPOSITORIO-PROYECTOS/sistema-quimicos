@@ -112,17 +112,18 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     priceResults.forEach(({ precioUnitario, precioTotalCalculado, indices }) => {
         const totalQuantityForProduct = indices.reduce((sum, index) => sum + (newProducts[index].qx || 0), 0);
         
-        indices.forEach(index => {
-            const item = newProducts[index];
-            if (item) {
-                item.precio = precioUnitario;
-                const totalBruto = totalQuantityForProduct > 0 
-                    ? (precioTotalCalculado / totalQuantityForProduct) * item.qx
-                    : 0;
-                    const subtotalBrutoConDescuento = totalBruto * (1 - (item.descuento / 100));
-                    item.total = subtotalBrutoConDescuento;
-            }
-        });
+    indices.forEach(index => {
+      const item = newProducts[index];
+      if (item) {
+        item.precio = precioUnitario;
+        const totalBruto = totalQuantityForProduct > 0 
+          ? (precioTotalCalculado / totalQuantityForProduct) * item.qx
+          : 0;
+        const subtotalBrutoConDescuento = totalBruto * (1 - (item.descuento / 100));
+        const subtotalRedondeado = Math.ceil(subtotalBrutoConDescuento / 100) * 100;
+        item.total = subtotalRedondeado;
+      }
+    });
     });
 
     setProductos(newProducts);
@@ -203,14 +204,12 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
   }, [id, cargarFormulario]);
 
 const displayTotalToShow = useMemo(() => {
-    const montoConRecargosBruto = totalCalculadoApi ? totalCalculadoApi.monto_final_con_recargos : montoBaseProductos;
-    const montoBrutoFinal = Math.max(0, montoConRecargosBruto * (1 - (formData.descuentoTotal / 100)));
-
-    if (montoBrutoFinal > 0) {
-        return montoBrutoFinal;
-    }
-    return 0;
-
+  // Aplica descuento global primero, luego suma recargos
+  const montoBaseDescontado = montoBaseProductos * (1 - (formData.descuentoTotal / 100));
+  const recargoTransferencia = totalCalculadoApi?.recargos.transferencia || 0;
+  const recargoFactura = totalCalculadoApi?.recargos.factura_iva || 0;
+  const montoFinal = Math.max(0, montoBaseDescontado + recargoTransferencia + recargoFactura);
+  return montoFinal;
 }, [totalCalculadoApi, montoBaseProductos, formData.descuentoTotal]);
 
   useEffect(() => {
@@ -253,7 +252,7 @@ const displayTotalToShow = useMemo(() => {
     if (type === 'checkbox') val = (e.target as HTMLInputElement).checked;
     else if (type === 'number') {
         val = value === '' ? 0 : parseFloat(value);
-        if (name === 'descuentoTotal') val = isNaN(val) ? 0 : Math.max(0, Math.min(100, val));
+        if (name === 'descuentoTotal' ) val = isNaN(val) ? 0 : Math.max(0, Math.min(100, val));
         else if (isNaN(val)) val = 0;
     }
     setFormData(prev => ({ ...prev, [name]: val, ...(name === 'formaPago' && { requiereFactura: val === 'factura' }) }));
@@ -319,7 +318,6 @@ const displayTotalToShow = useMemo(() => {
           id_detalle: item.id_detalle,
           producto_id: item.producto,
           cantidad: item.qx,
-          descuento_item_porcentaje: item.descuento || 0,
           observacion_item: item.observacion || "",
         })),
       monto_total_base: montoBaseProductos,
@@ -346,48 +344,53 @@ const displayTotalToShow = useMemo(() => {
   
   const getNumericInputValue = (value: number) => value === 0 ? '' : String(value);
 
+  // Calcular el subtotal de todos los ítems con descuento particular
+  const itemsFiltrados = productos.filter(p => p.producto && p.qx > 0);
+  const subtotalSinRecargo = itemsFiltrados.reduce((sum, item) => sum + (item.total || 0), 0);
+  // Calcular el recargo total
+  const recargoTransferencia = totalCalculadoApi?.recargos.transferencia || 0;
+  const recargoFactura = totalCalculadoApi?.recargos.factura_iva || 0;
+  const totalRecargos = recargoTransferencia + recargoFactura;
+  // Construir el array de ítems finales para enviar y mostrar
+  // Redondear cada ítem al múltiplo de 100 más cercano hacia arriba
+  const itemsFinalesSinRedondear = itemsFiltrados.map(item => {
+    const proporcion = subtotalSinRecargo > 0 ? (item.total || 0) / subtotalSinRecargo : 0;
+    const recargoItem = totalRecargos * proporcion;
+    const subtotalConRecargo = (item.total || 0) + recargoItem;
+    const pInfo = productosContext?.productos.find(p => p.id === item.producto);
+    return {
+      id_detalle: item.id_detalle,
+      producto_id: item.producto,
+      producto_nombre: pInfo?.nombre || `ID: ${item.producto}`,
+      cantidad: item.qx,
+      observacion_item: item.observacion || "",
+      precio_total_item_ars: subtotalConRecargo,
+      subtotal_bruto_item_ars: subtotalConRecargo,
+    };
+  });
+  // Sumar los subtotales y redondear el total final
+  const sumaItemsSinRedondear = itemsFinalesSinRedondear.reduce((sum, item) => sum + item.precio_total_item_ars, 0);
+  const sumaItemsRedondeada = Math.ceil(sumaItemsSinRedondear / 100) * 100;
+  // Distribuir el redondeo entre los ítems (el último ítem absorbe la diferencia)
+  const diferenciaRedondeo = sumaItemsRedondeada - sumaItemsSinRedondear;
+  const itemsFinales = itemsFinalesSinRedondear.map((item, idx, arr) => {
+    let monto = item.precio_total_item_ars;
+    if (idx === arr.length - 1) monto += diferenciaRedondeo;
+    return { ...item, precio_total_item_ars: monto, subtotal_bruto_item_ars: monto };
+  });
+
   const ventaDataParaTicket: VentaDataParaTicket = {
     venta_id: id,
     fecha_emision: formData.fechaEmision,
     cliente: { nombre: formData.nombre, direccion: formData.direccion },
     nombre_vendedor: "pedidos",
-    items: productos.filter(p => p.producto && p.qx > 0).map(item => {
-      const pInfo = productosContext?.productos.find(p => p.id === item.producto);
-      const subtotalRedondeadoBase = item.total || 0;
-      let subtotalFinalParaTicket = subtotalRedondeadoBase;
-      if (totalCalculadoApi && montoBaseProductos > 0) {
-        const factorRecargo = totalCalculadoApi.monto_final_con_recargos / montoBaseProductos;
-        const subtotalConRecargo = subtotalRedondeadoBase * factorRecargo;
-        subtotalFinalParaTicket = subtotalConRecargo;
-      }
-      const descuentoPorc = item.descuento || 0;
-      const subtotalBruto = descuentoPorc > 0 ? (subtotalFinalParaTicket / (1 - descuentoPorc / 100)) : subtotalFinalParaTicket;
-      return {
-        producto_id: item.producto,
-        producto_nombre: pInfo?.nombre || `ID: ${item.producto}`,
-        cantidad: item.qx,
-        precio_total_item_ars: subtotalFinalParaTicket,
-        observacion_item: item.observacion || item.observacion_item || "",
-        subtotal_bruto_item_ars: subtotalBruto,
-      };
-    }),
-    total_final: displayTotalToShow,
+    items: itemsFinales,
+    total_final: sumaItemsRedondeada,
     observaciones: formData.observaciones,
     forma_pago: formData.formaPago, 
     monto_pagado_cliente: formData.montoPagado,
     vuelto_calculado: formData.vuelto,
-    total_bruto_sin_descuento: productos.filter(p => p.producto && p.qx > 0).reduce((sum, item) => {
-      const subtotalRedondeadoBase = item.total || 0;
-      let subtotalFinalParaTicket = subtotalRedondeadoBase;
-      if (totalCalculadoApi && montoBaseProductos > 0) {
-        const factorRecargo = totalCalculadoApi.monto_final_con_recargos / montoBaseProductos;
-        const subtotalConRecargo = subtotalRedondeadoBase * factorRecargo;
-        subtotalFinalParaTicket = subtotalConRecargo;
-      }
-      const descuentoPorc = item.descuento || 0;
-      const subtotalBruto = descuentoPorc > 0 ? (subtotalFinalParaTicket / (1 - descuentoPorc / 100)) : subtotalFinalParaTicket;
-      return sum + subtotalBruto;
-    }, 0),
+    total_bruto_sin_descuento: subtotalSinRecargo,
   };
 
   return (
@@ -442,7 +445,7 @@ const displayTotalToShow = useMemo(() => {
                 {isCalculatingTotal && <p className="text-sm text-blue-600 italic">Calculando...</p>}
                 {totalCalculadoApi && <div className="text-xs text-gray-600 mb-1">...</div>}
                 <label className="block text-sm font-medium text-gray-500 mb-1">Total Pedido</label>
-                <input type="text" value={`$ ${displayTotalToShow.toFixed(2)}`} readOnly className="w-full md:w-auto md:max-w-xs inline-block bg-gray-100 shadow-sm border rounded py-2 px-3 text-gray-900 text-right font-bold text-lg"/>
+                <input type="text" value={`$ ${sumaItemsRedondeada.toFixed(2)}`} readOnly className="w-full md:w-auto md:max-w-xs inline-block bg-gray-100 shadow-sm border rounded py-2 px-3 text-gray-900 text-right font-bold text-lg"/>
               </div>
             </fieldset>
             {/* CAMBIO: Lógica de botones de impresión */}
@@ -459,12 +462,15 @@ const displayTotalToShow = useMemo(() => {
       </div>
       {/* CAMBIO: Sección de impresión dinámica */}
       <div id="presupuesto-imprimible" className="hidden print:block">
-        {documentosAImprimir.map((tipo, index) => (
-          <React.Fragment key={index}>
-            {index > 0 && <div style={{ pageBreakBefore: 'always' }}></div>}
-            <Ticket tipo={tipo as 'comprobante' | 'orden_de_trabajo'} ventaData={ventaDataParaTicket} />
-          </React.Fragment>
-        ))}
+        {documentosAImprimir.map((tipo, index) => {
+          console.log('Datos enviados al Ticket:', ventaDataParaTicket);
+          return (
+            <React.Fragment key={index}>
+              {index > 0 && <div style={{ pageBreakBefore: 'always' }}></div>}
+              <Ticket tipo={tipo as 'comprobante' | 'orden_de_trabajo'} ventaData={ventaDataParaTicket} />
+            </React.Fragment>
+          );
+        })}
       </div>
       <style jsx global>{`
         .no-spinners::-webkit-outer-spin-button,
