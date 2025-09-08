@@ -997,15 +997,15 @@ def obtener_detalles_lote(current_user):
                 # Redondear precio unitario antes de aplicar descuento
                 precio_unitario = Decimal(str(detalle.get('precio_unitario_venta_ars', 0.0)))
                 precio_unitario_redondeado = redondear_a_siguiente_decena(precio_unitario)
+                cantidad = Decimal(str(detalle.get('cantidad', 0.0)))
+                subtotal_item = precio_unitario_redondeado * cantidad
                 descuento_item = Decimal(str(detalle.get('descuento_item_porcentaje', 0.0)))
                 if descuento_item > 0:
-                    precio_unitario_con_descuento = precio_unitario_redondeado * (Decimal('1.0') - descuento_item / Decimal('100'))
-                    precio_unitario_con_descuento = redondear_a_siguiente_decena(precio_unitario_con_descuento)
+                    subtotal_item_con_descuento = subtotal_item * (Decimal('1.0') - descuento_item / Decimal('100'))
                 else:
-                    precio_unitario_con_descuento = precio_unitario_redondeado
-                detalle['precio_unitario_con_descuento_ars'] = float(precio_unitario_con_descuento)
-                cantidad = Decimal(str(detalle.get('cantidad', 0.0)))
-                precio_total_item = redondear_a_siguiente_centena(precio_unitario_con_descuento * cantidad)
+                    subtotal_item_con_descuento = subtotal_item
+                precio_total_item = redondear_a_siguiente_centena(subtotal_item_con_descuento)
+                detalle['precio_unitario_con_descuento_ars'] = float(precio_unitario_redondeado) # Para mostrar el unitario redondeado
                 detalle['precio_unitario_venta_ars'] = float(precio_unitario_redondeado)
                 detalle['precio_total_item_ars'] = float(precio_total_item)
                 monto_total_items += precio_total_item
