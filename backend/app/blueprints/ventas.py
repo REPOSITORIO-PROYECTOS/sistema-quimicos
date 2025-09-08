@@ -826,8 +826,8 @@ def venta_a_dict_resumen(venta):
 def venta_a_dict_completo(venta):
     if not venta: return None
     resumen = venta_a_dict_resumen(venta)
-    monto_final_real = float(venta.monto_final_con_recargos) if venta.monto_final_con_recargos is not None else None
     monto_total_base = float(venta.monto_total) if venta.monto_total is not None else None
+    recargo_total = float(venta.recargo_transferencia or 0) + float(venta.recargo_factura or 0)
     resumen.update({
         "observaciones": venta.observaciones,
         "descuento_total_global_porcentaje": float(getattr(venta, "descuento_general", 0.0) or 0.0),
@@ -838,12 +838,12 @@ def venta_a_dict_completo(venta):
         "monto_pagado_cliente": float(venta.monto_pagado_cliente) if venta.monto_pagado_cliente is not None else None,
         "vuelto_calculado": float(venta.vuelto_calculado) if venta.vuelto_calculado is not None else None,
         "detalles": [
-            detalle_venta_a_dict(d, monto_final_real, monto_total_base) for d in venta.detalles
+            detalle_venta_a_dict(d, monto_total_base, recargo_total) for d in venta.detalles
         ]
     })
     return resumen
 
-def detalle_venta_a_dict(detalle, monto_final_real=None, monto_total_base=None):
+def detalle_venta_a_dict(detalle, monto_total_base=None, recargo_total=None):
     if not detalle:
         return None
     precio_total_item_ars = float(detalle.precio_total_item_ars or 0)
@@ -853,8 +853,17 @@ def detalle_venta_a_dict(detalle, monto_final_real=None, monto_total_base=None):
     precio_unitario_venta_ars = float(detalle.precio_unitario_venta_ars or 0)
     # El precio total del ítem ya viene con descuento aplicado y redondeado
     subtotal_proporcional = None
-    if monto_final_real is not None and monto_total_base and monto_total_base > 0:
-        subtotal_proporcional = monto_final_real * (precio_total_item_ars / monto_total_base)
+    # Nuevo criterio: NO distribuir el descuento global. Solo agregar recargos proporcionales al ítem.
+    if monto_total_base and monto_total_base > 0 and recargo_total is not None:
+        try:
+            proporcion = Decimal(str(precio_total_item_ars)) / Decimal(str(monto_total_base))
+            valor = Decimal(str(precio_total_item_ars)) + (Decimal(str(recargo_total)) * proporcion)
+            # Redondeo hacia arriba a la próxima centena
+            valor_float = float(valor)
+            subtotal_proporcional_dec = Decimal(math.ceil(valor_float / 100) * 100)
+            subtotal_proporcional = float(subtotal_proporcional_dec)
+        except Exception:
+            subtotal_proporcional = None
     return {
         "detalle_id": detalle.id,
         "producto_id": detalle.producto_id,
@@ -1004,8 +1013,12 @@ def obtener_detalles_lote(current_user):
                 precio = Decimal(str(detalle.get('precio_total_item_ars', 0.0)))
                 total_producto = agrupados[producto_id]['precio_total']
                 if suma_items > Decimal('0.00'):
+                    # Solo agregar recargos proporcionales, NO distribuir descuento global
                     proporcion = total_producto / suma_items
-                    subtotal = monto_final_con_recargos * proporcion
+                    subtotal = total_producto + (recargo_t + recargo_f) * proporcion
+                    # Redondeo hacia arriba a la próxima centena
+                    if subtotal % 100 != 0:
+                        subtotal = Decimal(math.ceil(subtotal / 100) * 100)
                     detalle['subtotal_proporcional_con_recargos'] = float(subtotal)
                 else:
                     detalle['subtotal_proporcional_con_recargos'] = 0.0
@@ -1051,11 +1064,20 @@ def recalcular_montos_por_dolar(current_user):
             # Recalcular montos por dólar
             monto_final_recalculado = monto_final_real * valor_dolar
             detalles_recalculados = []
+            recargo_total_original = float(venta.recargo_transferencia or 0) + float(venta.recargo_factura or 0)
+            recargo_total_recalculado = recargo_total_original * valor_dolar
             for d in venta.detalles:
                 precio_total_item_ars = float(d.precio_total_item_ars or 0)
                 subtotal_proporcional = None
                 if monto_total_base > 0:
-                    subtotal_proporcional = monto_final_recalculado * (precio_total_item_ars / monto_total_base)
+                    try:
+                        proporcion = Decimal(str(precio_total_item_ars)) / Decimal(str(monto_total_base))
+                        valor = Decimal(str(precio_total_item_ars * valor_dolar)) + (Decimal(str(recargo_total_recalculado)) * proporcion)
+                        # Redondeo hacia arriba a la próxima centena
+                        valor_float = float(valor)
+                        subtotal_proporcional = float(Decimal(math.ceil(valor_float / 100) * 100))
+                    except Exception:
+                        subtotal_proporcional = None
                 detalles_recalculados.append({
                     "detalle_id": d.id,
                     "producto_id": d.producto_id,
