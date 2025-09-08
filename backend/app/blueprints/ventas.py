@@ -224,13 +224,13 @@ def registrar_venta(current_user):
         monto_total_base_neto = Decimal("0.00")
         detalles_venta_db = []
 
+        from .productos import redondear_a_siguiente_decena, redondear_a_siguiente_centena
         for item_data in items_payload:
             producto_id = item_data.get("producto_id")
             cantidad = Decimal(str(item_data.get("cantidad", "0")))
             descuento_item_porc = Decimal(str(item_data.get("descuento_item_porcentaje", "0.0")))
             if cantidad <= 0:
                 continue
-            # Use frontend-sent unit price and total if present
             precio_u_bruto = item_data.get("precio_unitario_venta_ars")
             precio_t_bruto = item_data.get("precio_total_item_ars")
             costo_u = None
@@ -245,20 +245,24 @@ def registrar_venta(current_user):
                         return jsonify({"error": f"Error en Prod ID {producto_id}: {error_msg}"}), 400
             except Exception:
                 return jsonify({"error": f"Precio unitario o total inválido para Prod ID {producto_id}"}), 400
-            # Aplicar descuento SOLO al ítem y luego redondear
-            precio_t_descuento = precio_t_bruto * (Decimal(1) - descuento_item_porc / Decimal(100))
-            # Redondeo SIEMPRE hacia arriba a la centena
-            precio_t_descuento = Decimal(math.ceil(precio_t_descuento / 100) * 100)
+            # Redondear precio unitario antes de aplicar descuento
+            precio_unitario_redondeado = redondear_a_siguiente_decena(precio_u_bruto)
+            if descuento_item_porc > 0:
+                precio_unitario_con_descuento = precio_unitario_redondeado * (Decimal('1.0') - descuento_item_porc / Decimal('100'))
+                precio_unitario_con_descuento = redondear_a_siguiente_decena(precio_unitario_con_descuento)
+            else:
+                precio_unitario_con_descuento = precio_unitario_redondeado
+            precio_total_item = redondear_a_siguiente_centena(precio_unitario_con_descuento * cantidad)
             detalle = DetalleVenta(
                 producto_id=producto_id, cantidad=cantidad,
-                precio_unitario_venta_ars=precio_u_bruto,
-                precio_total_item_ars=precio_t_descuento,
+                precio_unitario_venta_ars=precio_unitario_con_descuento,
+                precio_total_item_ars=precio_total_item,
                 costo_unitario_momento_ars=costo_u,
-                descuento_item=descuento_item_porc,  # Guardar el porcentaje real
+                descuento_item=descuento_item_porc,
                 observacion_item=item_data.get("observacion_item")
             )
             detalles_venta_db.append(detalle)
-            monto_total_base_neto += precio_t_descuento
+            monto_total_base_neto += precio_total_item
 
         print(f"Suma monto_total_base_neto antes de redondear: {monto_total_base_neto}")
         monto_total_base_neto = monto_total_base_neto.quantize(Decimal("0.01"), ROUND_HALF_UP)
