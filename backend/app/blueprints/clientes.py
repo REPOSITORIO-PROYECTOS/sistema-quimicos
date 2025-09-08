@@ -292,3 +292,29 @@ def cargar_clientes_desde_csv():
         db.session.rollback()
         traceback.print_exc()
         return jsonify({"error": "Ocurrió un error inesperado durante el proceso de carga.", "detalle": str(e)}), 500
+    
+# READ - Buscar todos los clientes activos por nombre/email/localidad/cuit/contacto (sin paginación)
+@clientes_bp.route('/buscar_todos', methods=['GET'])
+def buscar_todos_clientes():
+    """
+    Devuelve todos los clientes activos que coincidan con el search_term (sin paginación).
+    Uso recomendado solo para búsquedas masivas (modal, selectores, etc).
+    """
+    try:
+        search_term = request.args.get('search_term', default=None, type=str)
+        query = Cliente.query.filter_by(activo=True)
+        if search_term:
+            like_term = f"%{search_term}%"
+            query = query.filter(
+                Cliente.nombre_razon_social.ilike(like_term) |
+                Cliente.localidad.ilike(like_term) |
+                Cliente.email.ilike(like_term) |
+                Cliente.cuit.ilike(like_term) |
+                Cliente.contacto_principal.ilike(like_term)
+            )
+        query = query.order_by(Cliente.nombre_razon_social)
+        clientes_db = query.all()
+        clientes_list = [cliente_a_diccionario(c) for c in clientes_db]
+        return jsonify({"clientes": clientes_list, "total": len(clientes_list)}), 200
+    except Exception as e:
+        return jsonify({"error": "Error interno al buscar clientes", "detalle": str(e)}), 500
