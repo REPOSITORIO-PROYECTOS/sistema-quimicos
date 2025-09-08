@@ -551,9 +551,7 @@ def actualizar_venta(current_user, venta_id):
         descuento_total_nuevo_porc = Decimal(str(data.get('descuento_total_global_porcentaje', '0.0')))
         fecha_pedido = data.get('fecha_pedido', None)
 
-        # Si el frontend envía los montos, los usamos directamente
-        monto_total_base_nuevo = Decimal(str(data.get('monto_total_base', monto_total_base_nuevo))).quantize(Decimal("0.01"), ROUND_HALF_UP)
-        monto_final_a_pagar_nuevo = Decimal(str(data.get('monto_final_con_recargos', monto_total_base_nuevo))).quantize(Decimal("0.01"), ROUND_HALF_UP)
+    # Siempre usar el monto calculado y redondeado por el backend
 
         # Recargos: si el frontend los envía, los usamos; si no, los calculamos
         recargo_t_nuevo = Decimal(str(data.get('recargo_transferencia', 0.0)))
