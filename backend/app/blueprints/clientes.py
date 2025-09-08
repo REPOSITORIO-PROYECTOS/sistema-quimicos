@@ -99,8 +99,17 @@ def obtener_clientes():
         # Por defecto, solo muestra activos
         query = Cliente.query.filter_by(activo=True)
 
+        # Filtro de búsqueda por search_term
+        if search_term:
+            like_term = f"%{search_term}%"
+            query = query.filter(
+                Cliente.nombre_razon_social.ilike(like_term) |
+                Cliente.localidad.ilike(like_term) |
+                Cliente.email.ilike(like_term) |
+                Cliente.cuit.ilike(like_term) |
+                Cliente.contacto_principal.ilike(like_term)
+            )
 
-        # El resto de la lógica se mantiene igual
         query = query.order_by(Cliente.nombre_razon_social)
         paginated_clientes = query.paginate(page=page, per_page=per_page, error_out=False)
         clientes_db = paginated_clientes.items
