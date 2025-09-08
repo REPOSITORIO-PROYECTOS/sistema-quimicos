@@ -1,10 +1,3 @@
-from decimal import Decimal
-# Helper para redondear SIEMPRE hacia arriba al siguiente múltiplo de 100
-def redondear_arriba_100(valor):
-    v = Decimal(str(valor))
-    if v <= 0:
-        return Decimal('0')
-    return ((v + Decimal('99')) // Decimal('100')) * Decimal('100')
 # app/blueprints/ventas.py
 
 from operator import or_
@@ -237,25 +230,28 @@ def registrar_venta(current_user):
             descuento_item_porc = Decimal(str(item_data.get("descuento_item_porcentaje", "0.0")))
             if cantidad <= 0:
                 continue
-            # Siempre recalcular precios desde el backend (no confiar en totales del frontend)
+            # Use frontend-sent unit price and total if present
+            precio_u_bruto = item_data.get("precio_unitario_venta_ars")
+            precio_t_bruto = item_data.get("precio_total_item_ars")
             costo_u = None
             error_msg = None
             try:
-                precio_u_bruto, precio_t_bruto, costo_u, _, error_msg, _ = calcular_precio_item_venta(producto_id, cantidad, cliente_id)
-                if error_msg:
-                    return jsonify({"error": f"Error en Prod ID {producto_id}: {error_msg}"}), 400
+                if precio_u_bruto is not None and precio_t_bruto is not None:
+                    precio_u_bruto = Decimal(str(precio_u_bruto))
+                    precio_t_bruto = Decimal(str(precio_t_bruto))
+                else:
+                    precio_u_bruto, precio_t_bruto, costo_u, _, error_msg, _ = calcular_precio_item_venta(producto_id, cantidad, cliente_id)
+                    if error_msg:
+                        return jsonify({"error": f"Error en Prod ID {producto_id}: {error_msg}"}), 400
             except Exception:
-                return jsonify({"error": f"No se pudo calcular el precio para Prod ID {producto_id}"}), 400
-            # Aplicar descuento SOLO al ítem y luego redondear a la centena hacia arriba
-            precio_t_descuento = aplicar_descuento_y_redondear(precio_t_bruto, descuento_item_porc)
-            # Precio unitario neto (con descuento aplicado)
-            if cantidad > 0:
-                precio_u_neto_item = (precio_t_descuento / cantidad).quantize(Decimal("0.01"), ROUND_HALF_UP)
-            else:
-                precio_u_neto_item = precio_u_bruto
+                return jsonify({"error": f"Precio unitario o total inválido para Prod ID {producto_id}"}), 400
+            # Aplicar descuento SOLO al ítem y luego redondear
+            precio_t_descuento = precio_t_bruto * (Decimal(1) - descuento_item_porc / Decimal(100))
+            # Redondeo SIEMPRE hacia arriba a la centena
+            precio_t_descuento = Decimal(math.ceil(precio_t_descuento / 100) * 100)
             detalle = DetalleVenta(
                 producto_id=producto_id, cantidad=cantidad,
-                precio_unitario_venta_ars=precio_u_neto_item,
+                precio_unitario_venta_ars=precio_u_bruto,
                 precio_total_item_ars=precio_t_descuento,
                 costo_unitario_momento_ars=costo_u,
                 descuento_item=descuento_item_porc,  # Guardar el porcentaje real
@@ -266,9 +262,10 @@ def registrar_venta(current_user):
 
         print(f"Suma monto_total_base_neto antes de redondear: {monto_total_base_neto}")
         monto_total_base_neto = monto_total_base_neto.quantize(Decimal("0.01"), ROUND_HALF_UP)
-        # Aplicar descuento GLOBAL antes de recargos y calcular recargos sobre ese base
-        monto_base_con_descuento_global = (monto_total_base_neto * (Decimal('1.0') - descuento_total_global_porc / Decimal(100))).quantize(Decimal("0.01"), ROUND_HALF_UP)
-        monto_final_a_pagar, recargo_t_calc, recargo_f_calc, _, _ = calcular_monto_final_y_vuelto(monto_base_con_descuento_global, forma_pago, requiere_factura)
+        monto_con_recargos, recargo_t_calc, recargo_f_calc, _, _ = calcular_monto_final_y_vuelto(monto_total_base_neto, forma_pago, requiere_factura)
+        monto_final_a_pagar = monto_con_recargos * (Decimal(1) - descuento_total_global_porc / Decimal(100))
+        # Redondear el total general a múltiplo de 100 hacia arriba
+        monto_final_a_pagar = Decimal(math.ceil(monto_final_a_pagar / 100) * 100)
         print(f"Suma monto_total_base_neto después de redondear: {monto_total_base_neto}")
         print(f"Recargos calculados: transferencia={recargo_t_calc}, factura={recargo_f_calc}")
         print(f"Monto final a pagar (redondeado): {monto_final_a_pagar}")
@@ -512,7 +509,9 @@ def actualizar_venta(current_user, venta_id):
                 db.session.rollback()
                 return jsonify({"error": f"Error al recalcular ítem (Prod ID {producto_id}): {error_msg}"}), 400
             # Aplicar descuento SOLO al ítem y luego redondear
-            precio_t_descuento = aplicar_descuento_y_redondear(precio_t_bruto, descuento_item_porc)
+            precio_t_descuento = precio_t_bruto * (Decimal(1) - descuento_item_porc / Decimal(100))
+            # Redondeo SIEMPRE hacia arriba a la centena
+            precio_t_descuento = Decimal(math.ceil(precio_t_descuento / 100) * 100)
             # Calcular el precio unitario redondeado
             if cantidad > 0:
                 precio_u_neto_item = (precio_t_descuento / cantidad).quantize(Decimal("0.01"), ROUND_HALF_UP)
@@ -538,12 +537,13 @@ def actualizar_venta(current_user, venta_id):
         descuento_total_nuevo_porc = Decimal(str(data.get('descuento_total_global_porcentaje', '0.0')))
         fecha_pedido = data.get('fecha_pedido', None)
 
-        # Calcular SIEMPRE del lado del backend: aplicar descuento global antes de recargos
-        monto_total_base_nuevo = monto_total_base_nuevo.quantize(Decimal("0.01"), ROUND_HALF_UP)
-        monto_base_con_desc_global = (monto_total_base_nuevo * (Decimal('1.0') - descuento_total_nuevo_porc / Decimal(100))).quantize(Decimal("0.01"), ROUND_HALF_UP)
-        monto_final_a_pagar_nuevo, recargo_t_nuevo, recargo_f_nuevo, _, _ = calcular_monto_final_y_vuelto(
-            monto_base_con_desc_global, forma_pago_nueva, requiere_factura_nueva
-        )
+        # Si el frontend envía los montos, los usamos directamente
+        monto_total_base_nuevo = Decimal(str(data.get('monto_total_base', monto_total_base_nuevo))).quantize(Decimal("0.01"), ROUND_HALF_UP)
+        monto_final_a_pagar_nuevo = Decimal(str(data.get('monto_final_con_recargos', monto_total_base_nuevo))).quantize(Decimal("0.01"), ROUND_HALF_UP)
+
+        # Recargos: si el frontend los envía, los usamos; si no, los calculamos
+        recargo_t_nuevo = Decimal(str(data.get('recargo_transferencia', 0.0)))
+        recargo_f_nuevo = Decimal(str(data.get('recargo_factura', 0.0)))
 
         vuelto_final_nuevo = Decimal('0.00')
         if monto_pagado_nuevo_str is not None:
@@ -830,8 +830,8 @@ def venta_a_dict_resumen(venta):
 def venta_a_dict_completo(venta):
     if not venta: return None
     resumen = venta_a_dict_resumen(venta)
+    monto_final_real = float(venta.monto_final_con_recargos) if venta.monto_final_con_recargos is not None else None
     monto_total_base = float(venta.monto_total) if venta.monto_total is not None else None
-    recargo_total = float(venta.recargo_transferencia or 0) + float(venta.recargo_factura or 0)
     resumen.update({
         "observaciones": venta.observaciones,
         "descuento_total_global_porcentaje": float(getattr(venta, "descuento_general", 0.0) or 0.0),
@@ -842,12 +842,12 @@ def venta_a_dict_completo(venta):
         "monto_pagado_cliente": float(venta.monto_pagado_cliente) if venta.monto_pagado_cliente is not None else None,
         "vuelto_calculado": float(venta.vuelto_calculado) if venta.vuelto_calculado is not None else None,
         "detalles": [
-            detalle_venta_a_dict(d, monto_total_base, recargo_total) for d in venta.detalles
+            detalle_venta_a_dict(d, monto_final_real, monto_total_base) for d in venta.detalles
         ]
     })
     return resumen
 
-def detalle_venta_a_dict(detalle, monto_total_base=None, recargo_total=None):
+def detalle_venta_a_dict(detalle, monto_final_real=None, monto_total_base=None):
     if not detalle:
         return None
     precio_total_item_ars = float(detalle.precio_total_item_ars or 0)
@@ -857,15 +857,8 @@ def detalle_venta_a_dict(detalle, monto_total_base=None, recargo_total=None):
     precio_unitario_venta_ars = float(detalle.precio_unitario_venta_ars or 0)
     # El precio total del ítem ya viene con descuento aplicado y redondeado
     subtotal_proporcional = None
-    # Nuevo criterio: NO distribuir el descuento global. Solo agregar recargos proporcionales al ítem.
-    if monto_total_base and monto_total_base > 0 and recargo_total is not None:
-        try:
-            proporcion = Decimal(str(precio_total_item_ars)) / Decimal(str(monto_total_base))
-            valor = Decimal(str(precio_total_item_ars)) + (Decimal(str(recargo_total)) * proporcion)
-            subtotal_proporcional_dec = redondear_arriba_100(valor)
-            subtotal_proporcional = float(subtotal_proporcional_dec)
-        except Exception:
-            subtotal_proporcional = None
+    if monto_final_real is not None and monto_total_base and monto_total_base > 0:
+        subtotal_proporcional = monto_final_real * (precio_total_item_ars / monto_total_base)
     return {
         "detalle_id": detalle.id,
         "producto_id": detalle.producto_id,
@@ -1015,12 +1008,8 @@ def obtener_detalles_lote(current_user):
                 precio = Decimal(str(detalle.get('precio_total_item_ars', 0.0)))
                 total_producto = agrupados[producto_id]['precio_total']
                 if suma_items > Decimal('0.00'):
-                    # Solo agregar recargos proporcionales, NO distribuir descuento global
                     proporcion = total_producto / suma_items
-                    subtotal = total_producto + (recargo_t + recargo_f) * proporcion
-                    # Redondeo hacia arriba a la próxima centena
-                    if subtotal % 100 != 0:
-                        subtotal = Decimal(math.ceil(subtotal / 100) * 100)
+                    subtotal = monto_final_con_recargos * proporcion
                     detalle['subtotal_proporcional_con_recargos'] = float(subtotal)
                 else:
                     detalle['subtotal_proporcional_con_recargos'] = 0.0
@@ -1066,20 +1055,11 @@ def recalcular_montos_por_dolar(current_user):
             # Recalcular montos por dólar
             monto_final_recalculado = monto_final_real * valor_dolar
             detalles_recalculados = []
-            recargo_total_original = float(venta.recargo_transferencia or 0) + float(venta.recargo_factura or 0)
-            recargo_total_recalculado = recargo_total_original * valor_dolar
             for d in venta.detalles:
                 precio_total_item_ars = float(d.precio_total_item_ars or 0)
                 subtotal_proporcional = None
                 if monto_total_base > 0:
-                    try:
-                        proporcion = Decimal(str(precio_total_item_ars)) / Decimal(str(monto_total_base))
-                        valor = Decimal(str(precio_total_item_ars * valor_dolar)) + (Decimal(str(recargo_total_recalculado)) * proporcion)
-                        # Redondeo hacia arriba a la próxima centena
-                        valor_float = float(valor)
-                        subtotal_proporcional = float(Decimal(math.ceil(valor_float / 100) * 100))
-                    except Exception:
-                        subtotal_proporcional = None
+                    subtotal_proporcional = monto_final_recalculado * (precio_total_item_ars / monto_total_base)
                 detalles_recalculados.append({
                     "detalle_id": d.id,
                     "producto_id": d.producto_id,
@@ -1169,7 +1149,9 @@ def actualizar_precios_pendientes(current_user):
             tipo_cambio = TipoCambio.query.filter_by(nombre=tc_nombre).first()
             tc_valor = tipo_cambio.valor if tipo_cambio else None
             tc_usados.append(f"Prod {d.producto_id}: TC '{tc_nombre}'={tc_valor}")
-            precio_t_neto_item = aplicar_descuento_y_redondear(precio_t_bruto, d.descuento_item)
+            precio_t_neto_item = precio_t_bruto * (Decimal(1) - (Decimal(str(d.descuento_item or 0)) / Decimal(100)))
+            # Redondeo SIEMPRE hacia arriba a la centena
+            precio_t_neto_item = Decimal(math.ceil(precio_t_neto_item / 100) * 100)
             detalle_nuevo = DetalleVenta(
                 venta_id=venta.id,
                 producto_id=d.producto_id,
@@ -1217,13 +1199,3 @@ def actualizar_precios_pendientes(current_user):
         "ventas_actualizadas_data": ventas_actualizadas_data,
         "logs": logs
     })
-    
-    
-# --- Función Auxiliar para aplicar descuento y redondear a la centena ---
-def aplicar_descuento_y_redondear(precio_bruto, descuento_porc):
-    """
-    Aplica el descuento al precio bruto y redondea SIEMPRE hacia arriba a la centena.
-    """
-    precio_desc = precio_bruto * (Decimal(1) - Decimal(descuento_porc) / Decimal(100))
-    return Decimal(math.ceil(precio_desc / 100) * 100)
-    
