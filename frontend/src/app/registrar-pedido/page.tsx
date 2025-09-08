@@ -283,7 +283,9 @@ const handleSubmit = async (e: React.FormEvent ) => {
     const usuarioId = localStorage.getItem("usuario_id");
     if (!token || !usuarioId) { setErrorMessage("Sesión inválida."); setIsSubmitting(false); return; }
     const montoFinalBruto = displayTotal;
-    const montoFinalRedondeado = Math.ceil(montoFinalBruto / 100) * 100;
+    const montoFinalRedondeado = formData.formaPago === 'efectivo'
+      ? Math.ceil(montoFinalBruto / 100) * 100
+      : Math.ceil(montoFinalBruto / 10) * 10;
 
     // --- FIN DE LA CORRECCIÓN ---
 
@@ -382,7 +384,11 @@ const handleSubmit = async (e: React.FormEvent ) => {
     items: (() => {
       const itemsFiltrados = productos.filter(p => p.producto && p.qx > 0);
       // Redondear todos los totales
-      const totalesRedondeados = itemsFiltrados.map(item => Math.ceil((item.total || 0) / 100) * 100);
+      const totalesRedondeados = itemsFiltrados.map(item =>
+        formData.formaPago === 'efectivo'
+          ? Math.ceil((item.total || 0) / 100) * 100
+          : Math.ceil((item.total || 0) / 1) * 1
+      );
       const sumaTotales = totalesRedondeados.reduce((sum, val) => sum + val, 0);
       // Recargo total desde la API
       const recargoTotal = (totalCalculadoApi?.recargos.transferencia || 0) + (totalCalculadoApi?.recargos.factura_iva || 0);

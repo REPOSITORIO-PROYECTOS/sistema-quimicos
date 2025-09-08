@@ -30,6 +30,11 @@ type BoletaOriginal = {
   monto_pagado_cliente?: number;
   vuelto_calculado?: number;
   observaciones?: string;
+  descuento_total_global_porcentaje?: number;
+  recargos?: {
+    transferencia?: number;
+    factura_iva?: number;
+  };
 };
 
 type BoletaParaLista = {
@@ -202,33 +207,51 @@ const handlePrint = async (tipo: 'comprobante' | 'orden_de_trabajo') => {
       
       const boletasDetalladas: BoletaOriginal[] = await response.json();
 
-      // --- AQUÍ ESTÁ LA CORRECCIÓN ---
-      // 2. Mapeamos la respuesta de la API al formato exacto que espera VentaData
-    // Redondear a múltiplos de 100
-    const boletasAImprimir: VentaData[] = boletasDetalladas.map((data: BoletaOriginal) => {
-      return {
-        venta_id: data.venta_id,
-        fecha_emision: data.fecha_pedido || data.fecha_emision || '',
-        cliente: { 
-          nombre: data.cliente_nombre, 
-          direccion: data.direccion_entrega, 
-          localidad: data.cliente_zona 
-        },
-        nombre_vendedor: data.nombre_vendedor || '',
-        items: (data.detalles || []).map((detalle: DetalleProducto) => ({
-          producto_id: detalle.producto_id,
-          producto_nombre: detalle.producto_nombre,
-          cantidad: detalle.cantidad,
-          observacion_item: detalle.observacion_item, // <-- nombre correcto para Ticket
-          precio_total_item_ars: detalle.subtotal_proporcional_con_recargos,
-          subtotal_proporcional_con_recargos: detalle.subtotal_proporcional_con_recargos,
-        })),
-        total_final: data.monto_final_con_recargos,
-        observaciones: data.observaciones,
-        forma_pago: data.forma_pago,
-        monto_pagado_cliente: data.monto_pagado_cliente,
-        vuelto_calculado: data.vuelto_calculado
-      };
+      const boletasAImprimir: VentaData[] = boletasDetalladas.map((data: BoletaOriginal) => {
+        const descuentoGlobal = data.descuento_total_global_porcentaje || 0;
+        const recargos = data.recargos ?? { transferencia: 0, factura_iva: 0 };
+        const detalles = data.detalles || [];
+        const montoBase = detalles.reduce((sum: number, item: DetalleProducto) => sum + (item.precio_total_item_ars || 0), 0);
+        const montoBaseDescontado = montoBase * (1 - descuentoGlobal / 100);
+        const recargoTotal = (recargos.transferencia || 0) + (recargos.factura_iva || 0);
+        const totalFinalSinRedondear = montoBaseDescontado + recargoTotal;
+        const totalFinal = Math.ceil(totalFinalSinRedondear / 100) * 100;
+        // Distribuir recargo proporcionalmente entre los ítems y reemplazar el valor base por el proporcional si hay recargo
+        const itemsConRecargo = detalles.map((item) => {
+          const proporcion = montoBase > 0 ? (item.precio_total_item_ars || 0) / montoBase : 0;
+          const recargoProporcional = recargoTotal * proporcion;
+          const montoFinalItemSinRedondear = (item.precio_total_item_ars || 0) + recargoProporcional;
+          const hayRecargo = (recargos.transferencia || 0) > 0 || (recargos.factura_iva || 0) > 0;
+          const montoFinalItem = hayRecargo ? Math.ceil(montoFinalItemSinRedondear / 10) * 10 : montoFinalItemSinRedondear;
+          return {
+            ...item,
+            precio_total_item_ars: montoFinalItem,
+            monto_final_item: montoFinalItem,
+            recargo_proporcional: recargoProporcional,
+          };
+        });
+        // Ajustar para que la suma de los ítems coincida con el total redondeado
+        const sumaItems = itemsConRecargo.reduce((sum, item) => sum + item.subtotal_proporcional_con_recargos, 0);
+        if (sumaItems !== totalFinal && itemsConRecargo.length > 0) {
+          const diferencia = totalFinal - sumaItems;
+          itemsConRecargo[itemsConRecargo.length - 1].subtotal_proporcional_con_recargos += diferencia;
+        }
+        return {
+          venta_id: data.venta_id,
+          fecha_emision: data.fecha_pedido || data.fecha_emision || '',
+          cliente: {
+            nombre: data.cliente_nombre,
+            direccion: data.direccion_entrega,
+            localidad: data.cliente_zona
+          },
+          nombre_vendedor: data.nombre_vendedor || '',
+          items: itemsConRecargo,
+          total_final: totalFinal,
+          observaciones: data.observaciones,
+          forma_pago: data.forma_pago,
+          monto_pagado_cliente: data.monto_pagado_cliente,
+          vuelto_calculado: data.vuelto_calculado
+        };
     });
       
       // 3. El resto de la lógica se queda igual

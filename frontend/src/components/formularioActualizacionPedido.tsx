@@ -356,7 +356,10 @@ const displayTotalToShow = useMemo(() => {
   const itemsFinalesSinRedondear = itemsFiltrados.map(item => {
     const proporcion = subtotalSinRecargo > 0 ? (item.total || 0) / subtotalSinRecargo : 0;
     const recargoItem = totalRecargos * proporcion;
-    const subtotalConRecargo = (item.total || 0) + recargoItem;
+    const subtotalConRecargoSinRedondear = (item.total || 0) + recargoItem;
+    const subtotalConRecargo = formData.formaPago === 'efectivo'
+      ? Math.ceil(subtotalConRecargoSinRedondear / 100) * 100
+      : Math.ceil(subtotalConRecargoSinRedondear / 1) * 1;
     const pInfo = productosContext?.productos.find(p => p.id === item.producto);
     return {
       id_detalle: item.id_detalle,
