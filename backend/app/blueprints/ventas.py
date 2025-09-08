@@ -990,24 +990,28 @@ def obtener_detalles_lote(current_user):
             # 1. NO aplicar descuento por ítem nuevamente, solo usar el valor guardado
             from .productos import redondear_a_siguiente_decena, redondear_a_siguiente_centena
             for detalle in venta.get('detalles', []):
-                if 'descuento_item_porcentaje' in detalle:
-                    detalle['descuento_item_porcentaje'] = round(detalle.get('descuento_item_porcentaje', 0.0))
+                # Calcular precio base y total por ítem desde cero, igual que en registro/actualización
                 if 'observacion_item' not in detalle:
                     detalle['observacion_item'] = ''
-                # Redondear precio unitario antes de aplicar descuento
-                precio_unitario = Decimal(str(detalle.get('precio_unitario_venta_ars', 0.0)))
-                precio_unitario_redondeado = redondear_a_siguiente_decena(precio_unitario)
+                producto_id = detalle.get('producto_id')
                 cantidad = Decimal(str(detalle.get('cantidad', 0.0)))
-                subtotal_item = precio_unitario_redondeado * cantidad
-                descuento_item = Decimal(str(detalle.get('descuento_item_porcentaje', 0.0)))
+                descuento_item = Decimal(str(detalle.get('descuento_item_porcentaje', 0.0))) if 'descuento_item_porcentaje' in detalle else Decimal('0.0')
+                # Calcular precio unitario base desde cero
+                precio_u_bruto, _, _, _, error_msg, _ = calcular_precio_item_venta(producto_id, cantidad, venta.get('cliente_id'))
+                if error_msg:
+                    continue
+                precio_unitario_redondeado = redondear_a_siguiente_decena(precio_u_bruto)
+                # Aplicar descuento particular si corresponde
                 if descuento_item > 0:
-                    subtotal_item_con_descuento = subtotal_item * (Decimal('1.0') - descuento_item / Decimal('100'))
+                    precio_unitario_con_descuento = precio_unitario_redondeado * (Decimal('1.0') - descuento_item / Decimal('100'))
                 else:
-                    subtotal_item_con_descuento = subtotal_item
-                precio_total_item = redondear_a_siguiente_centena(subtotal_item_con_descuento)
-                detalle['precio_unitario_con_descuento_ars'] = float(precio_unitario_redondeado) # Para mostrar el unitario redondeado
-                detalle['precio_unitario_venta_ars'] = float(precio_unitario_redondeado)
+                    precio_unitario_con_descuento = precio_unitario_redondeado
+                subtotal_item = precio_unitario_con_descuento * cantidad
+                precio_total_item = redondear_a_siguiente_centena(subtotal_item)
+                detalle['precio_unitario_con_descuento_ars'] = float(precio_unitario_con_descuento)
+                detalle['precio_unitario_venta_ars'] = float(precio_unitario_con_descuento)
                 detalle['precio_total_item_ars'] = float(precio_total_item)
+                detalle['descuento_item_porcentaje'] = float(descuento_item)
                 monto_total_items += precio_total_item
             # 2. Aplica descuento global sobre la suma de ítems ya descontados y redondeados
             descuento_global = Decimal(str(venta.get('descuento_total_global_porcentaje', 0.0)))
