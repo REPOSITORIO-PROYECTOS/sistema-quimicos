@@ -51,30 +51,48 @@ useEffect(() => {
     // 1. Inicia un temporizador cada vez que el usuario teclea algo.
     const timerId = setTimeout(() => {
       // 2. Si el usuario no ha tecleado nada más en 500ms, esta función se ejecuta.
-      
       const fetchClientes = async () => {
         try {
           setLoading(true);
           setError(null);
           const token = localStorage.getItem("token");
-          
           const params = new URLSearchParams();
-          params.append('page', String(page)); 
-          if (searchTerm) {
-            params.append('search_term', searchTerm);
+          // Usar el término recortado para evitar búsquedas con solo espacios.
+          const trimmedTerm = searchTerm.trim();
+          // Si hay término de búsqueda queremos forzar una búsqueda en la BASE DE DATOS.
+          // Para eso pedimos una página 1 y un per_page grande (devuelve todos los matches)
+          if (trimmedTerm) {
+            params.append('page', String(1));
+            params.append('per_page', '5000');
+            params.append('search_term', trimmedTerm);
+          } else {
+            params.append('page', String(page));
+            params.append('per_page', '20');
           }
-          
-          const apiUrl = `https://quimex.sistemataup.online/clientes/obtener_todos?${params.toString()}`; 
-          
+
+          // Construir URL hacia el endpoint paginado (el backend debe usar search_term
+          // para filtrar en la BASE DE DATOS). Si prefieres usar un endpoint dedicado
+          // '/clientes/buscar_todos' se puede cambiar aquí.
+          const apiUrl = `https://quimex.sistemataup.online/clientes/obtener_todos?${params.toString()}`;
+
           const response = await fetch(apiUrl, { headers: {"Content-Type":"application/json", "Authorization":`Bearer ${token}`} });
           if (!response.ok) {
             throw new Error(`Error al traer clientes: ${response.statusText}`);
           }
           const data = await response.json();
-          
-          setClientes(data.clientes);
-          setPagination(data.pagination);
-        } catch (error: unknown) { 
+
+          // Asegurarnos que si no hay matches en la BD devolvemos lista vacía
+          const clientesObtenidos = Array.isArray(data.clientes) ? data.clientes : [];
+          setClientes(clientesObtenidos);
+
+          // Si hay término de búsqueda, mostramos los resultados tal cual (todos los matches)
+          // y ocultamos la paginación para evitar navegación incoherente.
+          if (trimmedTerm) {
+            setPagination(null);
+          } else {
+            setPagination(data.pagination || null);
+          }
+        } catch (error: unknown) {
           if (error instanceof Error) {
             setError(error.message);
           }
@@ -86,7 +104,7 @@ useEffect(() => {
       fetchClientes();
 
     }, 500); // 500ms de retraso
-  return () => {
+    return () => {
       clearTimeout(timerId);
     };
 

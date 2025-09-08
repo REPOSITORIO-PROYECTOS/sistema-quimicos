@@ -1,9 +1,11 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import type { SingleValue } from 'react-select';
 import { useProductsContextActivos, Producto as ProductoContextType } from "@/context/ProductsContextActivos";
 import { useClientesContext, Cliente } from "@/context/ClientesContext";
 import Select from 'react-select';
+import AsyncSelect from 'react-select/async';
 import { useRouter } from 'next/navigation';
 import BotonVolver from "@/components/BotonVolver";
 import Ticket, { VentaData } from '@/components/Ticket';
@@ -41,7 +43,6 @@ export default function RegistrarPedidoPage() {
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const productosContext = useProductsContextActivos();
-  const { clientes, loading: loadingClientes, error: errorClientes } = useClientesContext(); 
 
 const opcionesDeProductoParaSelect = useMemo(() =>
     productosContext?.productos.map((prod: ProductoContextType) => ({
@@ -49,6 +50,23 @@ const opcionesDeProductoParaSelect = useMemo(() =>
       label: prod.nombre,
     })) || [],
   [productosContext?.productos]);
+
+  // Clientes desde el contexto (para estados generales)
+  const { loading: loadingClientes, error: errorClientes } = useClientesContext();
+
+  // Función para búsqueda remota usada por AsyncSelect
+  const fetchClientesRemoto = async (inputValue: string): Promise<{ value: Cliente; label: string }[]> => {
+    if (!inputValue || inputValue.trim().length === 0) return [];
+    const token = localStorage.getItem("token");
+    const url = `https://quimex.sistemataup.online/clientes/buscar_todos?search_term=${encodeURIComponent(inputValue)}`;
+    const response = await fetch(url, { headers: {"Content-Type":"application/json", "Authorization":`Bearer ${token}`} });
+    if (!response.ok) return [];
+    const data = await response.json();
+    return (data.clientes || []).map((cli: Cliente) => ({
+      value: cli,
+      label: `${cli.nombre_razon_social || `ID: ${cli.id}`}${cli.cuit ? ` (${cli.cuit})` : ''}`
+    }));
+  };
 
 
 const resetearFormulario = useCallback(() => {
@@ -250,25 +268,17 @@ const displayTotal = useMemo(() => {
     }
     setFormData(prev => ({ ...prev, [name]: val, ...(name === 'formaPago' && { requiereFactura: val === 'factura' }) }));
   };
-
-
-  const handleClienteSelectChange = (selectedOption: { value: Cliente; label: string } | null) => {
-    const selectedCliente = selectedOption ? selectedOption.value : null;
+  const handleClienteSelectChange = (selectedOption: SingleValue<unknown>) => {
+    const opt = selectedOption as { value?: Cliente } | null | undefined;
+    const selectedCliente = opt && opt.value ? opt.value : null;
     setFormData(prev => ({
-      ...prev, 
+      ...prev,
       clienteId: selectedCliente ? selectedCliente.id : null,
       nombre: selectedCliente?.nombre_razon_social || "",
       direccion: selectedCliente?.direccion || "",
       localidad: selectedCliente?.localidad || "",
     }));
   };
-  
-  const opcionesDeClienteParaSelect = useMemo(() =>
-    clientes.map((cli: Cliente) => ({
-      value: cli,
-      label: `${cli.nombre_razon_social || `ID: ${cli.id}`}${cli.cuit ? ` (${cli.cuit})` : ''}`
-    })),
-  [clientes]);
   
 const handleSubmit = async (e: React.FormEvent ) => {
     e.preventDefault();
@@ -444,16 +454,19 @@ return (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="clienteId">Cliente*</label>
-                  <Select
+                  <AsyncSelect
                     id="clienteId"
                     name="clienteId"
-                    options={opcionesDeClienteParaSelect}
-                    value={opcionesDeClienteParaSelect.find(opt => String(opt.value.id) === (formData.clienteId !== null ? String(formData.clienteId) : "")) || null}
+                    loadOptions={fetchClientesRemoto}
+                    defaultOptions={[]}
+                    value={formData.clienteId ? {
+                      value: { id: formData.clienteId, nombre_razon_social: formData.nombre },
+                      label: formData.nombre || `ID: ${formData.clienteId}`
+                    } : null}
                     onChange={handleClienteSelectChange}
                     placeholder="Buscar cliente por nombre o CUIT..."
                     isClearable
                     isSearchable
-                    isLoading={loadingClientes} // Asegúrate de tener este estado
                     noOptionsMessage={() => "No se encontraron clientes"}
                     className="text-sm react-select-container"
                     classNamePrefix="react-select"
@@ -547,3 +560,5 @@ return (
     </>
   );
 }
+
+// fetchClientesRemoto moved inside component

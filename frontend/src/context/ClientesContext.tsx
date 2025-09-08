@@ -24,7 +24,15 @@ type ClientesContextType = {
   clientes: Cliente[];
   loading: boolean;
   error: string | null;
-  refetch: () => void;
+  fetchClientes: (searchTerm?: string, page?: number, perPage?: number) => Promise<void>;
+  pagination: {
+    total_items: number;
+    total_pages: number;
+    current_page: number;
+    per_page: number;
+    has_next: boolean;
+    has_prev: boolean;
+  } | null;
 };
 
 // Usa el tipo correcto aquí
@@ -40,26 +48,37 @@ export const ClientesProvider = ({ children }: ClientesProviderProps) => {
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [pagination, setPagination] = useState<ClientesContextType['pagination']>(null);
 
-  const fetchClientes = async () => {
-    setLoading(true); // Inicia carga
-    setError(null);   // Limpia error anterior
+  const fetchClientes = async (searchTerm = '', page = 1, perPage = 20) => {
+    setLoading(true);
+    setError(null);
     try {
-      const res = await fetch(`https://quimex.sistemataup.online/clientes/obtener_todos?per_page=1000`);
+      const params = new URLSearchParams();
+      params.append('page', String(page));
+      params.append('per_page', String(perPage));
+      if (searchTerm) params.append('search_term', searchTerm);
+      const res = await fetch(`https://quimex.sistemataup.online/clientes/obtener_todos?${params.toString()}`);
       if (!res.ok) {
         throw new Error(`Error ${res.status}: ${res.statusText}`);
       }
       const data = await res.json();
-      if (!Array.isArray(data.clientes)) { // Validación extra
-          throw new Error("La respuesta de la API no es un array de clientes");
+      if (!Array.isArray(data.clientes)) {
+        throw new Error("La respuesta de la API no es un array de clientes");
       }
       setClientes(data.clientes);
-      //eslint-disable-next-line
-    } catch (err: any) {
-      const errorMsg = err.message || 'Error al obtener clientes';
+      setPagination(data.pagination || null);
+    } catch (err: unknown) {
+      // Extraer mensaje de error de manera segura sin usar 'any'
+      let errorMsg = 'Error al obtener clientes';
+      if (err && typeof err === 'object') {
+        const maybeMessage = (err as Record<string, unknown>)['message'];
+        if (typeof maybeMessage === 'string') errorMsg = maybeMessage;
+      }
       setError(errorMsg);
+      setClientes([]);
+      setPagination(null);
       console.error('Error al obtener clientes:', err);
-      setClientes([]); // Asegura que clientes sea un array vacío en caso de error
     } finally {
       setLoading(false);
     }
@@ -74,7 +93,8 @@ export const ClientesProvider = ({ children }: ClientesProviderProps) => {
       clientes,
       loading,
       error,
-      refetch: fetchClientes // Provee la función para recargar si es necesario
+      fetchClientes,
+      pagination
     }}>
       {children}
     </ClientesContext.Provider>
