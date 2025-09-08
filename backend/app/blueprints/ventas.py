@@ -509,9 +509,9 @@ def actualizar_venta(current_user, venta_id):
             if error_msg:
                 db.session.rollback()
                 return jsonify({"error": f"Error al recalcular ítem (Prod ID {producto_id}): {error_msg}"}), 400
-            # Aplicar descuento SOLO al ítem
+            # Aplicar descuento SOLO al ítem y redondear hacia arriba a la centena
             precio_t_descuento = precio_t_bruto * (Decimal(1) - descuento_item_porc / Decimal(100))
-            # NO redondear aquí, solo sumar
+            precio_t_descuento = Decimal(math.ceil(precio_t_descuento / 100) * 100)
             if cantidad > 0:
                 precio_u_neto_item = (precio_t_descuento / cantidad).quantize(Decimal("0.01"), ROUND_HALF_UP)
             else:
