@@ -3,9 +3,12 @@ from flask import Blueprint, request, jsonify
 from sqlalchemy.orm import joinedload # Para cargar datos relacionados eficientemente
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 import traceback
+import logging
 import pandas as pd
 import io
 import csv
+import unicodedata
+import re
 
 # --- Imports locales ---
 from .. import db
@@ -18,6 +21,9 @@ from ..utils.math_utils import redondear_a_siguiente_decena_simplificado
 
 # --- Blueprint ---
 precios_especiales_bp = Blueprint('precios_especiales', __name__, url_prefix='/precios_especiales')
+
+# Logger del módulo
+logger = logging.getLogger(__name__)
 
 # --- Helpers ---
 def precio_especial_a_dict(precio_esp):
@@ -95,9 +101,8 @@ def crear_precio_especial(current_user):
         db.session.rollback()
         # Podría ser un error de la UniqueConstraint si hubo una condición de carrera
         if "uq_cliente_producto_precio_especial" in str(e):
-             return jsonify({"error": "Ya existe un precio especial para este cliente y producto."}), 409
-        print(f"ERROR [crear_precio_especial]: Excepción {e}")
-        traceback.print_exc()
+            return jsonify({"error": "Ya existe un precio especial para este cliente y producto."}), 409
+        logger.exception("ERROR [crear_precio_especial]: Excepción al crear precio especial")
         return jsonify({"error": "Error interno al crear el precio especial"}), 500
 
 
@@ -147,8 +152,7 @@ def listar_precios_especiales(current_user):
             }
         })
     except Exception as e:
-        print(f"ERROR [listar_precios_especiales]: Excepción {e}")
-        traceback.print_exc()
+        logger.exception("ERROR [listar_precios_especiales]: Excepción al listar precios especiales")
         return jsonify({"error": "Error interno al listar precios especiales"}), 500
 
 
@@ -217,8 +221,7 @@ def actualizar_precio_especial(current_user, precio_id):
 
     except Exception as e:
         db.session.rollback()
-        print(f"ERROR [actualizar_precio_especial]: Excepción {e}")
-        traceback.print_exc()
+        logger.exception("ERROR [actualizar_precio_especial]: Excepción al actualizar precio especial")
         return jsonify({"error": "Error interno al actualizar el precio especial"}), 500
 
 
@@ -237,8 +240,7 @@ def eliminar_precio_especial(current_user, precio_id):
         return jsonify({"message": f"Precio especial ID {precio_id} eliminado correctamente."}), 200 # O 204 No Content
     except Exception as e:
         db.session.rollback()
-        print(f"ERROR [eliminar_precio_especial]: Excepción {e}")
-        traceback.print_exc()
+        logger.exception("ERROR [eliminar_precio_especial]: Excepción al eliminar precio especial")
         return jsonify({"error": "Error interno al eliminar el precio especial"}), 500
     
 @precios_especiales_bp.route('/actualizar-global', methods=['POST','PUT'])
@@ -323,8 +325,7 @@ def actualizar_precios_masivamente(current_user):
 
     except Exception as e:
         db.session.rollback()
-        print(f"ERROR [actualizar_precios_masivamente]: Excepción {e}")
-        traceback.print_exc()
+        logger.exception("ERROR [actualizar_precios_masivamente]: Excepción durante actualización masiva")
         return jsonify({"error": "Error interno durante la actualización masiva."}), 500
 
  
@@ -353,22 +354,101 @@ def cargar_precios_desde_csv(current_user):
         contenido_bytes = file.stream.read()
         if not contenido_bytes:
             return jsonify({"error": "El archivo está vacío."}), 400
-            
-        contenido_str = contenido_bytes.decode('utf-8-sig')
-        
+
+        # Manejar BOM y distintas codificaciones comunes: intentar varias codificaciones
+        def try_decode_bytes(b: bytes) -> str:
+            encodings_to_try = ['utf-8-sig', 'utf-8', 'cp1252', 'latin-1']
+            for enc in encodings_to_try:
+                try:
+                    s = b.decode(enc)
+                    logger.debug("[cargar_csv] decoded bytes using encoding: %s", enc)
+                    return s
+                except Exception:
+                    continue
+            # Fallback seguro: decodificar con reemplazo para no romper el endpoint
+            try:
+                return b.decode('utf-8', errors='replace')
+            except Exception:
+                return b.decode('latin-1', errors='replace')
+
+        contenido_str = try_decode_bytes(contenido_bytes)
+
+        # Mejor detección del delimitador: intentamos sniff sobre una porción razonable
+        posibles_delimitadores = [',', ';', '\t']
+        delimitador_detectado = None
         try:
-            dialect = csv.Sniffer().sniff(contenido_str.splitlines()[0], delimiters=',;')
+            sample = '\n'.join(contenido_str.splitlines()[:10])
+            dialect = csv.Sniffer().sniff(sample, delimiters=''.join(posibles_delimitadores))
             delimitador_detectado = dialect.delimiter
         except csv.Error:
-            return jsonify({"error": "No se pudo determinar el formato del CSV. Use comas (,) o punto y coma (;) como separador."}), 400
+            # Fallback: elegir el delimitador que aparece más frecuentemente en la primera línea
+            first_line = contenido_str.splitlines()[0] if contenido_str.splitlines() else ''
+            counts = {d: first_line.count(d) for d in posibles_delimitadores}
+            # pick the delimiter with highest count, default to comma
+            delimitador_detectado = max(counts, key=counts.get) if any(counts.values()) else ','
 
         # --- 2. LECTURA CON PANDAS ---
         df = pd.read_csv(
             io.StringIO(contenido_str),
             sep=delimitador_detectado,
             keep_default_na=False,
-            dtype=str
+            dtype=str,
+            engine='python'
         )
+
+        # Helpers para normalizar cabeceras, claves y parsing de precio
+        def normalize_text(s: str) -> str:
+            if s is None:
+                return ''
+            s2 = str(s).strip().lower()
+            # Remover tildes/diacríticos
+            s2 = ''.join(ch for ch in unicodedata.normalize('NFKD', s2) if not unicodedata.combining(ch))
+            # Remover caracteres no alfanuméricos salvo espacio
+            s2 = re.sub(r'[^a-z0-9 ]+', '', s2)
+            # Colapsar espacios
+            s2 = re.sub(r'\s+', ' ', s2).strip()
+            return s2
+
+        # Mapeos de variantes de nombres de columna a nombre canónico
+        column_variants = {
+            'cliente': ['cliente', 'nombre', 'nombre razon social', 'razon social', 'razon_social', 'cliente nombre', 'cliente_nombre', 'nombre_cliente', 'customer', 'customer name', 'customer_name'],
+            'producto': ['producto', 'product', 'producto nombre', 'producto_nombre', 'nombre producto', 'item', 'articulo', 'articulo nombre'],
+            'precio': ['precio', 'price', 'precio unitario', 'precio_unitario', 'precio_unitario_fijo_ars', 'importe', 'valor'],
+            'moneda': ['moneda', 'currency', 'divisa', 'moneda codigo', 'moneda_codigo']
+        }
+
+        def find_column(df_columns, targets):
+            cols_norm = {normalize_text(c): c for c in df_columns}
+            for t in targets:
+                t_norm = normalize_text(t)
+                if t_norm in cols_norm:
+                    return cols_norm[t_norm]
+            # fallback: try exact contains
+            for norm, orig in cols_norm.items():
+                for t in targets:
+                    if normalize_text(t) in norm:
+                        return orig
+            return None
+
+        # Determinar columnas reales en el CSV
+        cliente_col = find_column(df.columns, column_variants['cliente'])
+        producto_col = find_column(df.columns, column_variants['producto'])
+        precio_col = find_column(df.columns, column_variants['precio'])
+        moneda_col = find_column(df.columns, column_variants['moneda'])
+
+        if precio_col is None or cliente_col is None or producto_col is None:
+            missing = []
+            if cliente_col is None: missing.append('Cliente')
+            if producto_col is None: missing.append('Producto')
+            if precio_col is None: missing.append('Precio')
+            return jsonify({"error": f"El CSV debe contener las columnas (o variantes) requeridas: {', '.join(missing)}"}), 400
+
+        # Normalizar diccionarios de búsqueda de cliente/producto (más tolerante)
+        def normalize_key_name(name: str) -> str:
+            return normalize_text(str(name or ''))
+
+        clientes_db = {normalize_key_name(c.nombre_razon_social): c for c in Cliente.query.all()}
+        productos_db = {normalize_key_name(p.nombre): p for p in Producto.query.all()}
 
         # --- 3. PREPARACIÓN DE DATOS (CACHÉ) ---
         tc_oficial_obj = TipoCambio.query.filter_by(nombre='Oficial').first()
@@ -384,54 +464,94 @@ def cargar_precios_desde_csv(current_user):
         registros_creados = 0
         registros_actualizados = 0
         filas_fallidas = []
-        required_columns = {'Cliente', 'Producto', 'Precio', 'Moneda'}
 
-        if not required_columns.issubset(df.columns):
-            return jsonify({"error": f"El CSV debe contener las columnas exactas: {', '.join(required_columns)}"}), 400
+        def registrar_error(linea_num, cliente_raw, producto_raw, motivo):
+            filas_fallidas.append({
+                "linea": linea_num,
+                "cliente": cliente_raw,
+                "producto": producto_raw,
+                "motivo": motivo
+            })
+
+        # Función robusta para parsear precios con variantes (ej: "$1.234,56", "1,234.56", "1234.56", "1234,56")
+        def parse_price_to_decimal(raw: str):
+            if raw is None:
+                raise InvalidOperation("Precio vacío")
+            s = str(raw).strip()
+            if s == '':
+                raise InvalidOperation("Precio vacío")
+            # Remover símbolos de moneda comunes
+            s = re.sub(r'[\$€£]', '', s)
+            # Remover espacios y proteger guiones
+            s = s.replace('\u00A0', '').replace(' ', '')
+            # Si tiene coma y punto, inferir formato: si la última coma está después del último punto -> comma decimal
+            if ',' in s and '.' in s:
+                if s.rfind(',') > s.rfind('.'):
+                    # Ej: 1.234,56 -> remover puntos, reemplazar coma por punto
+                    s = s.replace('.', '').replace(',', '.')
+                else:
+                    # Ej: 1,234.56 -> remover comas
+                    s = s.replace(',', '')
+            else:
+                # Solo comas: 1234,56 -> reemplazar por punto
+                if ',' in s and '.' not in s:
+                    s = s.replace(',', '.')
+                # Solo punto: dejar como está
+            # Remover cualquier caracter que no sea dígito o punto
+            s = re.sub(r'[^0-9\.-]', '', s)
+            if s in ['', '.', '-']:
+                raise InvalidOperation("Formato de precio inválido")
+            return Decimal(s)
+
+        # Aceptar variantes de moneda en columnas: 'ARS', 'USD', 'U$S', 'US$', 'peso', 'dolar', 'dólar'
+        moneda_aliases = {
+            'ars': 'ARS', 'peso': 'ARS', 'pesos': 'ARS', 'arg': 'ARS',
+            'usd': 'USD', 'u$s': 'USD', 'us$': 'USD', 'dolar': 'USD', 'dólar': 'USD', 'dollars': 'USD'
+        }
 
         for index, row in df.iterrows():
             linea_num = index + 2
-            
-            def registrar_error(motivo):
-                filas_fallidas.append({
-                    "linea": linea_num, "cliente": row.get('Cliente', 'N/A'),
-                    "producto": row.get('Producto', 'N/A'), "motivo": motivo
-                })
+            cliente_raw = row.get(cliente_col, '')
+            producto_raw = row.get(producto_col, '')
+            precio_raw = row.get(precio_col, '')
+            moneda_raw = row.get(moneda_col, '') if moneda_col else ''
 
-            nombre_cliente_csv = str(row.get('Cliente', '')).strip().upper()
-            nombre_producto_csv = str(row.get('Producto', '')).strip().upper()
-            precio_csv_str = str(row.get('Precio', '')).strip().replace(',', '.')
-            moneda_csv = str(row.get('Moneda', '')).strip().upper()
+            cliente_key = normalize_text(cliente_raw)
+            producto_key = normalize_text(producto_raw)
 
-            # Validaciones
-            cliente = clientes_db.get(nombre_cliente_csv)
+            cliente = clientes_db.get(cliente_key)
             if not cliente:
-                registrar_error(f"Cliente '{row.get('Cliente')}' no encontrado.")
+                registrar_error(linea_num, cliente_raw, producto_raw, f"Cliente '{cliente_raw}' no encontrado.")
                 continue
 
-            producto = productos_db.get(nombre_producto_csv)
+            producto = productos_db.get(producto_key)
             if not producto:
-                registrar_error(f"Producto '{row.get('Producto')}' no encontrado.")
+                registrar_error(linea_num, cliente_raw, producto_raw, f"Producto '{producto_raw}' no encontrado.")
                 continue
-            
+
+            moneda_norm = normalize_text(moneda_raw)
+            moneda_csv = moneda_aliases.get(moneda_norm, None) if moneda_norm else None
+            # Si no viene moneda, asumimos ARS
+            if moneda_csv is None:
+                moneda_csv = 'ARS'
+
             if moneda_csv not in ['ARS', 'USD']:
-                registrar_error(f"Moneda '{row.get('Moneda')}' no válida. Usar 'ARS' o 'USD'.")
+                registrar_error(linea_num, cliente_raw, producto_raw, f"Moneda '{moneda_raw}' no válida. Use 'ARS' o 'USD'.")
                 continue
-            
+
             try:
-                precio_original = Decimal(precio_csv_str)
+                precio_original = parse_price_to_decimal(precio_raw)
                 if precio_original < 0:
-                    raise ValueError
-            except (InvalidOperation, ValueError):
-                registrar_error(f"Precio '{row.get('Precio')}' no es un número válido.")
+                    raise ValueError("Precio negativo")
+            except (InvalidOperation, ValueError) as e:
+                registrar_error(linea_num, cliente_raw, producto_raw, f"Precio '{precio_raw}' no es un número válido: {e}")
                 continue
 
             # --- LÓGICA DE CONVERSIÓN DE MONEDA SIMPLIFICADA ---
             precio_final_ars = precio_original
             if moneda_csv == 'USD':
-                # Si la moneda es USD, siempre multiplica por el TC Oficial.
                 precio_final_ars = precio_original * valor_dolar_oficial
-            
+
             # Lógica de creación/actualización
             precio_esp_existente = precios_existentes.get((cliente.id, producto.id))
 
@@ -466,8 +586,9 @@ def cargar_precios_desde_csv(current_user):
             }), 200
 
     except pd.errors.ParserError as e:
+        logger.exception("Error de parser al leer CSV: %s", e)
         return jsonify({"error": "Error de formato en el archivo CSV.", "detalle": str(e)}), 400
     except Exception as e:
         db.session.rollback()
-        traceback.print_exc()
+        logger.exception("Ocurrió un error crítico durante la carga masiva de precios: %s", e)
         return jsonify({"error": "Ocurrió un error crítico durante el proceso.", "detalle": str(e)}), 500
