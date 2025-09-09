@@ -7,6 +7,7 @@ from ..models import OrdenCompra, DetalleOrdenCompra, Producto, Proveedor, TipoC
 # Importar funciones de cálculo si son necesarias (aunque actualizar costo se llama via endpoint)
 # from .productos import actualizar_costo_desde_compra # Podría llamarse directo si se refactoriza
 from decimal import Decimal, InvalidOperation, DivisionByZero
+import logging
 from ..utils.decorators import token_required, roles_required
 from ..utils.permissions import ROLES
 import datetime
@@ -25,6 +26,31 @@ BASE_API_URL = "http://localhost:8001"
 
 # Crear el Blueprint
 compras_bp = Blueprint('compras', __name__, url_prefix='/ordenes_compra')
+
+# Logger del módulo
+logger = logging.getLogger(__name__)
+
+
+def _extract_user_info(current_user):
+    """Devuelve (id, username, role) intentando soportar dicts y objetos."""
+    uid = None
+    uname = None
+    urole = None
+    if not current_user:
+        return uid, uname, urole
+    try:
+        if isinstance(current_user, dict):
+            uid = current_user.get('id') or current_user.get('user_id')
+            uname = current_user.get('username') or current_user.get('name')
+            urole = current_user.get('role')
+        else:
+            uid = getattr(current_user, 'id', None)
+            uname = getattr(current_user, 'username', None) or getattr(current_user, 'name', None)
+            urole = getattr(current_user, 'role', None)
+    except Exception:
+        # no debe romper si la estructura del current_user es inesperada
+        return None, None, None
+    return uid, uname, urole
 
 # --- Estados Permitidos (Opcional, puede definirse en otro lugar) ---
 ESTADOS_ORDEN = ["Solicitado", "Aprobado", "Rechazado", "Recibido", "Con Deuda", "Parcialmente Recibido"] # Añadir estado parcial
@@ -114,7 +140,7 @@ def formatear_orden_por_rol(orden_db, rol="almacen"):
 @roles_required(ROLES['ADMIN'], ROLES['ALMACEN']) 
 def crear_orden_compra(current_user):
     """Registra una nueva solicitud de orden de compra."""
-    print("\n--- INFO: Recibida solicitud POST en /ordenes_compra ---")
+    logger.info("Recibida solicitud POST en /ordenes_compra")
     data = request.get_json()
     # Simular rol y usuario (reemplazar con autenticación real)
     rol_usuario = request.headers.get("X-User-Role", "almacen")
@@ -205,22 +231,21 @@ def crear_orden_compra(current_user):
         db.session.add(nueva_orden)
         db.session.commit()
 
-        print(f"INFO: Orden de compra creada: ID {nueva_orden.id}, Nro Interno {nro_interno_solicitud}")
+        logger.info("Orden de compra creada: ID %s, Nro Interno %s", nueva_orden.id, nro_interno_solicitud)
         # Devolver la orden completa (formateada por rol, ADMIN ve todo al crear)
         return jsonify({
             "status": "success",
             "message": "Orden de compra solicitada exitosamente.",
             "orden": formatear_orden_por_rol(nueva_orden, rol="ADMIN")
-            }), 201
+        }), 201
 
     except (ValueError, TypeError, InvalidOperation) as e:
-         db.session.rollback()
-         print(f"ERROR: Datos inválidos al procesar items de orden - {e}")
-         return jsonify({"error": f"Error en los datos de los items: {e}"}), 400
+        db.session.rollback()
+        logger.exception("Datos inválidos al procesar items de orden: %s", e)
+        return jsonify({"error": f"Error en los datos de los items: {e}"}), 400
     except Exception as e:
         db.session.rollback()
-        print(f"ERROR: Excepción inesperada al crear orden de compra")
-        traceback.print_exc()
+        logger.exception("Excepción inesperada al crear orden de compra")
         return jsonify({"error": "Error interno del servidor al crear la orden"}), 500
 
 
@@ -230,7 +255,7 @@ def crear_orden_compra(current_user):
 @roles_required(ROLES['ADMIN'], ROLES['ALMACEN'], ROLES['CONTABLE']) 
 def obtener_ordenes_compra(current_user):
     """Obtiene lista de órdenes de compra, con filtros opcionales y paginación."""
-    print("\n--- INFO: Recibida solicitud GET en /ordenes_compra ---")
+    logger.info("Recibida solicitud GET en /ordenes_compra")
     rol_usuario = request.headers.get("X-User-Role", "almacen")  # Simular rol
 
     try:
@@ -242,12 +267,12 @@ def obtener_ordenes_compra(current_user):
             if estado_filtro not in ESTADOS_ORDEN:  # Validar estado
                 return jsonify({"error": f"Estado de filtro inválido: '{estado_filtro}'"}), 400
             query = query.filter(OrdenCompra.estado == estado_filtro)
-            print(f"--- DEBUG: Filtrando por estado: {estado_filtro}")
+            logger.debug("Filtrando por estado: %s", estado_filtro)
 
         proveedor_id_filtro = request.args.get('proveedor_id', type=int)
         if proveedor_id_filtro:
             query = query.filter(OrdenCompra.proveedor_id == proveedor_id_filtro)
-            print(f"--- DEBUG: Filtrando por proveedor ID: {proveedor_id_filtro}")
+            logger.debug("Filtrando por proveedor ID: %s", proveedor_id_filtro)
 
         # Ordenar (ej: por fecha creación descendente)
         query = query.order_by(OrdenCompra.fecha_creacion.desc())
@@ -261,7 +286,7 @@ def obtener_ordenes_compra(current_user):
         # Formatear resultado según rol
         ordenes_formateadas = [formatear_orden_por_rol(orden, rol_usuario) for orden in ordenes_db]
 
-        print(f"--- INFO: Devolviendo {len(ordenes_formateadas)} órdenes para rol '{rol_usuario}'")
+        logger.info("Devolviendo %s órdenes para rol %s", len(ordenes_formateadas), rol_usuario)
 
         # Devolver los resultados con los datos de paginación
         return jsonify({
@@ -277,8 +302,7 @@ def obtener_ordenes_compra(current_user):
         })
 
     except Exception as e:
-        print(f"ERROR: Excepción inesperada al obtener órdenes de compra")
-        traceback.print_exc()
+        logger.exception("Excepción inesperada al obtener órdenes de compra")
         return jsonify({"error": "Error interno del servidor al obtener las órdenes"}), 500
 
 # def obtener_ordenes_compra(current_user):
@@ -326,7 +350,7 @@ def obtener_ordenes_compra(current_user):
 @roles_required(ROLES['ADMIN'], ROLES['ALMACEN'], ROLES['CONTABLE']) 
 def obtener_orden_compra_por_id(current_user, orden_id):
     """Obtiene una orden específica, formateada por rol."""
-    print(f"\n--- INFO: Recibida solicitud GET en /ordenes_compra/{orden_id} ---")
+    logger.info("Recibida solicitud GET en /ordenes_compra/%s", orden_id)
     rol_usuario = request.headers.get("X-User-Role", "almacen") # Simular rol
 
     try:
@@ -337,12 +361,11 @@ def obtener_orden_compra_por_id(current_user, orden_id):
             return jsonify({"error": "Orden de compra no encontrada"}), 404
 
         orden_formateada = formatear_orden_por_rol(orden_db, rol_usuario)
-        print(f"--- INFO: Devolviendo orden {orden_id} para rol '{rol_usuario}'")
+        logger.info("Devolviendo orden %s para rol %s", orden_id, rol_usuario)
         return jsonify(orden_formateada)
 
     except Exception as e:
-        print(f"ERROR: Excepción inesperada al obtener orden de compra {orden_id}")
-        traceback.print_exc()
+        logger.exception("Excepción inesperada al obtener orden de compra %s", orden_id)
         return jsonify({"error": "Error interno del servidor al obtener la orden"}), 500
 
 
@@ -352,7 +375,7 @@ def obtener_orden_compra_por_id(current_user, orden_id):
 @roles_required(ROLES['ADMIN']) # Solo ADMIN puede aprobar 
 def aprobar_orden_compra(current_user, orden_id):
     """Cambia el estado de una orden a 'Aprobado' (Rol     ADMIN)."""
-    print(f"\n--- INFO: Recibida solicitud PUT en /ordenes_compra/{orden_id}/aprobar ---")
+    logger.info("Recibida solicitud PUT en /ordenes_compra/%s/aprobar", orden_id)
     rol_usuario = request.headers.get("X-User-Role", "almacen") # Simular rol
     usuario_aprobador = request.headers.get("X-User-Name", "Sistema") # Simular usuario aprobador
 
@@ -376,18 +399,17 @@ def aprobar_orden_compra(current_user, orden_id):
         # fecha_actualizacion se actualiza via onupdate
 
         db.session.commit()
-        print(f"--- INFO: Orden {orden_id} aprobada por '{usuario_aprobador}'")
+        logger.info("Orden %s aprobada por %s", orden_id, usuario_aprobador)
 
         return jsonify({
             "status": "success",
             "message": "Orden de compra aprobada.",
             "orden": formatear_orden_por_rol(orden_db, rol_usuario) # Devolver estado actualizado
-            })
+        })
 
     except Exception as e:
         db.session.rollback()
-        print(f"ERROR: Excepción inesperada al aprobar orden {orden_id}")
-        traceback.print_exc()
+        logger.exception("Excepción inesperada al aprobar orden %s", orden_id)
         return jsonify({"error": "Error interno del servidor al aprobar la orden"}), 500
 
 
@@ -397,7 +419,7 @@ def aprobar_orden_compra(current_user, orden_id):
 @roles_required(ROLES['ADMIN']) # Solo ADMIN puede rechazar 
 def rechazar_orden_compra(current_user, orden_id):
     """Cambia el estado de una orden a 'Rechazado' (Rol     ADMIN)."""
-    print(f"\n--- INFO: Recibida solicitud PUT en /ordenes_compra/{orden_id}/rechazar ---")
+    logger.info("Recibida solicitud PUT en /ordenes_compra/%s/rechazar", orden_id)
     rol_usuario = request.headers.get("X-User-Role", "almacen")
     usuario_rechazador = request.headers.get("X-User-Name", "Sistema")
     data = request.json
@@ -423,18 +445,17 @@ def rechazar_orden_compra(current_user, orden_id):
         orden_db.motivo_rechazo = data['motivo_rechazo']
 
         db.session.commit()
-        print(f"--- INFO: Orden {orden_id} rechazada por '{usuario_rechazador}'. Motivo: {data['motivo_rechazo']}")
+        logger.info("Orden %s rechazada por %s. Motivo: %s", orden_id, usuario_rechazador, data['motivo_rechazo'])
 
         return jsonify({
             "status": "success",
             "message": "Orden de compra rechazada.",
             "orden": formatear_orden_por_rol(orden_db, rol_usuario)
-            })
+        })
 
     except Exception as e:
         db.session.rollback()
-        print(f"ERROR: Excepción inesperada al rechazar orden {orden_id}")
-        traceback.print_exc()
+        logger.exception("Excepción inesperada al rechazar orden %s", orden_id)
         return jsonify({"error": "Error interno del servidor al rechazar la orden"}), 500
 
 
@@ -443,7 +464,7 @@ def rechazar_orden_compra(current_user, orden_id):
 @token_required
 @roles_required(ROLES['ADMIN'])
 def recibir_orden_compra(current_user, orden_id):
-    print(f"\n--- INFO: Recibida solicitud PUT en /ordenes_compra/{orden_id}/recibir ---")
+    logger.info("Recibida solicitud PUT en /ordenes_compra/%s/recibir", orden_id)
     rol_usuario = request.headers.get("X-User-Role", "almacen")
     usuario_receptor = request.headers.get("X-User-Name", "Sistema")
     data = request.json
@@ -536,11 +557,9 @@ def recibir_orden_compra(current_user, orden_id):
 
     except (InvalidOperation, TypeError) as e:
         db.session.rollback()
-        print(f"ERROR: Error de conversión de datos en la orden {orden_id}: {e}")
-        traceback.print_exc()
+        logger.exception("Error de conversión de datos en la orden %s: %s", orden_id, e)
         return jsonify({"error": f"Dato numérico inválido: {e}"}), 400
     except Exception as e:
         db.session.rollback()
-        print(f"ERROR: Excepción inesperada al recibir orden {orden_id}: {e}")
-        traceback.print_exc()
+        logger.exception("Excepción inesperada al recibir orden %s: %s", orden_id, e)
         return jsonify({"error": "Error interno del servidor al procesar la recepción"}), 500
