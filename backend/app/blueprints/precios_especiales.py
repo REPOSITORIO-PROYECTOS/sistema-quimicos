@@ -26,9 +26,8 @@ def precio_especial_a_dict(precio_esp):
     return {
         "id": precio_esp.id,
         "cliente_id": precio_esp.cliente_id,
-        "cliente_nombre": precio_esp.cliente.nombre_razon_social if precio_esp.cliente else None, # Asume 'razon_social'
+        "cliente_nombre": precio_esp.cliente.nombre_razon_social if precio_esp.cliente else None,
         "producto_id": precio_esp.producto_id,
-#        "producto_codigo": precio_esp.producto.codigo_interno if precio_esp.producto else None,
         "producto_nombre": precio_esp.producto.nombre if precio_esp.producto else None,
         "precio_unitario_fijo_ars": float(precio_esp.precio_unitario_fijo_ars) if precio_esp.precio_unitario_fijo_ars is not None else None,
         "activo": precio_esp.activo,
@@ -157,14 +156,18 @@ def listar_precios_especiales(current_user):
 @token_required
 @roles_required(ROLES['ADMIN'], ROLES['VENTAS_PEDIDOS'])
 def obtener_precio_especial(current_user, client_id):
-    """Obtiene todos los precios especiales para un cliente por su ID."""
+    """Obtiene todos los precios especiales para un cliente por su ID.
+
+    Nota: devuelve una lista vacía (200) si no hay precios, en lugar de 404, para
+    facilitar el consumo desde UI que espera array.
+    """
     precios_esp = db.session.query(PrecioEspecialCliente).options(
         joinedload(PrecioEspecialCliente.cliente),
         joinedload(PrecioEspecialCliente.producto)
     ).filter(PrecioEspecialCliente.cliente_id == client_id).all()
 
     if not precios_esp:
-        return jsonify({"error": "No se encontraron precios especiales para este cliente"}), 404
+        return jsonify([]), 200
     return jsonify([precio_especial_a_dict(p) for p in precios_esp])
 
 
@@ -221,7 +224,7 @@ def actualizar_precio_especial(current_user, precio_id):
 
 @precios_especiales_bp.route('/eliminar/<int:precio_id>', methods=['DELETE'])
 @token_required
-@roles_required(ROLES['ADMIN'])
+@roles_required(ROLES['ADMIN'], ROLES['VENTAS_PEDIDOS'])
 def eliminar_precio_especial(current_user, precio_id):
     """Elimina una regla de precio especial."""
     precio_esp = db.session.get(PrecioEspecialCliente, precio_id)
@@ -417,7 +420,8 @@ def cargar_precios_desde_csv(current_user):
             
             try:
                 precio_original = Decimal(precio_csv_str)
-                if precio_original < 0: raise ValueError
+                if precio_original < 0:
+                    raise ValueError
             except (InvalidOperation, ValueError):
                 registrar_error(f"Precio '{row.get('Precio')}' no es un número válido.")
                 continue

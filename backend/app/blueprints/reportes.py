@@ -48,6 +48,17 @@ def style_header(ws, headers):
         cell.fill = HEADER_FILL
         ws.column_dimensions[get_column_letter(i)].width = max(len(header), 18)
 
+
+def _extraer_estado_nombre_vendedor(nombre_vendedor: str) -> str:
+    """Extrae el estado (p.ej. 'CANCELADO') del campo nombre_vendedor si existe.
+    Retorna cadena en mayúsculas sin espacios adicionales, o vacía si no se detecta.
+    """
+    if not nombre_vendedor:
+        return ''
+    partes = str(nombre_vendedor).split('-', 1)
+    estado = partes[0].strip().upper()
+    return estado
+
 @reportes_bp.route('/movimientos-excel', methods=['GET'])
 @token_required
 @roles_required(ROLES['ADMIN'], ROLES['CONTABLE'])
@@ -140,18 +151,21 @@ def reporte_movimientos_excel_limitado(current_user):
             fecha_ar = fecha_registro.astimezone(AR_TZ)
 
             for detalle in venta.detalles:
+                # Usar el subtotal base SIN redondear para cálculos de margen
                 subtotal_item_base = detalle.precio_total_item_ars or Decimal('0.0')
                 subtotal_item_final_calculado = subtotal_item_base
                 if monto_total_base_venta > 0:
                     proporcion_del_item = subtotal_item_base / monto_total_base_venta
                     subtotal_con_recargos = monto_final_real * proporcion_del_item
-                    subtotal_item_final_calculado = Decimal(math.ceil(subtotal_con_recargos / 100) * 100)
+                    # Mantener subtotal con recargos pero sin forzar redondeo para el cálculo del margen
+                    subtotal_item_final_calculado = Decimal(subtotal_con_recargos)
 
                 costo_total_prod, margen = Decimal('0.0'), Decimal('0.0')
                 try:
-                    costo_unitario_usd = calcular_costo_producto_referencia(detalle.producto_id)
+                    # calcular_costo_producto_referencia devuelve costo unitario en USD
+                    costo_unitario_usd = calcular_costo_producto_referencia(detalle.producto_id) or Decimal('0.0')
                     tc = tc_oficial if detalle.producto and detalle.producto.ajusta_por_tc else tc_empresa
-                    if tc and tc.valor > 0:
+                    if tc and tc.valor and tc.valor > 0:
                         costo_total_prod = costo_unitario_usd * detalle.cantidad * tc.valor
                     if subtotal_item_final_calculado > 0:
                         margen = ((subtotal_item_final_calculado - costo_total_prod) / subtotal_item_final_calculado) * 100
@@ -177,9 +191,14 @@ def reporte_movimientos_excel_limitado(current_user):
                 ws_ventas.cell(row=row_idx, column=15, value=float(monto_final_real)).number_format = '"$"#,##0.00'
                 row_idx += 1
 
-            if venta.forma_pago and venta.forma_pago.lower() == 'efectivo':
+            # Clasificar forma de pago: efectivo vs transferencia/otros
+            forma = (venta.forma_pago or '').strip().lower()
+            if forma == 'efectivo':
                 ingresos_efectivo += monto_final_real
+            elif forma == 'transferencia':
+                ingresos_transferencia += monto_final_real
             else:
+                # Otros medios (cheque, cuenta corriente, factura) se contabilizan en 'ingresos_transferencia' para resumen
                 ingresos_transferencia += monto_final_real
 
         # === HOJA 2: COMPRAS DETALLADAS ===
@@ -633,27 +652,43 @@ def _get_kpis_del_mes(fecha_seleccionada: date):
         func.date(Venta.fecha_registro) <= fecha_seleccionada
     )
     
-    kpis_mes = db.session.query(
-    func.sum(Venta.monto_final_redondeado).label('ventas_mes_total'),
-    func.sum(case((Venta.cliente_id.is_(None), Venta.monto_final_redondeado), else_=0)).label('ingresos_puerta_mes'),
-    func.sum(case((Venta.cliente_id.isnot(None), Venta.monto_final_redondeado), else_=0)).label('ingresos_pedidos_mes'),
-    func.sum(case((func.lower(Venta.forma_pago) == 'efectivo', Venta.monto_final_redondeado), else_=0)).label('ingresos_efectivo_mes')
-    ).filter(filtro_mes_actual).one()
+    # Obtener tipos de cambio para cálculo de costos
+    tc_oficial = TipoCambio.query.filter_by(nombre='Oficial').first()
+    tc_empresa = TipoCambio.query.filter_by(nombre='Empresa').first()
 
-    ventas_mes_total = kpis_mes.ventas_mes_total or Decimal('0.0')
-    
-    # Procesamiento final de datos (como sugeriste para la tercera fila)
-    costos_variables_mes = ventas_mes_total * Decimal('0.6') # Placeholder
-    ganancia_bruta_mes = ventas_mes_total - costos_variables_mes
-    ingresos_efectivo_mes = kpis_mes.ingresos_efectivo_mes or Decimal('0.0')
+    # Primero obtener todas las ventas del periodo EXCLUYENDO las canceladas
+    ventas_del_mes = db.session.query(Venta).filter(filtro_mes_actual).all()
+    ventas_no_canceladas = [v for v in ventas_del_mes if _extraer_estado_nombre_vendedor(v.nombre_vendedor) != 'CANCELADO']
+
+    ventas_mes_total = sum((v.monto_final_redondeado or Decimal('0.0')) for v in ventas_no_canceladas)
+
+    # Ingresos por puerta/pedidos y efectivo/otros
+    ingresos_puerta_mes = sum((v.monto_final_redondeado or Decimal('0.0')) for v in ventas_no_canceladas if v.cliente_id is None)
+    ingresos_pedidos_mes = sum((v.monto_final_redondeado or Decimal('0.0')) for v in ventas_no_canceladas if v.cliente_id is not None)
+    ingresos_efectivo_mes = sum((v.monto_final_redondeado or Decimal('0.0')) for v in ventas_no_canceladas if (v.forma_pago or '').strip().lower() == 'efectivo')
     ingresos_otros_mes = ventas_mes_total - ingresos_efectivo_mes
+
+    # Calcular costos variables sumando costo real por detalle
+    costos_variables_mes = Decimal('0.0')
+    for v in ventas_no_canceladas:
+        for det in v.detalles:
+            try:
+                costo_unitario_usd = calcular_costo_producto_referencia(det.producto_id) or Decimal('0.0')
+                tc = tc_oficial if det.producto and det.producto.ajusta_por_tc else tc_empresa
+                tc_val = tc.valor if tc and tc.valor else Decimal('0.0')
+                costos_variables_mes += costo_unitario_usd * (det.cantidad or Decimal('0.0')) * tc_val
+            except Exception:
+                # Si falla el cálculo de costo de un producto, saltar y continuar
+                continue
+
+    ganancia_bruta_mes = ventas_mes_total - costos_variables_mes
 
     return {
         "ventas_mes": ventas_mes_total,
         "costos_variables_mes": costos_variables_mes,
         "ganancia_bruta_mes": ganancia_bruta_mes,
-        "ingresos_puerta_mes": kpis_mes.ingresos_puerta_mes or Decimal('0.0'),
-        "ingresos_pedidos_mes": kpis_mes.ingresos_pedidos_mes or Decimal('0.0'),
+        "ingresos_puerta_mes": ingresos_puerta_mes,
+        "ingresos_pedidos_mes": ingresos_pedidos_mes,
         "ingresos_efectivo_mes": ingresos_efectivo_mes,
         "ingresos_otros_mes": ingresos_otros_mes
     }
@@ -741,19 +776,20 @@ def get_caja_del_dia(current_user):
     [NUEVO] Endpoint simple que devuelve el total de ventas del día actual,
     desglosado por forma de pago.
     """
-    fecha_str = request.args.get('fecha', datetime.date.today().isoformat())
-    
+    # Usar 'date' y 'datetime' importados directamente
+    fecha_str = request.args.get('fecha', date.today().isoformat())
+
     try:
-        fecha = datetime.date.fromisoformat(fecha_str)
-        start_of_day = datetime.datetime.combine(fecha, datetime.time.min)
-        end_of_day = datetime.datetime.combine(fecha, datetime.time.max)
+        fecha = date.fromisoformat(fecha_str)
+        start_of_day = datetime.combine(fecha, time.min)
+        end_of_day = datetime.combine(fecha, time.max)
     except ValueError:
         return jsonify({"error": "Formato de fecha inválido. Use YYYY-MM-DD."}), 400
         
     try:
         ventas_del_dia = db.session.query(Venta).filter(
             Venta.fecha_registro.between(start_of_day, end_of_day)
-        ).all()
+        ).all() 
 
         caja = defaultdict(Decimal)
         for venta in ventas_del_dia:

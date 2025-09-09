@@ -41,6 +41,12 @@ interface PrecioEspecialDesdeAPI {
   // fecha_creacion y fecha_modificacion no son necesarias para el form
 }
 
+// Tipo para payload usado al actualizar un precio especial
+type PrecioEspecialUpdatePayload = {
+  precio_unitario_fijo_ars: number;
+  activo: boolean;
+};
+
 const initialFormState: FormState = {
   nombre_razon_social: '',
   cuit: '',
@@ -64,6 +70,8 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccessMessage, setSubmitSuccessMessage] = useState<string | null>(null);
   const [submitErrorMessage, setSubmitErrorMessage] = useState<string | null>(null);
+  // Guardar copia original de los precios cargados desde la API para comparar cambios
+  const [preciosOriginales, setPreciosOriginales] = useState<PrecioEspecialDesdeAPI[] | null>(null);
   // Estado para mostrar/ocultar precios especiales
   const [mostrarPreciosEspeciales, setMostrarPreciosEspeciales] = useState(false);
 
@@ -115,7 +123,7 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
         throw new Error(errorDataPrecios.message || `Error al cargar precios especiales: ${resPrecios.statusText}`);
       }
 
-      // Mapear los datos de la API de precios al formato del formulario
+  // Mapear los datos de la API de precios al formato del formulario
       const preciosFormateados: ProductoPrecioEspecialItem[] = preciosDelClienteApi.map(p => ({
         id_precio_especial: p.id,                 // ID del registro de precio especial
         producto_id: String(p.producto_id),       // ID del producto (como string para el select)
@@ -125,6 +133,8 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
         api_producto_id_original_api: p.producto_id, // ID original del producto de la API de precios
       }));  
 
+  // Guardar copia original para comparar cambios en el submit
+  setPreciosOriginales(preciosDelClienteApi.length > 0 ? preciosDelClienteApi : []);
 
       setForm({
         nombre_razon_social: datosCliente.nombre_razon_social || '',
@@ -140,7 +150,7 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
         precios_especiales_form: preciosFormateados.length > 0 ? preciosFormateados : [],
       });
   // Eliminado: setPreciosEspecialesOriginales(preciosFormateados);
-      setMostrarPreciosEspeciales(preciosFormateados.length > 0); // Mostrar sección si ya tiene precios
+  setMostrarPreciosEspeciales(preciosFormateados.length > 0); // Mostrar sección si ya tiene precios
 
     } catch (error) {
       console.error("Error en cargarDatosCompletosCliente:", error);
@@ -265,7 +275,112 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
       );
 
       // Sincronizar precios especiales
-      // ...existing precios especiales logic...
+      // Comparar preciosOriginales (lo que vino de la API) con form.precios_especiales_form
+      try {
+        if (!preciosOriginales) {
+          // No había precios originales cargados: crear todo lo que venga en el form
+          const toCreateAll = form.precios_especiales_form.filter(i => !i.id_precio_especial && i.producto_id);
+          for (const item of toCreateAll) {
+            const body = {
+              cliente_id: id_cliente,
+              producto_id: Number(item.producto_id),
+              precio_unitario_fijo_ars: Number(item.valor),
+              activo: Boolean(item.activo),
+            };
+            const resCrear = await fetch(`https://quimex.sistemataup.online/precios_especiales/crear`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+              body: JSON.stringify(body),
+            });
+            if (!resCrear.ok) {
+              const err = await resCrear.json().catch(() => ({}));
+              throw new Error(err.message || `Error al crear precio especial (producto ${item.producto_id})`);
+            }
+          }
+        } else {
+          // Calcular diffs
+          const originalesById = new Map<number, PrecioEspecialDesdeAPI>();
+          preciosOriginales.forEach(p => originalesById.set(p.id, p));
+
+          // Items actuales que tienen id_precio_especial => posibles updates
+          const toUpdate: { id: number; payload: PrecioEspecialUpdatePayload }[] = [];
+          // Items actuales sin id => crear
+          const toCreate: ProductoPrecioEspecialItem[] = [];
+          // IDs originales que no están en el form => eliminar
+          const actualesIds = new Set<number>();
+
+          for (const item of form.precios_especiales_form) {
+            if (item.id_precio_especial) {
+              actualesIds.add(item.id_precio_especial);
+              const orig = originalesById.get(item.id_precio_especial);
+              if (!orig) {
+                // No encontramos el original, tratar como update con lo que tengamos
+                toUpdate.push({ id: item.id_precio_especial, payload: { precio_unitario_fijo_ars: Number(item.valor), activo: Boolean(item.activo) } });
+              } else {
+                // Comparar precio y activo (usar toNumber para normalizar)
+                const origPrecio = Number(orig.precio_unitario_fijo_ars);
+                const curPrecio = Number(item.valor);
+                const precioChanged = Math.abs((isNaN(origPrecio) ? 0 : origPrecio) - (isNaN(curPrecio) ? 0 : curPrecio)) > 0.0001;
+                const activoChanged = Boolean(orig.activo) !== Boolean(item.activo);
+                if (precioChanged || activoChanged) {
+                  toUpdate.push({ id: item.id_precio_especial, payload: { precio_unitario_fijo_ars: Number(item.valor), activo: Boolean(item.activo) } });
+                }
+              }
+            } else {
+              // Nuevo
+              if (item.producto_id) toCreate.push(item);
+            }
+          }
+
+          const toDelete: number[] = [];
+          for (const orig of preciosOriginales) {
+            if (!actualesIds.has(orig.id)) {
+              toDelete.push(orig.id);
+            }
+          }
+
+          // Ejecutar Creaciones
+          for (const item of toCreate) {
+            const body = { cliente_id: id_cliente, producto_id: Number(item.producto_id), precio_unitario_fijo_ars: Number(item.valor), activo: Boolean(item.activo) };
+            const resCrear = await fetch(`https://quimex.sistemataup.online/precios_especiales/crear`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(body)
+            });
+            if (!resCrear.ok) {
+              const err = await resCrear.json().catch(() => ({}));
+              throw new Error(err.message || `Error al crear precio especial (producto ${item.producto_id})`);
+            }
+          }
+
+          // Ejecutar Updates
+          for (const upd of toUpdate) {
+            const resUpd = await fetch(`https://quimex.sistemataup.online/precios_especiales/editar/${upd.id}`, {
+              method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(upd.payload)
+            });
+            if (!resUpd.ok) {
+              const err = await resUpd.json().catch(() => ({}));
+              throw new Error(err.message || `Error al actualizar precio especial ID ${upd.id}`);
+            }
+          }
+
+          // Ejecutar Deletes
+          for (const idToDel of toDelete) {
+            const resDel = await fetch(`https://quimex.sistemataup.online/precios_especiales/eliminar/${idToDel}`, {
+              method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!resDel.ok) {
+              const err = await resDel.json().catch(() => ({}));
+              throw new Error(err.message || `Error al eliminar precio especial ID ${idToDel}`);
+            }
+          }
+        }
+
+        // Si todo OK, recargar datos del cliente para reflejar IDs nuevos y estado
+        await cargarDatosCompletosCliente(id_cliente);
+        setSubmitSuccessMessage(prev => (prev ? prev + '\nPrecios especiales sincronizados correctamente.' : 'Precios especiales sincronizados correctamente.'));
+      } catch (errSync) {
+        console.error('Error sincronizando precios especiales:', errSync);
+        setSubmitErrorMessage(errSync instanceof Error ? errSync.message : 'Error desconocido sincronizando precios especiales.');
+      }
     } catch (error) {
       setSubmitErrorMessage(error instanceof Error ? error.message : "Error desconocido al actualizar el cliente.");
     } finally {
