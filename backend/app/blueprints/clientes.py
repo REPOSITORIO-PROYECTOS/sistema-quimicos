@@ -85,7 +85,9 @@ def crear_cliente():
 
 # READ - Obtener todos los clientes (o filtrar por activos/inactivos)
 @clientes_bp.route('/obtener_todos', methods=['GET'])
-@cache.cached(timeout=180)
+# Hacer que la caché respete los parámetros de consulta (page, per_page, search_term)
+# para evitar devolver siempre la misma página cuando cambian los parámetros.
+@cache.cached(timeout=180, query_string=True)
 def obtener_clientes():
     """
     [ACTUALIZADO] Obtiene una lista de clientes con filtros, paginación y BÚSQUEDA.
@@ -95,6 +97,11 @@ def obtener_clientes():
         page = request.args.get('page', default=1, type=int)
         per_page = request.args.get('per_page', default=20, type=int)
         search_term = request.args.get('search_term', default=None, type=str)
+        # Debug: logear parámetros para diagnóstico
+        try:
+            print(f"[obtener_clientes] params -> page={page}, per_page={per_page}, search_term={search_term}")
+        except Exception:
+            pass
         
         # Por defecto, solo muestra activos
         query = Cliente.query.filter_by(activo=True)
@@ -112,6 +119,10 @@ def obtener_clientes():
 
         query = query.order_by(Cliente.nombre_razon_social)
         paginated_clientes = query.paginate(page=page, per_page=per_page, error_out=False)
+        try:
+            print(f"[obtener_clientes] paginated -> page={paginated_clientes.page}, total={paginated_clientes.total}")
+        except Exception:
+            pass
         clientes_db = paginated_clientes.items
         clientes_list = [cliente_a_diccionario(c) for c in clientes_db]
 
