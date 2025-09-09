@@ -38,6 +38,7 @@ export default function ListaClientes() {
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [isDownloading, setIsDownloading] = useState(false);
+ 
 
     // --- ESTADO PARA EL BUSCADOR (NUEVO) ---
   const [searchTerm, setSearchTerm] = useState(''); // Lo que el usuario escribe
@@ -47,7 +48,7 @@ export default function ListaClientes() {
   const [priceUpdateError, setPriceUpdateError] = useState<string | null>(null);
   const [priceUpdateSuccess, setPriceUpdateSuccess] = useState<string | null>(null);
 
-useEffect(() => {
+  useEffect(() => {
     // 1. Inicia un temporizador cada vez que el usuario teclea algo.
     const timerId = setTimeout(() => {
       // 2. Si el usuario no ha tecleado nada más en 500ms, esta función se ejecuta.
@@ -69,13 +70,16 @@ useEffect(() => {
             params.append('page', String(page));
             params.append('per_page', '20');
           }
+          // Cache-busting to avoid stale responses when changing page
+          params.append('_ts', String(Date.now()));
 
           // Construir URL hacia el endpoint paginado (el backend debe usar search_term
           // para filtrar en la BASE DE DATOS). Si prefieres usar un endpoint dedicado
           // '/clientes/buscar_todos' se puede cambiar aquí.
           const apiUrl = `https://quimex.sistemataup.online/clientes/obtener_todos?${params.toString()}`;
 
-          const response = await fetch(apiUrl, { headers: {"Content-Type":"application/json", "Authorization":`Bearer ${token}`} });
+          console.debug('Fetching clientes URL:', apiUrl, 'page:', page, 'searchTerm:', trimmedTerm);
+          const response = await fetch(apiUrl, { cache: 'no-store', headers: {"Content-Type":"application/json", "Authorization":`Bearer ${token}`} });
           if (!response.ok) {
             throw new Error(`Error al traer clientes: ${response.statusText}`);
           }
@@ -128,29 +132,33 @@ useEffect(() => {
     }
 
     try {
-      const promesasClientesConPrecios = clientes.map(async (cliente) => {
-        try {
-          const resPrecios = await fetch(`https://quimex.sistemataup.online/precios_especiales/obtener-por-cliente/${cliente.id}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-          });
+    // Obtener todos los clientes con sus precios especiales desde el endpoint nuevo
+  const url = `https://quimex.sistemataup.online/clientes/obtener_todos_con_precios?all=true`;
+  const resAll = await fetch(url + `&_ts=${Date.now()}`, { cache: 'no-store', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` } });
+  if (!resAll.ok) throw new Error('No se pudieron obtener todos los clientes para exportar');
+  const dataAll = await resAll.json();
+  // dataAll.clientes se procesa más abajo en dataAllTyped
 
-          if (!resPrecios.ok) {
-            return { ...cliente, preciosEspeciales: [] };
-          }
-          
-          const dataPrecios = await resPrecios.json();
-          return { ...cliente, preciosEspeciales: dataPrecios || [] };
-        } catch (error ) {
-            console.log(error);
-            return { ...cliente, preciosEspeciales: [] };
-        }
-      });
+      // Los datos ya vienen con precios especiales desde el endpoint masivo.
+  type RawPrecio = { producto?: { nombre?: string }; producto_nombre?: string; precio_unitario_fijo_ars?: number };
+      type ClienteRaw = Cliente & { precios_especiales?: RawPrecio[]; preciosEspeciales?: PrecioEspecial[] };
 
-      const clientesConPrecios = await Promise.all(promesasClientesConPrecios);
+      const dataAllTyped = dataAll as { clientes?: ClienteRaw[] };
+      const clientesConPrecios: Array<Cliente & { preciosEspeciales?: PrecioEspecial[] }> = Array.isArray(dataAllTyped.clientes)
+        ? dataAllTyped.clientes.map(c => {
+            const preciosEspeciales: PrecioEspecial[] = [];
+            if (Array.isArray(c.preciosEspeciales) && c.preciosEspeciales.length > 0) {
+              preciosEspeciales.push(...c.preciosEspeciales);
+            } else if (Array.isArray(c.precios_especiales) && c.precios_especiales.length > 0) {
+              preciosEspeciales.push(...c.precios_especiales.map(p => ({ producto_nombre: (p.producto_nombre ?? p.producto?.nombre ?? ''), precio_unitario_fijo_ars: (p.precio_unitario_fijo_ars ?? 0) })));
+            }
+            return { ...c, preciosEspeciales };
+          })
+        : [];
 
       const datosParaExcel = clientesConPrecios.map(cliente => {
-        const listaDeProductosStr = cliente.preciosEspeciales
-          .map((p: PrecioEspecial) => `${p.producto_nombre}: $${p.precio_unitario_fijo_ars.toFixed(2)}`)
+        const listaDeProductosStr = (cliente.preciosEspeciales || [])
+          .map((p) => `${p.producto_nombre}: $${p.precio_unitario_fijo_ars.toFixed(2)}`)
           .join(', \n');
 
         return {
@@ -173,7 +181,6 @@ useEffect(() => {
         { wch: 30 },
         { wch: 50 },
       ];
-      
       XLSX.writeFile(workbook, "Lista_Clientes_Con_Precios.xlsx");
 
     } catch (err) {
@@ -329,6 +336,7 @@ useEffect(() => {
                 >
                   <FaUpload /> Carga Masiva
                 </button>
+                {/* Botón Cargar todos removido — ahora la descarga solicita todos los clientes desde el backend */}
                 <button
                   onClick={handleDownloadExcel}
                   disabled={loading || isDownloading || clientes.length === 0}
@@ -413,7 +421,10 @@ useEffect(() => {
                 {pagination && (
                   <div className="flex justify-center mt-6 gap-4">
                     <button
-                      onClick={() => setPage((prev) => Math.max(prev - 1, 1))}
+                      onClick={() => {
+                        setPage((prev) => Math.max(prev - 1, 1));
+                        console.debug('Page change requested:', Math.max(page - 1, 1));
+                      }}
                       disabled={!pagination.has_prev || loading}
                       className="px-4 py-2 rounded bg-indigo-700 text-white hover:bg-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
@@ -423,7 +434,10 @@ useEffect(() => {
                       Página {pagination.current_page} de {pagination.total_pages}
                     </span>
                     <button
-                      onClick={() => setPage((prev) => prev + 1)}
+                      onClick={() => {
+                        setPage((prev) => prev + 1);
+                        console.debug('Page change requested:', page + 1);
+                      }}
                       disabled={!pagination.has_next || loading}
                       className="px-4 py-2 rounded bg-indigo-700 text-white hover:bg-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
