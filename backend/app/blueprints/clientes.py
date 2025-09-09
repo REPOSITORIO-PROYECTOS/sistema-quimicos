@@ -7,7 +7,8 @@ from flask import Blueprint, request, jsonify
 from app import cache
 from datetime import datetime, timezone # Asegúrate de importar datetime y timezone si no lo haces globalmente
 from .. import db # Ajusta esta importación según la estructura de tu proyecto (donde inicializas db)
-from ..models import Cliente # Ajusta esta importación según dónde esté tu modelo Cliente
+from ..models import Cliente, PrecioEspecialCliente
+from sqlalchemy.orm import joinedload
 import pandas as pd
 import io
 import traceback
@@ -329,3 +330,88 @@ def buscar_todos_clientes():
         return jsonify({"clientes": clientes_list, "total": len(clientes_list)}), 200
     except Exception as e:
         return jsonify({"error": "Error interno al buscar clientes", "detalle": str(e)}), 500
+
+
+# READ - Obtener clientes junto con sus precios especiales (paginado o all=true)
+@clientes_bp.route('/obtener_todos_con_precios', methods=['GET'])
+def obtener_clientes_con_precios():
+    """
+    Devuelve clientes (paginado por defecto) e incluye una lista `precios_especiales`
+    por cliente con los precios especiales activos.
+
+    Parámetros:
+      - page, per_page: paginación (opcional)
+      - search_term: filtro por nombre/localidad/email/cuit/contacto
+      - all=true : devuelve todos los matches (ignora paginación)
+    """
+    try:
+        page = request.args.get('page', default=1, type=int)
+        per_page = request.args.get('per_page', default=20, type=int)
+        search_term = request.args.get('search_term', default=None, type=str)
+        all_flag = request.args.get('all', default='false', type=str).lower() == 'true'
+
+        query = Cliente.query.filter_by(activo=True)
+        if search_term:
+            like_term = f"%{search_term}%"
+            query = query.filter(
+                Cliente.nombre_razon_social.ilike(like_term) |
+                Cliente.localidad.ilike(like_term) |
+                Cliente.email.ilike(like_term) |
+                Cliente.cuit.ilike(like_term) |
+                Cliente.contacto_principal.ilike(like_term)
+            )
+
+        query = query.order_by(Cliente.nombre_razon_social)
+
+        if all_flag:
+            clientes_db = query.all()
+            pagination = None
+        else:
+            paginated = query.paginate(page=page, per_page=per_page, error_out=False)
+            clientes_db = paginated.items
+            pagination = {
+                'total_items': paginated.total,
+                'total_pages': paginated.pages,
+                'current_page': paginated.page,
+                'per_page': paginated.per_page,
+                'has_next': paginated.has_next,
+                'has_prev': paginated.has_prev,
+            }
+
+        clientes_list = [cliente_a_diccionario(c) for c in clientes_db]
+
+        # Obtener precios especiales activos para los clientes cargados (solo una query)
+        cliente_ids = [c['id'] for c in clientes_list]
+        precios_map = {cid: [] for cid in cliente_ids}
+        if cliente_ids:
+            precios_q = PrecioEspecialCliente.query.options(joinedload(PrecioEspecialCliente.producto)).filter(
+                PrecioEspecialCliente.cliente_id.in_(cliente_ids), PrecioEspecialCliente.activo == True
+            ).all()
+            for p in precios_q:
+                prod_nombre = None
+                try:
+                    prod_nombre = p.producto.nombre if p.producto else None
+                except Exception:
+                    prod_nombre = None
+                precios_map.setdefault(p.cliente_id, []).append({
+                    'id': p.id,
+                    'producto_id': p.producto_id,
+                    'producto_nombre': prod_nombre,
+                    'precio_unitario_fijo_ars': float(p.precio_unitario_fijo_ars) if p.precio_unitario_fijo_ars is not None else None,
+                    'activo': bool(p.activo)
+                })
+
+        # Adjuntar precios a cada cliente
+        for c in clientes_list:
+            c['precios_especiales'] = precios_map.get(c['id'], [])
+
+        resp = { 'clientes': clientes_list }
+        if pagination is not None:
+            resp['pagination'] = pagination
+
+        return jsonify(resp), 200
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": "Error interno al obtener clientes con precios", "detalle": str(e)}), 500
+    
+    
