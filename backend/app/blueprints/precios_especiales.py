@@ -454,10 +454,14 @@ def cargar_precios_desde_csv(current_user):
         tc_oficial_obj = TipoCambio.query.filter_by(nombre='Oficial').first()
         if not tc_oficial_obj or not tc_oficial_obj.valor or tc_oficial_obj.valor <= 0:
             return jsonify({"error": "El Tipo de Cambio 'Oficial' no está configurado o no es válido."}), 500
-        valor_dolar_oficial = tc_oficial_obj.valor
-        
-        clientes_db = {c.nombre_razon_social.strip().upper(): c for c in Cliente.query.all()}
-        productos_db = {p.nombre.strip().upper(): p for p in Producto.query.all()}
+        try:
+            # Asegurarnos de que el valor del TC sea Decimal para evitar mezclar float/Decimal
+            valor_dolar_oficial = Decimal(str(tc_oficial_obj.valor))
+        except Exception:
+            logger.exception("Tipo de cambio 'Oficial' no convertible a Decimal: %s", tc_oficial_obj.valor)
+            return jsonify({"error": "Tipo de cambio 'Oficial' inválido."}), 500
+
+        # clientes_db y productos_db fueron creados arriba con claves normalizadas (normalize_key_name)
         precios_existentes = {(pe.cliente_id, pe.producto_id): pe for pe in PrecioEspecialCliente.query.all()}
 
         # --- 4. PROCESAMIENTO DE FILAS ---
@@ -529,6 +533,12 @@ def cargar_precios_desde_csv(current_user):
                 registrar_error(linea_num, cliente_raw, producto_raw, f"Producto '{producto_raw}' no encontrado.")
                 continue
 
+            # Debug: registrar coincidencias para diagnósticos
+            try:
+                logger.info("[cargar_csv] fila=%s cliente_key=%s cliente_id=%s producto_key=%s producto_id=%s", linea_num, cliente_key, getattr(cliente, 'id', None), producto_key, getattr(producto, 'id', None))
+            except Exception:
+                logger.info("[cargar_csv] fila=%s cliente_key=%s producto_key=%s (no ids disponibles)", linea_num, cliente_key, producto_key)
+
             moneda_norm = normalize_text(moneda_raw)
             moneda_csv = moneda_aliases.get(moneda_norm, None) if moneda_norm else None
             # Si no viene moneda, asumimos ARS
@@ -556,10 +566,14 @@ def cargar_precios_desde_csv(current_user):
             precio_esp_existente = precios_existentes.get((cliente.id, producto.id))
 
             if precio_esp_existente:
+                old_val = precio_esp_existente.precio_unitario_fijo_ars
+                logger.info("[cargar_csv] actualizar existente: precio_esp_id=%s cliente_id=%s producto_id=%s old=%s new=%s", getattr(precio_esp_existente, 'id', None), cliente.id, producto.id, str(old_val), str(precio_final_ars))
                 precio_esp_existente.precio_unitario_fijo_ars = precio_final_ars
                 precio_esp_existente.activo = True
+                logger.info("[cargar_csv] asignado nuevo valor a precio_esp (sin commit aún): precio_esp_id=%s cliente_id=%s producto_id=%s new=%s", getattr(precio_esp_existente, 'id', None), cliente.id, producto.id, str(precio_final_ars))
                 registros_actualizados += 1
             else:
+                logger.info("[cargar_csv] creando nuevo precio_esp: cliente_id=%s producto_id=%s precio=%s", cliente.id, producto.id, str(precio_final_ars))
                 nuevo_precio_esp = PrecioEspecialCliente(cliente_id=cliente.id, producto_id=producto.id, precio_unitario_fijo_ars=precio_final_ars, activo=True)
                 db.session.add(nuevo_precio_esp)
                 precios_existentes[(cliente.id, producto.id)] = nuevo_precio_esp
