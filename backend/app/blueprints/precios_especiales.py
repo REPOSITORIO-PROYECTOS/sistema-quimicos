@@ -1,5 +1,5 @@
 # app/blueprints/precios_especiales.py
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, send_file
 from sqlalchemy.orm import joinedload # Para cargar datos relacionados eficientemente
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 import traceback
@@ -40,6 +40,83 @@ def precio_especial_a_dict(precio_esp):
         "fecha_creacion": precio_esp.fecha_creacion.isoformat() if precio_esp.fecha_creacion else None,
         "fecha_modificacion": precio_esp.fecha_modificacion.isoformat() if precio_esp.fecha_modificacion else None,
     }
+
+
+@precios_especiales_bp.route('/descargar_plantilla_precios', methods=['GET'])
+@token_required
+@roles_required(ROLES['ADMIN'])
+def descargar_plantilla_precios(current_user):
+    """
+    Genera y devuelve un archivo Excel (.xlsx) con dos hojas:
+    - 'PLANTILLA': columnas requeridas y ejemplos de formato + instrucciones.
+    - 'PRECIOS_ACTUALES': lista de precios especiales actualmente guardados (cliente, producto, precio en ARS).
+
+    Esto facilita que el usuario descargue, corrija y vuelva a subir el archivo en el formato esperado.
+    """
+    try:
+        # Hoja plantilla: columnas y ejemplos
+        plantilla_cols = ['cliente', 'producto', 'precio', 'moneda']
+        plantilla_ejemplo = [
+            {'cliente': 'ACME S.A.', 'producto': 'Detergente 1L', 'precio': '1234.56', 'moneda': 'ARS'},
+            {'cliente': 'ACME S.A.', 'producto': 'Shampoo 500ml', 'precio': '10.00', 'moneda': 'USD'},
+            {'cliente': '', 'producto': '', 'precio': '', 'moneda': ''},
+        ]
+        df_plantilla = pd.DataFrame(plantilla_ejemplo, columns=plantilla_cols)
+
+        # Hoja de instrucciones (una sola columna con texto multilínea)
+        instrucciones = [
+            'INSTRUCCIONES PARA LA PLANTILLA:',
+            '- La primera hoja "PLANTILLA" contiene las columnas requeridas: cliente, producto, precio, moneda.',
+            "- Si la moneda es 'USD', el sistema usará el Tipo de Cambio 'Oficial' para convertir a ARS al importar.",
+            "- Para agregar o actualizar precios: incluye una fila por combinación cliente+producto. Si ya existe una regla, se actualizará el precio; si no existe, se creará.",
+            "- Si un cliente tiene 2 precios especiales (por ejemplo para 2 presentaciones diferentes), deben ser dos filas con el mismo nombre de cliente y diferentes 'producto'.",
+            "- Evita columnas adicionales. Mantén los nombres de columnas tal cual (no traduzcas).",
+            "- Ejemplo: si cliente 'ACME' tiene dos precios especiales para el mismo producto con distinta presentación, carga dos filas con distinto texto en 'producto'.",
+            "- Guarda el archivo como .xlsx y súbelo usando el endpoint /precios_especiales/cargar_csv (o desde la UI si está disponible).",
+        ]
+        df_instrucciones = pd.DataFrame({'Notas': instrucciones})
+
+        # Hoja con precios actuales
+        precios = []
+        precios_q = db.session.query(PrecioEspecialCliente).options(
+            joinedload(PrecioEspecialCliente.cliente),
+            joinedload(PrecioEspecialCliente.producto)
+        ).all()
+        for p in precios_q:
+            precios.append({
+                'cliente_id': p.cliente_id,
+                'cliente': p.cliente.nombre_razon_social if p.cliente else None,
+                'producto_id': p.producto_id,
+                'producto': p.producto.nombre if p.producto else None,
+                'precio': float(p.precio_unitario_fijo_ars) if p.precio_unitario_fijo_ars is not None else None,
+                'moneda': 'ARS'
+            })
+        # Ordenar por cliente nombre y producto para facilitar la revisión
+        df_precios_actuales = pd.DataFrame(precios, columns=['cliente_id', 'cliente', 'producto_id', 'producto', 'precio', 'moneda'])
+        df_precios_actuales.sort_values(by=['cliente', 'producto'], inplace=True)
+
+        # Escribir a Excel en memoria
+        output = io.BytesIO()
+        try:
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                df_plantilla.to_excel(writer, sheet_name='PLANTILLA', index=False)
+                df_precios_actuales.to_excel(writer, sheet_name='PRECIOS_ACTUALES', index=False)
+                df_instrucciones.to_excel(writer, sheet_name='INSTRUCCIONES', index=False)
+        except Exception:
+            # Fallback: intentar con xlsxwriter si openpyxl no está disponible
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                df_plantilla.to_excel(writer, sheet_name='PLANTILLA', index=False)
+                df_precios_actuales.to_excel(writer, sheet_name='PRECIOS_ACTUALES', index=False)
+                df_instrucciones.to_excel(writer, sheet_name='INSTRUCCIONES', index=False)
+
+        output.seek(0)
+        filename = 'plantilla_precios_especiales.xlsx'
+        logger.info("[descargar_plantilla_precios] Usuario %s descargó plantilla/actuales", getattr(current_user, 'id', None))
+        return send_file(output, as_attachment=True, download_name=filename, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+    except Exception as e:
+        logger.exception("ERROR [descargar_plantilla_precios]: %s", e)
+        return jsonify({"error": "Error al generar el archivo Excel."}), 500
 
 # --- Endpoints CRUD ---
 
@@ -346,8 +423,11 @@ def cargar_precios_desde_csv(current_user):
     if file.filename == '':
         return jsonify({"error": "No se seleccionó ningún archivo."}), 400
 
-    if not file.filename.lower().endswith('.csv'):
-        return jsonify({"error": "El archivo debe tener la extensión .csv"}), 400
+    filename_lower = file.filename.lower()
+    is_excel = filename_lower.endswith('.xls') or filename_lower.endswith('.xlsx')
+    is_csv = filename_lower.endswith('.csv')
+    if not (is_csv or is_excel):
+        return jsonify({"error": "El archivo debe tener la extensión .csv, .xls o .xlsx"}), 400
 
     try:
         # --- 1. LECTURA Y DETECCIÓN DE DELIMITADOR ---
@@ -388,13 +468,32 @@ def cargar_precios_desde_csv(current_user):
             delimitador_detectado = max(counts, key=counts.get) if any(counts.values()) else ','
 
         # --- 2. LECTURA CON PANDAS ---
-        df = pd.read_csv(
-            io.StringIO(contenido_str),
-            sep=delimitador_detectado,
-            keep_default_na=False,
-            dtype=str,
-            engine='python'
-        )
+        if is_excel:
+            # Leer Excel: preferimos la hoja PRECIOS_ACTUALES si existe, si no PLANTILLA, si no la primera
+            excel_io = io.BytesIO(contenido_bytes)
+            try:
+                xls = pd.ExcelFile(excel_io)
+            except Exception as e:
+                logger.exception("Error al leer archivo Excel: %s", e)
+                return jsonify({"error": "Error al leer archivo Excel."}), 400
+
+            sheet_to_use = None
+            for candidate in ['PRECIOS_ACTUALES', 'PRECIOS_ACTUALES'.lower(), 'PLANTILLA', 'PLANTILLA'.lower()]:
+                if candidate in xls.sheet_names:
+                    sheet_to_use = candidate
+                    break
+            if sheet_to_use is None:
+                sheet_to_use = xls.sheet_names[0]
+
+            df = pd.read_excel(excel_io, sheet_name=sheet_to_use, dtype=str)
+        else:
+            df = pd.read_csv(
+                io.StringIO(contenido_str),
+                sep=delimitador_detectado,
+                keep_default_na=False,
+                dtype=str,
+                engine='python'
+            )
 
         # Helpers para normalizar cabeceras, claves y parsing de precio
         def normalize_text(s: str) -> str:
@@ -417,6 +516,10 @@ def cargar_precios_desde_csv(current_user):
             'moneda': ['moneda', 'currency', 'divisa', 'moneda codigo', 'moneda_codigo']
         }
 
+        # Aceptar columnas ID si están presentes en Excel export (cliente_id, producto_id)
+        column_variants['cliente_id'] = ['cliente_id', 'cliente id', 'client_id', 'id cliente']
+        column_variants['producto_id'] = ['producto_id', 'producto id', 'product_id', 'id producto']
+
         def find_column(df_columns, targets):
             cols_norm = {normalize_text(c): c for c in df_columns}
             for t in targets:
@@ -430,16 +533,18 @@ def cargar_precios_desde_csv(current_user):
                         return orig
             return None
 
-        # Determinar columnas reales en el CSV
+        # Determinar columnas reales en el CSV/Excel
         cliente_col = find_column(df.columns, column_variants['cliente'])
         producto_col = find_column(df.columns, column_variants['producto'])
         precio_col = find_column(df.columns, column_variants['precio'])
         moneda_col = find_column(df.columns, column_variants['moneda'])
+        cliente_id_col = find_column(df.columns, column_variants.get('cliente_id', []))
+        producto_id_col = find_column(df.columns, column_variants.get('producto_id', []))
 
-        if precio_col is None or cliente_col is None or producto_col is None:
+        if precio_col is None or (cliente_col is None and cliente_id_col is None) or (producto_col is None and producto_id_col is None):
             missing = []
-            if cliente_col is None: missing.append('Cliente')
-            if producto_col is None: missing.append('Producto')
+            if cliente_col is None and cliente_id_col is None: missing.append('Cliente o cliente_id')
+            if producto_col is None and producto_id_col is None: missing.append('Producto o producto_id')
             if precio_col is None: missing.append('Precio')
             return jsonify({"error": f"El CSV debe contener las columnas (o variantes) requeridas: {', '.join(missing)}"}), 400
 
@@ -515,22 +620,51 @@ def cargar_precios_desde_csv(current_user):
 
         for index, row in df.iterrows():
             linea_num = index + 2
-            cliente_raw = row.get(cliente_col, '')
-            producto_raw = row.get(producto_col, '')
+            # Soportar identificación por ID si viene en el Excel exportado
+            cliente_raw = None
+            producto_raw = None
+            cliente_id_val = None
+            producto_id_val = None
+            if cliente_id_col:
+                cliente_id_val = row.get(cliente_id_col, None)
+            if producto_id_col:
+                producto_id_val = row.get(producto_id_col, None)
+            if cliente_col:
+                cliente_raw = row.get(cliente_col, '')
+            if producto_col:
+                producto_raw = row.get(producto_col, '')
             precio_raw = row.get(precio_col, '')
             moneda_raw = row.get(moneda_col, '') if moneda_col else ''
 
-            cliente_key = normalize_text(cliente_raw)
-            producto_key = normalize_text(producto_raw)
+            # Resolver cliente/ producto por ID si vienen
+            cliente = None
+            producto = None
+            if cliente_id_val and str(cliente_id_val).strip() != '':
+                try:
+                    cid = int(float(cliente_id_val))
+                    cliente = db.session.get(Cliente, cid)
+                except Exception:
+                    cliente = None
+            else:
+                cliente_key = normalize_text(cliente_raw)
+                cliente = clientes_db.get(cliente_key)
 
-            cliente = clientes_db.get(cliente_key)
             if not cliente:
-                registrar_error(linea_num, cliente_raw, producto_raw, f"Cliente '{cliente_raw}' no encontrado.")
+                registrar_error(linea_num, cliente_raw or cliente_id_val, producto_raw or producto_id_val, f"Cliente '{cliente_raw or cliente_id_val}' no encontrado.")
                 continue
 
-            producto = productos_db.get(producto_key)
+            if producto_id_val and str(producto_id_val).strip() != '':
+                try:
+                    pid = int(float(producto_id_val))
+                    producto = db.session.get(Producto, pid)
+                except Exception:
+                    producto = None
+            else:
+                producto_key = normalize_text(producto_raw)
+                producto = productos_db.get(producto_key)
+
             if not producto:
-                registrar_error(linea_num, cliente_raw, producto_raw, f"Producto '{producto_raw}' no encontrado.")
+                registrar_error(linea_num, cliente_raw or cliente_id_val, producto_raw or producto_id_val, f"Producto '{producto_raw or producto_id_val}' no encontrado.")
                 continue
 
             # Debug: registrar coincidencias para diagnósticos
