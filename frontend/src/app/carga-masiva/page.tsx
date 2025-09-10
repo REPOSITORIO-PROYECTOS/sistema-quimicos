@@ -3,8 +3,31 @@
 
 import BotonVolver from "@/components/BotonVolver";
 import UploaderCSV from "@/components/UploaderCSV"; // Importamos nuestro nuevo componente
+import { useState } from 'react';
+
+// Use environment API base or local backend fallback when developing locally
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8001';
+
+async function descargarPlantilla() {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+  const headers: HeadersInit = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE_URL}/precios_especiales/descargar_plantilla_precios`, { headers });
+  if (!res.ok) throw new Error('Error al descargar la plantilla');
+  const blob = await res.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'plantilla_precios_especiales.xlsx';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+}
 
 export default function CargaMasivaPage() {
+  const [descargando, setDescargando] = useState(false);
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-indigo-900 py-10 px-4">
       <div className="bg-white p-6 md:p-8 rounded-xl shadow-2xl w-full max-w-3xl border border-gray-200">
@@ -44,6 +67,17 @@ export default function CargaMasivaPage() {
                   Se eliminaron los apóstrofes y se usaron etiquetas <code> para consistencia.
                 */}
                 <p className="font-semibold mt-2">Columnas requeridas: <code className="bg-gray-200 p-1 rounded">Cliente</code>, <code className="bg-gray-200 p-1 rounded">Producto</code>, <code className="bg-gray-200 p-1 rounded">Precio</code>, <code className="bg-gray-200 p-1 rounded">Moneda</code> (usar <code className="bg-gray-200 p-1 rounded">ARS</code> o <code className="bg-gray-200 p-1 rounded">USD</code>).</p>
+                <p className="mt-2">Si un cliente tiene 2 precios especiales para distintos productos o presentaciones, agrega dos filas con el mismo nombre de cliente y distintos valores en la columna <code className="bg-gray-200 p-1 rounded">Producto</code>.</p>
+                <div className="mt-4 flex items-center gap-3">
+                  <button
+                    className="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700"
+                    onClick={async () => { setDescargando(true); try { await descargarPlantilla(); } catch (error) { console.error('Error descargando plantilla:', error); alert('Error al descargar plantilla'); } finally { setDescargando(false); } }}
+                    disabled={descargando}
+                  >
+                    {descargando ? 'Descargando...' : 'Descargar plantilla (Excel)'}
+                  </button>
+                  <a className="text-sm text-gray-600">La plantilla incluye la hoja <code>PRECIOS_ACTUALES</code> con la lista de clientes y sus precios actuales para corregir fácilmente.</a>
+                </div>
               </>
             }
           />
