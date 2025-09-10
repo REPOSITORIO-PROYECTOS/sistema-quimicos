@@ -76,21 +76,38 @@ def descargar_plantilla_precios(current_user):
         ]
         df_instrucciones = pd.DataFrame({'Notas': instrucciones})
 
-        # Hoja con precios actuales
+        # Hoja con precios actuales: incluir TODOS los clientes.
+        # - Si el cliente tiene precios especiales, añadir una fila por cada precio.
+        # - Si el cliente NO tiene precios especiales, añadir una sola fila con producto/precio/moneda vacíos.
         precios = []
-        precios_q = db.session.query(PrecioEspecialCliente).options(
-            joinedload(PrecioEspecialCliente.cliente),
-            joinedload(PrecioEspecialCliente.producto)
-        ).all()
-        for p in precios_q:
-            precios.append({
-                'cliente_id': p.cliente_id,
-                'cliente': p.cliente.nombre_razon_social if p.cliente else None,
-                'producto_id': p.producto_id,
-                'producto': p.producto.nombre if p.producto else None,
-                'precio': float(p.precio_unitario_fijo_ars) if p.precio_unitario_fijo_ars is not None else None,
-                'moneda': 'ARS'
-            })
+        clientes_all = Cliente.query.order_by(Cliente.nombre_razon_social).all()
+        for c in clientes_all:
+            # obtener precios especiales del cliente (si los tiene)
+            precios_cliente = db.session.query(PrecioEspecialCliente).options(
+                joinedload(PrecioEspecialCliente.cliente),
+                joinedload(PrecioEspecialCliente.producto)
+            ).filter(PrecioEspecialCliente.cliente_id == c.id).all()
+
+            if precios_cliente:
+                for p in precios_cliente:
+                    precios.append({
+                        'cliente_id': p.cliente_id,
+                        'cliente': p.cliente.nombre_razon_social if p.cliente else (c.nombre_razon_social if c else None),
+                        'producto_id': p.producto_id,
+                        'producto': p.producto.nombre if p.producto else None,
+                        'precio': float(p.precio_unitario_fijo_ars) if p.precio_unitario_fijo_ars is not None else None,
+                        'moneda': 'ARS'
+                    })
+            else:
+                # Cliente sin precios especiales: una fila con producto/precio vacíos
+                precios.append({
+                    'cliente_id': c.id,
+                    'cliente': c.nombre_razon_social,
+                    'producto_id': None,
+                    'producto': '',
+                    'precio': None,
+                    'moneda': ''
+                })
         # Ordenar por cliente nombre y producto para facilitar la revisión
         df_precios_actuales = pd.DataFrame(precios, columns=['cliente_id', 'cliente', 'producto_id', 'producto', 'precio', 'moneda'])
         df_precios_actuales.sort_values(by=['cliente', 'producto'], inplace=True)
