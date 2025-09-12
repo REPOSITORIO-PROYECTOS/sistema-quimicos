@@ -266,18 +266,31 @@ def cargar_clientes_desde_csv():
 
             if cliente_existente:
                 # --- ACTUALIZAR CLIENTE EXISTENTE ---
-                # Actualiza solo si la información del CSV es más completa
+                # Regla de dirección:
+                # - Si el CSV trae dirección no vacía, usarla (sobrescribe).
+                # - Si el CSV NO trae dirección y la BD ya tiene una dirección, conservarla (NO sobrescribir).
+                # - Si el CSV NO trae dirección y la BD TAMPOCO tiene, establecer 'No registrada'.
                 cliente_existente.telefono = telefono_csv if telefono_csv else cliente_existente.telefono
-                cliente_existente.direccion = direccion_csv if direccion_csv else cliente_existente.direccion
+
+                # Dirección: aplicar reglas anteriores
+                if direccion_csv:
+                    cliente_existente.direccion = direccion_csv
+                else:
+                    # CSV sin dirección -> conservar si ya existe en BD
+                    if not cliente_existente.direccion or str(cliente_existente.direccion).strip() == '':
+                        cliente_existente.direccion = 'No registrada'
+
                 cliente_existente.localidad = localidad_csv if localidad_csv else cliente_existente.localidad
                 cliente_existente.activo = True # Se reactiva si estaba inactivo
                 registros_actualizados += 1
             else:
                 # --- CREAR NUEVO CLIENTE ---
+                # Si no se provee dirección en CSV, guardar 'No registrada'
+                direccion_para_guardar = direccion_csv if direccion_csv else 'No registrada'
                 nuevo_cliente = Cliente(
                     nombre_razon_social=nombre_csv,
                     telefono=telefono_csv,
-                    direccion=direccion_csv,
+                    direccion=direccion_para_guardar,
                     localidad=localidad_csv,
                     activo=True
                 )
