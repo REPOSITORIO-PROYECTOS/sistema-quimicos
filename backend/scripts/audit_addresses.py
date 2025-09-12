@@ -14,12 +14,14 @@ from pathlib import Path
 # Ajusta la ruta del paquete si es necesario
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
+# Añadir la carpeta 'backend' al sys.path para que 'app' sea resolvible como paquete top-level
+BACKEND_DIR = PROJECT_ROOT / 'backend'
+sys.path.insert(0, str(BACKEND_DIR))
 
-# Importa la app y db del proyecto
+# Importa la app y db del proyecto; detecta el módulo de modelos según la estructura
 try:
     from backend.app import create_app, db
 except Exception:
-    # Intentar importaciones alternativas si la estructura difiere
     try:
         from app import create_app, db
     except Exception as e:
@@ -27,7 +29,18 @@ except Exception:
         print(str(e))
         raise
 
-from app.models import Cliente, Venta
+import importlib
+
+# Importar modelos basados en el módulo real de create_app
+models_module_name = create_app.__module__ + '.models'
+try:
+    models = importlib.import_module(models_module_name)
+except Exception as e:
+    print(f"Error importando módulo de modelos: {models_module_name}")
+    raise
+
+Cliente = getattr(models, 'Cliente')
+Venta = getattr(models, 'Venta')
 
 OUT_DIR = PROJECT_ROOT / 'backend' / 'scripts' / 'output'
 OUT_DIR.mkdir(parents=True, exist_ok=True)
