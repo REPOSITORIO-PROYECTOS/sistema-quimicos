@@ -262,7 +262,13 @@ class PrecioEspecialCliente(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=False, index=True) # Asume tabla 'clientes' con id
     producto_id = db.Column(db.Integer, db.ForeignKey('productos.id'), nullable=False, index=True) # Asume tabla 'productos' con id
-    precio_unitario_fijo_ars = db.Column(db.Numeric(15, 4), nullable=False) # Precio fijo en ARS, ajustar precisión si es necesario
+    # Precio fijo en ARS (valor final usado en ventas). Seguimos manteniéndolo para compatibilidad.
+    precio_unitario_fijo_ars = db.Column(db.Numeric(15, 4), nullable=False)
+
+    # Nuevos campos para registrar la moneda/origen del precio y el tipo de cambio usado
+    moneda_original = db.Column(db.String(3), nullable=True, index=True)  # 'ARS' o 'USD'
+    precio_original = db.Column(db.Numeric(15, 4), nullable=True)         # Precio en la moneda original
+    tipo_cambio_usado = db.Column(db.Numeric(15, 6), nullable=True)        # Tipo de cambio utilizado para la conversión
     activo = db.Column(db.Boolean, default=True, nullable=False)
     fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow)
     fecha_modificacion = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -276,9 +282,11 @@ class PrecioEspecialCliente(db.Model):
 
     def __repr__(self):
         estado = 'Activo' if self.activo else 'Inactivo'
-        cliente_info = f"Cliente ID {self.cliente_id}" if not self.cliente else f"'{self.cliente.razon_social}'" # Asume 'razon_social' en Cliente
+        cliente_info = f"Cliente ID {self.cliente_id}" if not self.cliente else f"'{self.cliente.nombre_razon_social}'"
         producto_info = f"Producto ID {self.producto_id}" if not self.producto else f"'{self.producto.nombre}'"
-        return f"<PrecioEspecial {cliente_info} - {producto_info}: ARS {self.precio_unitario_fijo_ars:.2f} ({estado})>"
+        moneda_info = f"{self.moneda_original or 'ARS'}"
+        precio_info = float(self.precio_original) if self.precio_original is not None else float(self.precio_unitario_fijo_ars or 0)
+        return f"<PrecioEspecial {cliente_info} - {producto_info}: {moneda_info} {precio_info:.2f} -> ARS {self.precio_unitario_fijo_ars:.2f} ({estado})>"
 
 # --- Modelo Combo ---
 class Combo(db.Model):

@@ -29,17 +29,67 @@ logger = logging.getLogger(__name__)
 def precio_especial_a_dict(precio_esp):
     """Serializa un objeto PrecioEspecialCliente a diccionario."""
     if not precio_esp: return None
+    # Calcular dinámicamente el precio en ARS según la moneda original y el Tipo de Cambio 'Oficial'
+    precio_computado = None
+    tipo_cambio_actual = None
+    try:
+        precio_computado, tipo_cambio_actual = calcular_precio_ars(precio_esp)
+    except Exception as e:
+        logger.exception("[precio_especial_a_dict] error calculando precio ARS dinámico: %s", e)
+
     return {
         "id": precio_esp.id,
         "cliente_id": precio_esp.cliente_id,
         "cliente_nombre": precio_esp.cliente.nombre_razon_social if precio_esp.cliente else None,
         "producto_id": precio_esp.producto_id,
         "producto_nombre": precio_esp.producto.nombre if precio_esp.producto else None,
-        "precio_unitario_fijo_ars": float(precio_esp.precio_unitario_fijo_ars) if precio_esp.precio_unitario_fijo_ars is not None else None,
+        # precio_unitario_fijo_ars ahora refleja el valor COMPUTADO en ARS al momento de la llamada
+        "precio_unitario_fijo_ars": float(precio_computado) if precio_computado is not None else None,
+        # Campos originales guardados en la BD
+        "precio_unitario_fijo_ars_guardado": float(precio_esp.precio_unitario_fijo_ars) if precio_esp.precio_unitario_fijo_ars is not None else None,
+        "moneda_original": precio_esp.moneda_original if hasattr(precio_esp, 'moneda_original') else None,
+        "precio_original": float(precio_esp.precio_original) if hasattr(precio_esp, 'precio_original') and precio_esp.precio_original is not None else None,
+        # Tipo de cambio usado para el cálculo actual (puede ser distinto del guardado)
+        "tipo_cambio_usado": float(tipo_cambio_actual) if tipo_cambio_actual is not None else (float(precio_esp.tipo_cambio_usado) if hasattr(precio_esp, 'tipo_cambio_usado') and precio_esp.tipo_cambio_usado is not None else None),
         "activo": precio_esp.activo,
         "fecha_creacion": precio_esp.fecha_creacion.isoformat() if precio_esp.fecha_creacion else None,
         "fecha_modificacion": precio_esp.fecha_modificacion.isoformat() if precio_esp.fecha_modificacion else None,
     }
+
+
+def calcular_precio_ars(precio_esp):
+    """Devuelve una tupla (precio_en_ars: Decimal | None, tipo_cambio_usado: Decimal | None).
+
+    Reglas:
+    - Si `precio_esp.moneda_original` == 'USD' y `precio_esp.precio_original` está presente -> multiplicar por TipoCambio 'Oficial' actual.
+    - Si `moneda_original` es 'ARS' o no existe `precio_original`, usar `precio_unitario_fijo_ars` guardado.
+    - Si no hay información suficiente, devolver (None, None).
+    """
+    tipo_cambio_actual = None
+    precio_ars = None
+    try:
+        moneda = getattr(precio_esp, 'moneda_original', None) or 'ARS'
+        moneda = str(moneda).upper()
+        if moneda == 'USD' and getattr(precio_esp, 'precio_original', None) is not None:
+            tc_obj = TipoCambio.query.filter_by(nombre='Oficial').first()
+            if not tc_obj or not tc_obj.valor:
+                raise ValueError("Tipo de Cambio 'Oficial' no disponible")
+            try:
+                tipo_cambio_actual = Decimal(str(tc_obj.valor))
+            except Exception:
+                tipo_cambio_actual = Decimal(tc_obj.valor)
+            precio_ars = Decimal(precio_esp.precio_original) * tipo_cambio_actual
+        else:
+            # Valor guardado en ARS
+            if getattr(precio_esp, 'precio_unitario_fijo_ars', None) is not None:
+                precio_ars = Decimal(precio_esp.precio_unitario_fijo_ars)
+            else:
+                precio_ars = None
+    except Exception:
+        # Propagar excepción hacia el llamador si desea manejarlo; aquí retornamos None
+        raise
+
+    return (precio_ars, tipo_cambio_actual)
 
 
 @precios_especiales_bp.route('/descargar_plantilla_precios', methods=['GET'])
@@ -304,7 +354,7 @@ def actualizar_precio_especial(current_user, precio_id):
 
         if updated:
             db.session.commit()
-             # Recargar datos para la respuesta
+            # Recargar datos para la respuesta
             precio_cargado = db.session.query(PrecioEspecialCliente).options(
                 joinedload(PrecioEspecialCliente.cliente),
                 joinedload(PrecioEspecialCliente.producto)
@@ -590,6 +640,7 @@ def cargar_precios_desde_csv(current_user):
         registros_creados = 0
         registros_actualizados = 0
         filas_fallidas = []
+        acciones_por_fila = []
 
         def registrar_error(linea_num, cliente_raw, producto_raw, motivo):
             filas_fallidas.append({
@@ -668,6 +719,13 @@ def cargar_precios_desde_csv(current_user):
 
             if not cliente:
                 registrar_error(linea_num, cliente_raw or cliente_id_val, producto_raw or producto_id_val, f"Cliente '{cliente_raw or cliente_id_val}' no encontrado.")
+                acciones_por_fila.append({
+                    'linea': linea_num,
+                    'accion': 'error',
+                    'motivo': f"Cliente '{cliente_raw or cliente_id_val}' no encontrado.",
+                    'cliente': cliente_raw or cliente_id_val,
+                    'producto': producto_raw or producto_id_val
+                })
                 continue
 
             if producto_id_val and str(producto_id_val).strip() != '':
@@ -682,6 +740,13 @@ def cargar_precios_desde_csv(current_user):
 
             if not producto:
                 registrar_error(linea_num, cliente_raw or cliente_id_val, producto_raw or producto_id_val, f"Producto '{producto_raw or producto_id_val}' no encontrado.")
+                acciones_por_fila.append({
+                    'linea': linea_num,
+                    'accion': 'error',
+                    'motivo': f"Producto '{producto_raw or producto_id_val}' no encontrado.",
+                    'cliente': cliente_raw or cliente_id_val,
+                    'producto': producto_raw or producto_id_val
+                })
                 continue
 
             # Debug: registrar coincidencias para diagnósticos
@@ -698,6 +763,14 @@ def cargar_precios_desde_csv(current_user):
 
             if moneda_csv not in ['ARS', 'USD']:
                 registrar_error(linea_num, cliente_raw, producto_raw, f"Moneda '{moneda_raw}' no válida. Use 'ARS' o 'USD'.")
+                acciones_por_fila.append({
+                    'linea': linea_num,
+                    'accion': 'error',
+                    'motivo': f"Moneda '{moneda_raw}' no válida.",
+                    'cliente': cliente_raw,
+                    'producto': producto_raw,
+                    'moneda': moneda_raw
+                })
                 continue
 
             try:
@@ -706,6 +779,14 @@ def cargar_precios_desde_csv(current_user):
                     raise ValueError("Precio negativo")
             except (InvalidOperation, ValueError) as e:
                 registrar_error(linea_num, cliente_raw, producto_raw, f"Precio '{precio_raw}' no es un número válido: {e}")
+                acciones_por_fila.append({
+                    'linea': linea_num,
+                    'accion': 'error',
+                    'motivo': f"Precio '{precio_raw}' no es un número válido: {e}",
+                    'cliente': cliente_raw,
+                    'producto': producto_raw,
+                    'precio_raw': precio_raw
+                })
                 continue
 
             # --- LÓGICA DE CONVERSIÓN DE MONEDA SIMPLIFICADA ---
@@ -719,16 +800,49 @@ def cargar_precios_desde_csv(current_user):
             if precio_esp_existente:
                 old_val = precio_esp_existente.precio_unitario_fijo_ars
                 logger.info("[cargar_csv] actualizar existente: precio_esp_id=%s cliente_id=%s producto_id=%s old=%s new=%s", getattr(precio_esp_existente, 'id', None), cliente.id, producto.id, str(old_val), str(precio_final_ars))
+                # Guardar campos nuevos: moneda_original, precio_original, tipo_cambio_usado
+                precio_esp_existente.moneda_original = moneda_csv
+                precio_esp_existente.precio_original = precio_original
+                precio_esp_existente.tipo_cambio_usado = (valor_dolar_oficial if moneda_csv == 'USD' else None)
                 precio_esp_existente.precio_unitario_fijo_ars = precio_final_ars
                 precio_esp_existente.activo = True
                 logger.info("[cargar_csv] asignado nuevo valor a precio_esp (sin commit aún): precio_esp_id=%s cliente_id=%s producto_id=%s new=%s", getattr(precio_esp_existente, 'id', None), cliente.id, producto.id, str(precio_final_ars))
                 registros_actualizados += 1
+                acciones_por_fila.append({
+                    'linea': linea_num,
+                    'accion': 'actualizado',
+                    'cliente_id': cliente.id,
+                    'producto_id': producto.id,
+                    'old_val_ars': float(old_val) if old_val is not None else None,
+                    'new_val_ars': float(precio_final_ars),
+                    'moneda': moneda_csv,
+                    'precio_original': float(precio_original),
+                    'tipo_cambio_usado': float(valor_dolar_oficial) if moneda_csv == 'USD' else None
+                })
             else:
                 logger.info("[cargar_csv] creando nuevo precio_esp: cliente_id=%s producto_id=%s precio=%s", cliente.id, producto.id, str(precio_final_ars))
-                nuevo_precio_esp = PrecioEspecialCliente(cliente_id=cliente.id, producto_id=producto.id, precio_unitario_fijo_ars=precio_final_ars, activo=True)
+                nuevo_precio_esp = PrecioEspecialCliente(
+                    cliente_id=cliente.id,
+                    producto_id=producto.id,
+                    precio_unitario_fijo_ars=precio_final_ars,
+                    moneda_original=moneda_csv,
+                    precio_original=precio_original,
+                    tipo_cambio_usado=(valor_dolar_oficial if moneda_csv == 'USD' else None),
+                    activo=True
+                )
                 db.session.add(nuevo_precio_esp)
                 precios_existentes[(cliente.id, producto.id)] = nuevo_precio_esp
                 registros_creados += 1
+                acciones_por_fila.append({
+                    'linea': linea_num,
+                    'accion': 'creado',
+                    'cliente_id': cliente.id,
+                    'producto_id': producto.id,
+                    'new_val_ars': float(precio_final_ars),
+                    'moneda': moneda_csv,
+                    'precio_original': float(precio_original),
+                    'tipo_cambio_usado': float(valor_dolar_oficial) if moneda_csv == 'USD' else None
+                })
         
         # --- 5. COMMIT Y RESPUESTA FINAL ---
         db.session.commit()
@@ -738,17 +852,25 @@ def cargar_precios_desde_csv(current_user):
             "errores": len(filas_fallidas)
         }
 
+        debug_mode = request.args.get('debug', 'false').lower() == 'true'
         if filas_fallidas:
-            return jsonify({
+            payload = {
                 "status": "completed_with_errors",
                 "message": f"Proceso completado. Se procesaron {registros_creados + registros_actualizados} registros, pero {len(filas_fallidas)} filas tuvieron errores.",
-                "summary": summary, "failed_rows": filas_fallidas
-            }), 207
+                "summary": summary,
+                "failed_rows": filas_fallidas
+            }
+            if debug_mode:
+                payload['acciones_por_fila'] = acciones_por_fila
+            return jsonify(payload), 207
         else:
-            return jsonify({
+            payload = {
                 "status": "success", "message": "Carga masiva completada exitosamente sin errores.",
                 "summary": summary
-            }), 200
+            }
+            if debug_mode:
+                payload['acciones_por_fila'] = acciones_por_fila
+            return jsonify(payload), 200
 
     except pd.errors.ParserError as e:
         logger.exception("Error de parser al leer CSV: %s", e)
