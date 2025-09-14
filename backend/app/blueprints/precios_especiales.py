@@ -224,12 +224,58 @@ def crear_precio_especial(current_user):
         return jsonify({"error": f"Ya existe un precio especial para este cliente y producto (ID: {existente.id}). Use PUT para modificarlo."}), 409 # Conflict
 
     try:
-        nuevo_precio = PrecioEspecialCliente(
-            cliente_id=cliente_id,
-            producto_id=producto_id,
-            precio_unitario_fijo_ars=precio_decimal,
-            activo=activo
-        )
+        # Soportar moneda_original/precio_original opcionales en el payload
+        moneda_original = data.get('moneda_original')
+        precio_original_val = data.get('precio_original')
+
+        tipo_cambio_usado = None
+        precio_unitario_guardado = precio_decimal
+
+        # Si el cliente envía precio_original y moneda USD, calcular ARS usando TC 'Oficial'
+        if moneda_original and str(moneda_original).upper() == 'USD' and precio_original_val is not None:
+            try:
+                precio_original_dec = Decimal(str(precio_original_val))
+            except Exception:
+                return jsonify({"error": "precio_original inválido"}), 400
+
+            tc_obj = TipoCambio.query.filter_by(nombre='Oficial').first()
+            if not tc_obj or not tc_obj.valor:
+                return jsonify({"error": "Tipo de Cambio 'Oficial' no disponible para conversión"}), 500
+            try:
+                tc_val = Decimal(str(tc_obj.valor))
+            except Exception:
+                tc_val = Decimal(tc_obj.valor)
+            tipo_cambio_usado = tc_val
+            precio_unitario_guardado = (precio_original_dec * tc_val)
+
+            nuevo_precio = PrecioEspecialCliente(
+                cliente_id=cliente_id,
+                producto_id=producto_id,
+                precio_unitario_fijo_ars=precio_unitario_guardado,
+                moneda_original=str(moneda_original).upper(),
+                precio_original=precio_original_dec,
+                tipo_cambio_usado=tc_val,
+                activo=activo
+            )
+        else:
+            # Guardar moneda_original si viene (por ejemplo 'ARS') y precio_original opcional
+            moneda_saved = str(moneda_original).upper() if moneda_original else 'ARS'
+            precio_original_dec = None
+            if precio_original_val is not None:
+                try:
+                    precio_original_dec = Decimal(str(precio_original_val))
+                except Exception:
+                    precio_original_dec = None
+
+            nuevo_precio = PrecioEspecialCliente(
+                cliente_id=cliente_id,
+                producto_id=producto_id,
+                precio_unitario_fijo_ars=precio_unitario_guardado,
+                moneda_original=moneda_saved,
+                precio_original=precio_original_dec,
+                tipo_cambio_usado=(tipo_cambio_usado if tipo_cambio_usado is not None else None),
+                activo=activo
+            )
         db.session.add(nuevo_precio)
         db.session.commit()
 
@@ -351,6 +397,57 @@ def actualizar_precio_especial(current_user, precio_id):
             if precio_esp.activo != data['activo']:
                 precio_esp.activo = data['activo']
                 updated = True
+
+        # Soportar actualización de moneda_original / precio_original
+        if 'moneda_original' in data or 'precio_original' in data:
+            moneda_in = data.get('moneda_original')
+            precio_original_in = data.get('precio_original')
+
+            if moneda_in is not None:
+                moneda_in_up = str(moneda_in).upper()
+            else:
+                moneda_in_up = getattr(precio_esp, 'moneda_original', None)
+
+            # Si se envía precio_original, parsearlo
+            precio_original_dec = None
+            if precio_original_in is not None:
+                try:
+                    precio_original_dec = Decimal(str(precio_original_in))
+                except Exception:
+                    return jsonify({"error": "precio_original inválido"}), 400
+
+            # Si la moneda indicada es USD y tenemos precio_original, recalcular precio_unitario_fijo_ars
+            if moneda_in_up == 'USD' and precio_original_dec is not None:
+                tc_obj = TipoCambio.query.filter_by(nombre='Oficial').first()
+                if not tc_obj or not tc_obj.valor:
+                    return jsonify({"error": "Tipo de Cambio 'Oficial' no disponible para conversión"}), 500
+                try:
+                    tc_val = Decimal(str(tc_obj.valor))
+                except Exception:
+                    tc_val = Decimal(tc_obj.valor)
+
+                nueva_ars = precio_original_dec * tc_val
+                if precio_esp.precio_unitario_fijo_ars != nueva_ars:
+                    precio_esp.precio_unitario_fijo_ars = nueva_ars
+                    updated = True
+                precio_esp.tipo_cambio_usado = tc_val
+                precio_esp.moneda_original = 'USD'
+                precio_esp.precio_original = precio_original_dec
+                updated = True
+            else:
+                # Si moneda es ARS o no se proporcionó precio_original, solamente actualizar campos si vienen
+                if moneda_in is not None:
+                    precio_esp.moneda_original = moneda_in_up
+                    updated = True
+                if precio_original_dec is not None:
+                    # Si nos pasan precio_original pero moneda es ARS, asumir que es el precio en ARS guardado
+                    precio_esp.precio_original = precio_original_dec
+                    # Si no se pasó precio_unitario_fijo_ars explícitamente, también sincronizarlo
+                    if 'precio_unitario_fijo_ars' not in data:
+                        if precio_esp.precio_unitario_fijo_ars != precio_original_dec:
+                            precio_esp.precio_unitario_fijo_ars = precio_original_dec
+                            updated = True
+                    updated = True
 
         if updated:
             db.session.commit()
