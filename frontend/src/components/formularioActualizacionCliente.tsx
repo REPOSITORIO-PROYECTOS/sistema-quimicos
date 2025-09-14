@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, ChangeEvent, FormEvent, useCallback, useRef, KeyboardEvent } from 'react';
+import { useEffect, useState, ChangeEvent, FormEvent, useCallback, useRef } from 'react';
 import { useProductsContext, Producto } from "@/context/ProductsContext";
 import BotonVolver from './BotonVolver';
 
