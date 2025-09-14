@@ -404,16 +404,16 @@ def actualizar_precio_especial(current_user, precio_id):
                 updated = True
 
         # Soportar actualización de moneda_original / precio_original
-        if 'moneda_original' in data or 'precio_original' in data:
+        if 'moneda_original' in data or 'precio_original' in data or 'precio_unitario_fijo_ars' in data:
             moneda_in = data.get('moneda_original')
             precio_original_in = data.get('precio_original')
+            precio_unitario_in = data.get('precio_unitario_fijo_ars') if 'precio_unitario_fijo_ars' in data else None
 
             if moneda_in is not None:
                 moneda_in_up = str(moneda_in).upper()
             else:
                 moneda_in_up = getattr(precio_esp, 'moneda_original', None)
 
-            # Si se envía precio_original, parsearlo
             precio_original_dec = None
             if precio_original_in is not None:
                 try:
@@ -421,16 +421,31 @@ def actualizar_precio_especial(current_user, precio_id):
                 except Exception:
                     return jsonify({"error": "precio_original inválido"}), 400
 
-            # Si la moneda indicada es USD y tenemos precio_original, recalcular precio_unitario_fijo_ars
-            if moneda_in_up == 'USD' and precio_original_dec is not None:
+            precio_unitario_dec = None
+            if precio_unitario_in is not None:
+                try:
+                    precio_unitario_dec = Decimal(str(precio_unitario_in))
+                except Exception:
+                    return jsonify({"error": "precio_unitario_fijo_ars inválido"}), 400
+
+            # Obtener TC si es necesario
+            tc_val = None
+            if moneda_in_up == 'USD' or (precio_original_dec is not None and getattr(precio_esp, 'moneda_original', None) == 'USD'):
                 tc_obj = TipoCambio.query.filter_by(nombre='Oficial').first()
                 if not tc_obj or not tc_obj.valor:
-                    return jsonify({"error": "Tipo de Cambio 'Oficial' no disponible para conversión"}), 500
-                try:
-                    tc_val = Decimal(str(tc_obj.valor))
-                except Exception:
-                    tc_val = Decimal(tc_obj.valor)
+                    # No es crítico si no necesitamos conversión; solo cuando requiramos calcular
+                    logger.warning("Tipo de Cambio 'Oficial' no disponible al actualizar precio especial ID %s", precio_id)
+                    tc_val = None
+                else:
+                    try:
+                        tc_val = Decimal(str(tc_obj.valor))
+                    except Exception:
+                        tc_val = Decimal(tc_obj.valor)
 
+            # Caso A: moneda USD y recibimos precio_original -> recalcular ARS
+            if moneda_in_up == 'USD' and precio_original_dec is not None:
+                if not tc_val:
+                    return jsonify({"error": "Tipo de Cambio 'Oficial' no disponible para conversión"}), 500
                 nueva_ars = precio_original_dec * tc_val
                 if precio_esp.precio_unitario_fijo_ars != nueva_ars:
                     precio_esp.precio_unitario_fijo_ars = nueva_ars
@@ -439,20 +454,39 @@ def actualizar_precio_especial(current_user, precio_id):
                 precio_esp.moneda_original = 'USD'
                 precio_esp.precio_original = precio_original_dec
                 updated = True
+            # Caso B: moneda USD y recibimos solo precio_unitario_fijo_ars (ARS) -> inferir precio_original = ARS / TC
+            elif moneda_in_up == 'USD' and precio_unitario_dec is not None:
+                if not tc_val:
+                    return jsonify({"error": "Tipo de Cambio 'Oficial' no disponible para inferir precio_original"}), 500
+                try:
+                    inferred_original = (precio_unitario_dec / tc_val).quantize(Decimal('0.0001'))
+                except Exception:
+                    inferred_original = precio_unitario_dec / tc_val
+                # Actualizar campos
+                if precio_esp.precio_unitario_fijo_ars != precio_unitario_dec:
+                    precio_esp.precio_unitario_fijo_ars = precio_unitario_dec
+                    updated = True
+                precio_esp.tipo_cambio_usado = tc_val
+                precio_esp.moneda_original = 'USD'
+                precio_esp.precio_original = inferred_original
+                updated = True
             else:
-                # Si moneda es ARS o no se proporcionó precio_original, solamente actualizar campos si vienen
+                # Otros casos: actualizar moneda y/o precio_original/ARS según se reciba
                 if moneda_in is not None:
                     precio_esp.moneda_original = moneda_in_up
                     updated = True
                 if precio_original_dec is not None:
-                    # Si nos pasan precio_original pero moneda es ARS, asumir que es el precio en ARS guardado
                     precio_esp.precio_original = precio_original_dec
-                    # Si no se pasó precio_unitario_fijo_ars explícitamente, también sincronizarlo
-                    if 'precio_unitario_fijo_ars' not in data:
+                    # Si no se pasó precio_unitario_fijo_ars explícitamente, sincronizarlo con precio_original
+                    if precio_unitario_dec is None:
                         if precio_esp.precio_unitario_fijo_ars != precio_original_dec:
                             precio_esp.precio_unitario_fijo_ars = precio_original_dec
                             updated = True
                     updated = True
+                if precio_unitario_dec is not None:
+                    if precio_esp.precio_unitario_fijo_ars != precio_unitario_dec:
+                        precio_esp.precio_unitario_fijo_ars = precio_unitario_dec
+                        updated = True
 
         if updated:
             db.session.commit()
