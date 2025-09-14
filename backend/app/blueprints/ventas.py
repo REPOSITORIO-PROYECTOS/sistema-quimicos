@@ -47,19 +47,52 @@ def calcular_precio_item_venta(producto_id, cantidad_decimal, cliente_id=None):
         if not producto:
             return None, None, None, None, f"Producto ID {producto_id} no encontrado.", False
 
-        # --- Búsqueda de Precio Especial (sin cambios) ---
+        # --- Búsqueda de Precio Especial: respetar moneda_original/precio_original/tipo_cambio_usado ---
         if cliente_id:
             precio_especial_activo = db.session.query(PrecioEspecialCliente).filter(
                 PrecioEspecialCliente.cliente_id == cliente_id,
                 PrecioEspecialCliente.producto_id == producto_id,
                 PrecioEspecialCliente.activo == True
             ).first()
-            if precio_especial_activo and precio_especial_activo.precio_unitario_fijo_ars is not None:
-                precio_unitario_fijo = precio_especial_activo.precio_unitario_fijo_ars
-                precio_total_fijo = (precio_unitario_fijo * cantidad_decimal).quantize(Decimal("0.01"), ROUND_HALF_UP)
-                costo_ref_usd_calc = calcular_costo_producto_referencia(producto_id)
-                costo_momento_ars_calc = None
-                return precio_unitario_fijo, precio_total_fijo, costo_momento_ars_calc, None, None, True
+            if precio_especial_activo:
+                # Si la regla fue guardada originalmente en USD y tiene precio_original,
+                # preferimos recalcular ARS multiplicando por el TC indicado (tipo_cambio_usado)
+                # si existe; si no existe, usar el TC 'Oficial' actual.
+                try:
+                    moneda_orig = getattr(precio_especial_activo, 'moneda_original', None)
+                    precio_orig = getattr(precio_especial_activo, 'precio_original', None)
+                    tc_guardado = getattr(precio_especial_activo, 'tipo_cambio_usado', None)
+
+                    if moneda_orig and str(moneda_orig).upper() == 'USD' and precio_orig is not None:
+                        # Determinar tipo de cambio a usar
+                        if tc_guardado is not None:
+                            try:
+                                tc_val = Decimal(str(tc_guardado))
+                            except Exception:
+                                tc_val = Decimal(tc_guardado)
+                        else:
+                            tc_obj = TipoCambio.query.filter_by(nombre='Oficial').first()
+                            if not tc_obj or not tc_obj.valor:
+                                raise ValueError("Tipo de Cambio 'Oficial' no disponible")
+                            tc_val = Decimal(str(tc_obj.valor))
+
+                        precio_unitario_fijo = (Decimal(precio_orig) * tc_val).quantize(Decimal("0.01"), ROUND_HALF_UP)
+                        precio_total_fijo = (precio_unitario_fijo * cantidad_decimal).quantize(Decimal("0.01"), ROUND_HALF_UP)
+                        costo_ref_usd_calc = calcular_costo_producto_referencia(producto_id)
+                        costo_momento_ars_calc = None
+                        return precio_unitario_fijo, precio_total_fijo, costo_momento_ars_calc, None, None, True
+
+                    # Si la regla está en ARS (o no tiene precio_original), usar el precio_unitario_fijo_ars guardado
+                    if getattr(precio_especial_activo, 'precio_unitario_fijo_ars', None) is not None:
+                        precio_unitario_fijo = precio_especial_activo.precio_unitario_fijo_ars
+                        precio_total_fijo = (precio_unitario_fijo * cantidad_decimal).quantize(Decimal("0.01"), ROUND_HALF_UP)
+                        costo_ref_usd_calc = calcular_costo_producto_referencia(producto_id)
+                        costo_momento_ars_calc = None
+                        return precio_unitario_fijo, precio_total_fijo, costo_momento_ars_calc, None, None, True
+                except Exception as e:
+                    # Si algo falla en la lógica del precio especial, loggear y seguir con el cálculo dinámico
+                    print(f"WARN [calcular_precio_item_venta]: Error aplicando precio especial para prod {producto_id}: {e}")
+                    # no hacemos return; proseguimos con cálculo dinámico
 
         # --- Cálculo Dinámico (con correcciones) ---
         costo_ref_usd = calcular_costo_producto_referencia(producto_id)
