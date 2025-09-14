@@ -18,6 +18,8 @@ type Cliente = {
 type PrecioEspecial = {
   producto_nombre: string;
   precio_unitario_fijo_ars: number;
+  moneda_original?: string;
+  precio_original?: number | null;
 };
 
 type Pagination = {
@@ -140,7 +142,7 @@ export default function ListaClientes() {
   // dataAll.clientes se procesa más abajo en dataAllTyped
 
       // Los datos ya vienen con precios especiales desde el endpoint masivo.
-  type RawPrecio = { producto?: { nombre?: string }; producto_nombre?: string; precio_unitario_fijo_ars?: number };
+  type RawPrecio = { producto?: { nombre?: string }; producto_nombre?: string; precio_unitario_fijo_ars?: number; moneda_original?: string; precio_original?: number };
       type ClienteRaw = Cliente & { precios_especiales?: RawPrecio[]; preciosEspeciales?: PrecioEspecial[] };
 
       const dataAllTyped = dataAll as { clientes?: ClienteRaw[] };
@@ -148,9 +150,15 @@ export default function ListaClientes() {
         ? dataAllTyped.clientes.map(c => {
             const preciosEspeciales: PrecioEspecial[] = [];
             if (Array.isArray(c.preciosEspeciales) && c.preciosEspeciales.length > 0) {
-              preciosEspeciales.push(...c.preciosEspeciales);
+              // Consumir API ya tipada
+              preciosEspeciales.push(...c.preciosEspeciales as PrecioEspecial[]);
             } else if (Array.isArray(c.precios_especiales) && c.precios_especiales.length > 0) {
-              preciosEspeciales.push(...c.precios_especiales.map(p => ({ producto_nombre: (p.producto_nombre ?? p.producto?.nombre ?? ''), precio_unitario_fijo_ars: (p.precio_unitario_fijo_ars ?? 0) })));
+              preciosEspeciales.push(...c.precios_especiales.map(p => ({
+                producto_nombre: (p.producto_nombre ?? p.producto?.nombre ?? ''),
+                precio_unitario_fijo_ars: (p.precio_unitario_fijo_ars ?? 0),
+                moneda_original: (p.moneda_original ?? undefined),
+                precio_original: (p.precio_original ?? null)
+              })));
             }
             return { ...c, preciosEspeciales };
           })
@@ -158,7 +166,15 @@ export default function ListaClientes() {
 
       const datosParaExcel = clientesConPrecios.map(cliente => {
         const listaDeProductosStr = (cliente.preciosEspeciales || [])
-          .map((p) => `${p.producto_nombre}: $${p.precio_unitario_fijo_ars.toFixed(2)}`)
+          .map((p) => {
+            const nombre = p.producto_nombre || '';
+            const ars = typeof p.precio_unitario_fijo_ars === 'number' ? `$${p.precio_unitario_fijo_ars.toFixed(2)}` : '-';
+            if (p.moneda_original && String(p.moneda_original).toUpperCase() === 'USD') {
+              const usdRaw = (p.precio_original != null && typeof p.precio_original === 'number') ? `USD ${p.precio_original.toFixed(2)}` : 'USD ?';
+              return `${nombre}: ${usdRaw} (ARS ${p.precio_unitario_fijo_ars ? p.precio_unitario_fijo_ars.toFixed(2) : '-'})`;
+            }
+            return `${nombre}: ${ars}`;
+          })
           .join(', \n');
 
         return {

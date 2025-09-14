@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, ChangeEvent, FormEvent, useCallback } from 'react';
+import { useEffect, useState, ChangeEvent, FormEvent, useCallback, useRef, KeyboardEvent } from 'react';
 import { useProductsContext, Producto } from "@/context/ProductsContext";
 import BotonVolver from './BotonVolver';
 
@@ -13,6 +13,9 @@ interface ProductoPrecioEspecialItem {
   temp_key?: string;             // Key temporal para React si es un ítem nuevo
   api_producto_nombre?: string;    // Nombre del producto como vino de la API de precios especiales
   api_producto_id_original_api?: number; // El ID del producto como vino de la API de precios especiales
+  moneda?: 'ARS' | 'USD';         // Moneda seleccionada para este precio especial
+  precio_original?: number;       // Precio original en la moneda indicada (si aplica)
+  nuevo_precio?: number;          // Campo temporal para que el usuario ingrese un nuevo precio
 }
 
 // Interfaz para el estado completo del formulario de actualización
@@ -38,14 +41,10 @@ interface PrecioEspecialDesdeAPI {
   producto_nombre: string;
   precio_unitario_fijo_ars: string; // Viene como string desde la API
   activo: boolean;
+  moneda_original?: string;
+  precio_original?: number | string;
   // fecha_creacion y fecha_modificacion no son necesarias para el form
 }
-
-// Tipo para payload usado al actualizar un precio especial
-type PrecioEspecialUpdatePayload = {
-  precio_unitario_fijo_ars: number;
-  activo: boolean;
-};
 
 const initialFormState: FormState = {
   nombre_razon_social: '',
@@ -63,6 +62,7 @@ const initialFormState: FormState = {
 
 
 export default function FormularioActualizacionCliente({ id_cliente }: { id_cliente: number | undefined }) {
+  const formRef = useRef<HTMLFormElement | null>(null);
   const [form, setForm] = useState<FormState>(initialFormState);
   // Eliminado: preciosEspecialesOriginales, ya no se usa
   const [isLoading, setIsLoading] = useState(true);
@@ -74,6 +74,19 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
   const [preciosOriginales, setPreciosOriginales] = useState<PrecioEspecialDesdeAPI[] | null>(null);
   // Estado para mostrar/ocultar precios especiales
   const [mostrarPreciosEspeciales, setMostrarPreciosEspeciales] = useState(false);
+
+  // Modal para editar precio especial individual
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalIndex, setModalIndex] = useState<number | null>(null);
+  const [modalPrecioUSD, setModalPrecioUSD] = useState<number | ''>('');
+  const [modalActivo, setModalActivo] = useState(true);
+  const [modalLoading, setModalLoading] = useState(false);
+  const [modalError, setModalError] = useState<string | null>(null);
+
+  // Tipo de cambio oficial (USD -> ARS)
+  const [tipoCambioOficial, setTipoCambioOficial] = useState<number | null>(null);
+  const [tcLoading, setTcLoading] = useState(false);
+  const [tcError, setTcError] = useState<string | null>(null);
 
   const {
     productos: productosDisponiblesContext,
@@ -131,6 +144,9 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
         activo: p.activo,
         api_producto_nombre: p.producto_nombre,    // Nombre del producto para mostrar
         api_producto_id_original_api: p.producto_id, // ID original del producto de la API de precios
+  // Si la API retorna moneda/precio original, preferirla; si no, asumimos ARS
+  moneda: (p.moneda_original && String(p.moneda_original).toUpperCase() === 'USD') ? 'USD' : 'ARS',
+    precio_original: p.precio_original !== undefined ? Number(p.precio_original) : undefined,
       }));  
 
   // Guardar copia original para comparar cambios en el submit
@@ -169,6 +185,29 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
     }
   }, [id_cliente, cargarDatosCompletosCliente]);
 
+  // Cargar tipo de cambio Oficial cuando se muestran precios especiales
+  useEffect(() => {
+    const fetchTC = async () => {
+      setTcLoading(true);
+      setTcError(null);
+      try {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+        const res = await fetch('https://quimex.sistemataup.online/tipos_cambio/Oficial', { headers: token ? { 'Authorization': `Bearer ${token}` } : {} });
+        if (!res.ok) throw new Error('No se pudo obtener el tipo de cambio');
+        const data = await res.json();
+        // data expected to have { nombre: 'Oficial', valor: number }
+        setTipoCambioOficial(Number(data.valor));
+      } catch (err) {
+        setTcError(err instanceof Error ? err.message : 'Error al obtener tipo de cambio');
+        setTipoCambioOficial(null);
+      } finally {
+        setTcLoading(false);
+      }
+    };
+
+    if (mostrarPreciosEspeciales) fetchTC();
+  }, [mostrarPreciosEspeciales]);
+
 
   const handleChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -196,6 +235,11 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
       // currentItem.valor = 0; // Opcional: resetear valor
     } else if (name === 'valor') {
       currentItem.valor = Number(value) || 0;
+    } else if (name === 'moneda') {
+      currentItem.moneda = (value as 'ARS' | 'USD') || 'ARS';
+    } else if (name === 'nuevo_precio') {
+      // nuevo_precio viene como string desde el input; si está vacío lo dejamos undefined
+      currentItem.nuevo_precio = value === '' ? undefined : Number(value);
     } else if (name === 'activo' && type === 'checkbox') {
       currentItem.activo = (e.target as HTMLInputElement).checked;
     }
@@ -207,7 +251,7 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
       ...prev,
       precios_especiales_form: [
         ...prev.precios_especiales_form,
-        { temp_key: Date.now().toString(), producto_id: '', valor: 0, activo: true }
+        { temp_key: Date.now().toString(), producto_id: '', valor: 0, activo: true, moneda: 'ARS' }
       ]
     }));
   };
@@ -218,6 +262,121 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
     list.splice(index, 1);
     setForm(prev => ({ ...prev, precios_especiales_form: list }));
     // Si itemEliminado tenía un id_precio_especial, la lógica de handleSubmit lo marcará para eliminación.
+  };
+
+  const openModalForIndex = (index: number) => {
+    const item = form.precios_especiales_form[index];
+    setModalIndex(index);
+    // Preferir precio_original si viene (USD), si no, dejar vacío
+    setModalPrecioUSD(item.precio_original !== undefined ? Number(item.precio_original) : '');
+    setModalActivo(Boolean(item.activo));
+    setModalError(null);
+    setModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setModalOpen(false);
+    setModalIndex(null);
+    setModalPrecioUSD('');
+    setModalActivo(true);
+    setModalLoading(false);
+    setModalError(null);
+  };
+
+  const handleModalSave = async () => {
+    if (modalIndex === null) return;
+    if (!id_cliente) {
+      setModalError('ID de cliente no disponible');
+      return;
+    }
+    const item = form.precios_especiales_form[modalIndex];
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    if (!token) {
+      setModalError('No se encontró token');
+      return;
+    }
+    setModalLoading(true);
+    try {
+      const precio = modalPrecioUSD === '' ? undefined : Number(modalPrecioUSD);
+      if (item.id_precio_especial) {
+        // Update existing
+        const payload: Record<string, unknown> = { activo: Boolean(modalActivo) };
+        if (precio !== undefined) {
+          payload['precio_original'] = precio;
+          payload['moneda_original'] = 'USD';
+        }
+        const res = await fetch(`https://quimex.sistemataup.online/precios_especiales/editar/${item.id_precio_especial}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.message || 'Error actualizando precio especial');
+        }
+      } else {
+        // Create new precio especial for this producto
+        if (!item.producto_id) throw new Error('Producto no seleccionado');
+        const body: Record<string, unknown> = {
+          cliente_id: id_cliente,
+          producto_id: Number(item.producto_id),
+          activo: Boolean(modalActivo),
+          moneda_original: 'USD',
+        };
+        if (precio !== undefined) body['precio_original'] = precio;
+        // If precio_original not provided, backend may compute from precio_unitario_fijo_ars; here we only set USD original
+        const res = await fetch(`https://quimex.sistemataup.online/precios_especiales/crear`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.message || 'Error creando precio especial');
+        }
+      }
+
+      // Recargar lista
+      await cargarDatosCompletosCliente(id_cliente);
+      closeModal();
+    } catch (err) {
+      setModalError(err instanceof Error ? err.message : 'Error desconocido');
+    } finally {
+      setModalLoading(false);
+    }
+  };
+
+  const handleModalDelete = async () => {
+    if (modalIndex === null) return;
+    const item = form.precios_especiales_form[modalIndex];
+    if (!item.id_precio_especial) {
+      // If it's a local new item, just remove from form
+      eliminarPrecioEspecial(modalIndex);
+      closeModal();
+      return;
+    }
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    if (!token) {
+      setModalError('No se encontró token');
+      return;
+    }
+    setModalLoading(true);
+    try {
+      const res = await fetch(`https://quimex.sistemataup.online/precios_especiales/eliminar/${item.id_precio_especial}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || 'Error eliminando precio especial');
+      }
+      if (id_cliente) await cargarDatosCompletosCliente(id_cliente);
+      closeModal();
+    } catch (err) {
+      setModalError(err instanceof Error ? err.message : 'Error desconocido');
+    } finally {
+      setModalLoading(false);
+    }
   };
 
   const handleSubmit = async (e: FormEvent) => {
@@ -281,12 +440,26 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
           // No había precios originales cargados: crear todo lo que venga en el form
           const toCreateAll = form.precios_especiales_form.filter(i => !i.id_precio_especial && i.producto_id);
           for (const item of toCreateAll) {
-            const body = {
+            // Si el usuario ingresó un nuevo precio, preferirlo; si no, usar el precio actual/valor
+            const nuevo = (typeof item.nuevo_precio === 'number' && Number.isFinite(item.nuevo_precio)) ? item.nuevo_precio : undefined;
+            const body: Record<string, unknown> = {
               cliente_id: id_cliente,
               producto_id: Number(item.producto_id),
               precio_unitario_fijo_ars: Number(item.valor),
               activo: Boolean(item.activo),
             };
+            body['moneda_original'] = item.moneda === 'USD' ? 'USD' : 'ARS';
+            if (nuevo !== undefined) {
+              // Si se ingresó nuevo precio, usarlo según la moneda seleccionada
+              if (item.moneda === 'USD') {
+                body['precio_original'] = nuevo;
+              } else {
+                body['precio_unitario_fijo_ars'] = nuevo;
+                body['precio_original'] = nuevo;
+              }
+            } else {
+              body['precio_original'] = item.precio_original !== undefined ? Number(item.precio_original) : Number(item.valor);
+            }
             const resCrear = await fetch(`https://quimex.sistemataup.online/precios_especiales/crear`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
@@ -303,7 +476,7 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
           preciosOriginales.forEach(p => originalesById.set(p.id, p));
 
           // Items actuales que tienen id_precio_especial => posibles updates
-          const toUpdate: { id: number; payload: PrecioEspecialUpdatePayload }[] = [];
+          const toUpdate: { id: number; payload: Record<string, unknown> }[] = [];
           // Items actuales sin id => crear
           const toCreate: ProductoPrecioEspecialItem[] = [];
           // IDs originales que no están en el form => eliminar
@@ -313,17 +486,43 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
             if (item.id_precio_especial) {
               actualesIds.add(item.id_precio_especial);
               const orig = originalesById.get(item.id_precio_especial);
-              if (!orig) {
+                if (!orig) {
                 // No encontramos el original, tratar como update con lo que tengamos
-                toUpdate.push({ id: item.id_precio_especial, payload: { precio_unitario_fijo_ars: Number(item.valor), activo: Boolean(item.activo) } });
+                const nuevoUpd = (typeof item.nuevo_precio === 'number' && Number.isFinite(item.nuevo_precio)) ? item.nuevo_precio : undefined;
+                const payload: Record<string, unknown> = { precio_unitario_fijo_ars: Number(item.valor), activo: Boolean(item.activo) };
+                payload['moneda_original'] = item.moneda === 'USD' ? 'USD' : 'ARS';
+                if (nuevoUpd !== undefined) {
+                  if (item.moneda === 'USD') {
+                    payload['precio_original'] = nuevoUpd;
+                  } else {
+                    payload['precio_unitario_fijo_ars'] = nuevoUpd;
+                    payload['precio_original'] = nuevoUpd;
+                  }
+                } else {
+                  payload['precio_original'] = item.precio_original !== undefined ? Number(item.precio_original) : Number(item.valor);
+                }
+                toUpdate.push({ id: item.id_precio_especial, payload });
               } else {
-                // Comparar precio y activo (usar toNumber para normalizar)
+                // Comparar precio y activo. Si el usuario ingresó 'nuevo_precio' lo usamos para la comparación y para el payload.
                 const origPrecio = Number(orig.precio_unitario_fijo_ars);
-                const curPrecio = Number(item.valor);
+                const nuevoParaComparar = (typeof item.nuevo_precio === 'number' && Number.isFinite(item.nuevo_precio)) ? item.nuevo_precio : undefined;
+                const curPrecio = nuevoParaComparar !== undefined ? Number(nuevoParaComparar) : Number(item.valor);
                 const precioChanged = Math.abs((isNaN(origPrecio) ? 0 : origPrecio) - (isNaN(curPrecio) ? 0 : curPrecio)) > 0.0001;
                 const activoChanged = Boolean(orig.activo) !== Boolean(item.activo);
                 if (precioChanged || activoChanged) {
-                  toUpdate.push({ id: item.id_precio_especial, payload: { precio_unitario_fijo_ars: Number(item.valor), activo: Boolean(item.activo) } });
+                  const payload: Record<string, unknown> = { precio_unitario_fijo_ars: Number(item.valor), activo: Boolean(item.activo) };
+                  payload['moneda_original'] = item.moneda === 'USD' ? 'USD' : 'ARS';
+                  if (nuevoParaComparar !== undefined) {
+                    if (item.moneda === 'USD') {
+                      payload['precio_original'] = nuevoParaComparar;
+                    } else {
+                      payload['precio_unitario_fijo_ars'] = nuevoParaComparar;
+                      payload['precio_original'] = nuevoParaComparar;
+                    }
+                  } else {
+                    payload['precio_original'] = item.precio_original !== undefined ? Number(item.precio_original) : Number(item.valor);
+                  }
+                  toUpdate.push({ id: item.id_precio_especial, payload });
                 }
               }
             } else {
@@ -341,7 +540,19 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
 
           // Ejecutar Creaciones
           for (const item of toCreate) {
-            const body = { cliente_id: id_cliente, producto_id: Number(item.producto_id), precio_unitario_fijo_ars: Number(item.valor), activo: Boolean(item.activo) };
+            const nuevoCreate = (typeof item.nuevo_precio === 'number' && Number.isFinite(item.nuevo_precio)) ? item.nuevo_precio : undefined;
+            const body: Record<string, unknown> = { cliente_id: id_cliente, producto_id: Number(item.producto_id), precio_unitario_fijo_ars: Number(item.valor), activo: Boolean(item.activo) };
+            body['moneda_original'] = item.moneda === 'USD' ? 'USD' : 'ARS';
+            if (nuevoCreate !== undefined) {
+              if (item.moneda === 'USD') {
+                body['precio_original'] = nuevoCreate;
+              } else {
+                body['precio_unitario_fijo_ars'] = nuevoCreate;
+                body['precio_original'] = nuevoCreate;
+              }
+            } else {
+              body['precio_original'] = item.precio_original !== undefined ? Number(item.precio_original) : Number(item.valor);
+            }
             const resCrear = await fetch(`https://quimex.sistemataup.online/precios_especiales/crear`, {
               method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(body)
             });
@@ -395,6 +606,8 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
     return <div className="text-center p-10 text-red-300 bg-red-900 bg-opacity-50 rounded-md">Error al cargar: {errorCarga}</div>;
   }
 
+  
+
   return (
     <main className="min-h-screen bg-[#20119d] text-white p-4 sm:p-8">
       <div className="max-w-3xl mx-auto bg-white text-black p-6 rounded-lg shadow-xl">
@@ -404,7 +617,7 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
         </h1>
         {submitSuccessMessage && <div className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4" role="alert">{submitSuccessMessage}</div>}
         {submitErrorMessage && <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4" role="alert">{submitErrorMessage}</div>}
-        <form onSubmit={handleSubmit} className="space-y-6">
+  <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
           {/* Campos del Cliente */}
           <fieldset className="border p-4 rounded-md">
             <legend className="text-xl font-semibold text-gray-700 px-2 mb-2">Datos del Cliente</legend>
@@ -463,81 +676,71 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
           {mostrarPreciosEspeciales && (
             <fieldset className="border p-4 rounded-md mt-4">
               <legend className="text-xl font-semibold text-gray-700 px-2 mb-2">Precios Especiales</legend>
-              <div className="hidden md:grid md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,0.5fr)_minmax(0,0.5fr)] items-center gap-x-2 font-semibold text-sm text-gray-600 px-1 mb-1">
+              <div className="hidden md:grid md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,0.5fr)_minmax(0,0.5fr)_minmax(0,0.5fr)] items-center gap-x-2 font-semibold text-sm text-gray-600 px-1 mb-1">
                 <span>Producto</span>
                 <span className="text-right">Precio Especial (ARS)</span>
+                <span className="text-center">Moneda</span>
                 <span className="text-center">Activo</span>
                 <span />
               </div>
               <div className="space-y-4">
                 {form.precios_especiales_form.length > 0 ? (
                   form.precios_especiales_form.map((item, index) => (
-                    <div key={item.id_precio_especial || item.temp_key || index}
-                      className="grid grid-cols-1 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,0.5fr)_minmax(0,0.5fr)] items-center gap-x-2 gap-y-2 p-2 border rounded-md hover:bg-gray-50">
-                      <div className="w-full">
-                        <label className="md:hidden text-xs font-medium text-gray-500">Producto</label>
-                        <select
-                          name="producto_id"
-                          value={item.producto_id}
-                          onChange={(e) => handlePrecioEspecialChange(index, e)}
-                          className="w-full p-2 border border-gray-300 rounded shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
-                          required
-                          disabled={cargandoProductosContext || !!errorProductosContext || !productosDisponiblesContext || productosDisponiblesContext.length === 0 || !!item.id_precio_especial}
-                        >
-                          <option value="" disabled> -- Seleccionar Producto -- </option>
-                          {cargandoProductosContext && <option disabled>Cargando productos...</option>}
-                          {errorProductosContext && <option disabled>Error al cargar productos.</option>}
-                          {item.id_precio_especial && item.api_producto_nombre && item.api_producto_id_original_api &&
-                            !productosDisponiblesContext?.find(p => String(p.id) === String(item.api_producto_id_original_api)) && (
-                              <option value={String(item.api_producto_id_original_api)} disabled>
-                                {item.api_producto_nombre} (Actual)
-                              </option>
-                          )}
-                          {!cargandoProductosContext && !errorProductosContext && productosDisponiblesContext && productosDisponiblesContext.length > 0 && (
-                            productosDisponiblesContext.map((producto: Producto) => (
-                              <option value={String(producto.id)} key={producto.id}>
-                                {producto.nombre} {producto.codigo ? `(${producto.codigo})` : ''}
-                              </option>
-                            ))
-                          )}
-                          {!cargandoProductosContext && !errorProductosContext && (!productosDisponiblesContext || productosDisponiblesContext.length === 0) && (
-                            <option disabled>No hay productos disponibles</option>
-                          )}
-                        </select>
+                    <div
+                      key={item.id_precio_especial || item.temp_key || index}
+                      className={`grid grid-cols-1 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,0.6fr)_minmax(0,0.6fr)_minmax(0,0.6fr)] items-center gap-x-2 gap-y-2 px-2 py-1 border rounded-md ${item.id_precio_especial ? 'bg-yellow-50 border-yellow-300' : 'hover:bg-gray-50'}`}>
+                      {/* Producto (columna 1) - Mostrar como título prominente en md+ */}
+                      <div className="min-w-0 md:pr-2">
+                        {item.id_precio_especial ? (
+                          <div className="p-1">
+                            <div className="text-sm md:text-base font-bold text-gray-800 truncate">{item.api_producto_nombre || `Producto ${item.producto_id}`}</div>
+                            <input type="hidden" name="producto_id" value={item.producto_id} />
+                          </div>
+                        ) : (
+                          <div className="p-0">
+                            <select
+                              name="producto_id"
+                              value={item.producto_id}
+                              onChange={(e) => handlePrecioEspecialChange(index, e)}
+                              className="w-full p-2 border border-gray-300 rounded shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
+                              required
+                              disabled={cargandoProductosContext || !!errorProductosContext || !productosDisponiblesContext || productosDisponiblesContext.length === 0}
+                            >
+                              <option value="" disabled> -- Seleccionar Producto -- </option>
+                              {cargandoProductosContext && <option disabled>Cargando productos...</option>}
+                              {errorProductosContext && <option disabled>Error al cargar productos.</option>}
+                              {!cargandoProductosContext && !errorProductosContext && productosDisponiblesContext && productosDisponiblesContext.length > 0 && (
+                                productosDisponiblesContext.map((producto: Producto) => (
+                                  <option value={String(producto.id)} key={producto.id}>
+                                    {producto.nombre} {producto.codigo ? `(${producto.codigo})` : ''}
+                                  </option>
+                                ))
+                              )}
+                              {!cargandoProductosContext && !errorProductosContext && (!productosDisponiblesContext || productosDisponiblesContext.length === 0) && (
+                                <option disabled>No hay productos disponibles</option>
+                              )}
+                            </select>
+                          </div>
+                        )}
                       </div>
-                      <div className="w-full">
-                        <label className="md:hidden text-xs font-medium text-gray-500">Precio Especial (ARS)</label>
-                        <input
-                          className="w-full p-2 border border-gray-300 rounded shadow-sm text-right focus:ring-indigo-500 focus:border-indigo-500"
-                          type="number"
-                          name="valor"
-                          placeholder="0.00"
-                          value={item.valor === 0 && item.producto_id === '' ? '' : item.valor}
-                          onChange={(e) => handlePrecioEspecialChange(index, e)}
-                          min="0"
-                          step="0.01"
-                        />
-                      </div>
-                      <div className="w-full flex md:justify-center items-center">
-                        <input
-                          id={`activo-${index}`}
-                          type="checkbox"
-                          name="activo"
-                          checked={item.activo}
-                          onChange={(e) => handlePrecioEspecialChange(index, e)}
-                          className="h-5 w-5 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500 mr-2"
-                        />
-                        <label htmlFor={`activo-${index}`} className="text-sm text-gray-700">Activo</label>
-                      </div>
-                      <div className="flex justify-end md:justify-center items-center">
-                        <button
-                          type="button"
-                          onClick={() => eliminarPrecioEspecial(index)}
-                          className="text-red-500 hover:text-red-700 font-bold text-xl p-1 rounded-full hover:bg-red-100"
-                          title="Eliminar este precio especial"
-                        >
-                          ×
-                        </button>
+
+                      {/* Mostrar solo precio USD, moneda y botón Editar (abre modal) */}
+                      <div className="flex items-center justify-between gap-4 w-full">
+                        <div className="flex items-center gap-3">
+                          <div className="text-sm text-gray-600">USD</div>
+                          <div className="text-lg font-medium text-gray-800">
+                            {item.precio_original !== undefined ? Number(item.precio_original).toFixed(2) : (item.moneda === 'USD' ? Number(item.valor).toFixed(2) : '—')}
+                            { (item.precio_original !== undefined || item.moneda === 'USD') && (
+                              <span className="text-sm text-gray-500 ml-2">{
+                                tcLoading ? '(calculando ARS...)' : tcError ? '(tc error)' : (tipoCambioOficial ? `(ARS ${((Number(item.precio_original !== undefined ? Number(item.precio_original) : Number(item.valor)) * tipoCambioOficial)).toFixed(2)})` : '')
+                              }</span>
+                            )}
+                          </div>
+                          <div className="text-sm text-gray-500">{item.moneda || 'ARS'}</div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button type="button" className="bg-indigo-600 text-white px-3 py-1 rounded" onClick={() => openModalForIndex(index)}>Editar</button>
+                        </div>
                       </div>
                     </div>
                   ))
@@ -578,6 +781,28 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
               {isSubmitting ? 'Actualizando...' : (isLoading ? 'Cargando...' : 'Guardar Cambios')}
             </button>
           </div>
+          {/* Modal para editar precio especial */}
+          {modalOpen && modalIndex !== null && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+              <div className="bg-white text-black rounded-md p-6 w-full max-w-md">
+                <h3 className="text-lg font-semibold mb-4">Editar Precio Especial</h3>
+                {modalError && <div className="text-red-600 mb-2">{modalError}</div>}
+                <div className="mb-3">
+                  <label className="block text-sm text-gray-700">Precio (USD)</label>
+                  <input type="number" value={modalPrecioUSD === '' ? '' : modalPrecioUSD} onChange={(e) => setModalPrecioUSD(e.target.value === '' ? '' : Number(e.target.value))} className="w-full p-2 border rounded mt-1" />
+                </div>
+                <div className="mb-3 flex items-center gap-3">
+                  <input id="modal-activo" type="checkbox" checked={modalActivo} onChange={(e) => setModalActivo(e.target.checked)} />
+                  <label htmlFor="modal-activo" className="text-sm text-gray-700">Activo</label>
+                </div>
+                <div className="flex justify-end gap-2 mt-4">
+                  <button type="button" onClick={closeModal} className="px-4 py-2 border rounded">Cancelar</button>
+                  <button type="button" onClick={handleModalDelete} className="px-4 py-2 bg-red-600 text-white rounded">Eliminar</button>
+                  <button type="button" onClick={handleModalSave} disabled={modalLoading} className="px-4 py-2 bg-indigo-600 text-white rounded">{modalLoading ? 'Guardando...' : 'Guardar'}</button>
+                </div>
+              </div>
+            </div>
+          )}
         </form>
       </div>
     </main>

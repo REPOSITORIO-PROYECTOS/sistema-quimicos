@@ -1,17 +1,21 @@
 'use client';
 
-import { useState, ChangeEvent, FormEvent } from 'react';
+import { useState, ChangeEvent, FormEvent, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 // Importa tu hook y el tipo Producto desde la ubicación correcta
 
 import { useProductsContext, Producto } from "@/context/ProductsContext"; // <-- Asegúrate que incluya , Producto
 import BotonVolver from '@/components/BotonVolver';
 
+// Usar variable de entorno pública de Next (con fallback para desarrollo)
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8001';
+
 
 // Interfaz para un item de producto en el estado del formulario
 interface ProductoItem {
   producto_id: string | number; // Coincide con Producto['id'] que es number, pero se maneja como string desde el select
   valor: number;
+  moneda?: 'ARS' | 'USD';
 }
 
 // Interfaz para el estado completo del formulario
@@ -31,7 +35,11 @@ interface FormState {
 
 export default function RegistrarCliente() {
     const router = useRouter();
-    const [mostrarPreciosEspeciales, setMostrarPreciosEspeciales] = useState(false);
+  const [mostrarPreciosEspeciales, setMostrarPreciosEspeciales] = useState(false);
+  // Tipo de cambio Oficial para mostrar conversión USD -> ARS
+  const [tipoCambioOficial, setTipoCambioOficial] = useState<number | null>(null);
+  const [tcLoading, setTcLoading] = useState(false);
+  const [tcError, setTcError] = useState<string | null>(null);
     const {
       productos: productosDisponibles,
       loading: cargandoProductos,
@@ -50,7 +58,27 @@ export default function RegistrarCliente() {
       productos: [],
       observaciones: '',
     });
-    const token = localStorage.getItem("token");
+  const token = typeof window !== 'undefined' ? localStorage.getItem("token") : null;
+    // Traer tipo de cambio Oficial cuando el usuario habilita precios especiales
+    useEffect(() => {
+      const fetchTC = async () => {
+        if (!mostrarPreciosEspeciales) return;
+        setTcLoading(true);
+        setTcError(null);
+        try {
+          const resTC = await fetch(`${API_BASE_URL}/tipos_cambio/Oficial`, { headers: token ? { 'Authorization': `Bearer ${token}` } : {} });
+          if (!resTC.ok) throw new Error('No se pudo obtener tipo de cambio');
+          const dataTC = await resTC.json();
+          setTipoCambioOficial(Number(dataTC.valor));
+        } catch (err) {
+          setTipoCambioOficial(null);
+          setTcError(err instanceof Error ? err.message : 'Error al obtener tipo de cambio');
+        } finally {
+          setTcLoading(false);
+        }
+      };
+      fetchTC();
+    }, [mostrarPreciosEspeciales, token]);
     const handleChange = (
       e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
     ) => {
@@ -70,6 +98,8 @@ export default function RegistrarCliente() {
         list[index].producto_id = value;
       } else if (name === 'valor') {
         list[index].valor = Number(value) || 0;
+      } else if (name === 'moneda') {
+        list[index].moneda = (value as 'ARS' | 'USD') || 'ARS';
       }
       setForm(prev => ({ ...prev, productos: list }));
     };
@@ -78,7 +108,7 @@ export default function RegistrarCliente() {
         ...prev,
         productos: [
           ...prev.productos.filter(p => p.producto_id !== ''),
-          { producto_id: '', valor: 0 }
+          { producto_id: '', valor: 0, moneda: 'ARS' }
         ]
       }));
     };
@@ -112,11 +142,12 @@ export default function RegistrarCliente() {
         datosCliente.cuit = form.cuit;
       }
       try {
-        const resCliente = await fetch(`https://quimex.sistemataup.online/clientes/crear`, {
+        const clienteHeaders: Record<string,string> = { 'Content-Type': 'application/json' };
+        if (token) clienteHeaders['Authorization'] = `Bearer ${token}`;
+
+        const resCliente = await fetch(`${API_BASE_URL}/clientes/crear`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: clienteHeaders,
           body: JSON.stringify(datosCliente),
         });
         if (!resCliente.ok) {
@@ -128,15 +159,26 @@ export default function RegistrarCliente() {
           try {
             const productosValidos = form.productos.filter(p => p.producto_id !== '' && p.valor >= 0 && Number(p.producto_id) > 0);
             for (const item of productosValidos) {
-              const payloadPrecioEspecial = {
+              const payloadPrecioEspecial: Record<string, unknown> = {
                 cliente_id: clienteCreado.id,
                 producto_id: Number(item.producto_id),
                 precio_unitario_fijo_ars: item.valor,
                 activo: true,
               };
-              const res = await fetch(`https://quimex.sistemataup.online/precios_especiales/crear`, {
+              // Si el usuario indicó USD, enviamos moneda_original y precio_original
+              if (item.moneda && item.moneda === 'USD') {
+                payloadPrecioEspecial['moneda_original'] = 'USD';
+                payloadPrecioEspecial['precio_original'] = item.valor;
+              } else {
+                payloadPrecioEspecial['moneda_original'] = 'ARS';
+                payloadPrecioEspecial['precio_original'] = item.valor;
+              }
+              const precioHeaders: Record<string,string> = { 'Content-Type': 'application/json' };
+              if (token) precioHeaders['Authorization'] = `Bearer ${token}`;
+
+              const res = await fetch(`${API_BASE_URL}/precios_especiales/crear`, {
                 method: 'POST',
-                headers: {"Content-Type":"application/json","Authorization":`Bearer ${token}`},
+                headers: precioHeaders,
                 body: JSON.stringify(payloadPrecioEspecial),
               });
               if (!res.ok) {
@@ -219,7 +261,7 @@ export default function RegistrarCliente() {
               onClick={() => {
                 setMostrarPreciosEspeciales(true);
                 if (form.productos.length === 0) {
-                  setForm(prev => ({ ...prev, productos: [{ producto_id: '', valor: 0 }] }));
+                  setForm(prev => ({ ...prev, productos: [{ producto_id: '', valor: 0, moneda: 'ARS' }] }));
                 }
               }}
               disabled={mostrarPreciosEspeciales}
@@ -264,16 +306,35 @@ export default function RegistrarCliente() {
                     </div>
                     <div className="w-full">
                       <label className="md:hidden text-xs font-medium text-gray-500">Valor</label>
-                      <input
-                        className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-right focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                        type="number"
-                        name="valor"
-                        placeholder="Valor"
-                        value={item.valor === 0 ? '' : item.valor}
+                      <div className="flex items-center gap-2">
+                        <input
+                          className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-right focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                          type="number"
+                          name="valor"
+                          placeholder="Valor"
+                          value={item.valor === 0 ? '' : item.valor}
+                          onChange={(e) => handleProductoItemChange(index, e)}
+                          min="0"
+                          step="0.01"
+                        />
+                        {item.moneda === 'USD' && (
+                          <span className="text-xs text-gray-500 whitespace-nowrap">
+                            {tcLoading ? '(calculando ARS...)' : tcError ? '(tc error)' : tipoCambioOficial ? `ARS ${ (Number(item.valor || 0) * tipoCambioOficial).toFixed(2) }` : ''}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="w-full md:w-28">
+                      <label className="md:hidden text-xs font-medium text-gray-500">Moneda</label>
+                      <select
+                        name="moneda"
+                        value={item.moneda || 'ARS'}
                         onChange={(e) => handleProductoItemChange(index, e)}
-                        min="0"
-                        step="0.01"
-                      />
+                        className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      >
+                        <option value="ARS">ARS</option>
+                        <option value="USD">USD</option>
+                      </select>
                     </div>
                     <div className="flex justify-end md:justify-center items-center">
                       {form.productos.length > 1 && (
