@@ -145,8 +145,11 @@ def descargar_plantilla_precios(current_user):
                         'cliente': p.cliente.nombre_razon_social if p.cliente else (c.nombre_razon_social if c else None),
                         'producto_id': p.producto_id,
                         'producto': p.producto.nombre if p.producto else None,
-                        'precio': float(p.precio_unitario_fijo_ars) if p.precio_unitario_fijo_ars is not None else None,
-                        'moneda': 'ARS'
+                        # precio en ARS (valor computado/guardado)
+                        'precio_ars': float(p.precio_unitario_fijo_ars) if p.precio_unitario_fijo_ars is not None else None,
+                        # preservar moneda_original y precio_original para trazabilidad
+                        'moneda_original': p.moneda_original if hasattr(p, 'moneda_original') and p.moneda_original is not None else 'ARS',
+                        'precio_original': float(p.precio_original) if hasattr(p, 'precio_original') and p.precio_original is not None else None,
                     })
             else:
                 # Cliente sin precios especiales: una fila con producto/precio vacíos
@@ -155,11 +158,13 @@ def descargar_plantilla_precios(current_user):
                     'cliente': c.nombre_razon_social,
                     'producto_id': None,
                     'producto': '',
-                    'precio': None,
-                    'moneda': ''
+                    'precio_ars': None,
+                    'moneda_original': '',
+                    'precio_original': None
                 })
+
         # Ordenar por cliente nombre y producto para facilitar la revisión
-        df_precios_actuales = pd.DataFrame(precios, columns=['cliente_id', 'cliente', 'producto_id', 'producto', 'precio', 'moneda'])
+        df_precios_actuales = pd.DataFrame(precios, columns=['cliente_id', 'cliente', 'producto_id', 'producto', 'precio_ars', 'moneda_original', 'precio_original'])
         df_precios_actuales.sort_values(by=['cliente', 'producto'], inplace=True)
 
         # Escribir a Excel en memoria
