@@ -29,11 +29,10 @@ def login():
 
     try:
         # Buscar usuario activo
-        usuario = UsuarioInterno.query.filter_by(nombre_usuario=data['nombre_usuario']).first()
+        usuario = UsuarioInterno.query.filter_by(nombre_usuario=data['nombre_usuario'], activo=True).first()
 
-        # Verificar contraseña
+        # Verificar contraseña y que el usuario esté activo
         if not usuario or not check_password_hash(usuario.contrasena, data['contrasena']):
-             # Usar check_password_hash directamente es seguro
              return jsonify({'message': 'Credenciales inválidas o usuario inactivo'}), 401
 
         # Generar Token JWT
@@ -231,7 +230,14 @@ def verify_token(current_user):
 @token_required
 @roles_required(ROLES['ADMIN'])
 def listar_usuarios(current_user):
-    usuarios = UsuarioInterno.query.all()
+    # Por defecto mostrar solo usuarios activos
+    mostrar_todos = request.args.get('incluir_inactivos', 'false').lower() == 'true'
+    
+    if mostrar_todos:
+        usuarios = UsuarioInterno.query.all()
+    else:
+        usuarios = UsuarioInterno.query.filter_by(activo=True).all()
+    
     lista = [
         {
             'id': u.id,
@@ -239,7 +245,8 @@ def listar_usuarios(current_user):
             'nombre': u.nombre,
             'apellido': u.apellido,
             'rol': u.rol,
-            'email': u.email
+            'email': u.email,
+            'activo': u.activo
         }
         for u in usuarios
     ]
@@ -272,7 +279,7 @@ def modificar_usuario(current_user, usuario_id):
     db.session.commit()
     return jsonify({'message': 'Usuario modificado'})
 
-# --- ENDPOINT: Eliminar usuario (solo ADMIN, no permite borrar usuario1) ---
+# --- ENDPOINT: Eliminar usuario (marca como eliminado, no borra físicamente) ---
 @auth_bp.route('/usuarios/<int:usuario_id>', methods=['DELETE'])
 @token_required
 @roles_required(ROLES['ADMIN'])
@@ -280,6 +287,12 @@ def eliminar_usuario(current_user, usuario_id):
     usuario = UsuarioInterno.query.get_or_404(usuario_id)
     if usuario.nombre_usuario == 'usuario1':
         return jsonify({'error': 'No se puede eliminar el usuario maestro'}), 403
-    db.session.delete(usuario)
+    
+    # Marcar como inactivo en lugar de eliminar físicamente
+    usuario.activo = False
     db.session.commit()
-    return jsonify({'message': 'Usuario eliminado'})
+    
+    return jsonify({
+        'message': f'Usuario {usuario.nombre_usuario} eliminado correctamente',
+        'info': 'El usuario ha sido desactivado y puede ser restaurado por desarrollo si es necesario'
+    })
