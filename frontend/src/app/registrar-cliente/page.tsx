@@ -8,7 +8,7 @@ import { useProductsContext, Producto } from "@/context/ProductsContext"; // <--
 import BotonVolver from '@/components/BotonVolver';
 
 // Usar variable de entorno pública de Next (con fallback para desarrollo)
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8001';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://quimex.sistemataup.online';
 
 
 // Interfaz para un item de producto en el estado del formulario
@@ -163,13 +163,12 @@ export default function RegistrarCliente() {
           try {
             const productosValidos = form.productos.filter(p => p.producto_id !== '' && p.valor >= 0 && Number(p.producto_id) > 0);
             for (const item of productosValidos) {
-              const isUSD = item.moneda && item.moneda === 'USD';
               const payloadPrecioEspecial: Record<string, unknown> = {
                 cliente_id: clienteCreado.id,
                 producto_id: Number(item.producto_id),
-                precio_unitario_fijo_ars: isUSD ? 0 : item.valor,
+                precio_unitario_fijo_ars: item.valor, // El backend hará la conversión si es necesario
                 activo: true,
-                moneda_original: isUSD ? 'USD' : 'ARS',
+                moneda_original: item.moneda || 'ARS',
                 precio_original: item.valor,
               };
               const precioHeaders: Record<string,string> = { 'Content-Type': 'application/json' };
