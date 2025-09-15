@@ -210,47 +210,51 @@ export default function RegistrarCliente() {
       }
     };
   return (
-    <main className="min-h-screen bg-[#312b81] text-white p-8">
-      <div className="max-w-xl mx-auto bg-white text-black p-6 rounded-lg shadow-md">
+    <main className="min-h-screen bg-[#312b81] text-white p-4 sm:p-8">
+      <div className="max-w-4xl mx-auto bg-white text-black p-6 rounded-lg shadow-md">
         <BotonVolver className="ml-0" />
         <h1 className="text-2xl font-bold mb-8 text-center">Registrar Cliente</h1>
-        <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-4">
-          <label className="block">
-            <span className="font-medium">Nombre o Razón Social <span className="text-red-600">(obligatorio)</span></span>
-            <input type="text" name="nombre_razon_social" value={form.nombre_razon_social} onChange={handleChange} className="w-full p-2 mt-1 border border-gray-300 rounded" required />
-          </label>
-          <label className="block">
-            <span className="font-medium">CUIT <span className="text-gray-500">(opcional)</span></span>
-            <input type="number" name="cuit" value={form.cuit === 0 ? '' : form.cuit} onChange={handleChange} className="w-full p-2 mt-1 border border-gray-300 rounded" />
-          </label>
-          <label className="block">
-            <span className="font-medium">Dirección <span className="text-gray-500">(opcional)</span></span>
-            <input type="text" name="direccion" value={form.direccion} onChange={handleChange} className="w-full p-2 mt-1 border border-gray-300 rounded"/>
-          </label>
-          <label className="block">
-            <span className="font-medium">Localidad <span className="text-red-600">(obligatorio)</span></span>
-            <input type="text" name="localidad" value={form.localidad} onChange={handleChange} className="w-full p-2 mt-1 border border-gray-300 rounded" required />
-          </label>
-          <label className="block">
-            <span className="font-medium">Provincia <span className="text-gray-500">(opcional)</span></span>
-            <input type="text" name="provincia" value={form.provincia} onChange={handleChange} className="w-full p-2 mt-1 border border-gray-300 rounded"/>
-          </label>
-          <label className="block">
-            <span className="font-medium">Código Postal <span className="text-gray-500">(opcional)</span></span>
-            <input type="number" name="codigo_postal" value={form.codigo_postal === 0 ? '' : form.codigo_postal} onChange={handleChange} className="w-full p-2 mt-1 border border-gray-300 rounded"/>
-          </label>
-          <label className="block">
-            <span className="font-medium">Teléfono <span className="text-gray-500">(opcional)</span></span>
-            <input type="tel" name="telefono" value={form.telefono} onChange={handleChange} className="w-full p-2 mt-1 border border-gray-300 rounded"/>
-          </label>
-          <label className="block">
-            <span className="font-medium">Email <span className="text-gray-500">(opcional)</span></span>
-            <input type="email" name="email" value={form.email} onChange={handleChange} className="w-full p-2 mt-1 border border-gray-300 rounded"/>
-          </label>
-          <label className="block">
-            <span className="font-medium">Contacto Principal <span className="text-gray-500">(opcional)</span></span>
-            <input type="number" name="contacto_principal" value={form.contacto_principal === 0 ? '' : form.contacto_principal} onChange={handleChange} className="w-full p-2 mt-1 border border-gray-300 rounded"/>
-          </label>
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <label className="block md:col-span-2">
+              <span className="font-medium">Nombre o Razón Social <span className="text-red-600">(obligatorio)</span></span>
+              <input type="text" name="nombre_razon_social" value={form.nombre_razon_social} onChange={handleChange} className="w-full p-3 mt-1 border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500" required />
+            </label>
+            <label className="block">
+              <span className="font-medium">CUIT <span className="text-gray-500">(opcional)</span></span>
+              <input type="number" name="cuit" value={form.cuit === 0 ? '' : form.cuit} onChange={handleChange} className="w-full p-3 mt-1 border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500" />
+            </label>
+            <label className="block">
+              <span className="font-medium">Teléfono <span className="text-gray-500">(opcional)</span></span>
+              <input type="tel" name="telefono" value={form.telefono} onChange={handleChange} className="w-full p-3 mt-1 border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500"/>
+            </label>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <label className="block md:col-span-2">
+              <span className="font-medium">Dirección <span className="text-gray-500">(opcional)</span></span>
+              <input type="text" name="direccion" value={form.direccion} onChange={handleChange} className="w-full p-3 mt-1 border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500"/>
+            </label>
+            <label className="block">
+              <span className="font-medium">Localidad <span className="text-red-600">(obligatorio)</span></span>
+              <input type="text" name="localidad" value={form.localidad} onChange={handleChange} className="w-full p-3 mt-1 border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500" required />
+            </label>
+            <label className="block">
+              <span className="font-medium">Provincia <span className="text-gray-500">(opcional)</span></span>
+              <input type="text" name="provincia" value={form.provincia} onChange={handleChange} className="w-full p-3 mt-1 border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500"/>
+            </label>
+            <label className="block">
+              <span className="font-medium">Código Postal <span className="text-gray-500">(opcional)</span></span>
+              <input type="number" name="codigo_postal" value={form.codigo_postal === 0 ? '' : form.codigo_postal} onChange={handleChange} className="w-full p-3 mt-1 border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500"/>
+            </label>
+            <label className="block">
+              <span className="font-medium">Email <span className="text-gray-500">(opcional)</span></span>
+              <input type="email" name="email" value={form.email} onChange={handleChange} className="w-full p-3 mt-1 border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500"/>
+            </label>
+            <label className="block md:col-span-2">
+              <span className="font-medium">Contacto Principal <span className="text-gray-500">(opcional)</span></span>
+              <input type="number" name="contacto_principal" value={form.contacto_principal === 0 ? '' : form.contacto_principal} onChange={handleChange} className="w-full p-3 mt-1 border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500"/>
+            </label>
+          </div>
           {/* --- SECCIÓN DE PRODUCTOS (opcional) --- */}
           <div className="mt-4">
             <button
@@ -277,14 +281,15 @@ export default function RegistrarCliente() {
                 {tcError && <span className="text-red-600"> — {tcError}</span>}
                 {(!tcLoading && !tcError && tipoCambioOficial) && ` — TC Oficial: ${tipoCambioOficial}`}
               </p>
-              <div className="mb-2 hidden md:grid md:grid-cols-[minmax(0,1fr)_120px_32px] items-center gap-2 font-semibold text-sm text-gray-600 px-3">
+              <div className="mb-2 hidden md:grid md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_100px_60px] items-center gap-3 font-semibold text-sm text-gray-600 px-3">
                 <span>Producto</span>
-                <span className="text-right">Valor Asignado</span>
-                <span />
+                <span className="text-center">Valor Asignado</span>
+                <span className="text-center">Moneda</span>
+                <span className="text-center">Eliminar</span>
               </div>
               <div className="space-y-3">
                 {form.productos.map((item, index) => (
-                  <div key={index} className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_120px_32px] items-center gap-2 border-b pb-2 last:border-b-0 md:border-none md:pb-0">
+                  <div key={index} className="grid grid-cols-1 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_100px_60px] items-center gap-3 border border-gray-200 rounded-lg p-3 bg-gray-50">
                     <div className="w-full">
                       <label className="md:hidden text-xs font-medium text-gray-500">Producto (ID)</label>
                       <select
@@ -310,43 +315,43 @@ export default function RegistrarCliente() {
                       {index === 0 && errorProductos && <p className="text-xs text-red-600 mt-1">{errorProductos}</p>}
                     </div>
                     <div className="w-full">
-                      <label className="md:hidden text-xs font-medium text-gray-500">Valor</label>
-                      <div className="flex items-center gap-2">
+                      <label className="md:hidden text-xs font-medium text-gray-500 mb-1 block">Valor</label>
+                      <div className="flex flex-col gap-1">
                         <input
-                          className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 text-right focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                          className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 text-right focus:outline-none focus:ring-2 focus:ring-indigo-500"
                           type="number"
                           name="valor"
-                          placeholder="Valor"
+                          placeholder="Ingrese valor"
                           value={item.valor === 0 ? '' : item.valor}
                           onChange={(e) => handleProductoItemChange(index, e)}
                           min="0"
                           step="0.01"
                         />
                         {item.moneda === 'USD' && (
-                          <span className="text-xs text-gray-500 whitespace-nowrap">
-                            {tcLoading ? '(calculando ARS...)' : tcError ? '(tc error)' : tipoCambioOficial ? `ARS ${ (Number(item.valor || 0) * tipoCambioOficial).toFixed(2) }` : ''}
-                          </span>
+                          <div className="text-xs text-gray-500 text-right">
+                            {tcLoading ? 'Calculando ARS...' : tcError ? 'Error TC' : tipoCambioOficial ? `≈ ARS ${(Number(item.valor || 0) * tipoCambioOficial).toFixed(2)}` : ''}
+                          </div>
                         )}
                       </div>
                     </div>
-                    <div className="w-full md:w-28">
-                      <label className="md:hidden text-xs font-medium text-gray-500">Moneda</label>
+                    <div className="w-full">
+                      <label className="md:hidden text-xs font-medium text-gray-500 mb-1 block">Moneda</label>
                       <select
                         name="moneda"
                         value={item.moneda || 'ARS'}
                         onChange={(e) => handleProductoItemChange(index, e)}
-                        className="shadow-sm border rounded w-full py-2 px-2 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                       >
                         <option value="ARS">ARS</option>
                         <option value="USD">USD</option>
                       </select>
                     </div>
-                    <div className="flex justify-end md:justify-center items-center">
+                    <div className="flex justify-center items-center">
                       {form.productos.length > 1 && (
                         <button
                           type="button"
                           onClick={() => eliminarProducto(index)}
-                          className="text-red-500 hover:text-red-700 font-bold text-xl leading-none p-1 rounded-full hover:bg-red-100"
+                          className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm font-medium transition-colors"
                           title="Eliminar producto"
                         >
                           ×
@@ -366,13 +371,17 @@ export default function RegistrarCliente() {
             </fieldset>
           )}
           {/* --- FIN SECCIÓN DE PRODUCTOS --- */}
-          <label className="block mt-4">
-            <span className="font-medium">Observaciones</span>
-            <textarea name="observaciones" value={form.observaciones} onChange={handleChange} className="w-full p-2 mt-1 border border-gray-300 rounded" rows={3} />
-          </label>
-          <button type="submit" className="bg-[#312b81] text-white font-bold py-2 px-4 rounded hover:bg-[#27226a] mt-4">
-            Guardar Cliente
-          </button>
+          <div>
+            <label className="block">
+              <span className="font-medium">Observaciones</span>
+              <textarea name="observaciones" value={form.observaciones} onChange={handleChange} className="w-full p-3 mt-1 border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500" rows={4} />
+            </label>
+          </div>
+          <div className="flex justify-center">
+            <button type="submit" className="bg-[#312b81] text-white font-bold py-3 px-8 rounded-lg hover:bg-[#27226a] transition-colors text-lg">
+              Guardar Cliente
+            </button>
+          </div>
         </form>
       </div>
     </main>
