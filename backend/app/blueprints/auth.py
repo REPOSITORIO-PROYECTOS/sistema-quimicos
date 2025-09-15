@@ -285,13 +285,13 @@ def modificar_usuario(current_user, usuario_id):
 @roles_required(ROLES['ADMIN'])
 def eliminar_usuario(current_user, usuario_id):
     usuario = UsuarioInterno.query.get_or_404(usuario_id)
-    if usuario.nombre_usuario == 'usuario1':
-        return jsonify({'error': 'No se puede eliminar el usuario maestro'}), 403
-    
+    if usuario.nombre_usuario in ['usuario1', 'soportetaup']:
+        return jsonify({'error': 'No se puede eliminar ni desactivar el usuario maestro ni soportetaup'}), 403
+
     # Marcar como inactivo en lugar de eliminar físicamente
     usuario.activo = False
     db.session.commit()
-    
+
     return jsonify({
         'message': f'Usuario {usuario.nombre_usuario} eliminado correctamente',
         'info': 'El usuario ha sido desactivado y puede ser restaurado por desarrollo si es necesario'
