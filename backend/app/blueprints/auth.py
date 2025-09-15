@@ -28,12 +28,12 @@ def login():
         return jsonify({'message': 'Faltan nombre de usuario o contraseña'}), 400
 
     try:
-        # Buscar usuario activo
-        usuario = UsuarioInterno.query.filter_by(nombre_usuario=data['nombre_usuario'], activo=True).first()
+        # Buscar usuario
+        usuario = UsuarioInterno.query.filter_by(nombre_usuario=data['nombre_usuario']).first()
 
-        # Verificar contraseña y que el usuario esté activo
+        # Verificar contraseña
         if not usuario or not check_password_hash(usuario.contrasena, data['contrasena']):
-             return jsonify({'message': 'Credenciales inválidas o usuario inactivo'}), 401
+             return jsonify({'message': 'Credenciales inválidas'}), 401
 
         # Generar Token JWT
         payload = {
@@ -139,18 +139,15 @@ def get_profile(current_user):
         except AttributeError: # Por si acaso no es un objeto datetime válido
             fecha_creacion_iso = str(current_user.fecha_creacion)
 
-    return jsonify({
-        'id': current_user.id,
-        'nombre_usuario': current_user.nombre_usuario,
-        'nombre': current_user.nombre,
-        'apellido': current_user.apellido,
-        'email': current_user.email,
-        'rol': current_user.rol,
-        'activo': current_user.activo,
-        'fecha_creacion': fecha_creacion_iso
-    }), 200
-
-
+        return jsonify({
+            'id': current_user.id,
+            'nombre_usuario': current_user.nombre_usuario,
+            'nombre': current_user.nombre,
+            'apellido': current_user.apellido,
+            'email': current_user.email,
+            'rol': current_user.rol,
+            'fecha_creacion': fecha_creacion_iso
+        }), 200
 # --- EDITAR PERFIL PROPIO ---
 @auth_bp.route('/profile', methods=['PUT'])
 @token_required # Protegido
@@ -230,13 +227,7 @@ def verify_token(current_user):
 @token_required
 @roles_required(ROLES['ADMIN'])
 def listar_usuarios(current_user):
-    # Por defecto mostrar solo usuarios activos
-    mostrar_todos = request.args.get('incluir_inactivos', 'false').lower() == 'true'
-    
-    if mostrar_todos:
-        usuarios = UsuarioInterno.query.all()
-    else:
-        usuarios = UsuarioInterno.query.filter_by(activo=True).all()
+    usuarios = UsuarioInterno.query.all()
     
     lista = [
         {
@@ -245,8 +236,7 @@ def listar_usuarios(current_user):
             'nombre': u.nombre,
             'apellido': u.apellido,
             'rol': u.rol,
-            'email': u.email,
-            'activo': u.activo
+            'email': u.email
         }
         for u in usuarios
     ]
@@ -279,20 +269,19 @@ def modificar_usuario(current_user, usuario_id):
     db.session.commit()
     return jsonify({'message': 'Usuario modificado'})
 
-# --- ENDPOINT: Eliminar usuario (marca como eliminado, no borra físicamente) ---
+# --- ENDPOINT: Eliminar usuario (elimina físicamente) ---
 @auth_bp.route('/usuarios/<int:usuario_id>', methods=['DELETE'])
 @token_required
 @roles_required(ROLES['ADMIN'])
 def eliminar_usuario(current_user, usuario_id):
     usuario = UsuarioInterno.query.get_or_404(usuario_id)
     if usuario.nombre_usuario in ['usuario1', 'soportetaup']:
-        return jsonify({'error': 'No se puede eliminar ni desactivar el usuario maestro ni soportetaup'}), 403
+        return jsonify({'error': 'No se puede eliminar el usuario maestro ni soportetaup'}), 403
 
-    # Marcar como inactivo en lugar de eliminar físicamente
-    usuario.activo = False
+    # Eliminar físicamente
+    db.session.delete(usuario)
     db.session.commit()
 
     return jsonify({
-        'message': f'Usuario {usuario.nombre_usuario} eliminado correctamente',
-        'info': 'El usuario ha sido desactivado y puede ser restaurado por desarrollo si es necesario'
+        'message': f'Usuario {usuario.nombre_usuario} eliminado correctamente'
     })
