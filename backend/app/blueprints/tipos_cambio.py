@@ -72,9 +72,27 @@ def actualizar_tipo_cambio(current_user, nombre):
             return jsonify({"error": "El valor debe ser positivo"}), 400
 
         tc.valor = nuevo_valor
-        # fecha_actualizacion se actualiza automáticamente por onupdate
         db.session.commit()
-        return jsonify(tipo_cambio_a_dict(tc))
+
+        # --- Actualizar precios especiales en USD ---
+        from ..models import PrecioEspecialCliente
+        precios_usd = PrecioEspecialCliente.query.filter_by(moneda_original='USD').all()
+        actualizados = 0
+        for p in precios_usd:
+            if p.precio_original is not None:
+                try:
+                    nuevo_precio_ars = Decimal(str(p.precio_original)) * nuevo_valor
+                    p.precio_unitario_fijo_ars = nuevo_precio_ars
+                    p.tipo_cambio_usado = nuevo_valor
+                    actualizados += 1
+                except Exception as e:
+                    print(f"Error actualizando precio especial ID {p.id}: {e}")
+        db.session.commit()
+
+        return jsonify({
+            "tipo_cambio": tipo_cambio_a_dict(tc),
+            "precios_usd_actualizados": actualizados
+        })
     except (ValueError, TypeError, InvalidOperation):
         db.session.rollback()
         return jsonify({"error": "Valor inválido"}), 400

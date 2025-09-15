@@ -66,10 +66,14 @@ export default function RegistrarCliente() {
         setTcLoading(true);
         setTcError(null);
         try {
-          const resTC = await fetch(`${API_BASE_URL}/tipos_cambio/Oficial`, { headers: token ? { 'Authorization': `Bearer ${token}` } : {} });
-          if (!resTC.ok) throw new Error('No se pudo obtener tipo de cambio');
+          // CORREGIDO: endpoint correcto es /tipos_cambio/obtener/<nombre>
+          const url = `${API_BASE_URL}/tipos_cambio/obtener/Oficial`;
+          const resTC = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+          if (!resTC.ok) throw new Error('No se pudo obtener tipo de cambio Oficial');
           const dataTC = await resTC.json();
-          setTipoCambioOficial(Number(dataTC.valor));
+          const valor = Number((dataTC && (dataTC.valor ?? dataTC.data?.valor)) ?? NaN);
+          if (!isFinite(valor) || valor <= 0) throw new Error('Tipo de cambio inválido');
+          setTipoCambioOficial(valor);
         } catch (err) {
           setTipoCambioOficial(null);
           setTcError(err instanceof Error ? err.message : 'Error al obtener tipo de cambio');
@@ -159,20 +163,15 @@ export default function RegistrarCliente() {
           try {
             const productosValidos = form.productos.filter(p => p.producto_id !== '' && p.valor >= 0 && Number(p.producto_id) > 0);
             for (const item of productosValidos) {
+              const isUSD = item.moneda && item.moneda === 'USD';
               const payloadPrecioEspecial: Record<string, unknown> = {
                 cliente_id: clienteCreado.id,
                 producto_id: Number(item.producto_id),
-                precio_unitario_fijo_ars: item.valor,
+                precio_unitario_fijo_ars: isUSD ? 0 : item.valor,
                 activo: true,
+                moneda_original: isUSD ? 'USD' : 'ARS',
+                precio_original: item.valor,
               };
-              // Si el usuario indicó USD, enviamos moneda_original y precio_original
-              if (item.moneda && item.moneda === 'USD') {
-                payloadPrecioEspecial['moneda_original'] = 'USD';
-                payloadPrecioEspecial['precio_original'] = item.valor;
-              } else {
-                payloadPrecioEspecial['moneda_original'] = 'ARS';
-                payloadPrecioEspecial['precio_original'] = item.valor;
-              }
               const precioHeaders: Record<string,string> = { 'Content-Type': 'application/json' };
               if (token) precioHeaders['Authorization'] = `Bearer ${token}`;
 
@@ -272,6 +271,13 @@ export default function RegistrarCliente() {
           {mostrarPreciosEspeciales && (
             <fieldset className="border p-4 rounded-md mt-4">
               <legend className="text-lg font-medium text-gray-700 px-2">Productos Asociados</legend>
+              {/* Aviso de TC y USD */}
+              <p className="text-xs text-gray-600 mb-2">
+                Si elegís moneda USD, el precio se convierte a ARS usando el Tipo de Cambio Oficial actual.
+                {tcLoading && ' (cargando TC...)'}
+                {tcError && <span className="text-red-600"> — {tcError}</span>}
+                {(!tcLoading && !tcError && tipoCambioOficial) && ` — TC Oficial: ${tipoCambioOficial}`}
+              </p>
               <div className="mb-2 hidden md:grid md:grid-cols-[minmax(0,1fr)_120px_32px] items-center gap-2 font-semibold text-sm text-gray-600 px-3">
                 <span>Producto</span>
                 <span className="text-right">Valor Asignado</span>

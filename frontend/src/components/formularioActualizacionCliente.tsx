@@ -5,6 +5,10 @@ import { useProductsContext, Producto } from "@/context/ProductsContext";
 import BotonVolver from './BotonVolver';
 
 // Interfaz para un item de precio especial en el estado del formulario
+// Base de la API centralizada. Usa la variable de entorno NEXT_PUBLIC_API_URL si existe; 
+// en caso contrario cae al dominio de producción para evitar 'undefined' en las rutas.
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://quimex.sistemataup.online';
+
 interface ProductoPrecioEspecialItem {
   id_precio_especial?: number;   // ID de la entrada PrecioEspecialCliente (si ya existe, viene de la API)
   producto_id: string;           // ID del producto (en el form, lo manejaremos como string para el select)
@@ -111,7 +115,7 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
 
     try {
       // 1. Cargar datos del cliente
-      const resCliente = await fetch(`https://quimex.sistemataup.online/clientes/obtener/${clienteId}`, {
+  const resCliente = await fetch(`${API_BASE_URL}/clientes/obtener/${clienteId}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (!resCliente.ok) {
@@ -121,7 +125,7 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
       const datosCliente = await resCliente.json();
 
       // 2. Cargar precios especiales para este cliente
-      const resPrecios = await fetch(`https://quimex.sistemataup.online/precios_especiales/obtener-por-cliente/${clienteId}`, {
+  const resPrecios = await fetch(`${API_BASE_URL}/precios_especiales/obtener-por-cliente/${clienteId}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       
@@ -191,8 +195,8 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
       setTcLoading(true);
       setTcError(null);
       try {
-        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-        const res = await fetch('https://quimex.sistemataup.online/tipos_cambio/Oficial', { headers: token ? { 'Authorization': `Bearer ${token}` } : {} });
+        // Llamada sin Authorization para evitar preflight CORS si el endpoint es público
+        const res = await fetch(`${API_BASE_URL}/tipos_cambio/obtener/Oficial`);
         if (!res.ok) throw new Error('No se pudo obtener el tipo de cambio');
         const data = await res.json();
         // data expected to have { nombre: 'Oficial', valor: number }
@@ -264,15 +268,7 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
     // Si itemEliminado tenía un id_precio_especial, la lógica de handleSubmit lo marcará para eliminación.
   };
 
-  const openModalForIndex = (index: number) => {
-    const item = form.precios_especiales_form[index];
-    setModalIndex(index);
-    // Preferir precio_original si viene (USD), si no, dejar vacío
-    setModalPrecioUSD(item.precio_original !== undefined ? Number(item.precio_original) : '');
-    setModalActivo(Boolean(item.activo));
-    setModalError(null);
-    setModalOpen(true);
-  };
+  const [modalMoneda, setModalMoneda] = useState<'ARS' | 'USD'>('USD');
 
   const closeModal = () => {
     setModalOpen(false);
@@ -298,14 +294,20 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
     setModalLoading(true);
     try {
       const precio = modalPrecioUSD === '' ? undefined : Number(modalPrecioUSD);
+      // Actualizar moneda en el item editado
+      const updatedItem = { ...item, moneda: modalMoneda };
+      const precioUnitarioARS = modalMoneda === 'USD' ? 0 : (precio !== undefined ? precio : 0);
       if (item.id_precio_especial) {
         // Update existing
-        const payload: Record<string, unknown> = { activo: Boolean(modalActivo) };
+        const payload: Record<string, unknown> = {
+          activo: Boolean(modalActivo),
+          moneda_original: modalMoneda,
+          precio_unitario_fijo_ars: precioUnitarioARS,
+        };
         if (precio !== undefined) {
           payload['precio_original'] = precio;
-          payload['moneda_original'] = 'USD';
         }
-        const res = await fetch(`https://quimex.sistemataup.online/precios_especiales/editar/${item.id_precio_especial}`, {
+  const res = await fetch(`${API_BASE_URL}/precios_especiales/editar/${item.id_precio_especial}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify(payload),
@@ -321,11 +323,11 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
           cliente_id: id_cliente,
           producto_id: Number(item.producto_id),
           activo: Boolean(modalActivo),
-          moneda_original: 'USD',
+          moneda_original: modalMoneda,
+          precio_unitario_fijo_ars: precioUnitarioARS,
         };
         if (precio !== undefined) body['precio_original'] = precio;
-        // If precio_original not provided, backend may compute from precio_unitario_fijo_ars; here we only set USD original
-        const res = await fetch(`https://quimex.sistemataup.online/precios_especiales/crear`, {
+  const res = await fetch(`${API_BASE_URL}/precios_especiales/crear`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify(body),
@@ -335,7 +337,10 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
           throw new Error(err.message || 'Error creando precio especial');
         }
       }
-
+      // Actualizar moneda en el estado local
+      const newForm = { ...form };
+      newForm.precios_especiales_form[modalIndex] = updatedItem;
+      setForm(newForm);
       // Recargar lista
       await cargarDatosCompletosCliente(id_cliente);
       closeModal();
@@ -362,7 +367,7 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
     }
     setModalLoading(true);
     try {
-      const res = await fetch(`https://quimex.sistemataup.online/precios_especiales/eliminar/${item.id_precio_especial}`, {
+  const res = await fetch(`${API_BASE_URL}/precios_especiales/eliminar/${item.id_precio_especial}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` },
       });
@@ -411,7 +416,7 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
     };
 
     try {
-      const resCliente = await fetch(`https://quimex.sistemataup.online/clientes/actualizar/${id_cliente}`, {
+  const resCliente = await fetch(`${API_BASE_URL}/clientes/actualizar/${id_cliente}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify(datosClienteActualizar),
@@ -460,7 +465,7 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
             } else {
               body['precio_original'] = item.precio_original !== undefined ? Number(item.precio_original) : Number(item.valor);
             }
-            const resCrear = await fetch(`https://quimex.sistemataup.online/precios_especiales/crear`, {
+            const resCrear = await fetch(`${API_BASE_URL}/precios_especiales/crear`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
               body: JSON.stringify(body),
@@ -553,7 +558,7 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
             } else {
               body['precio_original'] = item.precio_original !== undefined ? Number(item.precio_original) : Number(item.valor);
             }
-            const resCrear = await fetch(`https://quimex.sistemataup.online/precios_especiales/crear`, {
+            const resCrear = await fetch(`${API_BASE_URL}/precios_especiales/crear`, {
               method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(body)
             });
             if (!resCrear.ok) {
@@ -564,7 +569,7 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
 
           // Ejecutar Updates
           for (const upd of toUpdate) {
-            const resUpd = await fetch(`https://quimex.sistemataup.online/precios_especiales/editar/${upd.id}`, {
+            const resUpd = await fetch(`${API_BASE_URL}/precios_especiales/editar/${upd.id}`, {
               method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(upd.payload)
             });
             if (!resUpd.ok) {
@@ -575,7 +580,7 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
 
           // Ejecutar Deletes
           for (const idToDel of toDelete) {
-            const resDel = await fetch(`https://quimex.sistemataup.online/precios_especiales/eliminar/${idToDel}`, {
+            const resDel = await fetch(`${API_BASE_URL}/precios_especiales/eliminar/${idToDel}`, {
               method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` }
             });
             if (!resDel.ok) {
@@ -676,71 +681,119 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
           {mostrarPreciosEspeciales && (
             <fieldset className="border p-4 rounded-md mt-4">
               <legend className="text-xl font-semibold text-gray-700 px-2 mb-2">Precios Especiales</legend>
-              <div className="hidden md:grid md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,0.5fr)_minmax(0,0.5fr)_minmax(0,0.5fr)] items-center gap-x-2 font-semibold text-sm text-gray-600 px-1 mb-1">
+              <div className="hidden md:grid md:grid-cols-[minmax(0,2fr)_minmax(0,1.2fr)_minmax(0,0.7fr)_minmax(0,0.6fr)_minmax(0,0.7fr)] items-center gap-x-2 font-semibold text-sm text-gray-600 px-1 mb-1">
                 <span>Producto</span>
-                <span className="text-right">Precio Especial (ARS)</span>
+                <span className="text-center">Precio</span>
                 <span className="text-center">Moneda</span>
                 <span className="text-center">Activo</span>
-                <span />
+                <span className="text-center">Acciones</span>
               </div>
               <div className="space-y-4">
                 {form.precios_especiales_form.length > 0 ? (
                   form.precios_especiales_form.map((item, index) => (
                     <div
                       key={item.id_precio_especial || item.temp_key || index}
-                      className={`grid grid-cols-1 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,0.6fr)_minmax(0,0.6fr)_minmax(0,0.6fr)] items-center gap-x-2 gap-y-2 px-2 py-1 border rounded-md ${item.id_precio_especial ? 'bg-yellow-50 border-yellow-300' : 'hover:bg-gray-50'}`}>
-                      {/* Producto (columna 1) - Mostrar como título prominente en md+ */}
+                      className={`grid grid-cols-1 md:grid-cols-[minmax(0,2fr)_minmax(0,1.2fr)_minmax(0,0.7fr)_minmax(0,0.6fr)_minmax(0,0.7fr)] items-start md:items-center gap-x-2 gap-y-2 px-2 py-2 border rounded-md ${item.id_precio_especial ? 'bg-yellow-50 border-yellow-300' : 'hover:bg-gray-50'}`}
+                    >
+                      {/* Columna: Producto */}
                       <div className="min-w-0 md:pr-2">
                         {item.id_precio_especial ? (
                           <div className="p-1">
-                            <div className="text-sm md:text-base font-bold text-gray-800 truncate">{item.api_producto_nombre || `Producto ${item.producto_id}`}</div>
+                            <div className="text-sm md:text-base font-bold text-gray-800 truncate">
+                              {item.api_producto_nombre || `Producto ${item.producto_id}`}
+                            </div>
                             <input type="hidden" name="producto_id" value={item.producto_id} />
                           </div>
                         ) : (
-                          <div className="p-0">
-                            <select
-                              name="producto_id"
-                              value={item.producto_id}
-                              onChange={(e) => handlePrecioEspecialChange(index, e)}
-                              className="w-full p-2 border border-gray-300 rounded shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
-                              required
-                              disabled={cargandoProductosContext || !!errorProductosContext || !productosDisponiblesContext || productosDisponiblesContext.length === 0}
-                            >
-                              <option value="" disabled> -- Seleccionar Producto -- </option>
-                              {cargandoProductosContext && <option disabled>Cargando productos...</option>}
-                              {errorProductosContext && <option disabled>Error al cargar productos.</option>}
-                              {!cargandoProductosContext && !errorProductosContext && productosDisponiblesContext && productosDisponiblesContext.length > 0 && (
-                                productosDisponiblesContext.map((producto: Producto) => (
-                                  <option value={String(producto.id)} key={producto.id}>
-                                    {producto.nombre} {producto.codigo ? `(${producto.codigo})` : ''}
-                                  </option>
-                                ))
-                              )}
-                              {!cargandoProductosContext && !errorProductosContext && (!productosDisponiblesContext || productosDisponiblesContext.length === 0) && (
-                                <option disabled>No hay productos disponibles</option>
-                              )}
-                            </select>
-                          </div>
+                          <select
+                            name="producto_id"
+                            value={item.producto_id}
+                            onChange={(e) => handlePrecioEspecialChange(index, e)}
+                            className="w-full p-2 border border-gray-300 rounded shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
+                            required
+                            disabled={cargandoProductosContext || !!errorProductosContext || !productosDisponiblesContext || productosDisponiblesContext.length === 0}
+                          >
+                            <option value="" disabled> -- Seleccionar Producto -- </option>
+                            {cargandoProductosContext && <option disabled>Cargando productos...</option>}
+                            {errorProductosContext && <option disabled>Error al cargar productos.</option>}
+                            {!cargandoProductosContext && !errorProductosContext && productosDisponiblesContext && productosDisponiblesContext.length > 0 && (
+                              productosDisponiblesContext.map((producto: Producto) => (
+                                <option value={String(producto.id)} key={producto.id}>
+                                  {producto.nombre} {producto.codigo ? `(${producto.codigo})` : ''}
+                                </option>
+                              ))
+                            )}
+                            {!cargandoProductosContext && !errorProductosContext && (!productosDisponiblesContext || productosDisponiblesContext.length === 0) && (
+                              <option disabled>No hay productos disponibles</option>
+                            )}
+                          </select>
                         )}
                       </div>
 
-                      {/* Mostrar solo precio USD, moneda y botón Editar (abre modal) */}
-                      <div className="flex items-center justify-between gap-4 w-full">
-                        <div className="flex items-center gap-3">
-                          <div className="text-sm text-gray-600">USD</div>
-                          <div className="text-lg font-medium text-gray-800">
-                            {item.precio_original !== undefined ? Number(item.precio_original).toFixed(2) : (item.moneda === 'USD' ? Number(item.valor).toFixed(2) : '—')}
-                            { (item.precio_original !== undefined || item.moneda === 'USD') && (
-                              <span className="text-sm text-gray-500 ml-2">{
-                                tcLoading ? '(calculando ARS...)' : tcError ? '(tc error)' : (tipoCambioOficial ? `(ARS ${((Number(item.precio_original !== undefined ? Number(item.precio_original) : Number(item.valor)) * tipoCambioOficial)).toFixed(2)})` : '')
-                              }</span>
-                            )}
-                          </div>
-                          <div className="text-sm text-gray-500">{item.moneda || 'ARS'}</div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button type="button" className="bg-indigo-600 text-white px-3 py-1 rounded" onClick={() => openModalForIndex(index)}>Editar</button>
-                        </div>
+                      {/* Columna: Precio editable */}
+                      <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-2">
+                        {(() => {
+                          const esUSD = item.moneda === 'USD';
+                          const precioBaseOriginal = esUSD
+                            ? (item.precio_original !== undefined ? Number(item.precio_original) : Number(item.valor))
+                            : Number(item.valor);
+                          const inputValue = item.nuevo_precio !== undefined ? item.nuevo_precio : '';
+                          const precioParaCalculo = item.nuevo_precio !== undefined ? Number(item.nuevo_precio) : precioBaseOriginal;
+                          return (
+                            <>
+                              <input
+                                type="number"
+                                name="nuevo_precio"
+                                value={inputValue}
+                                placeholder={precioBaseOriginal.toFixed(2)}
+                                onChange={(e) => handlePrecioEspecialChange(index, e)}
+                                className="w-full md:w-28 p-2 border border-gray-300 rounded shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                                step="0.01"
+                                min="0"
+                              />
+                              <div className="text-[11px] md:text-xs text-gray-500 leading-tight">
+                                {esUSD ? (
+                                  tcLoading ? 'TC...' : tcError ? 'TC error' : (tipoCambioOficial ? `≈ ARS ${(precioParaCalculo * tipoCambioOficial).toFixed(2)}` : '')
+                                ) : 'ARS'}
+                              </div>
+                            </>
+                          );
+                        })()}
+                      </div>
+
+                      {/* Columna: Moneda */}
+                      <div className="flex items-center justify-start md:justify-center">
+                        <select
+                          name="moneda"
+                          value={item.moneda || 'ARS'}
+                          onChange={(e) => handlePrecioEspecialChange(index, e)}
+                          className="w-full md:w-auto p-2 border border-gray-300 rounded shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                        >
+                          <option value="ARS">ARS</option>
+                          <option value="USD">USD</option>
+                        </select>
+                      </div>
+
+                      {/* Columna: Activo */}
+                      <div className="flex items-center justify-start md:justify-center">
+                        <input
+                          type="checkbox"
+                          name="activo"
+                          checked={item.activo}
+                          onChange={(e) => handlePrecioEspecialChange(index, e)}
+                          className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                        />
+                      </div>
+
+                      {/* Columna: Acciones (solo eliminar) */}
+                      <div className="flex gap-2 items-center justify-start md:justify-center">
+                        <button
+                          type="button"
+                          onClick={() => eliminarPrecioEspecial(index)}
+                          className="bg-red-600 text-white px-2 py-1 rounded text-xs md:text-sm"
+                        >
+                          X
+                        </button>
                       </div>
                     </div>
                   ))
@@ -788,7 +841,14 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
                 <h3 className="text-lg font-semibold mb-4">Editar Precio Especial</h3>
                 {modalError && <div className="text-red-600 mb-2">{modalError}</div>}
                 <div className="mb-3">
-                  <label className="block text-sm text-gray-700">Precio (USD)</label>
+                  <label className="block text-sm text-gray-700">Moneda</label>
+                  <select value={modalMoneda} onChange={e => setModalMoneda(e.target.value as 'ARS' | 'USD')} className="w-full p-2 border rounded mt-1">
+                    <option value="ARS">ARS</option>
+                    <option value="USD">USD</option>
+                  </select>
+                </div>
+                <div className="mb-3">
+                  <label className="block text-sm text-gray-700">Precio ({modalMoneda})</label>
                   <input type="number" value={modalPrecioUSD === '' ? '' : modalPrecioUSD} onChange={(e) => setModalPrecioUSD(e.target.value === '' ? '' : Number(e.target.value))} className="w-full p-2 border rounded mt-1" />
                 </div>
                 <div className="mb-3 flex items-center gap-3">
