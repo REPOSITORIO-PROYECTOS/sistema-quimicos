@@ -925,10 +925,15 @@ def cargar_precios_desde_csv(current_user):
                 })
                 continue
 
-            # --- LÓGICA DE CONVERSIÓN DE MONEDA SIMPLIFICADA ---
-            precio_final_ars = precio_original
+            # --- LÓGICA DE CONVERSIÓN Y REGISTRO DE MONEDA ---
             if moneda_csv == 'USD':
+                # Guarda el precio original en USD y calcula el ARS actual
                 precio_final_ars = precio_original * valor_dolar_oficial
+                precio_original_usd = precio_original
+            else:
+                # Guarda el precio original en ARS
+                precio_final_ars = precio_original
+                precio_original_usd = None
 
             # Lógica de creación/actualización
             precio_esp_existente = precios_existentes.get((cliente.id, producto.id))
@@ -938,7 +943,7 @@ def cargar_precios_desde_csv(current_user):
                 logger.info("[cargar_csv] actualizar existente: precio_esp_id=%s cliente_id=%s producto_id=%s old=%s new=%s", getattr(precio_esp_existente, 'id', None), cliente.id, producto.id, str(old_val), str(precio_final_ars))
                 # Guardar campos nuevos: moneda_original, precio_original, tipo_cambio_usado
                 precio_esp_existente.moneda_original = moneda_csv
-                precio_esp_existente.precio_original = precio_original
+                precio_esp_existente.precio_original = precio_original_usd if moneda_csv == 'USD' else precio_final_ars
                 precio_esp_existente.tipo_cambio_usado = (valor_dolar_oficial if moneda_csv == 'USD' else None)
                 precio_esp_existente.precio_unitario_fijo_ars = precio_final_ars
                 precio_esp_existente.activo = True
@@ -952,7 +957,7 @@ def cargar_precios_desde_csv(current_user):
                     'old_val_ars': float(old_val) if old_val is not None else None,
                     'new_val_ars': float(precio_final_ars),
                     'moneda': moneda_csv,
-                    'precio_original': float(precio_original),
+                    'precio_original': float(precio_original_usd) if precio_original_usd is not None else float(precio_final_ars),
                     'tipo_cambio_usado': float(valor_dolar_oficial) if moneda_csv == 'USD' else None
                 })
             else:
@@ -962,7 +967,7 @@ def cargar_precios_desde_csv(current_user):
                     producto_id=producto.id,
                     precio_unitario_fijo_ars=precio_final_ars,
                     moneda_original=moneda_csv,
-                    precio_original=precio_original,
+                    precio_original=precio_original_usd if moneda_csv == 'USD' else precio_final_ars,
                     tipo_cambio_usado=(valor_dolar_oficial if moneda_csv == 'USD' else None),
                     activo=True
                 )
@@ -976,7 +981,7 @@ def cargar_precios_desde_csv(current_user):
                     'producto_id': producto.id,
                     'new_val_ars': float(precio_final_ars),
                     'moneda': moneda_csv,
-                    'precio_original': float(precio_original),
+                    'precio_original': float(precio_original_usd) if precio_original_usd is not None else float(precio_final_ars),
                     'tipo_cambio_usado': float(valor_dolar_oficial) if moneda_csv == 'USD' else None
                 })
         
