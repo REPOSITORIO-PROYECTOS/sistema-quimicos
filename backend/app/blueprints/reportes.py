@@ -331,15 +331,19 @@ def exportar_lista_precios_excel(current_user):
                             cell.value = 0.0
                         else:
                             cantidad_decimal = Decimal(qty_str)
-                            precio_total_bruto = generar_precio_para_reporte(producto, cantidad_decimal)
                             
-                            # --- REDONDEO EN DOS PASOS: PRIMERO A DECENA, LUEGO A CENTENA ---
-                            from ..utils.math_utils import redondear_a_siguiente_decena_simplificado
-                            precio_redondeado_decena, _ = redondear_a_siguiente_decena_simplificado(precio_total_bruto)
-                            # Luego redondear a centena (múltiplo de 100)
-                            precio_total_final = math.ceil(float(precio_redondeado_decena) / 100) * 100
+                            # --- USAR LA MISMA LÓGICA QUE EL ENDPOINT calculate_price ---
+                            # 1. Calcular precio unitario bruto sin redondear
+                            precio_unitario_bruto = generar_precio_para_reporte(producto, Decimal('1'))
                             
-                            cell.value = precio_total_final
+                            # 2. Redondear el unitario a decena
+                            from .productos import redondear_a_siguiente_decena, redondear_a_siguiente_centena
+                            precio_unitario_redondeado = redondear_a_siguiente_decena(precio_unitario_bruto)
+                            
+                            # 3. Multiplicar por cantidad y redondear total a centena
+                            precio_total_final = redondear_a_siguiente_centena(precio_unitario_redondeado * cantidad_decimal)
+                            
+                            cell.value = float(precio_total_final)
                         
                         cell.number_format = '"$"#,##0.00'
                     
