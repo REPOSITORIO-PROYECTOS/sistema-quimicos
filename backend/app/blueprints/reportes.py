@@ -333,10 +333,13 @@ def exportar_lista_precios_excel(current_user):
                             cantidad_decimal = Decimal(qty_str)
                             precio_total_bruto = generar_precio_para_reporte(producto, cantidad_decimal)
                             
-                            # --- MÉTODO DE REDONDEO MANUAL A PRUEBA DE FALLOS ---
-                            precio_total_redondeado = math.ceil(float(precio_total_bruto) / 100) * 100
+                            # --- REDONDEO EN DOS PASOS: PRIMERO A DECENA, LUEGO A CENTENA ---
+                            from ..utils.math_utils import redondear_a_siguiente_decena_simplificado
+                            precio_redondeado_decena, _ = redondear_a_siguiente_decena_simplificado(precio_total_bruto)
+                            # Luego redondear a centena (múltiplo de 100)
+                            precio_total_final = math.ceil(float(precio_redondeado_decena) / 100) * 100
                             
-                            cell.value = precio_total_redondeado
+                            cell.value = precio_total_final
                         
                         cell.number_format = '"$"#,##0.00'
                     
