@@ -336,12 +336,8 @@ def exportar_lista_precios_excel(current_user):
                             # 1. Calcular precio TOTAL bruto para la cantidad solicitada (sin redondeos)
                             precio_total_bruto = generar_precio_para_reporte(producto, cantidad_decimal)
 
-                            # 2. Derivar precio unitario bruto a partir del total (para cantidades >= 1 se mantiene el unitario, para fracciones la lógica interna ya fue aplicada)
-                            # Evitamos llamar a generar_precio_para_reporte(producto, 1) que podría dar resultados distintos a dividir el total
-                            try:
-                                precio_unitario_bruto = (precio_total_bruto / cantidad_decimal) if cantidad_decimal != Decimal('0') else precio_total_bruto
-                            except Exception:
-                                precio_unitario_bruto = precio_total_bruto
+                            # 2. Derivar precio unitario bruto a partir del total (para todas las cantidades)
+                            precio_unitario_bruto = (precio_total_bruto / cantidad_decimal) if cantidad_decimal != Decimal('0') else precio_total_bruto
 
                             # 3. Redondear unitario a la siguiente decena
                             precio_unitario_redondeado = redondear_a_siguiente_decena(precio_unitario_bruto)
