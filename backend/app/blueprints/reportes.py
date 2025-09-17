@@ -29,6 +29,7 @@ from ..models import Venta, OrdenCompra, Receta, RecetaItem
 from ..models import Producto, TipoCambio
 from ..calculator.core import obtener_coeficiente_por_rango
 from .productos import calcular_costo_producto_referencia
+from .productos import redondear_a_siguiente_decena, redondear_a_siguiente_centena
 from ..utils.decorators import token_required, roles_required
 from ..utils.permissions import ROLES
 
@@ -331,18 +332,23 @@ def exportar_lista_precios_excel(current_user):
                             cell.value = 0.0
                         else:
                             cantidad_decimal = Decimal(qty_str)
-                            
-                            # --- USAR LA MISMA LÓGICA QUE EL ENDPOINT calculate_price ---
-                            # 1. Calcular precio unitario bruto sin redondear
-                            precio_unitario_bruto = generar_precio_para_reporte(producto, Decimal('1'))
-                            
-                            # 2. Redondear el unitario a decena
-                            from .productos import redondear_a_siguiente_decena, redondear_a_siguiente_centena
+
+                            # 1. Calcular precio TOTAL bruto para la cantidad solicitada (sin redondeos)
+                            precio_total_bruto = generar_precio_para_reporte(producto, cantidad_decimal)
+
+                            # 2. Derivar precio unitario bruto a partir del total (para cantidades >= 1 se mantiene el unitario, para fracciones la lógica interna ya fue aplicada)
+                            # Evitamos llamar a generar_precio_para_reporte(producto, 1) que podría dar resultados distintos a dividir el total
+                            try:
+                                precio_unitario_bruto = (precio_total_bruto / cantidad_decimal) if cantidad_decimal != Decimal('0') else precio_total_bruto
+                            except Exception:
+                                precio_unitario_bruto = precio_total_bruto
+
+                            # 3. Redondear unitario a la siguiente decena
                             precio_unitario_redondeado = redondear_a_siguiente_decena(precio_unitario_bruto)
-                            
-                            # 3. Multiplicar por cantidad y redondear total a centena
+
+                            # 4. Calcular total final multiplicando unitario redondeado por cantidad y redondear a siguiente centena
                             precio_total_final = redondear_a_siguiente_centena(precio_unitario_redondeado * cantidad_decimal)
-                            
+
                             cell.value = float(precio_total_final)
                         
                         cell.number_format = '"$"#,##0.00'
