@@ -269,6 +269,9 @@ class PrecioEspecialCliente(db.Model):
     moneda_original = db.Column(db.String(3), nullable=True, index=True)  # 'ARS' o 'USD'
     precio_original = db.Column(db.Numeric(15, 4), nullable=True)         # Precio en la moneda original
     tipo_cambio_usado = db.Column(db.Numeric(15, 6), nullable=True)        # Tipo de cambio utilizado para la conversión
+    # Nuevo: permitir definir el precio especial tomando como base el precio calculado del producto
+    usar_precio_base = db.Column(db.Boolean, default=False, nullable=False)
+    margen_sobre_base = db.Column(db.Numeric(10, 4), nullable=True)  # Porcentaje (ej: 0.10 = +10%) para ajustar sobre el precio base
     activo = db.Column(db.Boolean, default=True, nullable=False)
     fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow)
     fecha_modificacion = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
