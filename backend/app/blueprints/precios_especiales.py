@@ -49,6 +49,9 @@ def precio_especial_a_dict(precio_esp):
         "precio_unitario_fijo_ars_guardado": float(precio_esp.precio_unitario_fijo_ars) if precio_esp.precio_unitario_fijo_ars is not None else None,
         "moneda_original": precio_esp.moneda_original if hasattr(precio_esp, 'moneda_original') else None,
         "precio_original": float(precio_esp.precio_original) if hasattr(precio_esp, 'precio_original') and precio_esp.precio_original is not None else None,
+        # Nuevos campos para cálculo dinámico de precios
+        "usar_precio_base": bool(getattr(precio_esp, 'usar_precio_base', False)),
+        "margen_sobre_base": float(precio_esp.margen_sobre_base) if getattr(precio_esp, 'margen_sobre_base', None) is not None else None,
         # Tipo de cambio usado para el cálculo actual (puede ser distinto del guardado)
         "tipo_cambio_usado": float(tipo_cambio_actual) if tipo_cambio_actual is not None else (float(precio_esp.tipo_cambio_usado) if hasattr(precio_esp, 'tipo_cambio_usado') and precio_esp.tipo_cambio_usado is not None else None),
         "activo": precio_esp.activo,
@@ -68,6 +71,52 @@ def calcular_precio_ars(precio_esp):
     tipo_cambio_actual = None
     precio_ars = None
     try:
+        # PRIORIDAD 1: Si la regla indica usar el precio base calculado del producto
+        if getattr(precio_esp, 'usar_precio_base', False):
+            # Importar localmente para evitar ciclos
+            try:
+                from .productos import calcular_costo_producto_referencia
+            except ImportError:
+                from ..blueprints.productos import calcular_costo_producto_referencia
+
+            producto = precio_esp.producto or db.session.get(Producto, precio_esp.producto_id)
+            if not producto:
+                return (None, None)
+
+            # Calcular costo unitario USD
+            costo_unitario_usd = calcular_costo_producto_referencia(producto.id) or Decimal('0')
+            
+            # Obtener tipo de cambio apropiado
+            nombre_tc = 'Oficial' if producto.ajusta_por_tc else 'Empresa'
+            tc_obj = TipoCambio.query.filter_by(nombre=nombre_tc).first()
+            if not tc_obj or not tc_obj.valor:
+                raise ValueError(f"Tipo de cambio '{nombre_tc}' no disponible")
+            
+            try:
+                tipo_cambio_actual = Decimal(str(tc_obj.valor))
+            except Exception:
+                tipo_cambio_actual = Decimal(tc_obj.valor)
+
+            # Convertir costo a ARS
+            costo_unitario_ars = costo_unitario_usd * tipo_cambio_actual
+            
+            # Aplicar margen del producto para obtener precio base
+            margen_producto = Decimal(str(producto.margen or '0.0'))
+            if margen_producto >= Decimal('1'):
+                raise ValueError(f"Margen del producto {producto.id} es >= 1, no se puede calcular precio base")
+            
+            precio_base_ars = costo_unitario_ars / (Decimal('1') - margen_producto)
+
+            # Aplicar margen adicional si existe
+            if getattr(precio_esp, 'margen_sobre_base', None) is not None:
+                margen_sobre = Decimal(str(precio_esp.margen_sobre_base))
+                precio_ars = precio_base_ars * (Decimal('1') + margen_sobre)
+            else:
+                precio_ars = precio_base_ars
+
+            return (precio_ars, tipo_cambio_actual)
+
+        # PRIORIDAD 2: Usar moneda original y precio original
         moneda = getattr(precio_esp, 'moneda_original', None) or 'ARS'
         moneda = str(moneda).upper()
         if moneda == 'USD' and getattr(precio_esp, 'precio_original', None) is not None:
@@ -198,13 +247,22 @@ def descargar_plantilla_precios(current_user):
 def crear_precio_especial(current_user):
     """Crea una nueva regla de precio especial."""
     data = request.get_json()
-    if not data or 'cliente_id' not in data or 'producto_id' not in data or 'precio_unitario_fijo_ars' not in data:
-        return jsonify({"error": "Faltan datos: cliente_id, producto_id, precio_unitario_fijo_ars"}), 400
+    
+    # Validar campos obligatorios - pero price es opcional si usar_precio_base=True
+    if not data or 'cliente_id' not in data or 'producto_id' not in data:
+        return jsonify({"error": "Faltan datos: cliente_id, producto_id"}), 400
+    
+    usar_precio_base = data.get('usar_precio_base', False)
+    if not usar_precio_base and 'precio_unitario_fijo_ars' not in data:
+        return jsonify({"error": "Faltan datos: precio_unitario_fijo_ars (o usar_precio_base=True)"}), 400
 
     cliente_id = data['cliente_id']
     producto_id = data['producto_id']
-    precio_str = str(data['precio_unitario_fijo_ars']).strip()
+    precio_str = str(data.get('precio_unitario_fijo_ars', '')).strip() if data.get('precio_unitario_fijo_ars') is not None else ''
     activo = data.get('activo', True) # Default a activo
+    
+    # Nuevos campos para cálculo dinámico
+    margen_sobre_base = data.get('margen_sobre_base')
 
     # Validar IDs
     if not isinstance(cliente_id, int) or not isinstance(producto_id, int):
@@ -214,14 +272,26 @@ def crear_precio_especial(current_user):
     if not db.session.get(Producto, producto_id):
         return jsonify({"error": f"Producto ID {producto_id} no encontrado"}), 404
 
-    # Validar precio
-    try:
-        precio_decimal = Decimal(precio_str)
-        if precio_decimal < 0: raise ValueError("Precio no puede ser negativo")
-        # Podrías redondear aquí si quieres forzar una precisión
-        # precio_decimal = redondear_decimal(precio_decimal, 4)
-    except (InvalidOperation, ValueError) as e:
-        return jsonify({"error": f"Precio unitario inválido: {e}"}), 400
+    # Validar precio (solo si no usa precio base)
+    precio_decimal = None
+    if not usar_precio_base and precio_str:
+        try:
+            precio_decimal = Decimal(precio_str)
+            if precio_decimal < 0: raise ValueError("Precio no puede ser negativo")
+            # Podrías redondear aquí si quieres forzar una precisión
+            # precio_decimal = redondear_decimal(precio_decimal, 4)
+        except (InvalidOperation, ValueError) as e:
+            return jsonify({"error": f"Precio unitario inválido: {e}"}), 400
+    
+    # Validar margen sobre base si se proporciona
+    margen_sobre_base_decimal = None
+    if margen_sobre_base is not None:
+        try:
+            margen_sobre_base_decimal = Decimal(str(margen_sobre_base))
+            if margen_sobre_base_decimal < -1: # Permitir descuentos hasta -100%
+                raise ValueError("Margen sobre base no puede ser menor a -1 (-100%)")
+        except (InvalidOperation, ValueError) as e:
+            return jsonify({"error": f"Margen sobre base inválido: {e}"}), 400
 
     # Verificar si ya existe (manejar UniqueConstraint)
     existente = PrecioEspecialCliente.query.filter_by(cliente_id=cliente_id, producto_id=producto_id).first()
@@ -260,6 +330,8 @@ def crear_precio_especial(current_user):
                 moneda_original=str(moneda_original).upper(),
                 precio_original=precio_original_dec,
                 tipo_cambio_usado=tc_val,
+                usar_precio_base=usar_precio_base,
+                margen_sobre_base=margen_sobre_base_decimal,
                 activo=activo
             )
         else:
@@ -279,6 +351,8 @@ def crear_precio_especial(current_user):
                 moneda_original=moneda_saved,
                 precio_original=precio_original_dec,
                 tipo_cambio_usado=(tipo_cambio_usado if tipo_cambio_usado is not None else None),
+                usar_precio_base=usar_precio_base,
+                margen_sobre_base=margen_sobre_base_decimal,
                 activo=activo
             )
         db.session.add(nuevo_precio)
@@ -403,6 +477,32 @@ def actualizar_precio_especial(current_user, precio_id):
                 precio_esp.activo = data['activo']
                 updated = True
 
+        # Manejar nuevos campos para cálculo dinámico
+        if 'usar_precio_base' in data:
+            if not isinstance(data['usar_precio_base'], bool):
+                return jsonify({"error": "'usar_precio_base' debe ser un booleano (true/false)"}), 400
+            if getattr(precio_esp, 'usar_precio_base', False) != data['usar_precio_base']:
+                precio_esp.usar_precio_base = data['usar_precio_base']
+                updated = True
+
+        if 'margen_sobre_base' in data:
+            margen_val = data['margen_sobre_base']
+            if margen_val is not None:
+                try:
+                    margen_decimal = Decimal(str(margen_val))
+                    if margen_decimal < -1: # Permitir descuentos hasta -100%
+                        raise ValueError("Margen sobre base no puede ser menor a -1 (-100%)")
+                    if getattr(precio_esp, 'margen_sobre_base', None) != margen_decimal:
+                        precio_esp.margen_sobre_base = margen_decimal
+                        updated = True
+                except (InvalidOperation, ValueError) as e:
+                    return jsonify({"error": f"Margen sobre base inválido: {e}"}), 400
+            else:
+                # Permitir borrar el margen
+                if getattr(precio_esp, 'margen_sobre_base', None) is not None:
+                    precio_esp.margen_sobre_base = None
+                    updated = True
+
         # Soportar actualización de moneda_original / precio_original
         if 'moneda_original' in data or 'precio_original' in data or 'precio_unitario_fijo_ars' in data:
             moneda_in = data.get('moneda_original')
@@ -523,6 +623,78 @@ def eliminar_precio_especial(current_user, precio_id):
         logger.exception("ERROR [eliminar_precio_especial]: Excepción al eliminar precio especial")
         return jsonify({"error": "Error interno al eliminar el precio especial"}), 500
     
+@precios_especiales_bp.route('/test-calculo-dinamico/<int:precio_id>', methods=['GET'])
+@token_required
+@roles_required(ROLES['ADMIN'])
+def test_calculo_dinamico(current_user, precio_id):
+    """Endpoint de prueba para verificar el cálculo dinámico de precios especiales."""
+    precio_esp = db.session.query(PrecioEspecialCliente).options(
+        joinedload(PrecioEspecialCliente.cliente),
+        joinedload(PrecioEspecialCliente.producto)
+    ).get(precio_id)
+    
+    if not precio_esp:
+        return jsonify({"error": "Precio especial no encontrado"}), 404
+
+    try:
+        # Calcular precio usando la función existing
+        precio_ars, tipo_cambio = calcular_precio_ars(precio_esp)
+        
+        # Obtener detalles del producto para comparación
+        producto = precio_esp.producto
+        if producto:
+            try:
+                from .productos import calcular_costo_producto_referencia
+            except ImportError:
+                from ..blueprints.productos import calcular_costo_producto_referencia
+                
+            costo_usd = calcular_costo_producto_referencia(producto.id) or Decimal('0')
+            
+            # Obtener tipo de cambio para el producto
+            nombre_tc = 'Oficial' if producto.ajusta_por_tc else 'Empresa'
+            tc_obj = TipoCambio.query.filter_by(nombre=nombre_tc).first()
+            tc_producto = Decimal(str(tc_obj.valor)) if tc_obj and tc_obj.valor else None
+            
+            costo_ars = costo_usd * tc_producto if tc_producto else None
+            margen_producto = Decimal(str(producto.margen or '0.0'))
+            precio_base_ars = costo_ars / (Decimal('1') - margen_producto) if costo_ars and margen_producto < Decimal('1') else None
+        else:
+            costo_usd = costo_ars = precio_base_ars = tc_producto = margen_producto = None
+
+        result = {
+            "precio_especial_id": precio_id,
+            "cliente": precio_esp.cliente.nombre_razon_social if precio_esp.cliente else None,
+            "producto": precio_esp.producto.nombre if precio_esp.producto else None,
+            "usar_precio_base": bool(getattr(precio_esp, 'usar_precio_base', False)),
+            "margen_sobre_base": float(precio_esp.margen_sobre_base) if getattr(precio_esp, 'margen_sobre_base', None) is not None else None,
+            "calculos": {
+                "precio_final_ars": float(precio_ars) if precio_ars else None,
+                "tipo_cambio_usado": float(tipo_cambio) if tipo_cambio else None,
+                "costo_unitario_usd": float(costo_usd) if costo_usd else None,
+                "costo_unitario_ars": float(costo_ars) if costo_ars else None,
+                "precio_base_ars": float(precio_base_ars) if precio_base_ars else None,
+                "margen_producto": float(margen_producto) if margen_producto else None,
+                "tipo_cambio_producto": float(tc_producto) if tc_producto else None
+            },
+            "campos_guardados": {
+                "precio_unitario_fijo_ars": float(precio_esp.precio_unitario_fijo_ars) if precio_esp.precio_unitario_fijo_ars else None,
+                "moneda_original": precio_esp.moneda_original if hasattr(precio_esp, 'moneda_original') else None,
+                "precio_original": float(precio_esp.precio_original) if hasattr(precio_esp, 'precio_original') and precio_esp.precio_original else None
+            }
+        }
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        logger.exception("Error en test_calculo_dinamico")
+        return jsonify({
+            "error": str(e),
+            "precio_especial_id": precio_id,
+            "usar_precio_base": bool(getattr(precio_esp, 'usar_precio_base', False)),
+            "margen_sobre_base": float(precio_esp.margen_sobre_base) if getattr(precio_esp, 'margen_sobre_base', None) is not None else None
+        }), 500
+
+
 @precios_especiales_bp.route('/actualizar-global', methods=['POST','PUT'])
 @token_required
 @roles_required(ROLES['ADMIN'])
