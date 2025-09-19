@@ -55,10 +55,7 @@ def calcular_precio_item_venta(producto_id, cantidad_decimal, cliente_id=None):
                 PrecioEspecialCliente.activo == True
             ).first()
             if precio_especial_activo:
-                print(f"DEBUG [ventas]: Precio especial encontrado para prod {producto_id}, cliente {cliente_id}")
-                print(f"DEBUG [ventas]: usar_precio_base = {getattr(precio_especial_activo, 'usar_precio_base', None)}")
-                print(f"DEBUG [ventas]: margen_sobre_base = {getattr(precio_especial_activo, 'margen_sobre_base', None)}")
-                print(f"DEBUG [ventas]: precio_unitario_fijo_ars = {getattr(precio_especial_activo, 'precio_unitario_fijo_ars', None)}")
+                # Precio especial encontrado, procesar según tipo
                 # Si la regla fue guardada originalmente en USD y tiene precio_original,
                 # preferimos recalcular ARS multiplicando por el TC indicado (tipo_cambio_usado)
                 # si existe; si no existe, usar el TC 'Oficial' actual.
@@ -88,21 +85,29 @@ def calcular_precio_item_venta(producto_id, cantidad_decimal, cliente_id=None):
 
                     # Si usa pricing basado en margen, calcular dinámicamente
                     if getattr(precio_especial_activo, 'usar_precio_base', False):
-                        print(f"DEBUG [ventas]: Detectado pricing basado en margen para prod {producto_id}")
-                        print(f"DEBUG [ventas]: Margen sobre base: {getattr(precio_especial_activo, 'margen_sobre_base', None)}")
                         # Importar función de cálculo de precios especiales
                         from .precios_especiales import calcular_precio_ars
                         precio_unitario_fijo, tc_usado = calcular_precio_ars(precio_especial_activo)
-                        print(f"DEBUG [ventas]: calcular_precio_ars retornó: precio={precio_unitario_fijo}, tc={tc_usado}")
+                        
+                        # Debug info que se incluirá en la respuesta del API
+                        debug_info = {
+                            "tipo_precio": "basado_en_margen",
+                            "producto_id": producto_id,
+                            "cliente_id": cliente_id,
+                            "usar_precio_base": True,
+                            "margen_sobre_base": float(precio_especial_activo.margen_sobre_base) if precio_especial_activo.margen_sobre_base else None,
+                            "precio_calculado": float(precio_unitario_fijo) if precio_unitario_fijo else None,
+                            "tipo_cambio_usado": float(tc_usado) if tc_usado else None,
+                            "precio_unitario_fijo_guardado": float(precio_especial_activo.precio_unitario_fijo_ars)
+                        }
+                        
                         if precio_unitario_fijo is not None:
                             precio_total_fijo = (precio_unitario_fijo * cantidad_decimal).quantize(Decimal("0.01"), ROUND_HALF_UP)
                             costo_ref_usd_calc = calcular_costo_producto_referencia(producto_id)
                             costo_momento_ars_calc = None
-                            print(f"DEBUG [ventas]: Precio final calculado: unitario={precio_unitario_fijo}, total={precio_total_fijo}")
-                            return precio_unitario_fijo, precio_total_fijo, costo_momento_ars_calc, None, None, True
+                            return precio_unitario_fijo, precio_total_fijo, costo_momento_ars_calc, None, f"DEBUG_MARGEN: {debug_info}", True
                         else:
-                            print(f"DEBUG [ventas]: calcular_precio_ars retornó None")
-                            raise ValueError("No se pudo calcular precio basado en margen")
+                            return None, None, None, None, f"ERROR_MARGEN: No se pudo calcular precio - {debug_info}", False
                     
                     # Si la regla está en ARS (o no tiene precio_original), usar el precio_unitario_fijo_ars guardado
                     elif getattr(precio_especial_activo, 'precio_unitario_fijo_ars', None) is not None and precio_especial_activo.precio_unitario_fijo_ars > 0:

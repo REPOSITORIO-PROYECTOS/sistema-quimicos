@@ -650,10 +650,18 @@ def calculate_price(product_id: int):
             try:
                 cliente_id = int(cliente_id_payload)
                 precio_especial_db = PrecioEspecialCliente.query.filter_by(cliente_id=cliente_id, producto_id=product_id, activo=True).first()
-                if precio_especial_db and precio_especial_db.precio_unitario_fijo_ars is not None:
-                    precio_venta_unitario_bruto = Decimal(str(precio_especial_db.precio_unitario_fijo_ars))
-                    se_aplico_precio_especial = True
-                    debug_info_response['etapas_calculo'].append("INICIO: LÓGICA DE PRECIO ESPECIAL APLICADA.")
+                if precio_especial_db:
+                    # Usar la función de ventas para calcular tanto precios fijos como marginados
+                    from app.blueprints.ventas import calcular_precio_item_venta
+                    precio_resultado = calcular_precio_item_venta(
+                        product_id, cliente_id, 1, 'ARS'
+                    )
+                    if precio_resultado and precio_resultado.get('precio_unitario_final'):
+                        precio_venta_unitario_bruto = Decimal(str(precio_resultado['precio_unitario_final']))
+                        se_aplico_precio_especial = True
+                        debug_info_response['etapas_calculo'].append("INICIO: PRECIO ESPECIAL CALCULADO USANDO FUNCIÓN DE VENTAS.")
+                        if precio_resultado.get('debug_info'):
+                            debug_info_response['etapas_calculo'].extend(precio_resultado['debug_info'])
             except (ValueError, TypeError):
                 debug_info_response['etapas_calculo'].append("WARN: Cliente ID inválido, se ignora.")
 
