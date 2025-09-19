@@ -304,7 +304,9 @@ def crear_precio_especial(current_user):
         precio_original_val = data.get('precio_original')
 
         tipo_cambio_usado = None
-        precio_unitario_guardado = precio_decimal
+        # Si usar_precio_base=1 (margin-based), precio_unitario_fijo_ars debe ser 0
+        # Si usar_precio_base=0 (fixed price), usar el precio proporcionado
+        precio_unitario_guardado = Decimal('0') if usar_precio_base else precio_decimal
 
         # Si el cliente envía precio_original y moneda USD, calcular ARS usando TC 'Oficial'
         if moneda_original and str(moneda_original).upper() == 'USD' and precio_original_val is not None:
@@ -321,7 +323,9 @@ def crear_precio_especial(current_user):
             except Exception:
                 tc_val = Decimal(tc_obj.valor)
             tipo_cambio_usado = tc_val
-            precio_unitario_guardado = (precio_original_dec * tc_val)
+            # Si usar_precio_base=1 (margin-based), precio_unitario_fijo_ars debe ser 0
+            # Si usar_precio_base=0 (fixed price), usar el precio convertido
+            precio_unitario_guardado = Decimal('0') if usar_precio_base else (precio_original_dec * tc_val)
 
             nuevo_precio = PrecioEspecialCliente(
                 cliente_id=cliente_id,
@@ -459,16 +463,23 @@ def actualizar_precio_especial(current_user, precio_id):
     updated = False
     try:
         if 'precio_unitario_fijo_ars' in data:
-            precio_str = str(data['precio_unitario_fijo_ars']).strip()
-            try:
-                precio_decimal = Decimal(precio_str)
-                if precio_decimal < 0: raise ValueError("Precio no puede ser negativo")
-                # precio_decimal = redondear_decimal(precio_decimal, 4) # Opcional redondear
-                if precio_esp.precio_unitario_fijo_ars != precio_decimal:
-                    precio_esp.precio_unitario_fijo_ars = precio_decimal
+            # Solo actualizar precio_unitario_fijo_ars si no estamos usando precio base (margin-based)
+            if not getattr(precio_esp, 'usar_precio_base', False):
+                precio_str = str(data['precio_unitario_fijo_ars']).strip()
+                try:
+                    precio_decimal = Decimal(precio_str)
+                    if precio_decimal < 0: raise ValueError("Precio no puede ser negativo")
+                    # precio_decimal = redondear_decimal(precio_decimal, 4) # Opcional redondear
+                    if precio_esp.precio_unitario_fijo_ars != precio_decimal:
+                        precio_esp.precio_unitario_fijo_ars = precio_decimal
+                        updated = True
+                except (InvalidOperation, ValueError) as e:
+                    return jsonify({"error": f"Precio unitario inválido: {e}"}), 400
+            else:
+                # Si usar_precio_base=True, precio_unitario_fijo_ars debe ser 0
+                if precio_esp.precio_unitario_fijo_ars != Decimal('0'):
+                    precio_esp.precio_unitario_fijo_ars = Decimal('0')
                     updated = True
-            except (InvalidOperation, ValueError) as e:
-                return jsonify({"error": f"Precio unitario inválido: {e}"}), 400
 
         if 'activo' in data:
             if not isinstance(data['activo'], bool):
@@ -483,6 +494,9 @@ def actualizar_precio_especial(current_user, precio_id):
                 return jsonify({"error": "'usar_precio_base' debe ser un booleano (true/false)"}), 400
             if getattr(precio_esp, 'usar_precio_base', False) != data['usar_precio_base']:
                 precio_esp.usar_precio_base = data['usar_precio_base']
+                # Si cambiamos a usar_precio_base=True (margin-based), precio_unitario_fijo_ars debe ser 0
+                if data['usar_precio_base']:
+                    precio_esp.precio_unitario_fijo_ars = Decimal('0')
                 updated = True
 
         if 'margen_sobre_base' in data:
