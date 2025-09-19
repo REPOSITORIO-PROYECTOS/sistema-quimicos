@@ -653,15 +653,17 @@ def calculate_price(product_id: int):
                 if precio_especial_db:
                     # Usar la función de ventas para calcular tanto precios fijos como marginados
                     from app.blueprints.ventas import calcular_precio_item_venta
-                    precio_resultado = calcular_precio_item_venta(
-                        product_id, cliente_id, 1, 'ARS'
+                    precio_unitario, precio_total, costo_momento, coeficiente, error_msg, es_precio_especial = calcular_precio_item_venta(
+                        product_id, cantidad_decimal, cliente_id
                     )
-                    if precio_resultado and precio_resultado.get('precio_unitario_final'):
-                        precio_venta_unitario_bruto = Decimal(str(precio_resultado['precio_unitario_final']))
+                    if es_precio_especial and precio_unitario is not None:
+                        precio_venta_unitario_bruto = Decimal(str(precio_unitario))
                         se_aplico_precio_especial = True
                         debug_info_response['etapas_calculo'].append("INICIO: PRECIO ESPECIAL CALCULADO USANDO FUNCIÓN DE VENTAS.")
-                        if precio_resultado.get('debug_info'):
-                            debug_info_response['etapas_calculo'].extend(precio_resultado['debug_info'])
+                        if error_msg and "DEBUG_MARGEN:" in error_msg:
+                            debug_info_response['etapas_calculo'].append(f"DETALLE MARGEN: {error_msg}")
+                    elif error_msg:
+                        debug_info_response['etapas_calculo'].append(f"WARN: {error_msg}")
             except (ValueError, TypeError):
                 debug_info_response['etapas_calculo'].append("WARN: Cliente ID inválido, se ignora.")
 
