@@ -82,8 +82,21 @@ def calcular_precio_item_venta(producto_id, cantidad_decimal, cliente_id=None):
                         costo_momento_ars_calc = None
                         return precio_unitario_fijo, precio_total_fijo, costo_momento_ars_calc, None, None, True
 
+                    # Si usa pricing basado en margen, calcular dinámicamente
+                    if getattr(precio_especial_activo, 'usar_precio_base', False):
+                        # Importar función de cálculo de precios especiales
+                        from .precios_especiales import calcular_precio_ars
+                        precio_unitario_fijo, _ = calcular_precio_ars(precio_especial_activo)
+                        if precio_unitario_fijo is not None:
+                            precio_total_fijo = (precio_unitario_fijo * cantidad_decimal).quantize(Decimal("0.01"), ROUND_HALF_UP)
+                            costo_ref_usd_calc = calcular_costo_producto_referencia(producto_id)
+                            costo_momento_ars_calc = None
+                            return precio_unitario_fijo, precio_total_fijo, costo_momento_ars_calc, None, None, True
+                        else:
+                            raise ValueError("No se pudo calcular precio basado en margen")
+                    
                     # Si la regla está en ARS (o no tiene precio_original), usar el precio_unitario_fijo_ars guardado
-                    if getattr(precio_especial_activo, 'precio_unitario_fijo_ars', None) is not None:
+                    elif getattr(precio_especial_activo, 'precio_unitario_fijo_ars', None) is not None and precio_especial_activo.precio_unitario_fijo_ars > 0:
                         precio_unitario_fijo = precio_especial_activo.precio_unitario_fijo_ars
                         precio_total_fijo = (precio_unitario_fijo * cantidad_decimal).quantize(Decimal("0.01"), ROUND_HALF_UP)
                         costo_ref_usd_calc = calcular_costo_producto_referencia(producto_id)
