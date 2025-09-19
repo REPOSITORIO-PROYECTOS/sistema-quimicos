@@ -695,6 +695,88 @@ def test_calculo_dinamico(current_user, precio_id):
         }), 500
 
 
+@precios_especiales_bp.route('/calcular-precio-preview/<int:producto_id>', methods=['GET'])
+@token_required
+@roles_required(ROLES['ADMIN'])
+def calcular_precio_preview(current_user, producto_id):
+    """
+    Obtiene información del producto y calcula el precio base para preview en el frontend.
+    Útil para mostrar el margen del producto y calcular precios dinámicamente.
+    """
+    try:
+        # Obtener margen adicional desde query params
+        margen_adicional = request.args.get('margen_adicional', type=float)
+        
+        # Obtener producto
+        producto = db.session.get(Producto, producto_id)
+        if not producto:
+            return jsonify({"error": f"Producto ID {producto_id} no encontrado"}), 404
+        
+        # Importar función de cálculo de costo
+        try:
+            from .productos import calcular_costo_producto_referencia
+        except ImportError:
+            from ..blueprints.productos import calcular_costo_producto_referencia
+        
+        # Calcular costo unitario USD
+        costo_unitario_usd = calcular_costo_producto_referencia(producto.id) or Decimal('0')
+        
+        # Obtener tipo de cambio apropiado
+        nombre_tc = 'Oficial' if producto.ajusta_por_tc else 'Empresa'
+        tc_obj = TipoCambio.query.filter_by(nombre=nombre_tc).first()
+        if not tc_obj or not tc_obj.valor:
+            return jsonify({"error": f"Tipo de cambio '{nombre_tc}' no disponible"}), 500
+        
+        tipo_cambio_actual = Decimal(str(tc_obj.valor))
+        
+        # Convertir costo a ARS
+        costo_unitario_ars = costo_unitario_usd * tipo_cambio_actual
+        
+        # Calcular precio base con margen del producto
+        margen_producto = Decimal(str(producto.margen or '0.0'))
+        if margen_producto >= Decimal('1'):
+            return jsonify({"error": f"Margen del producto es >= 100%, no se puede calcular precio base"}), 400
+        
+        precio_base_ars = costo_unitario_ars / (Decimal('1') - margen_producto)
+        
+        # Calcular precio con margen adicional si se proporciona
+        precio_con_margen = precio_base_ars
+        if margen_adicional is not None:
+            margen_adicional_decimal = Decimal(str(margen_adicional))
+            precio_con_margen = precio_base_ars * (Decimal('1') + margen_adicional_decimal)
+        
+        # Preparar respuesta
+        response = {
+            "producto": {
+                "id": producto.id,
+                "nombre": producto.nombre,
+                "margen_producto": float(margen_producto),
+                "margen_producto_porcentaje": float(margen_producto * 100),
+                "ajusta_por_tc": producto.ajusta_por_tc,
+                "tipo_cambio_usado": nombre_tc
+            },
+            "calculos": {
+                "costo_unitario_usd": float(costo_unitario_usd),
+                "costo_unitario_ars": float(costo_unitario_ars),
+                "tipo_cambio_actual": float(tipo_cambio_actual),
+                "precio_base_ars": float(precio_base_ars),
+                "precio_con_margen_ars": float(precio_con_margen) if margen_adicional is not None else None,
+                "margen_adicional_aplicado": margen_adicional,
+                "margen_adicional_porcentaje": margen_adicional * 100 if margen_adicional is not None else None
+            },
+            "comparacion": {
+                "diferencia_ars": float(precio_con_margen - precio_base_ars) if margen_adicional is not None else 0,
+                "porcentaje_total": float((precio_con_margen / precio_base_ars - 1) * 100) if margen_adicional is not None else 0
+            }
+        }
+        
+        return jsonify(response)
+        
+    except Exception as e:
+        logger.exception("Error en calcular_precio_preview")
+        return jsonify({"error": str(e)}), 500
+
+
 @precios_especiales_bp.route('/actualizar-global', methods=['POST','PUT'])
 @token_required
 @roles_required(ROLES['ADMIN'])
