@@ -55,6 +55,10 @@ def calcular_precio_item_venta(producto_id, cantidad_decimal, cliente_id=None):
                 PrecioEspecialCliente.activo == True
             ).first()
             if precio_especial_activo:
+                print(f"DEBUG [ventas]: Precio especial encontrado para prod {producto_id}, cliente {cliente_id}")
+                print(f"DEBUG [ventas]: usar_precio_base = {getattr(precio_especial_activo, 'usar_precio_base', None)}")
+                print(f"DEBUG [ventas]: margen_sobre_base = {getattr(precio_especial_activo, 'margen_sobre_base', None)}")
+                print(f"DEBUG [ventas]: precio_unitario_fijo_ars = {getattr(precio_especial_activo, 'precio_unitario_fijo_ars', None)}")
                 # Si la regla fue guardada originalmente en USD y tiene precio_original,
                 # preferimos recalcular ARS multiplicando por el TC indicado (tipo_cambio_usado)
                 # si existe; si no existe, usar el TC 'Oficial' actual.
@@ -84,15 +88,20 @@ def calcular_precio_item_venta(producto_id, cantidad_decimal, cliente_id=None):
 
                     # Si usa pricing basado en margen, calcular dinámicamente
                     if getattr(precio_especial_activo, 'usar_precio_base', False):
+                        print(f"DEBUG [ventas]: Detectado pricing basado en margen para prod {producto_id}")
+                        print(f"DEBUG [ventas]: Margen sobre base: {getattr(precio_especial_activo, 'margen_sobre_base', None)}")
                         # Importar función de cálculo de precios especiales
                         from .precios_especiales import calcular_precio_ars
-                        precio_unitario_fijo, _ = calcular_precio_ars(precio_especial_activo)
+                        precio_unitario_fijo, tc_usado = calcular_precio_ars(precio_especial_activo)
+                        print(f"DEBUG [ventas]: calcular_precio_ars retornó: precio={precio_unitario_fijo}, tc={tc_usado}")
                         if precio_unitario_fijo is not None:
                             precio_total_fijo = (precio_unitario_fijo * cantidad_decimal).quantize(Decimal("0.01"), ROUND_HALF_UP)
                             costo_ref_usd_calc = calcular_costo_producto_referencia(producto_id)
                             costo_momento_ars_calc = None
+                            print(f"DEBUG [ventas]: Precio final calculado: unitario={precio_unitario_fijo}, total={precio_total_fijo}")
                             return precio_unitario_fijo, precio_total_fijo, costo_momento_ars_calc, None, None, True
                         else:
+                            print(f"DEBUG [ventas]: calcular_precio_ars retornó None")
                             raise ValueError("No se pudo calcular precio basado en margen")
                     
                     # Si la regla está en ARS (o no tiene precio_original), usar el precio_unitario_fijo_ars guardado

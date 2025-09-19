@@ -73,6 +73,7 @@ def calcular_precio_ars(precio_esp):
     try:
         # PRIORIDAD 1: Si la regla indica usar el precio base calculado del producto
         if getattr(precio_esp, 'usar_precio_base', False):
+            print(f"DEBUG [calcular_precio_ars]: Iniciando cálculo basado en margen para producto {precio_esp.producto_id}")
             # Importar localmente para evitar ciclos
             try:
                 from .productos import calcular_costo_producto_referencia
@@ -81,38 +82,49 @@ def calcular_precio_ars(precio_esp):
 
             producto = precio_esp.producto or db.session.get(Producto, precio_esp.producto_id)
             if not producto:
+                print(f"DEBUG [calcular_precio_ars]: Producto {precio_esp.producto_id} no encontrado")
                 return (None, None)
 
             # Calcular costo unitario USD
             costo_unitario_usd = calcular_costo_producto_referencia(producto.id) or Decimal('0')
+            print(f"DEBUG [calcular_precio_ars]: Costo unitario USD: {costo_unitario_usd}")
             
             # Obtener tipo de cambio apropiado
             nombre_tc = 'Oficial' if producto.ajusta_por_tc else 'Empresa'
             tc_obj = TipoCambio.query.filter_by(nombre=nombre_tc).first()
             if not tc_obj or not tc_obj.valor:
+                print(f"DEBUG [calcular_precio_ars]: Tipo de cambio '{nombre_tc}' no disponible")
                 raise ValueError(f"Tipo de cambio '{nombre_tc}' no disponible")
             
             try:
                 tipo_cambio_actual = Decimal(str(tc_obj.valor))
             except Exception:
                 tipo_cambio_actual = Decimal(tc_obj.valor)
+            print(f"DEBUG [calcular_precio_ars]: Tipo de cambio {nombre_tc}: {tipo_cambio_actual}")
 
             # Convertir costo a ARS
             costo_unitario_ars = costo_unitario_usd * tipo_cambio_actual
+            print(f"DEBUG [calcular_precio_ars]: Costo unitario ARS: {costo_unitario_ars}")
             
             # Aplicar margen del producto para obtener precio base
             margen_producto = Decimal(str(producto.margen or '0.0'))
+            print(f"DEBUG [calcular_precio_ars]: Margen del producto: {margen_producto}")
             if margen_producto >= Decimal('1'):
+                print(f"DEBUG [calcular_precio_ars]: Margen del producto >= 1, no se puede calcular")
                 raise ValueError(f"Margen del producto {producto.id} es >= 1, no se puede calcular precio base")
             
             precio_base_ars = costo_unitario_ars / (Decimal('1') - margen_producto)
+            print(f"DEBUG [calcular_precio_ars]: Precio base ARS: {precio_base_ars}")
 
             # Aplicar margen adicional si existe
             if getattr(precio_esp, 'margen_sobre_base', None) is not None:
                 margen_sobre = Decimal(str(precio_esp.margen_sobre_base))
+                print(f"DEBUG [calcular_precio_ars]: Margen sobre base: {margen_sobre}")
                 precio_ars = precio_base_ars * (Decimal('1') + margen_sobre)
+                print(f"DEBUG [calcular_precio_ars]: Precio final con margen: {precio_ars}")
             else:
                 precio_ars = precio_base_ars
+                print(f"DEBUG [calcular_precio_ars]: Precio final sin margen adicional: {precio_ars}")
 
             return (precio_ars, tipo_cambio_actual)
 
