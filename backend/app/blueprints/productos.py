@@ -659,11 +659,18 @@ def calculate_price(product_id: int):
                     if es_precio_especial and precio_unitario is not None:
                         precio_venta_unitario_bruto = Decimal(str(precio_unitario))
                         se_aplico_precio_especial = True
-                        debug_info_response['etapas_calculo'].append("INICIO: PRECIO ESPECIAL CALCULADO USANDO FUNCIÓN DE VENTAS.")
-                        if error_msg and "DEBUG_MARGEN:" in error_msg:
-                            debug_info_response['etapas_calculo'].append(f"DETALLE MARGEN: {error_msg}")
+                        
+                        # Determinar si es precio con margen
+                        tipo_precio = "fijo"
+                        if hasattr(precio_especial_db, 'usar_precio_base') and precio_especial_db.usar_precio_base:
+                            tipo_precio = "margen"
+                            margen_pct = float(precio_especial_db.margen_sobre_base) * 100 if precio_especial_db.margen_sobre_base else 0
+                            debug_info_response['etapas_calculo'].append(f"INICIO: PRECIO ESPECIAL CON MARGEN ({margen_pct:+.1f}%) APLICADO.")
+                        else:
+                            debug_info_response['etapas_calculo'].append("INICIO: PRECIO ESPECIAL FIJO APLICADO.")
+                            
                     elif error_msg:
-                        debug_info_response['etapas_calculo'].append(f"WARN: {error_msg}")
+                        debug_info_response['etapas_calculo'].append(f"WARN: Error en precio especial - {error_msg}")
             except (ValueError, TypeError):
                 debug_info_response['etapas_calculo'].append("WARN: Cliente ID inválido, se ignora.")
 

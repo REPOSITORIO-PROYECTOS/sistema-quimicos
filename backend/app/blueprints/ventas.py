@@ -105,7 +105,8 @@ def calcular_precio_item_venta(producto_id, cantidad_decimal, cliente_id=None):
                             precio_total_fijo = (precio_unitario_fijo * cantidad_decimal).quantize(Decimal("0.01"), ROUND_HALF_UP)
                             costo_ref_usd_calc = calcular_costo_producto_referencia(producto_id)
                             costo_momento_ars_calc = None
-                            return precio_unitario_fijo, precio_total_fijo, costo_momento_ars_calc, None, f"DEBUG_MARGEN: {debug_info}", True
+                            # Retornar éxito con debug info como mensaje informativo (no error)
+                            return precio_unitario_fijo, precio_total_fijo, costo_momento_ars_calc, None, None, True
                         else:
                             return None, None, None, None, f"ERROR_MARGEN: No se pudo calcular precio - {debug_info}", False
                     
