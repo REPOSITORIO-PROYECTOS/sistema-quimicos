@@ -10,16 +10,18 @@ import BotonVolver from './BotonVolver';
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://quimex.sistemataup.online';
 
 interface ProductoPrecioEspecialItem {
-  id_precio_especial?: number;   // ID de la entrada PrecioEspecialCliente (si ya existe, viene de la API)
-  producto_id: string;           // ID del producto (en el form, lo manejaremos como string para el select)
-  valor: number;                  // Precio especial asignado
-  activo: boolean;                // Estado activo
-  temp_key?: string;             // Key temporal para React si es un ítem nuevo
-  api_producto_nombre?: string;    // Nombre del producto como vino de la API de precios especiales
-  api_producto_id_original_api?: number; // El ID del producto como vino de la API de precios especiales
-  moneda?: 'ARS' | 'USD';         // Moneda seleccionada para este precio especial
-  precio_original?: number;       // Precio original en la moneda indicada (si aplica)
-  nuevo_precio?: number;          // Campo temporal para que el usuario ingrese un nuevo precio
+  id_precio_especial?: number;
+  producto_id: string;
+  valor: number;
+  activo: boolean;
+  temp_key?: string;
+  api_producto_nombre?: string;
+  api_producto_id_original_api?: number;
+  moneda?: 'ARS' | 'USD';
+  precio_original?: number;
+  nuevo_precio?: number;
+  usar_precio_base?: boolean;
+  margen_sobre_base?: number;
 }
 
 // Interfaz para el estado completo del formulario de actualización
@@ -47,6 +49,8 @@ interface PrecioEspecialDesdeAPI {
   activo: boolean;
   moneda_original?: string;
   precio_original?: number | string;
+  usar_precio_base?: boolean;
+  margen_sobre_base?: number;
   // fecha_creacion y fecha_modificacion no son necesarias para el form
 }
 
@@ -63,6 +67,145 @@ const initialFormState: FormState = {
   observaciones: '',
   precios_especiales_form: [],
 };
+
+// Componente para mostrar preview del precio calculado con margen
+function PrecioPreviewConMargen({ productoId, margen }: { productoId: string | number; margen: number }) {
+  const [previewData, setPreviewData] = useState<{
+    precio_base: number;
+    precio_final: number;
+    margen_aplicado: number;
+  } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Validaciones más estrictas
+    if (!productoId || 
+        productoId === '' || 
+        margen === undefined || 
+        margen === null || 
+        isNaN(Number(margen))) {
+      setPreviewData(null);
+      setError(null);
+      return;
+    }
+    
+    setLoading(true);
+    setError(null);
+    
+    const token = typeof window !== 'undefined' ? localStorage.getItem("token") : null;
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    // Convertir margen a decimal (dividir por 100)
+    const margenDecimal = Number(margen) / 100;
+
+    fetch(`${API_BASE_URL}/precios_especiales/calcular-precio-preview/${productoId}?margen=${margenDecimal}`, {
+      headers
+    })
+      .then(async res => {
+        if (res.ok) {
+          return res.json();
+        } else {
+          const errorData = await res.json().catch(() => ({}));
+          throw new Error(errorData.error || `Error ${res.status}`);
+        }
+      })
+      .then(data => {
+        // La respuesta puede tener diferentes estructuras según el endpoint
+        let precioBase = 0;
+        let precioFinal = 0;
+        
+        if (data.calculos) {
+          // Estructura nueva del endpoint de preview
+          precioBase = Number(data.calculos.precio_base_ars || 0);
+          precioFinal = Number(data.calculos.precio_con_margen_ars || 0);
+        } else if (data.precio_final) {
+          // Estructura anterior
+          precioBase = Number(data.precio_base || 0);
+          precioFinal = Number(data.precio_final || 0);
+        } else {
+          throw new Error('Estructura de respuesta no reconocida');
+        }
+        
+        if (precioFinal > 0) {
+          setPreviewData({
+            precio_base: precioBase,
+            precio_final: precioFinal,
+            margen_aplicado: Number(margen)
+          });
+        } else {
+          setPreviewData(null);
+          setError('No se pudo calcular el precio. Verifique que el producto tenga un precio base válido.');
+        }
+      })
+      .catch((err) => {
+        console.error('Error calculating price preview:', err);
+        setError(err.message || 'Error al calcular preview');
+      })
+      .finally(() => setLoading(false));
+  }, [productoId, margen]);
+
+  if (loading) return (
+    <div className="text-sm text-gray-500 animate-pulse">
+      🔄 Calculando precio...
+    </div>
+  );
+  
+  if (error) return (
+    <div className="bg-red-50 border border-red-200 rounded-lg p-2 mt-1">
+      <div className="text-xs text-red-700">
+        ❌ <strong>Error:</strong> {error}
+      </div>
+      {(error.includes('Margen sobre base inválido') || error.includes('margen')) && (
+        <div className="text-xs text-red-600 mt-1">
+          💡 <strong>Ayuda:</strong> Para descuentos usa valores negativos (ej: -15 para 15% de descuento)
+          <br />
+          El descuento máximo permitido es -100% (producto gratis)
+        </div>
+      )}
+    </div>
+  );
+
+  if (!previewData) return (
+    <div className="text-xs text-gray-500">
+      ℹ️ Precio no disponible
+    </div>
+  );
+
+  const esDescuento = previewData.margen_aplicado < 0;
+  const esAumento = previewData.margen_aplicado > 0;
+
+  return (
+    <div className={`${esDescuento ? 'bg-orange-50 border-orange-200' : 'bg-green-50 border-green-200'} border rounded-md p-2 mt-1`}>
+      <div className="text-xs font-medium mb-1">
+        {esDescuento ? '🏷️ Precio con Descuento' : '📊 Precio con Margen'}
+      </div>
+      <div className="space-y-1 text-xs">
+        <div className="flex justify-between">
+          <span className="text-gray-600">Base:</span>
+          <span className="font-medium">${previewData.precio_base.toFixed(2)}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-gray-600">
+            {esDescuento ? 'Desc:' : 'Marg:'}
+          </span>
+          <span className={`font-medium ${esDescuento ? 'text-orange-600' : esAumento ? 'text-green-600' : 'text-blue-600'}`}>
+            {esDescuento ? `${previewData.margen_aplicado}%` : `+${previewData.margen_aplicado}%`}
+          </span>
+        </div>
+        <div className="border-t pt-1" style={{ borderColor: esDescuento ? 'rgb(254 215 170)' : 'rgb(187 247 208)' }}>
+          <div className="flex justify-between">
+            <span className="text-gray-700 font-medium">Final:</span>
+            <span className={`font-bold text-sm ${esDescuento ? 'text-orange-700' : 'text-green-700'}`}>
+              ${previewData.precio_final.toFixed(2)}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 
 export default function FormularioActualizacionCliente({ id_cliente }: { id_cliente: number | undefined }) {
@@ -86,11 +229,11 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
   const [modalActivo, setModalActivo] = useState(true);
   const [modalLoading, setModalLoading] = useState(false);
   const [modalError, setModalError] = useState<string | null>(null);
+  const [modalUsarPrecioBase, setModalUsarPrecioBase] = useState(false);
+  const [modalMargen, setModalMargen] = useState<number | ''>('');
 
   // Tipo de cambio oficial (USD -> ARS)
   const [tipoCambioOficial, setTipoCambioOficial] = useState<number | null>(null);
-  const [tcLoading, setTcLoading] = useState(false);
-  const [tcError, setTcError] = useState<string | null>(null);
 
   const {
     productos: productosDisponiblesContext,
@@ -151,6 +294,9 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
   // Si la API retorna moneda/precio original, preferirla; si no, asumimos ARS
   moneda: (p.moneda_original && String(p.moneda_original).toUpperCase() === 'USD') ? 'USD' : 'ARS',
     precio_original: p.precio_original !== undefined ? Number(p.precio_original) : undefined,
+        // Campos de margen
+        usar_precio_base: p.usar_precio_base || false,
+        margen_sobre_base: p.margen_sobre_base || undefined,
       }));  
 
   // Guardar copia original para comparar cambios en el submit
@@ -192,8 +338,6 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
   // Cargar tipo de cambio Oficial cuando se muestran precios especiales
   useEffect(() => {
     const fetchTC = async () => {
-      setTcLoading(true);
-      setTcError(null);
       try {
         // Llamada sin Authorization para evitar preflight CORS si el endpoint es público
         const res = await fetch(`${API_BASE_URL}/tipos_cambio/obtener/Oficial`);
@@ -201,11 +345,8 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
         const data = await res.json();
         // data expected to have { nombre: 'Oficial', valor: number }
         setTipoCambioOficial(Number(data.valor));
-      } catch (err) {
-        setTcError(err instanceof Error ? err.message : 'Error al obtener tipo de cambio');
+      } catch {
         setTipoCambioOficial(null);
-      } finally {
-        setTcLoading(false);
       }
     };
 
@@ -230,20 +371,22 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
     const currentItem = list[index];
 
     if (name === 'producto_id') {
-      currentItem.producto_id = value; // Value del select ya es string
-      // Al cambiar el producto, si era un ítem existente (con id_precio_especial),
-      // se debe considerar que el precio especial original para el producto anterior
-      // podría necesitar ser eliminado, y este se tratará como uno nuevo para el nuevo producto.
-      // La lógica de handleSubmit se encargará de esto.
-      // También podríamos resetear el valor aquí, o buscar un precio por defecto para el nuevo producto.
-      // currentItem.valor = 0; // Opcional: resetear valor
+      currentItem.producto_id = value;
     } else if (name === 'valor') {
       currentItem.valor = Number(value) || 0;
     } else if (name === 'moneda') {
       currentItem.moneda = (value as 'ARS' | 'USD') || 'ARS';
     } else if (name === 'nuevo_precio') {
-      // nuevo_precio viene como string desde el input; si está vacío lo dejamos undefined
       currentItem.nuevo_precio = value === '' ? undefined : Number(value);
+    } else if (name === 'activo' && type === 'checkbox') {
+      currentItem.activo = (e.target as HTMLInputElement).checked;
+    } else if (name === 'usar_precio_base' && type === 'checkbox') {
+      currentItem.usar_precio_base = (e.target as HTMLInputElement).checked;
+      if (!currentItem.usar_precio_base) {
+        currentItem.margen_sobre_base = undefined;
+      }
+    } else if (name === 'margen_sobre_base') {
+      currentItem.margen_sobre_base = value === '' ? undefined : Number(value);
     } else if (name === 'activo' && type === 'checkbox') {
       currentItem.activo = (e.target as HTMLInputElement).checked;
     }
@@ -255,7 +398,7 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
       ...prev,
       precios_especiales_form: [
         ...prev.precios_especiales_form,
-        { temp_key: Date.now().toString(), producto_id: '', valor: 0, activo: true, moneda: 'ARS' }
+        { temp_key: Date.now().toString(), producto_id: '', valor: 0, activo: true, moneda: 'ARS', usar_precio_base: false }
       ]
     }));
   };
@@ -277,6 +420,9 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
     setModalActivo(true);
     setModalLoading(false);
     setModalError(null);
+    setModalUsarPrecioBase(false);
+    setModalMargen('');
+    setModalMoneda('ARS');
   };
 
   const handleModalSave = async () => {
@@ -294,15 +440,24 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
     setModalLoading(true);
     try {
       const precio = modalPrecioUSD === '' ? undefined : Number(modalPrecioUSD);
-      // Actualizar moneda en el item editado
-      const updatedItem = { ...item, moneda: modalMoneda };
-      const precioUnitarioARS = modalMoneda === 'USD' ? 0 : (precio !== undefined ? precio : 0);
+      // Actualizar item editado con todos los campos
+      const updatedItem = { 
+        ...item, 
+        moneda: modalMoneda,
+        usar_precio_base: modalUsarPrecioBase,
+        margen_sobre_base: modalUsarPrecioBase && modalMargen !== '' ? Number(modalMargen) : undefined
+      };
+      // Si usar_precio_base=true (margin-based), precio_unitario_fijo_ars debe ser 0
+      // Si usar_precio_base=false (fixed price), usar el precio según moneda
+      const precioUnitarioARS = modalUsarPrecioBase ? 0 : (modalMoneda === 'USD' ? 0 : (precio !== undefined ? precio : 0));
       if (item.id_precio_especial) {
         // Update existing
         const payload: Record<string, unknown> = {
           activo: Boolean(modalActivo),
           moneda_original: modalMoneda,
           precio_unitario_fijo_ars: precioUnitarioARS,
+          usar_precio_base: modalUsarPrecioBase,
+          margen_sobre_base: modalUsarPrecioBase && modalMargen !== '' ? Number(modalMargen) / 100 : undefined,
         };
         if (precio !== undefined) {
           payload['precio_original'] = precio;
@@ -325,6 +480,8 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
           activo: Boolean(modalActivo),
           moneda_original: modalMoneda,
           precio_unitario_fijo_ars: precioUnitarioARS,
+          usar_precio_base: modalUsarPrecioBase,
+          margen_sobre_base: modalUsarPrecioBase && modalMargen !== '' ? Number(modalMargen) / 100 : undefined,
         };
         if (precio !== undefined) body['precio_original'] = precio;
   const res = await fetch(`${API_BASE_URL}/precios_especiales/crear`, {
@@ -450,8 +607,10 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
             const body: Record<string, unknown> = {
               cliente_id: id_cliente,
               producto_id: Number(item.producto_id),
-              precio_unitario_fijo_ars: Number(item.valor),
+              precio_unitario_fijo_ars: item.usar_precio_base ? 0 : Number(item.valor),
               activo: Boolean(item.activo),
+              usar_precio_base: !!item.usar_precio_base,
+              margen_sobre_base: item.usar_precio_base && item.margen_sobre_base !== undefined ? Number(item.margen_sobre_base) / 100 : undefined,
             };
             body['moneda_original'] = item.moneda === 'USD' ? 'USD' : 'ARS';
             if (nuevo !== undefined) {
@@ -459,7 +618,10 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
               if (item.moneda === 'USD') {
                 body['precio_original'] = nuevo;
               } else {
-                body['precio_unitario_fijo_ars'] = nuevo;
+                // Solo actualizar precio_unitario_fijo_ars si no es margin-based
+                if (!item.usar_precio_base) {
+                  body['precio_unitario_fijo_ars'] = nuevo;
+                }
                 body['precio_original'] = nuevo;
               }
             } else {
@@ -494,13 +656,21 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
                 if (!orig) {
                 // No encontramos el original, tratar como update con lo que tengamos
                 const nuevoUpd = (typeof item.nuevo_precio === 'number' && Number.isFinite(item.nuevo_precio)) ? item.nuevo_precio : undefined;
-                const payload: Record<string, unknown> = { precio_unitario_fijo_ars: Number(item.valor), activo: Boolean(item.activo) };
+                const payload: Record<string, unknown> = {
+                  precio_unitario_fijo_ars: item.usar_precio_base ? 0 : Number(item.valor),
+                  activo: Boolean(item.activo),
+                  usar_precio_base: !!item.usar_precio_base,
+                  margen_sobre_base: item.usar_precio_base && item.margen_sobre_base !== undefined ? Number(item.margen_sobre_base) / 100 : undefined,
+                };
                 payload['moneda_original'] = item.moneda === 'USD' ? 'USD' : 'ARS';
                 if (nuevoUpd !== undefined) {
                   if (item.moneda === 'USD') {
                     payload['precio_original'] = nuevoUpd;
                   } else {
-                    payload['precio_unitario_fijo_ars'] = nuevoUpd;
+                    // Solo actualizar precio_unitario_fijo_ars si no es margin-based
+                    if (!item.usar_precio_base) {
+                      payload['precio_unitario_fijo_ars'] = nuevoUpd;
+                    }
                     payload['precio_original'] = nuevoUpd;
                   }
                 } else {
@@ -515,13 +685,21 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
                 const precioChanged = Math.abs((isNaN(origPrecio) ? 0 : origPrecio) - (isNaN(curPrecio) ? 0 : curPrecio)) > 0.0001;
                 const activoChanged = Boolean(orig.activo) !== Boolean(item.activo);
                 if (precioChanged || activoChanged) {
-                  const payload: Record<string, unknown> = { precio_unitario_fijo_ars: Number(item.valor), activo: Boolean(item.activo) };
+                  const payload: Record<string, unknown> = {
+                    precio_unitario_fijo_ars: item.usar_precio_base ? 0 : Number(item.valor),
+                    activo: Boolean(item.activo),
+                    usar_precio_base: !!item.usar_precio_base,
+                    margen_sobre_base: item.usar_precio_base && item.margen_sobre_base !== undefined ? Number(item.margen_sobre_base) / 100 : undefined,
+                  };
                   payload['moneda_original'] = item.moneda === 'USD' ? 'USD' : 'ARS';
                   if (nuevoParaComparar !== undefined) {
                     if (item.moneda === 'USD') {
                       payload['precio_original'] = nuevoParaComparar;
                     } else {
-                      payload['precio_unitario_fijo_ars'] = nuevoParaComparar;
+                      // Solo actualizar precio_unitario_fijo_ars si no es margin-based
+                      if (!item.usar_precio_base) {
+                        payload['precio_unitario_fijo_ars'] = nuevoParaComparar;
+                      }
                       payload['precio_original'] = nuevoParaComparar;
                     }
                   } else {
@@ -546,13 +724,23 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
           // Ejecutar Creaciones
           for (const item of toCreate) {
             const nuevoCreate = (typeof item.nuevo_precio === 'number' && Number.isFinite(item.nuevo_precio)) ? item.nuevo_precio : undefined;
-            const body: Record<string, unknown> = { cliente_id: id_cliente, producto_id: Number(item.producto_id), precio_unitario_fijo_ars: Number(item.valor), activo: Boolean(item.activo) };
+            const body: Record<string, unknown> = {
+              cliente_id: id_cliente,
+              producto_id: Number(item.producto_id),
+              precio_unitario_fijo_ars: item.usar_precio_base ? 0 : Number(item.valor),
+              activo: Boolean(item.activo),
+              usar_precio_base: !!item.usar_precio_base,
+              margen_sobre_base: item.usar_precio_base && item.margen_sobre_base !== undefined ? Number(item.margen_sobre_base) / 100 : undefined,
+            };
             body['moneda_original'] = item.moneda === 'USD' ? 'USD' : 'ARS';
             if (nuevoCreate !== undefined) {
               if (item.moneda === 'USD') {
                 body['precio_original'] = nuevoCreate;
               } else {
-                body['precio_unitario_fijo_ars'] = nuevoCreate;
+                // Solo actualizar precio_unitario_fijo_ars si no es margin-based
+                if (!item.usar_precio_base) {
+                  body['precio_unitario_fijo_ars'] = nuevoCreate;
+                }
                 body['precio_original'] = nuevoCreate;
               }
             } else {
@@ -681,11 +869,10 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
           {mostrarPreciosEspeciales && (
             <fieldset className="border p-4 rounded-md mt-4">
               <legend className="text-xl font-semibold text-gray-700 px-2 mb-2">Precios Especiales</legend>
-              <div className="hidden md:grid md:grid-cols-[minmax(0,2fr)_minmax(0,1.2fr)_minmax(0,0.7fr)_minmax(0,0.6fr)_minmax(0,0.7fr)] items-center gap-x-2 font-semibold text-sm text-gray-600 px-1 mb-1">
+              <div className="hidden md:grid md:grid-cols-[minmax(0,2fr)_minmax(0,1.5fr)_minmax(0,0.8fr)_minmax(0,0.8fr)] items-center gap-x-2 font-semibold text-sm text-gray-600 px-1 mb-1">
                 <span>Producto</span>
-                <span className="text-center">Precio</span>
-                <span className="text-center">Moneda</span>
-                <span className="text-center">Activo</span>
+                <span className="text-center">Precio Especial</span>
+                <span className="text-center">Estado</span>
                 <span className="text-center">Acciones</span>
               </div>
               <div className="space-y-4">
@@ -693,7 +880,7 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
                   form.precios_especiales_form.map((item, index) => (
                     <div
                       key={item.id_precio_especial || item.temp_key || index}
-                      className={`grid grid-cols-1 md:grid-cols-[minmax(0,2fr)_minmax(0,1.2fr)_minmax(0,0.7fr)_minmax(0,0.6fr)_minmax(0,0.7fr)] items-start md:items-center gap-x-2 gap-y-2 px-2 py-2 border rounded-md ${item.id_precio_especial ? 'bg-yellow-50 border-yellow-300' : 'hover:bg-gray-50'}`}
+                      className={`grid grid-cols-1 md:grid-cols-[minmax(0,2fr)_minmax(0,1.5fr)_minmax(0,0.8fr)_minmax(0,0.8fr)] items-start md:items-center gap-x-2 gap-y-2 px-2 py-2 border rounded-md ${item.id_precio_especial ? 'bg-yellow-50 border-yellow-300' : 'hover:bg-gray-50'}`}
                     >
                       {/* Columna: Producto */}
                       <div className="min-w-0 md:pr-2">
@@ -730,69 +917,72 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
                         )}
                       </div>
 
-                      {/* Columna: Precio editable */}
-                      <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-2">
-                        {(() => {
-                          const esUSD = item.moneda === 'USD';
-                          const precioBaseOriginal = esUSD
-                            ? (item.precio_original !== undefined ? Number(item.precio_original) : Number(item.valor))
-                            : Number(item.valor);
-                          const inputValue = item.nuevo_precio !== undefined ? item.nuevo_precio : '';
-                          const precioParaCalculo = item.nuevo_precio !== undefined ? Number(item.nuevo_precio) : precioBaseOriginal;
-                          return (
-                            <>
-                              <input
-                                type="number"
-                                name="nuevo_precio"
-                                value={inputValue}
-                                placeholder={precioBaseOriginal.toFixed(2)}
-                                onChange={(e) => handlePrecioEspecialChange(index, e)}
-                                className="w-full md:w-28 p-2 border border-gray-300 rounded shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
-                                step="0.01"
-                                min="0"
-                              />
-                              <div className="text-[11px] md:text-xs text-gray-500 leading-tight">
-                                {esUSD ? (
-                                  tcLoading ? 'TC...' : tcError ? 'TC error' : (tipoCambioOficial ? `≈ ARS ${(precioParaCalculo * tipoCambioOficial).toFixed(2)}` : '')
-                                ) : 'ARS'}
-                              </div>
-                            </>
-                          );
-                        })()}
+                      {/* Columna: Precio Especial (Solo información) */}
+                      <div className="flex flex-col gap-1">
+                        <div className="text-sm font-medium text-gray-800">
+                          {item.usar_precio_base ? (
+                            (() => {
+                              const margenPorcentaje = (item.margen_sobre_base || 0) * 100;
+                              const esDescuento = margenPorcentaje < 0;
+                              return (
+                                <span className={esDescuento ? "text-orange-700" : "text-green-700"}>
+                                  {esDescuento 
+                                    ? `Precio base ${margenPorcentaje.toFixed(1)}% (descuento)`
+                                    : `Precio base +${margenPorcentaje.toFixed(1)}% (margen)`
+                                  }
+                                </span>
+                              );
+                            })()
+                          ) : (
+                            <span className="text-blue-700">
+                              ${Number(item.valor || 0).toFixed(2)} {item.moneda || 'ARS'}
+                            </span>
+                          )}
+                        </div>
+                        {item.moneda === 'USD' && tipoCambioOficial && !item.usar_precio_base && (
+                          <div className="text-xs text-gray-500">
+                            ≈ ARS ${(Number(item.valor || 0) * tipoCambioOficial).toFixed(2)}
+                          </div>
+                        )}
+                        {item.usar_precio_base && item.producto_id && (
+                          <div className="mt-2">
+                            <PrecioPreviewConMargen 
+                              productoId={item.producto_id} 
+                              margen={(item.margen_sobre_base || 0) * 100} 
+                            />
+                          </div>
+                        )}
                       </div>
 
-                      {/* Columna: Moneda */}
+                      {/* Columna: Estado */}
                       <div className="flex items-center justify-start md:justify-center">
-                        <select
-                          name="moneda"
-                          value={item.moneda || 'ARS'}
-                          onChange={(e) => handlePrecioEspecialChange(index, e)}
-                          className="w-full md:w-auto p-2 border border-gray-300 rounded shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
-                        >
-                          <option value="ARS">ARS</option>
-                          <option value="USD">USD</option>
-                        </select>
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          item.activo ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                        }`}>
+                          {item.activo ? 'Activo' : 'Inactivo'}
+                        </span>
                       </div>
 
-                      {/* Columna: Activo */}
-                      <div className="flex items-center justify-start md:justify-center">
-                        <input
-                          type="checkbox"
-                          name="activo"
-                          checked={item.activo}
-                          onChange={(e) => handlePrecioEspecialChange(index, e)}
-                          className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-                        />
-                      </div>
-
-                      {/* Columna: Acciones (solo eliminar) */}
+                      {/* Columna: Acciones */}
                       <div className="flex gap-2 items-center justify-start md:justify-center">
                         <button
                           type="button"
-                          onClick={() => eliminarPrecioEspecial(index)}
-                          className="bg-red-600 text-white px-2 py-1 rounded text-xs md:text-sm"
+                          onClick={() => {
+                            setModalIndex(index);
+                            setModalPrecioUSD(item.precio_original !== undefined ? item.precio_original : item.valor);
+                            setModalActivo(item.activo);
+                            setModalMoneda(item.moneda || 'ARS');
+                            setModalUsarPrecioBase(!!item.usar_precio_base);
+                            // Convertir de decimal a porcentaje para el modal
+                            const margenPorcentaje = item.margen_sobre_base !== undefined && item.margen_sobre_base !== null 
+                              ? item.margen_sobre_base * 100 
+                              : '';
+                            setModalMargen(margenPorcentaje);
+                            setModalOpen(true);
+                          }}
+                          className="bg-blue-600 text-white px-3 py-1 rounded text-xs md:text-sm hover:bg-blue-700"
                         >
-                          X
+                          Editar
                         </button>
                       </div>
                     </div>
@@ -837,28 +1027,120 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
           {/* Modal para editar precio especial */}
           {modalOpen && modalIndex !== null && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-              <div className="bg-white text-black rounded-md p-6 w-full max-w-md">
+              <div className="bg-white text-black rounded-md p-6 w-full max-w-lg">
                 <h3 className="text-lg font-semibold mb-4">Editar Precio Especial</h3>
                 {modalError && <div className="text-red-600 mb-2">{modalError}</div>}
-                <div className="mb-3">
-                  <label className="block text-sm text-gray-700">Moneda</label>
-                  <select value={modalMoneda} onChange={e => setModalMoneda(e.target.value as 'ARS' | 'USD')} className="w-full p-2 border rounded mt-1">
-                    <option value="ARS">ARS</option>
-                    <option value="USD">USD</option>
-                  </select>
+                
+                {/* Tipo de precio */}
+                <div className="mb-4">
+                  <label className="flex items-center gap-3 p-3 border rounded-md cursor-pointer hover:bg-gray-50">
+                    <input
+                      type="checkbox"
+                      checked={modalUsarPrecioBase}
+                      onChange={(e) => {
+                        setModalUsarPrecioBase(e.target.checked);
+                        if (!e.target.checked) {
+                          setModalMargen('');
+                        }
+                      }}
+                    />
+                    <div>
+                      <div className="font-medium">Usar precio base + margen</div>
+                      <div className="text-sm text-gray-500">El precio se calcula dinámicamente basado en el precio base del producto</div>
+                    </div>
+                  </label>
                 </div>
-                <div className="mb-3">
-                  <label className="block text-sm text-gray-700">Precio ({modalMoneda})</label>
-                  <input type="number" value={modalPrecioUSD === '' ? '' : modalPrecioUSD} onChange={(e) => setModalPrecioUSD(e.target.value === '' ? '' : Number(e.target.value))} className="w-full p-2 border rounded mt-1" />
+
+                {modalUsarPrecioBase ? (
+                  /* Modo margen */
+                  <div className="mb-3">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Margen sobre precio base (%)
+                    </label>
+                    <input
+                      type="number"
+                      value={modalMargen === '' ? '' : modalMargen}
+                      onChange={(e) => setModalMargen(e.target.value === '' ? '' : Number(e.target.value))}
+                      className="w-full p-2 border rounded mt-1"
+                      placeholder="Ej: 25 (aumento) o -15 (descuento)"
+                      step="0.01"
+                      min="-100"
+                      max="10000"
+                    />
+                    <div className="text-xs text-gray-500 mt-1">
+                      💡 <strong>Ejemplos:</strong> 25 = +25% (aumento), -15 = -15% (descuento)
+                      <br />
+                      ⚠️ Límites: -100% a +10000% (descuento total máximo 100%)
+                    </div>
+                    {modalIndex !== null && form.precios_especiales_form[modalIndex]?.producto_id && modalMargen !== '' && (
+                      <div className="mt-2">
+                        <PrecioPreviewConMargen 
+                          productoId={form.precios_especiales_form[modalIndex].producto_id} 
+                          margen={Number(modalMargen)} 
+                        />
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  /* Modo precio fijo */
+                  <>
+                    <div className="mb-3">
+                      <label className="block text-sm font-medium text-gray-700">Moneda</label>
+                      <select 
+                        value={modalMoneda} 
+                        onChange={e => setModalMoneda(e.target.value as 'ARS' | 'USD')} 
+                        className="w-full p-2 border rounded mt-1"
+                      >
+                        <option value="ARS">ARS</option>
+                        <option value="USD">USD</option>
+                      </select>
+                    </div>
+                    <div className="mb-3">
+                      <label className="block text-sm font-medium text-gray-700">Precio fijo ({modalMoneda})</label>
+                      <input 
+                        type="number" 
+                        value={modalPrecioUSD === '' ? '' : modalPrecioUSD} 
+                        onChange={(e) => setModalPrecioUSD(e.target.value === '' ? '' : Number(e.target.value))} 
+                        className="w-full p-2 border rounded mt-1"
+                        step="0.01"
+                        min="0"
+                        placeholder={`Precio en ${modalMoneda}`}
+                      />
+                      {modalMoneda === 'USD' && tipoCambioOficial && modalPrecioUSD !== '' && (
+                        <div className="text-sm text-gray-500 mt-1">
+                          ≈ ARS ${(Number(modalPrecioUSD) * tipoCambioOficial).toFixed(2)}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+
+                <div className="mb-4 flex items-center gap-3">
+                  <input 
+                    id="modal-activo" 
+                    type="checkbox" 
+                    checked={modalActivo} 
+                    onChange={(e) => setModalActivo(e.target.checked)} 
+                    className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                  />
+                  <label htmlFor="modal-activo" className="text-sm font-medium text-gray-700">Precio especial activo</label>
                 </div>
-                <div className="mb-3 flex items-center gap-3">
-                  <input id="modal-activo" type="checkbox" checked={modalActivo} onChange={(e) => setModalActivo(e.target.checked)} />
-                  <label htmlFor="modal-activo" className="text-sm text-gray-700">Activo</label>
-                </div>
-                <div className="flex justify-end gap-2 mt-4">
-                  <button type="button" onClick={closeModal} className="px-4 py-2 border rounded">Cancelar</button>
-                  <button type="button" onClick={handleModalDelete} className="px-4 py-2 bg-red-600 text-white rounded">Eliminar</button>
-                  <button type="button" onClick={handleModalSave} disabled={modalLoading} className="px-4 py-2 bg-indigo-600 text-white rounded">{modalLoading ? 'Guardando...' : 'Guardar'}</button>
+
+                <div className="flex justify-end gap-2 mt-6">
+                  <button type="button" onClick={closeModal} className="px-4 py-2 border border-gray-300 rounded hover:bg-gray-50">
+                    Cancelar
+                  </button>
+                  <button type="button" onClick={handleModalDelete} className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700">
+                    Eliminar
+                  </button>
+                  <button 
+                    type="button" 
+                    onClick={handleModalSave} 
+                    disabled={modalLoading} 
+                    className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50"
+                  >
+                    {modalLoading ? 'Guardando...' : 'Guardar'}
+                  </button>
                 </div>
               </div>
             </div>

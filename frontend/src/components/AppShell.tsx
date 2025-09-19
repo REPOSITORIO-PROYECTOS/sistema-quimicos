@@ -20,7 +20,7 @@ const AppShell: React.FC<AppShellProps> = ({ children }) => {
   const pathname = usePathname(); // <-- OBTENER RUTA ACTUAL
 
   // ✨ NUEVO: Comprobar si la ruta actual es pública
-  const isPublicRoute = PUBLIC_ROUTES.includes(pathname);
+  const isPublicRoute = PUBLIC_ROUTES.includes(pathname || "");
 
   // 1. Estado de Carga Inicial
   if (isLoading) {

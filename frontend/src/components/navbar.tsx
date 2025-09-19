@@ -114,7 +114,7 @@ export function Navbar() {
         const children = Array.from(navRef.current.children) as HTMLElement[];
         let activeItemConfigIndex = -1;
 
-        if (pathname.startsWith('/acciones')) {
+    if ((pathname || "").startsWith('/acciones')) {
             activeItemConfigIndex = currentNavItems.findIndex(item => item.label === 'Ventas');
         } else {
             activeItemConfigIndex = currentNavItems.findIndex(item => item.href === pathname);
@@ -161,7 +161,7 @@ export function Navbar() {
                     {currentNavItems.map((item) => {
                         if (item.isDropdown && item.subItems && item.subItems.length > 0) {
                             const isVentasActive = item.subItems.some(sub => pathname === sub.href) || 
-                                                  (pathname.startsWith(item.href) && item.href !== "/"); // Evitar que "/" active "Ventas" si href es "/acciones"
+                                                  (((pathname || "").startsWith(item.href)) && item.href !== "/"); // Evitar que "/" active "Ventas" si href es "/acciones"
                             return (
                                 <DropdownMenu key={item.href}>
                                     <DropdownMenuTrigger asChild>
