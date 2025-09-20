@@ -1,15 +1,14 @@
 # run.py (en el directorio raíz de tu_proyecto/)
 import os
+import sys
 # Quitar imports de modelos de aquí arriba
 from app import create_app, db # Importa la fábrica y la instancia db
-from flask_cors import CORS
 import traceback # Para mejor info de errores
 # Quitar 'from decimal import Decimal' de aquí también
 
 # Crear la aplicación usando la fábrica
 print("--- [run.py] Creando la aplicación Flask...")
 app = create_app()
-CORS(app)
 print("--- [run.py] Aplicación Flask creada.")
 
 
