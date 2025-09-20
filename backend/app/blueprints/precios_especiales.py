@@ -791,6 +791,107 @@ def calcular_precio_preview(current_user, producto_id):
         return jsonify({"error": str(e)}), 500
 
 
+@precios_especiales_bp.route('/calculadora/calcular-margen', methods=['POST'])
+@token_required
+@roles_required(ROLES['ADMIN'], ROLES['VENTAS_PEDIDOS'], ROLES['VENTAS_LOCAL'])
+def calculadora_calcular_margen(current_user):
+    """
+    Endpoint ligero (solo cálculo) para la calculadora del frontend.
+
+    Acepta JSON con una de las dos formas:
+    1) Usando producto existente:
+       { "producto_id": 123, "precio_objetivo": 1500.0, "moneda_objetivo": "ARS" }
+    2) Usando valores explícitos:
+       { "costo_unitario_usd": 10.5, "tipo_cambio": 350.0, "margen_producto": 0.25, "precio_objetivo": 1500.0, "moneda_objetivo": "ARS" }
+
+    Retorna los cálculos intermedios y el margen necesario (en fracción y porcentaje).
+    """
+    try:
+        data = request.get_json() or {}
+        producto_id = data.get('producto_id')
+        moneda_objetivo = str(data.get('moneda_objetivo', 'ARS')).upper()
+
+        # Variables que necesitamos
+        costo_unitario_usd = None
+        tipo_cambio = None
+        margen_producto = None
+
+        # Si el frontend envía producto_id, obtener costo y margen desde la lógica existente
+        if producto_id is not None:
+            producto = db.session.get(Producto, int(producto_id))
+            if not producto:
+                return jsonify({"error": f"Producto ID {producto_id} no encontrado"}), 404
+            try:
+                from .productos import calcular_costo_producto_referencia
+            except Exception:
+                from ..blueprints.productos import calcular_costo_producto_referencia
+
+            costo_unitario_usd = calcular_costo_producto_referencia(producto.id) or Decimal('0')
+            nombre_tc = 'Oficial' if producto.ajusta_por_tc else 'Empresa'
+            tc_obj = TipoCambio.query.filter_by(nombre=nombre_tc).first()
+            if not tc_obj or not tc_obj.valor:
+                return jsonify({"error": f"Tipo de cambio '{nombre_tc}' no disponible"}), 500
+            tipo_cambio = Decimal(str(tc_obj.valor))
+            margen_producto = Decimal(str(producto.margen or '0.0'))
+        else:
+            # Valores explícitos desde payload
+            try:
+                costo_unitario_usd = Decimal(str(data.get('costo_unitario_usd', '0')))
+                tipo_cambio = Decimal(str(data.get('tipo_cambio', '0')))
+                margen_producto = Decimal(str(data.get('margen_producto', '0')))
+            except Exception as e:
+                return jsonify({"error": f"Datos inválidos: {e}"}), 400
+
+        # Precio objetivo
+        try:
+            precio_objetivo = Decimal(str(data.get('precio_objetivo')))
+        except Exception:
+            return jsonify({"error": "precio_objetivo inválido o no provisto"}), 400
+
+        # Validaciones simples
+        if costo_unitario_usd is None or tipo_cambio is None:
+            return jsonify({"error": "No hay suficiente información para calcular (costo/TC)."}), 400
+        if tipo_cambio <= 0 or costo_unitario_usd < 0 or precio_objetivo <= 0:
+            return jsonify({"error": "Valores deben ser positivos."}), 400
+        if margen_producto is None:
+            margen_producto = Decimal('0')
+        elif margen_producto >= 1:
+            return jsonify({"error": "margen_producto inválido (>=1)."}), 400
+
+        # Cálculos
+        costo_unitario_ars = costo_unitario_usd * tipo_cambio
+        try:
+            precio_base_ars = costo_unitario_ars / (Decimal('1') - margen_producto)
+        except Exception as e:
+            return jsonify({"error": f"Error calculando precio base: {e}"}), 400
+
+        precio_objetivo_ars = precio_objetivo * tipo_cambio if moneda_objetivo == 'USD' else precio_objetivo
+
+        try:
+            margen_necesario = (precio_objetivo_ars / precio_base_ars) - Decimal('1')
+        except Exception as e:
+            return jsonify({"error": f"Error calculando margen necesario: {e}"}), 400
+
+        result = {
+            "producto_id": int(producto_id) if producto_id is not None else None,
+            "producto_nombre": producto.nombre if producto_id is not None and producto else None,
+            "costo_unitario_usd": float(costo_unitario_usd),
+            "costo_unitario_ars": float(costo_unitario_ars),
+            "tipo_cambio": float(tipo_cambio),
+            "margen_producto": float(margen_producto),
+            "precio_base_ars": float(precio_base_ars),
+            "precio_objetivo": float(precio_objetivo),
+            "precio_objetivo_ars": float(precio_objetivo_ars),
+            "margen_necesario": float(margen_necesario),
+            "margen_necesario_porcentaje": float(margen_necesario * 100)
+        }
+
+        return jsonify(result)
+    except Exception as e:
+        logger.exception("Error en calculadora_calcular_margen")
+        return jsonify({"error": str(e)}), 500
+
+
 @precios_especiales_bp.route('/actualizar-global', methods=['POST','PUT'])
 @token_required
 @roles_required(ROLES['ADMIN'])
