@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, ChangeEvent, FormEvent, useEffect } from 'react';
+import { useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 // Importa tu hook y el tipo Producto desde la ubicación correcta
 
@@ -16,6 +17,8 @@ interface ProductoItem {
   producto_id: string | number; // Coincide con Producto['id'] que es number, pero se maneja como string desde el select
   valor: number;
   moneda?: 'ARS' | 'USD';
+  usar_precio_base?: boolean;
+  margen_sobre_base?: number | null;
 }
 
 // Interfaz para el estado completo del formulario
@@ -58,6 +61,15 @@ export default function RegistrarCliente() {
       productos: [],
       observaciones: '',
     });
+  // Previews por índice de producto: { precio_base_ars, precio_con_margen_ars, loading, error }
+  const [previews, setPreviews] = useState<Record<number, { precio_base_ars?: number | null; precio_con_margen_ars?: number | null; loading?: boolean; error?: string }>>({});
+  // Calculadora modal state
+  const [calcOpen, setCalcOpen] = useState(false);
+  const [calcIndex, setCalcIndex] = useState<number | null>(null);
+  const [calcPrecioObjetivo, setCalcPrecioObjetivo] = useState<number | string>('');
+  const [calcMoneda, setCalcMoneda] = useState<'ARS'|'USD'>('ARS');
+  const [calcLoading, setCalcLoading] = useState(false);
+  const [calcError, setCalcError] = useState<string | null>(null);
   const token = typeof window !== 'undefined' ? localStorage.getItem("token") : null;
     // Traer tipo de cambio Oficial cuando el usuario habilita precios especiales
     useEffect(() => {
@@ -68,7 +80,8 @@ export default function RegistrarCliente() {
         try {
           // CORREGIDO: endpoint correcto es /tipos_cambio/obtener/<nombre>
           const url = `${API_BASE_URL}/tipos_cambio/obtener/Oficial`;
-          const resTC = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+          const tcHeaders: Record<string,string> = token ? { Authorization: `Bearer ${token}` } : {};
+          const resTC = await fetch(url, { headers: tcHeaders, credentials: 'include' });
           if (!resTC.ok) throw new Error('No se pudo obtener tipo de cambio Oficial');
           const dataTC = await resTC.json();
           const valor = Number((dataTC && (dataTC.valor ?? dataTC.data?.valor)) ?? NaN);
@@ -96,7 +109,8 @@ export default function RegistrarCliente() {
       index: number,
       e: ChangeEvent<HTMLInputElement | HTMLSelectElement>
     ) => {
-      const { name, value } = e.target;
+      const target = e.target as HTMLInputElement;
+      const { name, value, type, checked } = target;
       const list = [...form.productos];
       if (name === 'producto_id') {
         list[index].producto_id = value;
@@ -104,15 +118,59 @@ export default function RegistrarCliente() {
         list[index].valor = Number(value) || 0;
       } else if (name === 'moneda') {
         list[index].moneda = (value as 'ARS' | 'USD') || 'ARS';
+      } else if (name === 'usar_precio_base') {
+        // support select value 'margen'|'fijo' or checkbox
+        if (type === 'checkbox') {
+          list[index].usar_precio_base = !!checked;
+        } else {
+          list[index].usar_precio_base = (value === 'margen');
+        }
+        if (list[index].usar_precio_base) list[index].valor = 0;
+      } else if (name === 'margen_sobre_base') {
+        // porcentaje como número (ej. 10 = 10%)
+        list[index].margen_sobre_base = value === '' ? null : Number(value);
       }
       setForm(prev => ({ ...prev, productos: list }));
-    };
+
+      // Si cambiaron margen o el toggle de usar_precio_base, intentar obtener preview
+      setTimeout(() => {
+        const itemNow = list[index];
+        if (itemNow && itemNow.usar_precio_base && Number(itemNow.producto_id) > 0 && itemNow.margen_sobre_base != null) {
+          fetchPreview(Number(itemNow.producto_id), Number(itemNow.margen_sobre_base), index);
+        } else {
+          // limpiar preview si no aplica
+          setPreviews(prev => { const copy = { ...prev }; delete copy[index]; return copy; });
+        }
+      }, 0);
+      }
+
+  const fetchPreview = useCallback(async (productoId: number, margenPorcentaje: number, index: number) => {
+    setPreviews(prev => ({ ...prev, [index]: { loading: true } }));
+    try {
+      const tokenLocal = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const url = `${API_BASE_URL}/precios_especiales/calcular-precio-preview/${productoId}?margen=${margenPorcentaje / 100}`;
+      const headers: Record<string,string> = {};
+      if (tokenLocal) headers['Authorization'] = `Bearer ${tokenLocal}`;
+      const res = await fetch(url, { headers, credentials: 'include' });
+      if (!res.ok) {
+        const txt = await res.text().catch(() => '');
+        setPreviews(prev => ({ ...prev, [index]: { error: `Error servidor: ${res.status} ${txt}` } }));
+        return;
+      }
+      const data = await res.json();
+      const precio_base = data?.calculos?.precio_base_ars ?? null;
+      const precio_con_margen = data?.calculos?.precio_con_margen_ars ?? null;
+      setPreviews(prev => ({ ...prev, [index]: { precio_base_ars: precio_base, precio_con_margen_ars: precio_con_margen, loading: false } }));
+    } catch (err) {
+      setPreviews(prev => ({ ...prev, [index]: { error: String(err), loading: false } }));
+    }
+  }, []);
     const agregarProducto = () => {
       setForm(prev => ({
         ...prev,
         productos: [
           ...prev.productos.filter(p => p.producto_id !== ''),
-          { producto_id: '', valor: 0, moneda: 'ARS' }
+          { producto_id: '', valor: 0, moneda: 'ARS', usar_precio_base: false, margen_sobre_base: null }
         ]
       }));
     };
@@ -146,12 +204,14 @@ export default function RegistrarCliente() {
         datosCliente.cuit = form.cuit;
       }
       try {
+        // Preparar headers para la creación del cliente
         const clienteHeaders: Record<string,string> = { 'Content-Type': 'application/json' };
         if (token) clienteHeaders['Authorization'] = `Bearer ${token}`;
 
         const resCliente = await fetch(`${API_BASE_URL}/clientes/crear`, {
           method: 'POST',
           headers: clienteHeaders,
+          credentials: 'include',
           body: JSON.stringify(datosCliente),
         });
         if (!resCliente.ok) {
@@ -159,28 +219,44 @@ export default function RegistrarCliente() {
           throw new Error(errorData.message || `Error ${resCliente.status}: ${resCliente.statusText}`);
         }
         const clienteCreado = await resCliente.json();
+
+        // Si el cliente se creó y hay precios especiales, crear cada precio (con soporte para margen)
         if (clienteCreado.id && mostrarPreciosEspeciales && form.productos.length > 0) {
           try {
-            const productosValidos = form.productos.filter(p => p.producto_id !== '' && p.valor >= 0 && Number(p.producto_id) > 0);
+            const productosValidos = form.productos.filter(p => p.producto_id !== '' && Number(p.producto_id) > 0);
             for (const item of productosValidos) {
               const payloadPrecioEspecial: Record<string, unknown> = {
                 cliente_id: clienteCreado.id,
                 producto_id: Number(item.producto_id),
-                precio_unitario_fijo_ars: item.valor, // El backend hará la conversión si es necesario
                 activo: true,
-                moneda_original: item.moneda || 'ARS',
-                precio_original: item.valor,
               };
+
+              // Si el usuario eligió usar precio sobre la base (margen), enviar flags en el payload
+              if (item.usar_precio_base) {
+                payloadPrecioEspecial['usar_precio_base'] = true;
+                if (item.margen_sobre_base != null) {
+                  // margen_sobre_base viene como porcentaje (10 -> 10%). Convertir a fracción (0.10)
+                  payloadPrecioEspecial['margen_sobre_base'] = Number(item.margen_sobre_base) / 100;
+                }
+                // precio_unitario_fijo_ars se guarda como 0 cuando usar_precio_base = true
+                payloadPrecioEspecial['precio_unitario_fijo_ars'] = 0;
+              } else {
+                payloadPrecioEspecial['precio_unitario_fijo_ars'] = item.valor;
+                payloadPrecioEspecial['moneda_original'] = item.moneda || 'ARS';
+                payloadPrecioEspecial['precio_original'] = item.valor;
+              }
+
               const precioHeaders: Record<string,string> = { 'Content-Type': 'application/json' };
               if (token) precioHeaders['Authorization'] = `Bearer ${token}`;
 
               const res = await fetch(`${API_BASE_URL}/precios_especiales/crear`, {
                 method: 'POST',
                 headers: precioHeaders,
+                credentials: 'include',
                 body: JSON.stringify(payloadPrecioEspecial),
               });
               if (!res.ok) {
-                const err = await res.json();
+                const err = await res.json().catch(() => ({ message: 'Error en la creación del precio especial' }));
                 throw new Error(`Error en producto ${item.producto_id}: ${JSON.stringify(err)}`);
               }
             }
@@ -281,83 +357,153 @@ export default function RegistrarCliente() {
                 {tcError && <span className="text-red-600"> — {tcError}</span>}
                 {(!tcLoading && !tcError && tipoCambioOficial) && ` — TC Oficial: ${tipoCambioOficial}`}
               </p>
-              <div className="mb-2 hidden md:grid md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_100px_60px] items-center gap-3 font-semibold text-sm text-gray-600 px-3">
+              <div className="mb-2 hidden md:grid md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)_60px] items-center gap-3 font-semibold text-sm text-gray-600 px-3">
                 <span>Producto</span>
-                <span className="text-center">Valor Asignado</span>
-                <span className="text-center">Moneda</span>
-                <span className="text-center">Eliminar</span>
+                <span>Modo de Precio</span>
+                <span className="text-center"></span>
               </div>
-              <div className="space-y-3">
+              <div className="space-y-4">
                 {form.productos.map((item, index) => (
-                  <div key={index} className="grid grid-cols-1 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_100px_60px] items-center gap-3 border border-gray-200 rounded-lg p-3 bg-gray-50">
-                    <div className="w-full">
-                      <label className="md:hidden text-xs font-medium text-gray-500">Producto (ID)</label>
-                      <select
-                        name="producto_id"
-                        value={item.producto_id}
-                        onChange={(e) => handleProductoItemChange(index, e)}
-                        className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                      >
-                        <option value="" disabled> -- Seleccionar -- </option>
-                        {cargandoProductos && <option disabled>Cargando productos...</option>}
-                        {errorProductos && <option disabled>Error al cargar productos</option>}
-                        {!cargandoProductos && !errorProductos  && (
-                          <option disabled>No hay productos disponibles</option>
-                        )}
-                        {!cargandoProductos && !errorProductos && productosDisponibles && (
-                          productosDisponibles.map((producto: Producto) => (
-                            <option value={producto.id} key={producto.id}>
-                              {producto.nombre} {producto.codigo ? `(${producto.codigo})` : `(ID: ${producto.id})`}
-                            </option>
-                          ))
-                        )}
-                      </select>
-                      {index === 0 && errorProductos && <p className="text-xs text-red-600 mt-1">{errorProductos}</p>}
-                    </div>
-                    <div className="w-full">
-                      <label className="md:hidden text-xs font-medium text-gray-500 mb-1 block">Valor</label>
-                      <div className="flex flex-col gap-1">
-                        <input
-                          className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 text-right focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                          type="number"
-                          name="valor"
-                          placeholder="Ingrese valor"
-                          value={item.valor === 0 ? '' : item.valor}
+                  <div key={index} className="border border-gray-200 rounded-lg p-4 bg-gray-50/50 space-y-4 shadow-sm">
+                    {/* Fila 1: Selector de producto y botón de eliminar */}
+                    <div className="flex justify-between items-start">
+                      <div className="flex-grow pr-4">
+                        <label className="text-sm font-medium text-gray-700">Producto</label>
+                        <select
+                          name="producto_id"
+                          value={item.producto_id}
                           onChange={(e) => handleProductoItemChange(index, e)}
-                          min="0"
-                          step="0.01"
-                        />
-                        {item.moneda === 'USD' && (
-                          <div className="text-xs text-gray-500 text-right">
-                            {tcLoading ? 'Calculando ARS...' : tcError ? 'Error TC' : tipoCambioOficial ? `≈ ARS ${(Number(item.valor || 0) * tipoCambioOficial).toFixed(2)}` : ''}
-                          </div>
-                        )}
+                          className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 mt-1"
+                        >
+                          <option value="" disabled> -- Seleccionar -- </option>
+                          {cargandoProductos && <option disabled>Cargando productos...</option>}
+                          {errorProductos && <option disabled>Error al cargar productos</option>}
+                          {!cargandoProductos && productosDisponibles && productosDisponibles.length === 0 && (
+                            <option disabled>No hay productos disponibles</option>
+                          )}
+                          {!cargandoProductos && !errorProductos && productosDisponibles && (
+                            productosDisponibles.map((producto: Producto) => (
+                              <option value={producto.id} key={producto.id}>
+                                {producto.nombre} {producto.codigo ? `(${producto.codigo})` : `(ID: ${producto.id})`}
+                              </option>
+                            ))
+                          )}
+                        </select>
+                        {index === 0 && errorProductos && <p className="text-xs text-red-600 mt-1">{errorProductos}</p>}
                       </div>
-                    </div>
-                    <div className="w-full">
-                      <label className="md:hidden text-xs font-medium text-gray-500 mb-1 block">Moneda</label>
-                      <select
-                        name="moneda"
-                        value={item.moneda || 'ARS'}
-                        onChange={(e) => handleProductoItemChange(index, e)}
-                        className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      >
-                        <option value="ARS">ARS</option>
-                        <option value="USD">USD</option>
-                      </select>
-                    </div>
-                    <div className="flex justify-center items-center">
                       {form.productos.length > 1 && (
                         <button
                           type="button"
                           onClick={() => eliminarProducto(index)}
-                          className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm font-medium transition-colors"
+                          className="bg-red-500 hover:bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold transition-colors mt-6"
                           title="Eliminar producto"
                         >
-                          ×
+                          &times;
                         </button>
                       )}
                     </div>
+
+                    {/* Fila 2: Selector de modo de precio */}
+                    <div>
+                      <label className="text-sm font-medium text-gray-700">Modo de Precio</label>
+                      <select
+                        name="usar_precio_base"
+                        value={item.usar_precio_base ? 'margen' : 'fijo'}
+                        onChange={(e) => handleProductoItemChange(index, e)}
+                        className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 mt-1"
+                      >
+                        <option value="fijo">Precio Fijo Manual</option>
+                        <option value="margen">Precio Dinámico (sobre Base + Margen)</option>
+                      </select>
+                    </div>
+
+                    {/* Fila 3: Inputs condicionales */}
+                    {item.usar_precio_base ? (
+                      // MODO PRECIO DINÁMICO (MARGEN)
+                      <div className="border-t pt-4 space-y-3">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+                          {/* Columna Izquierda: Input Margen y Calculadora */}
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium text-gray-700">Margen de Ganancia (%)</label>
+                            <div className="flex items-center gap-2">
+                              <input
+                                className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                type="number"
+                                name="margen_sobre_base"
+                                placeholder="Ej: 15"
+                                value={item.margen_sobre_base ?? ''}
+                                onChange={(e) => handleProductoItemChange(index, e)}
+                                min={-100}
+                                max={1000}
+                                step="0.01"
+                              />
+                              <button type="button" className="px-3 py-2 bg-gray-200 hover:bg-gray-300 rounded text-sm whitespace-nowrap" onClick={() => { setCalcIndex(index); setCalcOpen(true); setCalcPrecioObjetivo(''); setCalcMoneda('ARS'); setCalcError(null); }}>
+                                Calculadora
+                              </button>
+                            </div>
+                            <p className="text-xs text-gray-500">Introduce el porcentaje de margen deseado sobre el precio base.</p>
+                          </div>
+                          {/* Columna Derecha: Preview de Precios */}
+                          <div className="bg-indigo-50 p-3 rounded-lg">
+                            <h4 className="text-sm font-semibold text-gray-800 mb-2">Previsualización de Precio</h4>
+                            {previews[index]?.loading ? (
+                              <p className="text-xs text-gray-600">Calculando...</p>
+                            ) : previews[index]?.error ? (
+                              <p className="text-xs text-red-600 font-semibold">{previews[index].error}</p>
+                            ) : (
+                              <div className="space-y-1 text-sm">
+                                <div className="flex justify-between">
+                                  <span className="text-gray-600">Precio Base:</span>
+                                  <span className="font-medium text-gray-800">
+                                    {typeof previews[index]?.precio_base_ars === 'number' ? `ARS ${previews[index].precio_base_ars.toFixed(2)}` : 'N/A'}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between border-t border-gray-300 pt-1">
+                                  <span className="font-semibold text-indigo-700">Precio Final (con margen):</span>
+                                  <span className="font-bold text-indigo-700">
+                                    {typeof previews[index]?.precio_con_margen_ars === 'number' ? `ARS ${previews[index].precio_con_margen_ars.toFixed(2)}` : 'N/A'}
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      // MODO PRECIO FIJO
+                      <div className="border-t pt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="text-sm font-medium text-gray-700">Precio Fijo</label>
+                          <input
+                            className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 text-right focus:outline-none focus:ring-2 focus:ring-indigo-500 mt-1"
+                            type="number"
+                            name="valor"
+                            placeholder="Ingrese valor"
+                            value={item.valor === 0 ? '' : item.valor}
+                            onChange={(e) => handleProductoItemChange(index, e)}
+                            min="0"
+                            step="0.01"
+                          />
+                          {item.moneda === 'USD' && tipoCambioOficial && (
+                            <div className="text-xs text-gray-500 text-right mt-1">
+                              ≈ ARS {(Number(item.valor || 0) * tipoCambioOficial).toFixed(2)}
+                            </div>
+                          )}
+                        </div>
+                        <div>
+                          <label className="text-sm font-medium text-gray-700">Moneda</label>
+                          <select
+                            name="moneda"
+                            value={item.moneda || 'ARS'}
+                            onChange={(e) => handleProductoItemChange(index, e)}
+                            className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 mt-1"
+                          >
+                            <option value="ARS">ARS</option>
+                            <option value="USD">USD</option>
+                          </select>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -384,6 +530,69 @@ export default function RegistrarCliente() {
           </div>
         </form>
       </div>
+      {/* Calculadora Modal */}
+      {calcOpen && calcIndex !== null && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center">
+          <div className="bg-white text-black rounded p-6 w-96 shadow-lg">
+            <h3 className="font-semibold mb-2">Calculadora de Margen (Producto)</h3>
+            <div className="mb-2">
+              <label className="text-sm">Precio objetivo ({calcMoneda})</label>
+              <input type="text" value={String(calcPrecioObjetivo)} onChange={e => setCalcPrecioObjetivo(e.target.value)} className="w-full p-2 border rounded mt-1" />
+            </div>
+            <div className="mb-2">
+              <label className="text-sm">Moneda</label>
+              <select value={calcMoneda} onChange={e => setCalcMoneda(e.target.value as 'ARS'|'USD')} className="w-full p-2 border rounded mt-1">
+                <option value="ARS">ARS</option>
+                <option value="USD">USD</option>
+              </select>
+            </div>
+            {calcError && <div className="text-xs text-red-600 mb-2">{calcError}</div>}
+            <div className="flex gap-2 justify-end">
+              <button className="px-3 py-1 border rounded" onClick={() => setCalcOpen(false)}>Cancelar</button>
+              <button className="px-3 py-1 bg-blue-600 text-white rounded" onClick={async () => {
+                // Ejecutar petición al endpoint calculadora y aplicar resultado al producto
+                setCalcLoading(true);
+                setCalcError(null);
+                try {
+                  const objetivo = parseFloat(String(calcPrecioObjetivo).replace(',', '.'));
+                  if (isNaN(objetivo) || objetivo <= 0) { setCalcError('Precio objetivo inválido'); setCalcLoading(false); return; }
+                  const index = calcIndex as number;
+                  const prod = form.productos[index];
+                  if (!prod || !prod.producto_id) { setCalcError('Seleccione un producto válido antes de usar la calculadora'); setCalcLoading(false); return; }
+                  const tokenLocal = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+                  const payload = {
+                    producto_id: Number(prod.producto_id),
+                    precio_objetivo: objetivo,
+                    moneda_objetivo: calcMoneda
+                  };
+                  const headers: Record<string,string> = { 'Content-Type': 'application/json' };
+                  if (tokenLocal) headers['Authorization'] = `Bearer ${tokenLocal}`;
+                  const res = await fetch(`${API_BASE_URL}/precios_especiales/calculadora/calcular-margen`, { method: 'POST', headers, credentials: 'include', body: JSON.stringify(payload) });
+                  if (!res.ok) { const txt = await res.text().catch(() => ''); setCalcError(`Error servidor: ${res.status} ${txt}`); setCalcLoading(false); return; }
+                  const data = await res.json();
+                  const margenPorcentaje = Number(data?.margen_necesario_porcentaje);
+                  if (!isFinite(margenPorcentaje)) { setCalcError('Respuesta inválida de la calculadora'); setCalcLoading(false); return; }
+                  // Aplicar margen al producto en el formulario
+                  setForm(prev => {
+                    const copy = { ...prev };
+                    const list = [...copy.productos];
+                    list[index].usar_precio_base = true;
+                    list[index].margen_sobre_base = margenPorcentaje;
+                    list[index].valor = 0;
+                    copy.productos = list;
+                    return copy;
+                  });
+                  // Traer preview para mostrar
+                  fetchPreview(Number(prod.producto_id), margenPorcentaje, index);
+                  setCalcOpen(false);
+                } catch (err) {
+                  setCalcError(String(err));
+                } finally { setCalcLoading(false); }
+              }}>{calcLoading ? 'Calculando...' : 'Aplicar margen'}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

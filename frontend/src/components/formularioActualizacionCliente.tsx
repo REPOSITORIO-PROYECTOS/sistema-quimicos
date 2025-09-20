@@ -1,4 +1,149 @@
-'use client';
+// Calculadora para sugerir margen según precio objetivo
+function CalculadoraMargen({ precioBase, tipoCambioOficial, moneda, productoId, onMargenCalculado }: {
+  precioBase: number;
+  tipoCambioOficial: number | null;
+  moneda: 'ARS' | 'USD';
+  productoId?: number | string | null;
+  onMargenCalculado?: (margen: number) => void;
+}) {
+  const [precioObjetivo, setPrecioObjetivo] = useState<string>('');
+  const [margenCalculado, setMargenCalculado] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [monedaInput, setMonedaInput] = useState<'ARS'|'USD'>(moneda || 'ARS');
+
+  // Calcula en cliente si no hay productoId (o si el servidor no está disponible)
+  const calcularCliente = useCallback(() => {
+    if (precioObjetivo.trim() === '' || !precioBase || (monedaInput === 'USD' && !tipoCambioOficial)) {
+      setMargenCalculado(null);
+      setError(null);
+      return;
+    }
+  const objetivoNum = precioObjetivo.replace(',', '.');
+  const objetivo = parseFloat(objetivoNum);
+    if (isNaN(objetivo)) {
+      setError('Ingrese un número válido');
+      setMargenCalculado(null);
+      return;
+    }
+    let objetivoARS = objetivo;
+    if (monedaInput === 'USD' && tipoCambioOficial) {
+      objetivoARS = objetivo * tipoCambioOficial;
+    }
+    if (precioBase === 0) {
+      setError('El precio base debe ser mayor a 0');
+      setMargenCalculado(null);
+      return;
+    }
+    const margen = (objetivoARS / precioBase) - 1;
+    setMargenCalculado(margen * 100);
+    setError(null);
+    if (onMargenCalculado) onMargenCalculado(margen * 100);
+  }, [precioObjetivo, precioBase, tipoCambioOficial, monedaInput, onMargenCalculado]);
+
+  // Llamada al servidor para calcular (solo si tenemos productoId)
+  const calcularServidor = useCallback(async () => {
+    if (!productoId) {
+      // no hay producto, usar cálculo local
+      calcularCliente();
+      return;
+    }
+    if (precioObjetivo.trim() === '') {
+      setError(null);
+      setMargenCalculado(null);
+      return;
+    }
+  const objetivoNum = precioObjetivo.replace(',', '.');
+  const objetivo = parseFloat(objetivoNum);
+    if (isNaN(objetivo)) {
+      setError('Ingrese un número válido');
+      setMargenCalculado(null);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const payload: { producto_id: number; precio_objetivo: number; moneda_objetivo: 'ARS'|'USD' } = {
+        producto_id: Number(productoId),
+        precio_objetivo: objetivo,
+        moneda_objetivo: monedaInput
+      };
+      // Intentar enviar token en Authorization header si está disponible
+      const token = typeof window !== 'undefined' ? localStorage.getItem("token") : null;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(`${API_BASE_URL}/precios_especiales/calculadora/calcular-margen`, {
+        method: 'POST',
+        credentials: 'include',
+        headers,
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        setError(`Error servidor: ${res.status} ${txt}`);
+        setMargenCalculado(null);
+        setLoading(false);
+        return;
+      }
+      const data = await res.json();
+      if (data && typeof data.margen_necesario_porcentaje !== 'undefined') {
+        setMargenCalculado(Number(data.margen_necesario_porcentaje));
+        if (onMargenCalculado) onMargenCalculado(Number(data.margen_necesario_porcentaje));
+      } else {
+        setError('Respuesta inválida del servidor');
+      }
+    } catch (e: unknown) {
+      const msg = e && typeof e === 'object' && 'message' in e ? (e as { message?: unknown }).message : String(e);
+      setError(String(msg || e));
+      setMargenCalculado(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [productoId, precioObjetivo, monedaInput, calcularCliente, onMargenCalculado]);
+
+  return (
+    <div className="mt-3 p-2 border rounded bg-gray-50">
+      <div className="text-xs font-semibold mb-1">Calculadora de Margen</div>
+      <div className="flex gap-2 items-center">
+        <input
+          type="text"
+          inputMode={monedaInput === 'USD' ? 'decimal' : 'numeric'}
+          className="p-1 border rounded w-32"
+          placeholder={`Precio objetivo (${monedaInput})`}
+          value={precioObjetivo}
+          onChange={e => setPrecioObjetivo(e.target.value)}
+        />
+        <select value={monedaInput} onChange={e => setMonedaInput(e.target.value as 'ARS'|'USD')} className="p-1 border rounded text-xs">
+          <option value="ARS">ARS</option>
+          <option value="USD">USD</option>
+        </select>
+        <button type="button" onClick={() => calcularServidor()} className="px-2 py-1 bg-green-600 text-white rounded text-xs">
+          {loading ? 'Calculando...' : 'Calcular'}
+        </button>
+        <span className="text-xs text-gray-600">→</span>
+        <span className="text-xs">Margen necesario:</span>
+        <span className="font-bold text-sm">
+          {margenCalculado !== null ? margenCalculado.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%' : '--'}
+        </span>
+        {margenCalculado !== null && (
+          <button
+            type="button"
+            className="ml-2 px-2 py-1 text-xs bg-blue-600 text-white rounded"
+            onClick={() => onMargenCalculado && onMargenCalculado(margenCalculado)}
+          >
+            Usar margen
+          </button>
+        )}
+      </div>
+      {error && <div className="text-xs text-red-600 mt-1">{error}</div>}
+      {monedaInput === 'USD' && tipoCambioOficial && (
+        <div className="text-xs text-gray-500 mt-1">Tipo de cambio usado: {tipoCambioOficial}</div>
+      )}
+    </div>
+  );
+}
+
 
 import { useEffect, useState, ChangeEvent, FormEvent, useCallback, useRef } from 'react';
 import { useProductsContext, Producto } from "@/context/ProductsContext";
@@ -1052,7 +1197,7 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
                 </div>
 
                 {modalUsarPrecioBase ? (
-                  /* Modo margen */
+                  /* Modo margen con calculadora */
                   <div className="mb-3">
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Margen sobre precio base (%)
@@ -1072,6 +1217,18 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
                       <br />
                       ⚠️ Límites: -100% a +10000% (descuento total máximo 100%)
                     </div>
+                    {/* Calculadora de margen */}
+                    {modalIndex !== null && form.precios_especiales_form[modalIndex]?.producto_id && (
+                      <CalculadoraMargen
+                        precioBase={tipoCambioOficial && form.precios_especiales_form[modalIndex]?.moneda === 'USD'
+                          ? (form.precios_especiales_form[modalIndex]?.valor || 0) * tipoCambioOficial
+                          : (form.precios_especiales_form[modalIndex]?.valor || 0)}
+                        tipoCambioOficial={tipoCambioOficial}
+                        moneda={form.precios_especiales_form[modalIndex]?.moneda || 'ARS'}
+                        productoId={form.precios_especiales_form[modalIndex]?.producto_id}
+                        onMargenCalculado={margen => setModalMargen(Number(margen.toFixed(2)))}
+                      />
+                    )}
                     {modalIndex !== null && form.precios_especiales_form[modalIndex]?.producto_id && modalMargen !== '' && (
                       <div className="mt-2">
                         <PrecioPreviewConMargen 
