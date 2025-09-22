@@ -75,37 +75,29 @@ def calcular_precio_ars(precio_esp):
         if getattr(precio_esp, 'usar_precio_base', False):
             # Importar localmente para evitar ciclos
             try:
-                from .productos import calcular_costo_producto_referencia
+                from .productos import calculate_price
             except ImportError:
-                from ..blueprints.productos import calcular_costo_producto_referencia
+                from ..blueprints.productos import calculate_price
 
             producto = precio_esp.producto or db.session.get(Producto, precio_esp.producto_id)
             if not producto:
                 return (None, None)
 
-            # Calcular costo unitario USD
-            costo_unitario_usd = calcular_costo_producto_referencia(producto.id) or Decimal('0')
-            
-            # Obtener tipo de cambio apropiado
-            nombre_tc = 'Oficial' if producto.ajusta_por_tc else 'Empresa'
-            tc_obj = TipoCambio.query.filter_by(nombre=nombre_tc).first()
-            if not tc_obj or not tc_obj.valor:
-                raise ValueError(f"Tipo de cambio '{nombre_tc}' no disponible")
-            
+            # Calcular precio base usando la función de cálculo para cantidad = 1
             try:
-                tipo_cambio_actual = Decimal(str(tc_obj.valor))
-            except Exception:
-                tipo_cambio_actual = Decimal(tc_obj.valor)
-
-            # Convertir costo a ARS
-            costo_unitario_ars = costo_unitario_usd * tipo_cambio_actual
-            
-            # Aplicar margen del producto para obtener precio base
-            margen_producto = Decimal(str(producto.margen or '0.0'))
-            if margen_producto >= Decimal('1'):
-                raise ValueError(f"Margen del producto {producto.id} es >= 1, no se puede calcular precio base")
-            
-            precio_base_ars = costo_unitario_ars / (Decimal('1') - margen_producto)
+                resultado_calculo = calculate_price(producto.id, 1, cliente_id=None, db=db)
+                if resultado_calculo.get('status') != 'success':
+                    raise ValueError(f"Error en cálculo de precio: {resultado_calculo.get('message', 'Unknown error')}")
+                
+                # Obtener el precio base de la respuesta
+                precio_base_ars = Decimal(str(resultado_calculo.get('precio_unitario_ars', '0')))
+                tipo_cambio_actual = Decimal(str(resultado_calculo.get('tipo_cambio_usado', '0')))
+                
+                if precio_base_ars <= 0:
+                    raise ValueError(f"Precio base calculado es cero o inválido")
+                    
+            except Exception as e:
+                raise ValueError(f"Error calculando precio base para producto {producto.id}: {e}")
 
             # Aplicar margen adicional si existe
             if getattr(precio_esp, 'margen_sobre_base', None) is not None:
@@ -658,20 +650,20 @@ def test_calculo_dinamico(current_user, precio_id):
         producto = precio_esp.producto
         if producto:
             try:
-                from .productos import calcular_costo_producto_referencia
+                from .productos import calculate_price
             except ImportError:
-                from ..blueprints.productos import calcular_costo_producto_referencia
+                from ..blueprints.productos import calculate_price
                 
-            costo_usd = calcular_costo_producto_referencia(producto.id) or Decimal('0')
-            
-            # Obtener tipo de cambio para el producto
-            nombre_tc = 'Oficial' if producto.ajusta_por_tc else 'Empresa'
-            tc_obj = TipoCambio.query.filter_by(nombre=nombre_tc).first()
-            tc_producto = Decimal(str(tc_obj.valor)) if tc_obj and tc_obj.valor else None
-            
-            costo_ars = costo_usd * tc_producto if tc_producto else None
-            margen_producto = Decimal(str(producto.margen or '0.0'))
-            precio_base_ars = costo_ars / (Decimal('1') - margen_producto) if costo_ars and margen_producto < Decimal('1') else None
+            # Calcular precio base usando la función de cálculo para cantidad = 1
+            resultado_calculo = calculate_price(producto.id, 1, cliente_id=None, db=db)
+            if resultado_calculo.get('status') == 'success':
+                costo_usd = Decimal(str(resultado_calculo.get('costo_unitario_usd', '0')))
+                tc_producto = Decimal(str(resultado_calculo.get('tipo_cambio_usado', '0')))
+                costo_ars = Decimal(str(resultado_calculo.get('costo_unitario_ars', '0')))
+                precio_base_ars = Decimal(str(resultado_calculo.get('precio_unitario_ars', '0')))
+                margen_producto = Decimal(str(producto.margen or '0.0'))
+            else:
+                costo_usd = costo_ars = precio_base_ars = tc_producto = margen_producto = None
         else:
             costo_usd = costo_ars = precio_base_ars = tc_producto = margen_producto = None
 
@@ -726,32 +718,30 @@ def calcular_precio_preview(current_user, producto_id):
         if not producto:
             return jsonify({"error": f"Producto ID {producto_id} no encontrado"}), 404
         
-        # Importar función de cálculo de costo
+        # Importar función de cálculo de precios
         try:
-            from .productos import calcular_costo_producto_referencia
+            from .productos import calculate_price
         except ImportError:
-            from ..blueprints.productos import calcular_costo_producto_referencia
+            from ..blueprints.productos import calculate_price
         
-        # Calcular costo unitario USD
-        costo_unitario_usd = calcular_costo_producto_referencia(producto.id) or Decimal('0')
-        
-        # Obtener tipo de cambio apropiado
-        nombre_tc = 'Oficial' if producto.ajusta_por_tc else 'Empresa'
-        tc_obj = TipoCambio.query.filter_by(nombre=nombre_tc).first()
-        if not tc_obj or not tc_obj.valor:
-            return jsonify({"error": f"Tipo de cambio '{nombre_tc}' no disponible"}), 500
-        
-        tipo_cambio_actual = Decimal(str(tc_obj.valor))
-        
-        # Convertir costo a ARS
-        costo_unitario_ars = costo_unitario_usd * tipo_cambio_actual
-        
-        # Calcular precio base con margen del producto
-        margen_producto = Decimal(str(producto.margen or '0.0'))
-        if margen_producto >= Decimal('1'):
-            return jsonify({"error": f"Margen del producto es >= 100%, no se puede calcular precio base"}), 400
-        
-        precio_base_ars = costo_unitario_ars / (Decimal('1') - margen_producto)
+        # Calcular precio base usando la función de cálculo para cantidad = 1
+        try:
+            resultado_calculo = calculate_price(producto.id, 1, cliente_id=None, db=db)
+            if resultado_calculo.get('status') != 'success':
+                return jsonify({"error": f"Error en cálculo de precio: {resultado_calculo.get('message', 'Unknown error')}"}), 500
+            
+            # Obtener valores del resultado
+            precio_base_ars = Decimal(str(resultado_calculo.get('precio_unitario_ars', '0')))
+            tipo_cambio_actual = Decimal(str(resultado_calculo.get('tipo_cambio_usado', '0')))
+            costo_unitario_usd = Decimal(str(resultado_calculo.get('costo_unitario_usd', '0')))
+            costo_unitario_ars = Decimal(str(resultado_calculo.get('costo_unitario_ars', '0')))
+            margen_producto = Decimal(str(producto.margen or '0.0'))
+            
+            if precio_base_ars <= 0:
+                return jsonify({"error": "Precio base calculado es cero o inválido"}), 400
+                
+        except Exception as e:
+            return jsonify({"error": f"Error calculando precio base: {e}"}), 500
         
         # Calcular precio con margen adicional si se proporciona
         precio_con_margen = precio_base_ars
@@ -767,7 +757,7 @@ def calcular_precio_preview(current_user, producto_id):
                 "margen_producto": float(margen_producto),
                 "margen_producto_porcentaje": float(margen_producto * 100),
                 "ajusta_por_tc": producto.ajusta_por_tc,
-                "tipo_cambio_usado": nombre_tc
+                "tipo_cambio_usado": 'Oficial' if producto.ajusta_por_tc else 'Empresa'
             },
             "calculos": {
                 "costo_unitario_usd": float(costo_unitario_usd),
@@ -822,16 +812,18 @@ def calculadora_calcular_margen(current_user):
             if not producto:
                 return jsonify({"error": f"Producto ID {producto_id} no encontrado"}), 404
             try:
-                from .productos import calcular_costo_producto_referencia
+                from .productos import calculate_price
             except Exception:
-                from ..blueprints.productos import calcular_costo_producto_referencia
+                from ..blueprints.productos import calculate_price
 
-            costo_unitario_usd = calcular_costo_producto_referencia(producto.id) or Decimal('0')
-            nombre_tc = 'Oficial' if producto.ajusta_por_tc else 'Empresa'
-            tc_obj = TipoCambio.query.filter_by(nombre=nombre_tc).first()
-            if not tc_obj or not tc_obj.valor:
-                return jsonify({"error": f"Tipo de cambio '{nombre_tc}' no disponible"}), 500
-            tipo_cambio = Decimal(str(tc_obj.valor))
+            # Calcular precio base usando la función de cálculo para cantidad = 1
+            resultado_calculo = calculate_price(producto.id, 1, cliente_id=None, db=db)
+            if resultado_calculo.get('status') != 'success':
+                return jsonify({"error": f"Error en cálculo de precio: {resultado_calculo.get('message', 'Unknown error')}"}), 500
+            
+            # Obtener valores del resultado
+            costo_unitario_usd = Decimal(str(resultado_calculo.get('costo_unitario_usd', '0')))
+            tipo_cambio = Decimal(str(resultado_calculo.get('tipo_cambio_usado', '0')))
             margen_producto = Decimal(str(producto.margen or '0.0'))
         else:
             # Valores explícitos desde payload
@@ -858,12 +850,12 @@ def calculadora_calcular_margen(current_user):
         elif margen_producto >= 1:
             return jsonify({"error": "margen_producto inválido (>=1)."}), 400
 
-        # Cálculos
+        # Cálculos - obtener precio_base_ars del resultado del cálculo
+        precio_base_ars = Decimal(str(resultado_calculo.get('precio_unitario_ars', '0')))
         costo_unitario_ars = costo_unitario_usd * tipo_cambio
-        try:
-            precio_base_ars = costo_unitario_ars / (Decimal('1') - margen_producto)
-        except Exception as e:
-            return jsonify({"error": f"Error calculando precio base: {e}"}), 400
+        
+        if precio_base_ars <= 0:
+            return jsonify({"error": "Precio base calculado es cero o inválido"}), 400
 
         precio_objetivo_ars = precio_objetivo * tipo_cambio if moneda_objetivo == 'USD' else precio_objetivo
 
@@ -1313,25 +1305,19 @@ def cargar_precios_desde_csv(current_user):
                 try:
                     # Importar localmente para evitar ciclos
                     try:
-                        from .productos import calcular_costo_producto_referencia
+                        from .productos import calculate_price
                     except ImportError:
-                        from ..blueprints.productos import calcular_costo_producto_referencia
+                        from ..blueprints.productos import calculate_price
 
-                    # 1. Obtener costo, tc y margen del producto
-                    costo_unitario_usd = calcular_costo_producto_referencia(producto.id) or Decimal('0')
-                    nombre_tc = 'Oficial' if producto.ajusta_por_tc else 'Empresa'
-                    tc_obj = TipoCambio.query.filter_by(nombre=nombre_tc).first()
-                    if not tc_obj or not tc_obj.valor:
-                        raise ValueError(f"Tipo de cambio '{nombre_tc}' no disponible para el producto.")
+                    # 1. Calcular precio base usando la función de cálculo para cantidad = 1
+                    resultado_calculo = calculate_price(producto.id, 1, cliente_id=None, db=db)
+                    if resultado_calculo.get('status') != 'success':
+                        raise ValueError(f"Error en cálculo de precio: {resultado_calculo.get('message', 'Unknown error')}")
                     
-                    tipo_cambio_prod = Decimal(str(tc_obj.valor))
-                    margen_producto = Decimal(str(producto.margen or '0.0'))
-                    if margen_producto >= 1:
-                        raise ValueError("Margen del producto es >= 100%, no se puede calcular.")
-
-                    # 2. Calcular precio base del producto en ARS
-                    costo_unitario_ars = costo_unitario_usd * tipo_cambio_prod
-                    precio_base_ars = costo_unitario_ars / (Decimal('1') - margen_producto)
+                    # 2. Obtener precio base del producto en ARS
+                    precio_base_ars = Decimal(str(resultado_calculo.get('precio_unitario_ars', '0')))
+                    if precio_base_ars <= 0:
+                        raise ValueError("El precio base del producto es cero o negativo, no se puede calcular margen.")
 
                     # 3. Convertir precio objetivo a ARS
                     precio_objetivo_ars = precio_original * valor_dolar_oficial if moneda_csv == 'USD' else precio_original
