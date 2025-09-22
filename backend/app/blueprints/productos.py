@@ -722,11 +722,18 @@ def calculate_price(product_id: int):
         if precio_venta_unitario_bruto is None: raise ValueError("Fallo en la lógica: no se pudo determinar un precio.")
 
         precio_venta_unitario_redondeado = redondear_a_siguiente_decena(precio_venta_unitario_bruto)
-        precio_total_final_ars = redondear_a_siguiente_centena(precio_venta_unitario_redondeado * cantidad_decimal)
+        
+        # Para precios especiales, redondear el total a múltiplo de 10, no de 100
+        if se_aplico_precio_especial:
+            precio_total_final_ars = redondear_a_siguiente_decena(precio_venta_unitario_redondeado * cantidad_decimal)
+            debug_info_response['etapas_calculo'].append(f"5. Total Final (Precio Especial - redondeo a 10): {precio_venta_unitario_redondeado * cantidad_decimal:.2f} -> {precio_total_final_ars}")
+        else:
+            precio_total_final_ars = redondear_a_siguiente_centena(precio_venta_unitario_redondeado * cantidad_decimal)
+            debug_info_response['etapas_calculo'].append(f"5. Total Final (Precio Normal - redondeo a 100): {precio_venta_unitario_redondeado * cantidad_decimal:.2f} -> {precio_total_final_ars}")
+            
         detalles_calculo_dinamico['F_PRECIO_UNITARIO_REDONDEADO'] = f"{precio_venta_unitario_redondeado:.2f}"
         detalles_calculo_dinamico['G_PRECIO_TOTAL_FINAL_REDONDEADO'] = f"{precio_total_final_ars:.2f}"
         debug_info_response['etapas_calculo'].append(f"4. Redondeo Final (Unitario): {precio_venta_unitario_bruto:.4f} -> {precio_venta_unitario_redondeado}")
-        debug_info_response['etapas_calculo'].append(f"5. Total Final: {precio_venta_unitario_redondeado * cantidad_decimal:.2f} -> {precio_total_final_ars}")
 
         # --- PASO 6: RESPUESTA JSON ---
         response_data = {
@@ -737,6 +744,7 @@ def calculate_price(product_id: int):
             "es_precio_especial": se_aplico_precio_especial,
             "precio_venta_unitario_ars": float(precio_venta_unitario_redondeado),
             "precio_total_calculado_ars": float(precio_total_final_ars),
+            "tipo_redondeo_aplicado": "decena" if se_aplico_precio_especial else "centena",
             "debug_info_completo": {
                 "resumen_pasos": debug_info_response["etapas_calculo"],
                 "desglose_variables": detalles_calculo_dinamico if not se_aplico_precio_especial else None
