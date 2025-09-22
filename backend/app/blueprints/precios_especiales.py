@@ -73,11 +73,8 @@ def calcular_precio_ars(precio_esp):
     try:
         # PRIORIDAD 1: Si la regla indica usar el precio base calculado del producto
         if getattr(precio_esp, 'usar_precio_base', False):
-            # Importar localmente para evitar ciclos
-            try:
-                from .productos import calculate_price
-            except ImportError:
-                from ..blueprints.productos import calculate_price
+            # Importar función utilitaria para evitar ciclos
+            from ..utils.precios_utils import calculate_price
 
             producto = precio_esp.producto or db.session.get(Producto, precio_esp.producto_id)
             if not producto:
@@ -649,12 +646,9 @@ def test_calculo_dinamico(current_user, precio_id):
         # Obtener detalles del producto para comparación
         producto = precio_esp.producto
         if producto:
-            try:
-                from .productos import calculate_price
-            except ImportError:
-                from ..blueprints.productos import calculate_price
+            from ..utils.precios_utils import calculate_price
                 
-            # Calcular precio base usando la función de cálculo para cantidad = 1
+            # Calcular precio base usando la función utilitaria para cantidad = 1
             resultado_calculo = calculate_price(producto.id, 1, cliente_id=None, db=db)
             if resultado_calculo.get('status') == 'success':
                 costo_usd = Decimal(str(resultado_calculo.get('costo_unitario_usd', '0')))
@@ -718,11 +712,8 @@ def calcular_precio_preview(current_user, producto_id):
         if not producto:
             return jsonify({"error": f"Producto ID {producto_id} no encontrado"}), 404
         
-        # Importar función de cálculo de precios
-        try:
-            from .productos import calculate_price
-        except ImportError:
-            from ..blueprints.productos import calculate_price
+        # Importar función utilitaria de cálculo de precios
+        from ..utils.precios_utils import calculate_price
         
         # Calcular precio base usando la función de cálculo para cantidad = 1
         try:
@@ -811,10 +802,7 @@ def calculadora_calcular_margen(current_user):
             producto = db.session.get(Producto, int(producto_id))
             if not producto:
                 return jsonify({"error": f"Producto ID {producto_id} no encontrado"}), 404
-            try:
-                from .productos import calculate_price
-            except Exception:
-                from ..blueprints.productos import calculate_price
+            from ..utils.precios_utils import calculate_price
 
             # Calcular precio base usando la función de cálculo para cantidad = 1
             resultado_calculo = calculate_price(producto.id, 1, cliente_id=None, db=db)
@@ -1304,10 +1292,7 @@ def cargar_precios_desde_csv(current_user):
                 # MODO MARGEN: El 'precio' del CSV es el objetivo final. Hay que calcular el margen.
                 try:
                     # Importar localmente para evitar ciclos
-                    try:
-                        from .productos import calculate_price
-                    except ImportError:
-                        from ..blueprints.productos import calculate_price
+                    from ..utils.precios_utils import calculate_price
 
                     # 1. Calcular precio base usando la función de cálculo para cantidad = 1
                     resultado_calculo = calculate_price(producto.id, 1, cliente_id=None, db=db)
