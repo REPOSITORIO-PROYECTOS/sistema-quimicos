@@ -31,15 +31,17 @@ def calculate_price(product_id: int, quantity, cliente_id=None, db=None):
                     debug_info_response['etapas_calculo'].append("INICIO: LÓGICA DE PRECIO ESPECIAL APLICADA.")
             except (ValueError, TypeError):
                 debug_info_response['etapas_calculo'].append("WARN: Cliente ID inválido, se ignora.")
+        # --- OBTENER VALORES BASE SIEMPRE (para respuesta completa) ---
+        costo_unitario_venta_usd = calcular_costo_producto_referencia(product_id)
+        nombre_tc = 'Oficial' if producto.ajusta_por_tc else 'Empresa'
+        tc_obj = TipoCambio.query.filter_by(nombre=nombre_tc).first()
+        if not tc_obj or tc_obj.valor <= 0:
+            raise ValueError(f"TC '{nombre_tc}' inválido.")
+        costo_unitario_venta_ars = costo_unitario_venta_usd * tc_obj.valor
+        
         # --- CÁLCULO DINÁMICO ---
         if not se_aplico_precio_especial:
             debug_info_response['etapas_calculo'].append("INICIO: CÁLCULO DINÁMICO")
-            costo_unitario_venta_usd = calcular_costo_producto_referencia(product_id)
-            nombre_tc = 'Oficial' if producto.ajusta_por_tc else 'Empresa'
-            tc_obj = TipoCambio.query.filter_by(nombre=nombre_tc).first()
-            if not tc_obj or tc_obj.valor <= 0:
-                raise ValueError(f"TC '{nombre_tc}' inválido.")
-            costo_unitario_venta_ars = costo_unitario_venta_usd * tc_obj.valor
             margen = Decimal(str(producto.margen or '0.0'))
             if not (Decimal('0') <= margen < Decimal('1')):
                 raise ValueError("Margen inválido.")
@@ -82,7 +84,11 @@ def calculate_price(product_id: int, quantity, cliente_id=None, db=None):
             "cantidad_solicitada": float(cantidad_decimal),
             "es_precio_especial": se_aplico_precio_especial,
             "precio_venta_unitario_ars": float(precio_venta_unitario_redondeado),
+            "precio_unitario_ars": float(precio_venta_unitario_redondeado),  # Alias para compatibilidad
             "precio_total_calculado_ars": float(precio_total_final_ars),
+            "costo_unitario_usd": float(costo_unitario_venta_usd),
+            "costo_unitario_ars": float(costo_unitario_venta_ars),
+            "tipo_cambio_usado": float(tc_obj.valor),
             "debug_info_completo": {
                 "resumen_pasos": debug_info_response["etapas_calculo"],
                 "desglose_variables": detalles_calculo_dinamico if not se_aplico_precio_especial else None
