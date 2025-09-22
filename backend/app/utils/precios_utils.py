@@ -33,29 +33,48 @@ def calculate_price(product_id: int, quantity, cliente_id=None, db=None):
                 debug_info_response['etapas_calculo'].append("WARN: Cliente ID inválido, se ignora.")
         # --- OBTENER VALORES BASE SIEMPRE (para respuesta completa) ---
         costo_unitario_venta_usd = calcular_costo_producto_referencia(product_id)
+        debug_info_response['etapas_calculo'].append(f"DEBUG: Costo unitario USD = {costo_unitario_venta_usd}")
+        
+        if costo_unitario_venta_usd <= 0:
+            raise ValueError(f"Costo unitario USD es cero o inválido: {costo_unitario_venta_usd}")
+        
         nombre_tc = 'Oficial' if producto.ajusta_por_tc else 'Empresa'
         tc_obj = TipoCambio.query.filter_by(nombre=nombre_tc).first()
+        debug_info_response['etapas_calculo'].append(f"DEBUG: TC {nombre_tc} = {tc_obj.valor if tc_obj else 'NO ENCONTRADO'}")
+        
         if not tc_obj or tc_obj.valor <= 0:
-            raise ValueError(f"TC '{nombre_tc}' inválido.")
+            raise ValueError(f"TC '{nombre_tc}' inválido: {tc_obj.valor if tc_obj else 'no encontrado'}")
+        
         costo_unitario_venta_ars = costo_unitario_venta_usd * tc_obj.valor
+        debug_info_response['etapas_calculo'].append(f"DEBUG: Costo unitario ARS = {costo_unitario_venta_usd} * {tc_obj.valor} = {costo_unitario_venta_ars}")
         
         # --- CÁLCULO DINÁMICO ---
         if not se_aplico_precio_especial:
             debug_info_response['etapas_calculo'].append("INICIO: CÁLCULO DINÁMICO")
             margen = Decimal(str(producto.margen or '0.0'))
+            debug_info_response['etapas_calculo'].append(f"DEBUG: Margen del producto = {margen}")
+            
             if not (Decimal('0') <= margen < Decimal('1')):
-                raise ValueError("Margen inválido.")
+                raise ValueError(f"Margen inválido: {margen} (debe estar entre 0 y 0.99)")
+            
             precio_base_ars = costo_unitario_venta_ars / (Decimal('1') - margen)
+            debug_info_response['etapas_calculo'].append(f"DEBUG: Precio base ARS = {costo_unitario_venta_ars} / (1 - {margen}) = {precio_base_ars}")
             detalles_calculo_dinamico['A_COSTO_UNITARIO_USD'] = f"{costo_unitario_venta_usd:.4f}"
             detalles_calculo_dinamico['B_PRECIO_BASE_ARS_CON_MARGEN'] = f"{precio_base_ars:.4f}"
             debug_info_response['etapas_calculo'].append(f"1. Precio Base ARS (unitario, con margen): {precio_base_ars.quantize(Decimal('0.01'))}")
             resultado_tabla = obtener_coeficiente_por_rango(str(producto.ref_calculo or ''), str(cantidad_decimal), producto.tipo_calculo)
+            debug_info_response['etapas_calculo'].append(f"DEBUG: Búsqueda coeficiente - ref_calculo='{producto.ref_calculo}', cantidad={cantidad_decimal}, tipo='{producto.tipo_calculo}'")
+            debug_info_response['etapas_calculo'].append(f"DEBUG: Resultado tabla = {resultado_tabla}")
+            
             if resultado_tabla is None:
-                raise ValueError("No se encontró coeficiente en la matriz.")
+                raise ValueError(f"No se encontró coeficiente en la matriz para ref_calculo='{producto.ref_calculo}', cantidad={cantidad_decimal}, tipo='{producto.tipo_calculo}'")
+            
             coeficiente_str, escalon_cantidad_str = resultado_tabla
             if not coeficiente_str or coeficiente_str.strip() == '':
-                raise ValueError("Producto no disponible en esta cantidad.")
+                raise ValueError(f"Producto no disponible en esta cantidad. Coeficiente vacío: '{coeficiente_str}'")
+            
             coeficiente_decimal = Decimal(coeficiente_str)
+            debug_info_response['etapas_calculo'].append(f"DEBUG: Coeficiente decimal = {coeficiente_decimal}, escalón = {escalon_cantidad_str}")
             detalles_calculo_dinamico['C_COEFICIENTE_DE_MATRIZ'] = f"{coeficiente_decimal}"
             detalles_calculo_dinamico['D_ESCALON_CANTIDAD_MATRIZ'] = escalon_cantidad_str
             debug_info_response['etapas_calculo'].append(f"2. Coeficiente para Qty {cantidad_decimal} es: {coeficiente_decimal} (del tier <= {escalon_cantidad_str})")

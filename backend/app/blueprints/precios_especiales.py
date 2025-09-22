@@ -9,6 +9,7 @@ import io
 import csv
 import unicodedata
 import re
+import datetime
 
 # --- Imports locales ---
 from .. import db
@@ -82,18 +83,28 @@ def calcular_precio_ars(precio_esp):
 
             # Calcular precio base usando la función de cálculo para cantidad = 1
             try:
+                print(f"[DEBUG calcular_precio_ars] Calculando precio para producto {producto.id}")
                 resultado_calculo = calculate_price(producto.id, 1, cliente_id=None, db=db)
+                print(f"[DEBUG calcular_precio_ars] Resultado calculate_price: {resultado_calculo}")
+                
                 if resultado_calculo.get('status') != 'success':
+                    print(f"[DEBUG calcular_precio_ars] Error en calculate_price: {resultado_calculo}")
                     raise ValueError(f"Error en cálculo de precio: {resultado_calculo.get('message', 'Unknown error')}")
                 
                 # Obtener el precio base de la respuesta
                 precio_base_ars = Decimal(str(resultado_calculo.get('precio_unitario_ars', '0')))
                 tipo_cambio_actual = Decimal(str(resultado_calculo.get('tipo_cambio_usado', '0')))
                 
+                print(f"[DEBUG calcular_precio_ars] Precio extraído: {precio_base_ars}, TC: {tipo_cambio_actual}")
+                
                 if precio_base_ars <= 0:
+                    print(f"[DEBUG calcular_precio_ars] PRECIO BASE ES CERO! Resultado completo: {resultado_calculo}")
+                    # Mostrar información del producto también
+                    print(f"[DEBUG calcular_precio_ars] Producto info: id={producto.id}, margen={producto.margen}, costo_usd={producto.costo_referencia_usd}, ajusta_tc={producto.ajusta_por_tc}")
                     raise ValueError(f"Precio base calculado es cero o inválido")
                     
             except Exception as e:
+                print(f"[DEBUG calcular_precio_ars] Excepción: {e}")
                 raise ValueError(f"Error calculando precio base para producto {producto.id}: {e}")
 
             # Aplicar margen adicional si existe
@@ -695,6 +706,51 @@ def test_calculo_dinamico(current_user, precio_id):
         }), 500
 
 
+@precios_especiales_bp.route('/debug-precio/<int:producto_id>', methods=['GET'])
+@token_required
+@roles_required(ROLES['ADMIN'])
+def debug_precio(current_user, producto_id):
+    """
+    Endpoint de debug para diagnosticar problemas con el cálculo de precios.
+    Devuelve información detallada del proceso.
+    """
+    try:
+        # Obtener producto
+        producto = db.session.get(Producto, producto_id)
+        if not producto:
+            return jsonify({"error": f"Producto ID {producto_id} no encontrado"}), 404
+        
+        # Información básica del producto
+        producto_info = {
+            "id": producto.id,
+            "nombre": producto.nombre,
+            "margen": producto.margen,
+            "costo_referencia_usd": producto.costo_referencia_usd,
+            "ajusta_por_tc": producto.ajusta_por_tc,
+            "es_receta": producto.es_receta,
+            "ref_calculo": producto.ref_calculo,
+            "tipo_calculo": producto.tipo_calculo
+        }
+        
+        # Intentar cálculo de precio
+        from ..utils.precios_utils import calculate_price
+        resultado_calculo = calculate_price(producto.id, 1, cliente_id=None, db=db)
+        
+        return jsonify({
+            "producto_info": producto_info,
+            "resultado_calculo": resultado_calculo,
+            "timestamp": datetime.datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        import traceback
+        return jsonify({
+            "error": f"Error en debug: {str(e)}",
+            "traceback": traceback.format_exc(),
+            "timestamp": datetime.datetime.now().isoformat()
+        }), 500
+
+
 @precios_especiales_bp.route('/calcular-precio-preview/<int:producto_id>', methods=['GET'])
 @token_required
 @roles_required(ROLES['ADMIN'])
@@ -719,7 +775,10 @@ def calcular_precio_preview(current_user, producto_id):
         try:
             resultado_calculo = calculate_price(producto.id, 1, cliente_id=None, db=db)
             if resultado_calculo.get('status') != 'success':
-                return jsonify({"error": f"Error en cálculo de precio: {resultado_calculo.get('message', 'Unknown error')}"}), 500
+                return jsonify({
+                    "error": f"Error en cálculo de precio: {resultado_calculo.get('message', 'Unknown error')}",
+                    "debug_info": resultado_calculo.get('debug_info_completo', {})
+                }), 500
             
             # Obtener valores del resultado
             precio_base_ars = Decimal(str(resultado_calculo.get('precio_unitario_ars', '0')))
@@ -729,7 +788,19 @@ def calcular_precio_preview(current_user, producto_id):
             margen_producto = Decimal(str(producto.margen or '0.0'))
             
             if precio_base_ars <= 0:
-                return jsonify({"error": "Precio base calculado es cero o inválido"}), 400
+                return jsonify({
+                    "error": "Precio base calculado es cero o inválido",
+                    "debug_info": {
+                        "resultado_calculo_completo": resultado_calculo,
+                        "valores_extraidos": {
+                            "precio_unitario_ars": precio_base_ars,
+                            "tipo_cambio_usado": tipo_cambio_actual,
+                            "costo_unitario_usd": costo_unitario_usd,
+                            "costo_unitario_ars": costo_unitario_ars,
+                            "margen_producto": margen_producto
+                        }
+                    }
+                }), 400
                 
         except Exception as e:
             return jsonify({"error": f"Error calculando precio base: {e}"}), 500
