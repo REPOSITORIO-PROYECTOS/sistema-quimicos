@@ -394,15 +394,9 @@ def calcular_total_venta():
         )
         if error_msg:
             return jsonify({"error": error_msg}), 400
-        # Determinar tipo de redondeo
-        tiene_precio_especial = data.get('tiene_precio_especial', False)
-        
-        if tiene_precio_especial:
-            # Precios especiales: redondear a múltiplo de 10
-            monto_final_redondeado = float(Decimal(math.ceil(monto_final / 10) * 10))
-        else:
-            # Precios normales: redondear a múltiplo de 100 hacia arriba
-            monto_final_redondeado = float(Decimal(math.ceil(monto_final / 100) * 100))
+        # SIMPLIFICADO: Siempre redondear a múltiplo de 100
+        # Los precios especiales ya están redondeados desde el origen
+        monto_final_redondeado = float(Decimal(math.ceil(monto_final / 100) * 100))
         respuesta = {
             "monto_base": float(Decimal(monto_base_str).quantize(Decimal("0.01"))),
             "forma_pago_aplicada": forma_pago,

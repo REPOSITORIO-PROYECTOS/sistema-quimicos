@@ -917,6 +917,10 @@ def calculadora_calcular_margen(current_user):
             return jsonify({"error": "Precio base calculado es cero o inválido"}), 400
 
         precio_objetivo_ars = precio_objetivo * tipo_cambio if moneda_objetivo == 'USD' else precio_objetivo
+        
+        # NUEVO: Redondear el precio objetivo al múltiplo de 100 más cercano
+        # Esto garantiza que los precios especiales siempre queden redondeados
+        precio_objetivo_ars = Decimal(round(float(precio_objetivo_ars) / 100) * 100)
 
         try:
             margen_necesario = (precio_objetivo_ars / precio_base_ars) - Decimal('1')
@@ -1377,6 +1381,10 @@ def cargar_precios_desde_csv(current_user):
 
                     # 3. Convertir precio objetivo a ARS
                     precio_objetivo_ars = precio_original * valor_dolar_oficial if moneda_csv == 'USD' else precio_original
+                    
+                    # NUEVO: Redondear el precio objetivo al múltiplo de 100 más cercano (igual que calculadora)
+                    # Esto garantiza que los precios importados por CSV también queden redondeados
+                    precio_objetivo_ars = Decimal(round(float(precio_objetivo_ars) / 100) * 100)
 
                     # 4. Calcular el margen necesario
                     if precio_base_ars <= 0:
