@@ -31,6 +31,13 @@ migrations/__pycache__/
 .DS_Store
 Thumbs.db
 
+# Archivos de debug y testing (mantener local)
+debug_tools/
+test_results.json
+*_debug.py
+*_test.py
+quick_*.py
+
 # Otros
 *.bak
 *.swp
