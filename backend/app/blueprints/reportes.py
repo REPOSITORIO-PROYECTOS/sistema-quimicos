@@ -16,6 +16,7 @@ import traceback
 import io
 import math
 import pandas as pd
+from datetime import date
 
 # Importar la librería para Excel
 import openpyxl
@@ -494,7 +495,7 @@ def exportar_formulas_a_excel(current_user):
 
         output.seek(0)
         response = make_response(output.read())
-        response.headers['Content-Disposition'] = f'attachment; filename="Reporte_Formulas_Quimex_{datetime.date.today().isoformat()}.xlsx"'
+        response.headers['Content-Disposition'] = f'attachment; filename="Reporte_Formulas_Quimex_{date.today().isoformat()}.xlsx"'
         response.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         return response
 
