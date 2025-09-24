@@ -723,7 +723,7 @@ def calculate_price(product_id: int):
 
         # UNIFICADO: Ahora todo redondea a centena (múltiplo de 100)
         # Los precios especiales ya están redondeados desde el origen
-        precio_venta_unitario_redondeado = redondear_a_siguiente_centena(precio_venta_unitario_bruto)
+        precio_venta_unitario_redondeado = redondear_a_siguiente_decena(precio_venta_unitario_bruto)
         precio_total_final_ars = redondear_a_siguiente_centena(precio_venta_unitario_redondeado * cantidad_decimal)
         debug_info_response['etapas_calculo'].append(f"5. Total Final (Redondeo Unificado a 100): {precio_venta_unitario_redondeado * cantidad_decimal:.2f} -> {precio_total_final_ars}")
             
