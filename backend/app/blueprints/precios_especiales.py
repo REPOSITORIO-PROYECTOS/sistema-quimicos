@@ -154,24 +154,32 @@ def descargar_plantilla_precios(current_user):
     """
     try:
         # Hoja plantilla: columnas y ejemplos (Title Case para coincidir con la UI)
-        plantilla_cols = ['Cliente', 'Producto', 'Precio', 'Moneda']
+        # Añadimos nuevas columnas para soportar la lógica dinámica:
+        # - Usar Precio Base: si TRUE, el sistema usará el precio calculado por la lógica de producto (margin-based)
+        # - Margen Sobre Base: fracción (p.ej. 0.15 para +15%) aplicada sobre el precio base cuando usar_precio_base=True
+        plantilla_cols = ['Cliente', 'Producto', 'Precio', 'Moneda', 'Usar Precio Base', 'Margen Sobre Base']
         plantilla_ejemplo = [
-            {'Cliente': 'ACME S.A.', 'Producto': 'Detergente 1L', 'Precio': '1234.56', 'Moneda': 'ARS'},
-            {'Cliente': 'ACME S.A.', 'Producto': 'Shampoo 500ml', 'Precio': '10.00', 'Moneda': 'USD'},
-            {'Cliente': '', 'Producto': '', 'Precio': '', 'Moneda': ''},
+            # Fila: precio fijo en ARS
+            {'Cliente': 'ACME S.A.', 'Producto': 'Detergente 1L', 'Precio': '1234.56', 'Moneda': 'ARS', 'Usar Precio Base': False, 'Margen Sobre Base': ''},
+            # Fila: precio original en USD (se convertirá a ARS con TC 'Oficial')
+            {'Cliente': 'ACME S.A.', 'Producto': 'Shampoo 500ml', 'Precio': '10.00', 'Moneda': 'USD', 'Usar Precio Base': False, 'Margen Sobre Base': ''},
+            # Fila: usar precio base del producto y aplicar 10% adicional
+            {'Cliente': 'ACME S.A.', 'Producto': 'Jabón Pastilla 50g', 'Precio': '', 'Moneda': '', 'Usar Precio Base': True, 'Margen Sobre Base': '0.10'},
+            {'Cliente': '', 'Producto': '', 'Precio': '', 'Moneda': '', 'Usar Precio Base': '', 'Margen Sobre Base': ''},
         ]
         df_plantilla = pd.DataFrame(plantilla_ejemplo, columns=plantilla_cols)
 
         # Hoja de instrucciones (una sola columna con texto multilínea)
         instrucciones = [
             'INSTRUCCIONES PARA LA PLANTILLA:',
-            '- La primera hoja "PLANTILLA" contiene las columnas requeridas: cliente, producto, precio, moneda.',
-            "- Si la moneda es 'USD', el sistema usará el Tipo de Cambio 'Oficial' para convertir a ARS al importar.",
-            "- Para agregar o actualizar precios: incluye una fila por combinación cliente+producto. Si ya existe una regla, se actualizará el precio; si no existe, se creará.",
-            "- Si un cliente tiene 2 precios especiales (por ejemplo para 2 presentaciones diferentes), deben ser dos filas con el mismo nombre de cliente y diferentes 'producto'.",
-            "- Evita columnas adicionales. Mantén los nombres de columnas tal cual (no traduzcas).",
-            "- Ejemplo: si cliente 'ACME' tiene dos precios especiales para el mismo producto con distinta presentación, carga dos filas con distinto texto en 'producto'.",
-            "- Guarda el archivo como .xlsx y súbelo usando el endpoint /precios_especiales/cargar_csv (o desde la UI si está disponible).",
+            '- La primera hoja "PLANTILLA" contiene las columnas requeridas: Cliente, Producto, Precio, Moneda, Usar Precio Base, Margen Sobre Base.',
+            "- Si la columna 'Moneda' contiene 'USD' y el campo 'Precio' tiene un valor, el sistema convertirá ese valor a ARS usando el Tipo de Cambio 'Oficial' al importar.",
+            "- Si 'Usar Precio Base' está en TRUE para una fila, el sistema IGNORARÁ el campo 'Precio' y en su lugar usará el precio calculado por la lógica del producto (precio base).",
+            "- Cuando 'Usar Precio Base' = TRUE, puede usar 'Margen Sobre Base' para aplicar un ajuste relativo (ej. 0.10 = +10%). Si lo deja vacío se usa 0.",
+            "- Para agregar o actualizar precios: incluye una fila por combinación Cliente+Producto. Si ya existe una regla, se actualizará; si no, se creará.",
+            "- Si un cliente tiene 2 precios especiales (p.ej. para dos presentaciones), agregue dos filas con el mismo Cliente y distinto Producto.",
+            "- Evite columnas adicionales; mantenga los nombres tal cual. Puede incluir columnas vacías al final, pero no renombre columnas.",
+            "- Guarde el archivo como .xlsx y súbalo usando el endpoint /precios_especiales/cargar_csv (o desde la UI si está disponible).",
         ]
         df_instrucciones = pd.DataFrame({'Notas': instrucciones})
 
@@ -196,6 +204,9 @@ def descargar_plantilla_precios(current_user):
                         'producto': p.producto.nombre if p.producto else None,
                         # precio en ARS (valor computado/guardado)
                         'precio_ars': float(p.precio_unitario_fijo_ars) if p.precio_unitario_fijo_ars is not None else None,
+                        # campos nuevos
+                        'usar_precio_base': bool(getattr(p, 'usar_precio_base', False)),
+                        'margen_sobre_base': float(p.margen_sobre_base) if getattr(p, 'margen_sobre_base', None) is not None else None,
                         # preservar moneda_original y precio_original para trazabilidad
                         'moneda_original': p.moneda_original if hasattr(p, 'moneda_original') and p.moneda_original is not None else 'ARS',
                         'precio_original': float(p.precio_original) if hasattr(p, 'precio_original') and p.precio_original is not None else None,
@@ -208,18 +219,22 @@ def descargar_plantilla_precios(current_user):
                     'producto_id': None,
                     'producto': '',
                     'precio_ars': None,
+                    'usar_precio_base': False,
+                    'margen_sobre_base': None,
                     'moneda_original': '',
                     'precio_original': None
                 })
 
         # Ordenar por cliente nombre y producto para facilitar la revisión
         # Aseguramos columnas claras y Title Case para facilitar la lectura en Excel/UI
-        df_precios_actuales = pd.DataFrame(precios, columns=['cliente_id', 'cliente', 'producto_id', 'producto', 'precio_ars', 'moneda_original', 'precio_original'])
+        df_precios_actuales = pd.DataFrame(precios, columns=['cliente_id', 'cliente', 'producto_id', 'producto', 'precio_ars', 'usar_precio_base', 'margen_sobre_base', 'moneda_original', 'precio_original'])
         # También creamos una vista con headers amigables (Title Case) que algunos usuarios esperan
         df_precios_actuales_view = df_precios_actuales.rename(columns={
             'cliente': 'Cliente',
             'producto': 'Producto',
             'precio_ars': 'Precio (ARS)',
+            'usar_precio_base': 'Usar Precio Base',
+            'margen_sobre_base': 'Margen Sobre Base',
             'moneda_original': 'Moneda Original',
             'precio_original': 'Precio Original'
         })
