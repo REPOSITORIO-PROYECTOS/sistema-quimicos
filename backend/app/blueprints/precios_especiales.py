@@ -1176,6 +1176,9 @@ def cargar_precios_desde_csv(current_user):
         # Aceptar columnas ID si están presentes en Excel export (cliente_id, producto_id)
         column_variants['cliente_id'] = ['cliente_id', 'cliente id', 'client_id', 'id cliente']
         column_variants['producto_id'] = ['producto_id', 'producto id', 'product_id', 'id producto']
+        # Nuevas columnas: permitir indicar explícitamente usar precio base y margen sobre base
+        column_variants['usar_precio_base'] = ['usar precio base', 'usar_precio_base', 'usar_precio', 'usar precio', 'usar_precio_base_bool']
+        column_variants['margen_sobre_base'] = ['margen sobre base', 'margen_sobre_base', 'margen', 'margen sobre', 'margen_sobre']
 
         def find_column(df_columns, targets):
             cols_norm = {normalize_text(c): c for c in df_columns}
@@ -1196,6 +1199,8 @@ def cargar_precios_desde_csv(current_user):
         precio_col = find_column(df.columns, column_variants['precio'])
         moneda_col = find_column(df.columns, column_variants['moneda'])
         modo_precio_col = find_column(df.columns, column_variants['modo_precio'])
+        usar_precio_base_col = find_column(df.columns, column_variants.get('usar_precio_base', []))
+        margen_sobre_base_col = find_column(df.columns, column_variants.get('margen_sobre_base', []))
         cliente_id_col = find_column(df.columns, column_variants.get('cliente_id', []))
         producto_id_col = find_column(df.columns, column_variants.get('producto_id', []))
 
@@ -1270,6 +1275,39 @@ def cargar_precios_desde_csv(current_user):
             if s in ['', '.', '-']:
                 raise InvalidOperation("Formato de precio inválido")
             return Decimal(s)
+
+        def parse_margin_to_decimal(raw: str):
+            if raw is None:
+                return None
+            s = str(raw).strip()
+            if s == '':
+                return None
+            # aceptar formatos: '0.10', '10%', '10'
+            s = s.replace('%', '').strip()
+            try:
+                val = Decimal(s)
+            except Exception:
+                # intentar reemplazos comunes
+                s2 = s.replace(',', '.')
+                try:
+                    val = Decimal(s2)
+                except Exception:
+                    raise InvalidOperation(f"Formato de margen inválido: {raw}")
+            # si el valor parece un porcentaje (>=1), convertir a fracción
+            if abs(val) > 1:
+                try:
+                    val = (val / Decimal('100'))
+                except Exception:
+                    pass
+            return val
+
+        def parse_bool_like(raw: str) -> bool:
+            if raw is None:
+                return False
+            s = str(raw).strip().lower()
+            if s in ['1', 'true', 't', 'si', 'sí', 'yes', 'y']:
+                return True
+            return False
 
         # Aceptar variantes de moneda en columnas: 'ARS', 'USD', 'U$S', 'US$', 'peso', 'dolar', 'dólar'
         moneda_aliases = {
@@ -1385,44 +1423,61 @@ def cargar_precios_desde_csv(current_user):
             # Normalizar modo_precio
             modo_precio = 'margen' if normalize_text(modo_precio_raw) == 'margen' else 'fijo'
 
+            # Leer columnas nuevas si están presentes
+            usar_precio_base_val = None
+            margen_sobre_base_val = None
+            if usar_precio_base_col:
+                usar_precio_base_val = row.get(usar_precio_base_col, None)
+            if margen_sobre_base_col:
+                margen_sobre_base_val = row.get(margen_sobre_base_col, None)
+
             # Variables para el registro
-            usar_precio_base = (modo_precio == 'margen')
+            # Prioridad: si la columna 'Usar Precio Base' está presente y es truthy, la respetamos.
+            if usar_precio_base_val is not None and str(usar_precio_base_val).strip() != '':
+                usar_precio_base = parse_bool_like(usar_precio_base_val)
+            else:
+                usar_precio_base = (modo_precio == 'margen')
+
             margen_sobre_base_calculado = None
             precio_final_ars = None
             precio_original_guardado = precio_original
             moneda_original_guardada = moneda_csv
-
             if usar_precio_base:
-                # MODO MARGEN: El 'precio' del CSV es el objetivo final. Hay que calcular el margen.
+                # MODO MARGEN: El 'precio' del CSV puede ser el objetivo final o se puede indicar
+                # directamente el margen en 'Margen Sobre Base'. Prioridad al margen explícito.
                 try:
-                    # Importar localmente para evitar ciclos
-                    from ..utils.precios_utils import calculate_price
+                    # Si el CSV provee un margen explícito, usarlo directamente
+                    if margen_sobre_base_val is not None and str(margen_sobre_base_val).strip() != '':
+                        try:
+                            margen_sobre_base_calculado = parse_margin_to_decimal(margen_sobre_base_val)
+                        except Exception as e:
+                            raise ValueError(f"Margen sobre base inválido: {e}")
+                        # Precio guardado será 0 (modo margin-based)
+                        precio_final_ars = Decimal('0')
+                    else:
+                        # Importar localmente para evitar ciclos
+                        from ..utils.precios_utils import calculate_price
 
-                    # 1. Calcular precio base usando la función de cálculo para cantidad = 1
-                    resultado_calculo = calculate_price(producto.id, 1, cliente_id=None, db=db)
-                    if resultado_calculo.get('status') != 'success':
-                        raise ValueError(f"Error en cálculo de precio: {resultado_calculo.get('message', 'Unknown error')}")
-                    
-                    # 2. Obtener precio base del producto en ARS
-                    precio_base_ars = Decimal(str(resultado_calculo.get('precio_unitario_ars', '0')))
-                    if precio_base_ars <= 0:
-                        raise ValueError("El precio base del producto es cero o negativo, no se puede calcular margen.")
+                        # 1. Calcular precio base usando la función de cálculo para cantidad = 1
+                        resultado_calculo = calculate_price(producto.id, 1, cliente_id=None, db=db)
+                        if resultado_calculo.get('status') != 'success':
+                            raise ValueError(f"Error en cálculo de precio: {resultado_calculo.get('message', 'Unknown error')}")
 
-                    # 3. Convertir precio objetivo a ARS
-                    precio_objetivo_ars = precio_original * valor_dolar_oficial if moneda_csv == 'USD' else precio_original
-                    
-                    # NUEVO: Redondear el precio objetivo al múltiplo de 100 más cercano (igual que calculadora)
-                    # Esto garantiza que los precios importados por CSV también queden redondeados
-                    precio_objetivo_ars = Decimal(round(float(precio_objetivo_ars) / 100) * 100)
+                        # 2. Obtener precio base del producto en ARS
+                        precio_base_ars = Decimal(str(resultado_calculo.get('precio_unitario_ars', '0')))
+                        if precio_base_ars <= 0:
+                            raise ValueError("El precio base del producto es cero o negativo, no se puede calcular margen.")
 
-                    # 4. Calcular el margen necesario
-                    if precio_base_ars <= 0:
-                        raise ValueError("El precio base del producto es cero o negativo, no se puede calcular margen.")
-                    
-                    margen_sobre_base_calculado = (precio_objetivo_ars / precio_base_ars) - Decimal('1')
-                    
-                    # Para consistencia, el precio guardado en la columna principal será 0
-                    precio_final_ars = Decimal('0')
+                        # 3. Convertir precio objetivo a ARS
+                        precio_objetivo_ars = precio_original * valor_dolar_oficial if moneda_csv == 'USD' else precio_original
+
+                        # NUEVO: Redondear el precio objetivo al múltiplo de 100 más cercano (igual que calculadora)
+                        precio_objetivo_ars = Decimal(round(float(precio_objetivo_ars) / 100) * 100)
+
+                        # 4. Calcular el margen necesario
+                        margen_sobre_base_calculado = (precio_objetivo_ars / precio_base_ars) - Decimal('1')
+                        # Para consistencia, el precio guardado en la columna principal será 0
+                        precio_final_ars = Decimal('0')
 
                 except Exception as e:
                     registrar_error(linea_num, cliente_raw, producto_raw, f"Error al calcular margen para el precio objetivo: {e}")
