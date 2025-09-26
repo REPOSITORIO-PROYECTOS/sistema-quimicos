@@ -5,16 +5,35 @@ import BotonVolver from "@/components/BotonVolver";
 import UploaderCSV from "@/components/UploaderCSV"; // Importamos nuestro nuevo componente
 import { useState } from 'react';
 
-// Use environment API base or local backend fallback when developing locally
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8001';
+// Use environment API base; by default use a relative path so the frontend
+// will call the backend served from the same origin. If you are developing
+// with the backend on a different host/port, set NEXT_PUBLIC_API_URL in
+// your environment (.env.local) to e.g. http://127.0.0.1:8001
 
 async function descargarPlantilla() {
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
   const headers: HeadersInit = {};
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
-  const res = await fetch(`${API_BASE_URL}/precios_especiales/descargar_plantilla_precios`, { headers });
-  if (!res.ok) throw new Error('Error al descargar la plantilla');
+  // Construir URL sin duplicar slashes
+  const endpoint = 'https://quimex.sistemataup.online/precios_especiales/descargar_plantilla_precios';
+  const fullUrl = endpoint;
+
+  let res: Response;
+  try {
+    res = await fetch(fullUrl, { headers });
+  } catch (err) {
+    // network error / connection refused
+    console.error('Error descargando plantilla (network):', err);
+    throw new Error('No se pudo conectar al servidor. Verifica que el backend esté corriendo y accesible.');
+  }
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    console.error('Error descargando plantilla (status):', res.status, text);
+    throw new Error(`Error al descargar la plantilla (status ${res.status})`);
+  }
+
   const blob = await res.blob();
   const url = window.URL.createObjectURL(blob);
   const a = document.createElement('a');
