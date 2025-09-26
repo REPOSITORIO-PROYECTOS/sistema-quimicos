@@ -153,12 +153,12 @@ def descargar_plantilla_precios(current_user):
     Esto facilita que el usuario descargue, corrija y vuelva a subir el archivo en el formato esperado.
     """
     try:
-        # Hoja plantilla: columnas y ejemplos
-        plantilla_cols = ['cliente', 'producto', 'precio', 'moneda']
+        # Hoja plantilla: columnas y ejemplos (Title Case para coincidir con la UI)
+        plantilla_cols = ['Cliente', 'Producto', 'Precio', 'Moneda']
         plantilla_ejemplo = [
-            {'cliente': 'ACME S.A.', 'producto': 'Detergente 1L', 'precio': '1234.56', 'moneda': 'ARS'},
-            {'cliente': 'ACME S.A.', 'producto': 'Shampoo 500ml', 'precio': '10.00', 'moneda': 'USD'},
-            {'cliente': '', 'producto': '', 'precio': '', 'moneda': ''},
+            {'Cliente': 'ACME S.A.', 'Producto': 'Detergente 1L', 'Precio': '1234.56', 'Moneda': 'ARS'},
+            {'Cliente': 'ACME S.A.', 'Producto': 'Shampoo 500ml', 'Precio': '10.00', 'Moneda': 'USD'},
+            {'Cliente': '', 'Producto': '', 'Precio': '', 'Moneda': ''},
         ]
         df_plantilla = pd.DataFrame(plantilla_ejemplo, columns=plantilla_cols)
 
@@ -175,9 +175,9 @@ def descargar_plantilla_precios(current_user):
         ]
         df_instrucciones = pd.DataFrame({'Notas': instrucciones})
 
-        # Hoja con precios actuales: incluir TODOS los clientes.
-        # - Si el cliente tiene precios especiales, añadir una fila por cada precio.
-        # - Si el cliente NO tiene precios especiales, añadir una sola fila con producto/precio/moneda vacíos.
+    # Hoja con precios actuales: incluir TODOS los clientes.
+    # - Si el cliente tiene precios especiales, añadir una fila por cada precio.
+    # - Si el cliente NO tiene precios especiales, añadir una sola fila con producto/precio/moneda vacíos.
         precios = []
         clientes_all = Cliente.query.order_by(Cliente.nombre_razon_social).all()
         for c in clientes_all:
@@ -213,7 +213,17 @@ def descargar_plantilla_precios(current_user):
                 })
 
         # Ordenar por cliente nombre y producto para facilitar la revisión
+        # Aseguramos columnas claras y Title Case para facilitar la lectura en Excel/UI
         df_precios_actuales = pd.DataFrame(precios, columns=['cliente_id', 'cliente', 'producto_id', 'producto', 'precio_ars', 'moneda_original', 'precio_original'])
+        # También creamos una vista con headers amigables (Title Case) que algunos usuarios esperan
+        df_precios_actuales_view = df_precios_actuales.rename(columns={
+            'cliente': 'Cliente',
+            'producto': 'Producto',
+            'precio_ars': 'Precio (ARS)',
+            'moneda_original': 'Moneda Original',
+            'precio_original': 'Precio Original'
+        })
+        df_precios_actuales.sort_values(by=['cliente', 'producto'], inplace=True)
         df_precios_actuales.sort_values(by=['cliente', 'producto'], inplace=True)
 
         # Escribir a Excel en memoria
@@ -221,13 +231,17 @@ def descargar_plantilla_precios(current_user):
         try:
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
                 df_plantilla.to_excel(writer, sheet_name='PLANTILLA', index=False)
-                df_precios_actuales.to_excel(writer, sheet_name='PRECIOS_ACTUALES', index=False)
+                # Escribir la versión detallada con títulos amigables
+                df_precios_actuales_view.to_excel(writer, sheet_name='PRECIOS_ACTUALES', index=False)
+                # Mantener también una hoja con los datos 'raw' (IDs) para trazabilidad
+                df_precios_actuales.to_excel(writer, sheet_name='PRECIOS_ACTUALES_RAW', index=False)
                 df_instrucciones.to_excel(writer, sheet_name='INSTRUCCIONES', index=False)
         except Exception:
             # Fallback: intentar con xlsxwriter si openpyxl no está disponible
             with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                 df_plantilla.to_excel(writer, sheet_name='PLANTILLA', index=False)
-                df_precios_actuales.to_excel(writer, sheet_name='PRECIOS_ACTUALES', index=False)
+                df_precios_actuales_view.to_excel(writer, sheet_name='PRECIOS_ACTUALES', index=False)
+                df_precios_actuales.to_excel(writer, sheet_name='PRECIOS_ACTUALES_RAW', index=False)
                 df_instrucciones.to_excel(writer, sheet_name='INSTRUCCIONES', index=False)
 
         output.seek(0)
