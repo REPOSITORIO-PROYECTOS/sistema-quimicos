@@ -327,10 +327,15 @@ def registrar_venta(current_user):
 
         print(f"Suma monto_total_base_neto antes de redondear: {monto_total_base_neto}")
         monto_total_base_neto = monto_total_base_neto.quantize(Decimal("0.01"), ROUND_HALF_UP)
-        monto_con_recargos, recargo_t_calc, recargo_f_calc, _, _ = calcular_monto_final_y_vuelto(monto_total_base_neto, forma_pago, requiere_factura)
-        monto_final_a_pagar = monto_con_recargos * (Decimal(1) - descuento_total_global_porc / Decimal(100))
-        # Redondear el total general a múltiplo de 100 hacia arriba
-        monto_final_a_pagar = Decimal(math.ceil(monto_final_a_pagar / 100) * 100)
+        # Calcular recargos y luego aplicar descuento con redondeo adecuado
+        monto_con_recargos, recargo_t_calc, recargo_f_calc, _, _ = calcular_monto_final_y_vuelto(
+            monto_total_base_neto, forma_pago, requiere_factura
+        )
+        # Aplicar descuento y redondeo usando función util
+        from app.utils.precios_utils import aplicar_descuento
+        _, monto_final_a_pagar, tipo_redondeo = aplicar_descuento(
+            monto_con_recargos, descuento_total_global_porc, redondeo='centena'
+        )
         print(f"Suma monto_total_base_neto después de redondear: {monto_total_base_neto}")
         print(f"Recargos calculados: transferencia={recargo_t_calc}, factura={recargo_f_calc}")
         print(f"Monto final a pagar (redondeado): {monto_final_a_pagar}")

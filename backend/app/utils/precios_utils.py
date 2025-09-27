@@ -122,17 +122,26 @@ def calculate_price(product_id: int, quantity, cliente_id=None, db=None):
  
 def aplicar_descuento(monto: Decimal, porcentaje: Decimal, redondeo: str = 'centena'):
     """
-    Aplica un descuento global sobre el monto y redondea al siguiente múltiplo.
+    Aplica un descuento global sobre el monto:
+    1. Calcula el importe del descuento y lo redondea al siguiente múltiplo (decena o centena).
+    2. Resta ese importe al monto original.
+    3. Redondea el monto resultante al siguiente múltiplo.
     :param monto: Monto original (Decimal).
     :param porcentaje: Porcentaje de descuento (Decimal, 0-100).
     :param redondeo: Tipo de redondeo: 'centena' o 'decena'.
-    :return: tupla (monto_con_descuento, monto_redondeado, tipo_redondeo_aplicado).
+    :return: tupla (monto_sin_descuento_redondeado, monto_final_redondeado, tipo_redondeo_aplicado).
     """
-    monto_con_descuento = monto * (Decimal(1) - porcentaje / Decimal(100))
+    # 1. Cálculo y redondeo del importe del descuento
+    descuento = monto * porcentaje / Decimal(100)
     if redondeo == 'decena':
-        monto_redondeado = Decimal(math.ceil(monto_con_descuento / 10) * 10)
+        factor = 10
         tipo = 'decena'
     else:
-        monto_redondeado = Decimal(math.ceil(monto_con_descuento / 100) * 100)
+        factor = 100
         tipo = 'centena'
-    return monto_con_descuento, monto_redondeado, tipo
+    descuento_redondeado = Decimal(math.ceil(descuento / factor) * factor)
+    # 2. Aplicar descuento redondeado
+    monto_sin_descuento = monto - descuento_redondeado
+    # 3. Redondeo final del monto resultante
+    monto_final_redondeado = Decimal(math.ceil(monto_sin_descuento / factor) * factor)
+    return monto_sin_descuento, monto_final_redondeado, tipo
