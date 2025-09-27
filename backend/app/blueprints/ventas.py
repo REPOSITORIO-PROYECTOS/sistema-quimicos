@@ -381,7 +381,7 @@ def registrar_venta(current_user):
 # --- Endpoint: /calcular_total (sin cambios) ---
 @ventas_bp.route('/calcular_total', methods=['POST'])
 def calcular_total_venta():
-    """Calcula el monto final con recargos sin registrar la venta."""
+    """Calcula el monto final con recargos y descuentos sin registrar la venta."""
     data = request.get_json()
     if not data or 'monto_base' not in data:
         return jsonify({"error": "Falta 'monto_base' en el payload"}), 400
@@ -389,20 +389,29 @@ def calcular_total_venta():
         monto_base_str = str(data['monto_base'])
         forma_pago = data.get('forma_pago')
         requiere_factura = data.get('requiere_factura', False)
-        monto_final, recargo_t, recargo_f, _, error_msg = calcular_monto_final_y_vuelto(
+        # NUEVO: Obtener descuento total global del frontend
+        descuento_total_global_porc = Decimal(str(data.get('descuento_total_global_porcentaje', '0.0')))
+        
+        # Calcular monto con recargos (sin descuento aún)
+        monto_con_recargos, recargo_t, recargo_f, _, error_msg = calcular_monto_final_y_vuelto(
             monto_base_str, forma_pago, requiere_factura, None
         )
         if error_msg:
             return jsonify({"error": error_msg}), 400
+            
+        # NUEVO: Aplicar descuento total global sobre el monto con recargos
+        monto_final_con_descuento = monto_con_recargos * (Decimal(1) - descuento_total_global_porc / Decimal(100))
+        
         # SIMPLIFICADO: Siempre redondear a múltiplo de 100
-        # Los precios especiales ya están redondeados desde el origen
-        monto_final_redondeado = float(Decimal(math.ceil(monto_final / 100) * 100))
+        monto_final_redondeado = float(Decimal(math.ceil(monto_final_con_descuento / 100) * 100))
+        
         respuesta = {
             "monto_base": float(Decimal(monto_base_str).quantize(Decimal("0.01"))),
             "forma_pago_aplicada": forma_pago,
             "requiere_factura_aplicada": requiere_factura,
             "recargos": { "transferencia": float(recargo_t), "factura_iva": float(recargo_f) },
-            "monto_final_con_recargos": monto_final_redondeado
+            "descuento_total_global_porcentaje": float(descuento_total_global_porc),
+            "monto_final_con_recargos": monto_final_redondeado  # Ahora incluye descuentos
         }
         return jsonify(respuesta)
     except (InvalidOperation, TypeError, ValueError):
