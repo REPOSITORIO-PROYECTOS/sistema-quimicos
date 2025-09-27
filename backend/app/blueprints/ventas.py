@@ -376,7 +376,16 @@ def registrar_venta(current_user):
         )
         db.session.add(nueva_venta)
         db.session.commit()
-        return jsonify({"status": "success", "venta_id": nueva_venta.id}), 201
+        # Debug info para seguimiento
+        debug_info = [
+            f"Monto total base neto: {monto_total_base_neto}",
+            f"Recargo transferencia: {recargo_t_calc}",
+            f"Recargo factura: {recargo_f_calc}",
+            f"Descuento % aplicado: {descuento_total_global_porc}",
+            f"Monto final a pagar: {monto_final_a_pagar}",
+            f"Tipo redondeo aplicado: {tipo_redondeo}"
+        ]
+        return jsonify({"status": "success", "venta_id": nueva_venta.id, "debug_info": debug_info}), 201
 
     except Exception as e:
         db.session.rollback()
