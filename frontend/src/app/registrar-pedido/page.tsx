@@ -111,10 +111,13 @@ const displayTotal = useMemo(() => {
         return;
       }
       try {
+        // Log de payload para debug de descuento en RegistrarPedidoPage
+        console.log('RegistrarPedidoPage - payload calcular_total:', { monto_base: montoBaseProductos, forma_pago: formData.formaPago, requiere_factura: formData.requiereFactura, descuento_total_global_porcentaje: formData.descuentoTotal });
         const resTotal = await fetch("https://quimex.sistemataup.online/ventas/calcular_total", {
           method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-          body: JSON.stringify({ monto_base: montoBaseProductos, forma_pago: formData.formaPago, requiere_factura: formData.requiereFactura }),
+          body: JSON.stringify({ monto_base: montoBaseProductos, forma_pago: formData.formaPago, requiere_factura: formData.requiereFactura, descuento_total_global_porcentaje: formData.descuentoTotal }),
         });
+        console.log('RegistrarPedidoPage - respuesta calcular_total:', resTotal);
         const dataTotal = await resTotal.json();
         if (!resTotal.ok) throw new Error(dataTotal.error || `Error ${resTotal.status}`);
         setTotalCalculadoApi(dataTotal);
@@ -209,7 +212,9 @@ const displayTotal = useMemo(() => {
                   ? (precioTotalCalculado / totalQuantityForProduct) * item.qx
                   : 0;
 
-              const subtotalBrutoConDescuento = totalBruto * (1 - (item.descuento / 100));
+              // Aplicar descuento y luego redondear subtotal a centena
+              let subtotalBrutoConDescuento = totalBruto * (1 - (item.descuento / 100));
+              subtotalBrutoConDescuento = Math.ceil(subtotalBrutoConDescuento / 100) * 100;
               item.total = subtotalBrutoConDescuento;
           }
       });
@@ -292,10 +297,7 @@ const handleSubmit = async (e: React.FormEvent ) => {
     const token = localStorage.getItem("token");
     const usuarioId = localStorage.getItem("usuario_id");
     if (!token || !usuarioId) { setErrorMessage("Sesión inválida."); setIsSubmitting(false); return; }
-    const montoFinalBruto = displayTotal;
-    const montoFinalRedondeado = formData.formaPago === 'efectivo'
-      ? Math.ceil(montoFinalBruto / 100) * 100
-      : Math.ceil(montoFinalBruto / 10) * 10;
+    const montoFinalCalculado = displayTotal;
 
     // --- FIN DE LA CORRECCIÓN ---
 
@@ -317,7 +319,7 @@ const handleSubmit = async (e: React.FormEvent ) => {
       vuelto: formData.vuelto, 
       requiere_factura: formData.requiereFactura, 
       monto_total_base: montoBaseProductos, 
-      monto_final_con_recargos: montoFinalRedondeado, 
+      monto_final_con_recargos: montoFinalCalculado, 
       observaciones: formData.observaciones || "",
       descuento_total_global_porcentaje: formData.descuentoTotal,
     };
@@ -393,23 +395,19 @@ const handleSubmit = async (e: React.FormEvent ) => {
     nombre_vendedor: VENDEDOR_FIJO,
     items: (() => {
       const itemsFiltrados = productos.filter(p => p.producto && p.qx > 0);
-      // Redondear todos los totales
-      const totalesRedondeados = itemsFiltrados.map(item =>
-        formData.formaPago === 'efectivo'
-          ? Math.ceil((item.total || 0) / 100) * 100
-          : Math.ceil((item.total || 0) / 1) * 1
-      );
-      const sumaTotales = totalesRedondeados.reduce((sum, val) => sum + val, 0);
+      // Usar totales sin redondear
+      const totalesOriginales = itemsFiltrados.map(item => item.total || 0);
+      const sumaTotales = totalesOriginales.reduce((sum, val) => sum + val, 0);
       // Recargo total desde la API
       const recargoTotal = (totalCalculadoApi?.recargos.transferencia || 0) + (totalCalculadoApi?.recargos.factura_iva || 0);
       return itemsFiltrados.map((item, idx) => {
         const pInfo = productosContext?.productos.find(p => p.id === item.producto);
-        const totalRedondeado = totalesRedondeados[idx];
+        const totalOriginal = totalesOriginales[idx];
         // Proporción del recargo para este ítem
-        const proporcion = sumaTotales > 0 ? totalRedondeado / sumaTotales : 0;
+        const proporcion = sumaTotales > 0 ? totalOriginal / sumaTotales : 0;
         const recargoItem = recargoTotal * proporcion;
-        // Total final del ítem con recargo distribuido, sin redondeo extra
-        const totalFinalItem = totalRedondeado + recargoItem;
+        // Total final del ítem con recargo distribuido
+        const totalFinalItem = totalOriginal + recargoItem;
         return {
           producto_id: item.producto,
           producto_nombre: pInfo?.nombre || `ID: ${item.producto}`,

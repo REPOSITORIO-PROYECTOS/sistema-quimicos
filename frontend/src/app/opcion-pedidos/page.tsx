@@ -208,34 +208,13 @@ const handlePrint = async (tipo: 'comprobante' | 'orden_de_trabajo') => {
       const boletasDetalladas: BoletaOriginal[] = await response.json();
 
       const boletasAImprimir: VentaData[] = boletasDetalladas.map((data: BoletaOriginal) => {
-        const descuentoGlobal = data.descuento_total_global_porcentaje || 0;
-        const recargos = data.recargos ?? { transferencia: 0, factura_iva: 0 };
+        // Usar directamente los datos calculados por el backend
         const detalles = data.detalles || [];
-        const montoBase = detalles.reduce((sum: number, item: DetalleProducto) => sum + (item.precio_total_item_ars || 0), 0);
-        const montoBaseDescontado = montoBase * (1 - descuentoGlobal / 100);
-        const recargoTotal = (recargos.transferencia || 0) + (recargos.factura_iva || 0);
-        const totalFinalSinRedondear = montoBaseDescontado + recargoTotal;
-        const totalFinal = Math.ceil(totalFinalSinRedondear / 100) * 100;
-        // Distribuir recargo proporcionalmente entre los ítems y reemplazar el valor base por el proporcional si hay recargo
-        const itemsConRecargo = detalles.map((item) => {
-          const proporcion = montoBase > 0 ? (item.precio_total_item_ars || 0) / montoBase : 0;
-          const recargoProporcional = recargoTotal * proporcion;
-          const montoFinalItemSinRedondear = (item.precio_total_item_ars || 0) + recargoProporcional;
-          const hayRecargo = (recargos.transferencia || 0) > 0 || (recargos.factura_iva || 0) > 0;
-          const montoFinalItem = hayRecargo ? Math.ceil(montoFinalItemSinRedondear / 10) * 10 : montoFinalItemSinRedondear;
-          return {
-            ...item,
-            precio_total_item_ars: montoFinalItem,
-            monto_final_item: montoFinalItem,
-            recargo_proporcional: recargoProporcional,
-          };
-        });
-        // Ajustar para que la suma de los ítems coincida con el total redondeado
-        const sumaItems = itemsConRecargo.reduce((sum, item) => sum + item.subtotal_proporcional_con_recargos, 0);
-        if (sumaItems !== totalFinal && itemsConRecargo.length > 0) {
-          const diferencia = totalFinal - sumaItems;
-          itemsConRecargo[itemsConRecargo.length - 1].subtotal_proporcional_con_recargos += diferencia;
-        }
+        const itemsSimplificados = detalles.map((item) => ({
+          ...item,
+          precio_total_item_ars: item.precio_total_item_ars || 0,
+        }));
+        
         return {
           venta_id: data.venta_id,
           fecha_emision: data.fecha_pedido || data.fecha_emision || '',
@@ -245,8 +224,8 @@ const handlePrint = async (tipo: 'comprobante' | 'orden_de_trabajo') => {
             localidad: data.cliente_zona
           },
           nombre_vendedor: data.nombre_vendedor || '',
-          items: itemsConRecargo,
-          total_final: totalFinal,
+          items: itemsSimplificados,
+          total_final: data.monto_final_con_recargos, // Usar el total calculado por el backend
           observaciones: data.observaciones,
           forma_pago: data.forma_pago,
           monto_pagado_cliente: data.monto_pagado_cliente,

@@ -16,6 +16,7 @@ interface TotalCalculadoAPI {
     factura_iva: number;
   };
   monto_final_con_recargos: number;
+  monto_final_con_descuento: number;
 }
 const initialProductoItem: ProductoVenta = { producto: 0, qx: 0, precio: 0, descuento: 0, total: 0, observacion: "" };
 const initialFormData: FormDataVenta = {
@@ -219,11 +220,15 @@ const displayTotalToShow = useMemo(() => {
         const token = localStorage.getItem("token");
         if (!token) { setIsCalculatingTotal(false); return; }
         try {
+               // Log de body enviado para debug de descuento
+               console.log('Enviando calcular_total con payload:', JSON.stringify({ monto_base: montoBaseProductos, forma_pago: formData.formaPago, requiere_factura: formData.requiereFactura, descuento_total_global_porcentaje: formData.descuentoTotal }));
             const resTotal = await fetch("https://quimex.sistemataup.online/ventas/calcular_total", {
                 method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-                body: JSON.stringify({ monto_base: montoBaseProductos, forma_pago: formData.formaPago, requiere_factura: formData.requiereFactura }),
+                body: JSON.stringify({ monto_base: montoBaseProductos, forma_pago: formData.formaPago, requiere_factura: formData.requiereFactura, descuento_total_global_porcentaje: formData.descuentoTotal }),
             });
             const dataTotal = await resTotal.json();
+               // Log de respuesta para debug de descuento
+               console.log('Respuesta calcular_total:', dataTotal);
             if (!resTotal.ok) throw new Error(dataTotal.error || `Error calculando total.`);
             setTotalCalculadoApi(dataTotal);
         } catch (error) {
@@ -353,14 +358,10 @@ const displayTotalToShow = useMemo(() => {
   const recargoFactura = totalCalculadoApi?.recargos.factura_iva || 0;
   const totalRecargos = recargoTransferencia + recargoFactura;
   // Construir el array de ítems finales para enviar y mostrar
-  // Redondear cada ítem al múltiplo de 100 más cercano hacia arriba
   const itemsFinalesSinRedondear = itemsFiltrados.map(item => {
     const proporcion = subtotalSinRecargo > 0 ? (item.total || 0) / subtotalSinRecargo : 0;
     const recargoItem = totalRecargos * proporcion;
-    const subtotalConRecargoSinRedondear = (item.total || 0) + recargoItem;
-    const subtotalConRecargo = formData.formaPago === 'efectivo'
-      ? Math.ceil(subtotalConRecargoSinRedondear / 100) * 100
-      : Math.ceil(subtotalConRecargoSinRedondear / 1) * 1;
+    const subtotalConRecargo = (item.total || 0) + recargoItem;
     const pInfo = productosContext?.productos.find(p => p.id === item.producto);
     return {
       id_detalle: item.id_detalle,
@@ -372,16 +373,9 @@ const displayTotalToShow = useMemo(() => {
       subtotal_bruto_item_ars: subtotalConRecargo,
     };
   });
-  // Sumar los subtotales y redondear el total final
-  const sumaItemsSinRedondear = itemsFinalesSinRedondear.reduce((sum, item) => sum + item.precio_total_item_ars, 0);
-  const sumaItemsRedondeada = Math.ceil(sumaItemsSinRedondear / 100) * 100;
-  // Distribuir el redondeo entre los ítems (el último ítem absorbe la diferencia)
-  const diferenciaRedondeo = sumaItemsRedondeada - sumaItemsSinRedondear;
-  const itemsFinales = itemsFinalesSinRedondear.map((item, idx, arr) => {
-    let monto = item.precio_total_item_ars;
-    if (idx === arr.length - 1) monto += diferenciaRedondeo;
-    return { ...item, precio_total_item_ars: monto, subtotal_bruto_item_ars: monto };
-  });
+  // Sumar los subtotales sin redondear
+  const sumaItemsTotal = itemsFinalesSinRedondear.reduce((sum, item) => sum + item.precio_total_item_ars, 0);
+  const itemsFinales = itemsFinalesSinRedondear;
 
   const ventaDataParaTicket: VentaDataParaTicket = {
     venta_id: id,
@@ -389,7 +383,7 @@ const displayTotalToShow = useMemo(() => {
     cliente: { nombre: formData.nombre, direccion: formData.direccion },
     nombre_vendedor: "pedidos",
     items: itemsFinales,
-    total_final: sumaItemsRedondeada,
+    total_final: sumaItemsTotal,
     observaciones: formData.observaciones,
     forma_pago: formData.formaPago, 
     monto_pagado_cliente: formData.montoPagado,
@@ -449,7 +443,7 @@ const displayTotalToShow = useMemo(() => {
                 {isCalculatingTotal && <p className="text-sm text-blue-600 italic">Calculando...</p>}
                 {totalCalculadoApi && <div className="text-xs text-gray-600 mb-1">...</div>}
                 <label className="block text-sm font-medium text-gray-500 mb-1">Total Pedido</label>
-                <input type="text" value={`$ ${sumaItemsRedondeada.toFixed(2)}`} readOnly className="w-full md:w-auto md:max-w-xs inline-block bg-gray-100 shadow-sm border rounded py-2 px-3 text-gray-900 text-right font-bold text-lg"/>
+                <input type="text" value={`$ ${sumaItemsTotal.toFixed(2)}`} readOnly className="w-full md:w-auto md:max-w-xs inline-block bg-gray-100 shadow-sm border rounded py-2 px-3 text-gray-900 text-right font-bold text-lg"/>
               </div>
             </fieldset>
             {/* CAMBIO: Lógica de botones de impresión */}

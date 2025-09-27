@@ -420,11 +420,14 @@ def calcular_total_venta():
             monto_con_recargos, descuento_total_global_porc, redondeo='centena'
         )
         # Construir debug_info para seguimiento de cada paso
+        # Calcular monto con recargos sin redondeo a centena
+        raw_monto_con_recargos = Decimal(monto_base_str) + Decimal(recargo_t) + Decimal(recargo_f)
         debug_info = [
             f"Monto base recibido: {monto_base_str}",
             f"Recargo transferencia aplicado: {recargo_t}",
             f"Recargo factura aplicado: {recargo_f}",
-            f"Monto con recargos: {monto_con_recargos}",
+            f"Monto con recargos (sin redondeo): {raw_monto_con_recargos}",
+            f"Monto con recargos (redondeado): {monto_con_recargos}",
             f"Descuento aplicado (%): {descuento_total_global_porc}",
             f"Monto con descuento antes de redondeo final: {monto_con_descuento}",
             f"Monto final redondeado ({tipo_redondeo}): {monto_redondeado}"
