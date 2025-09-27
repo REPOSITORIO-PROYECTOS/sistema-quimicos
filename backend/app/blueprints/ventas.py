@@ -306,11 +306,12 @@ def registrar_venta(current_user):
                         return jsonify({"error": f"Error en Prod ID {producto_id}: {error_msg}"}), 400
             except Exception:
                 return jsonify({"error": f"Precio unitario o total inválido para Prod ID {producto_id}"}), 400
-            # Redondear precio unitario antes de aplicar descuento
-            precio_unitario_redondeado = redondear_a_siguiente_decena(precio_u_bruto)
+            # Redondear precio unitario antes de aplicar descuento (múltiplo de 100)
+            precio_unitario_redondeado = redondear_a_siguiente_centena(precio_u_bruto)
             if descuento_item_porc > 0:
                 precio_unitario_con_descuento = precio_unitario_redondeado * (Decimal('1.0') - descuento_item_porc / Decimal('100'))
-                precio_unitario_con_descuento = redondear_a_siguiente_decena(precio_unitario_con_descuento)
+                # Redondear precio unitario con descuento a centena
+                precio_unitario_con_descuento = redondear_a_siguiente_centena(precio_unitario_con_descuento)
             else:
                 precio_unitario_con_descuento = precio_unitario_redondeado
             precio_total_item = redondear_a_siguiente_centena(precio_unitario_con_descuento * cantidad)
@@ -409,17 +410,26 @@ def calcular_total_venta():
         monto_con_descuento, monto_redondeado, tipo_redondeo = aplicar_descuento(
             monto_con_recargos, descuento_total_global_porc, redondeo='centena'
         )
+        # Construir debug_info para seguimiento de cada paso
+        debug_info = [
+            f"Monto base recibido: {monto_base_str}",
+            f"Recargo transferencia aplicado: {recargo_t}",
+            f"Recargo factura aplicado: {recargo_f}",
+            f"Monto con recargos: {monto_con_recargos}",
+            f"Descuento aplicado (%): {descuento_total_global_porc}",
+            f"Monto con descuento antes de redondeo final: {monto_con_descuento}",
+            f"Monto final redondeado ({tipo_redondeo}): {monto_redondeado}"
+        ]
         respuesta = {
             "monto_base": float(Decimal(monto_base_str).quantize(Decimal("0.01"))),
             "forma_pago_aplicada": forma_pago,
             "requiere_factura_aplicada": requiere_factura,
             "recargos": { "transferencia": float(recargo_t), "factura_iva": float(recargo_f) },
             "descuento_total_global_porcentaje": float(descuento_total_global_porc),
-            # Monto antes de redondeo
             "monto_final_con_descuento": float(monto_con_descuento.quantize(Decimal("0.01"))),
-            # Monto final redondeado según centena
             "monto_final_con_recargos": float(monto_redondeado),
-            "tipo_redondeo_aplicado": tipo_redondeo
+            "tipo_redondeo_aplicado": tipo_redondeo,
+            "debug_info_total": debug_info
         }
         return jsonify(respuesta)
     except (InvalidOperation, TypeError, ValueError):
