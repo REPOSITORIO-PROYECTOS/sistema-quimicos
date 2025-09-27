@@ -910,13 +910,50 @@ def calculadora_calcular_margen(current_user):
             try:
                 costo_test = calcular_costo_producto_referencia(producto.id)
                 if costo_test <= 0:
+                    # Información de debug detallada
+                    debug_info = {
+                        "producto_id": producto.id,
+                        "producto_nombre": producto.nombre,
+                        "es_receta": producto.es_receta,
+                        "costo_referencia_usd": float(producto.costo_referencia_usd) if producto.costo_referencia_usd is not None else None,
+                        "costo_calculado": float(costo_test),
+                        "margen": float(producto.margen) if producto.margen is not None else None,
+                        "ajusta_por_tc": producto.ajusta_por_tc,
+                        "activo": producto.activo
+                    }
+                    
+                    # Si es receta, obtener info de ingredientes
+                    if producto.es_receta:
+                        from ..models import Receta
+                        receta = Receta.query.filter_by(producto_final_id=producto.id).first()
+                        if receta and receta.items:
+                            ingredientes_info = []
+                            for item in receta.items:
+                                if item.ingrediente_id:
+                                    ing = item.ingrediente
+                                    ingredientes_info.append({
+                                        "ingrediente_id": item.ingrediente_id,
+                                        "ingrediente_nombre": ing.nombre if ing else "N/A",
+                                        "porcentaje": float(item.porcentaje) if item.porcentaje else 0,
+                                        "costo_ingrediente_usd": float(ing.costo_referencia_usd) if ing and ing.costo_referencia_usd else None
+                                    })
+                            debug_info["ingredientes"] = ingredientes_info
+                    
                     return jsonify({
-                        "error": f"El producto '{producto.nombre}' (ID: {producto.id}) no tiene costo definido. "
-                                f"{'Configure costo_referencia_usd para este producto base.' if not producto.es_receta else 'Verifique que los ingredientes de la receta tengan costos válidos.'}"
+                        "error": f"El producto '{producto.nombre}' (ID: {producto.id}) no tiene costo válido calculado.",
+                        "debug": debug_info,
+                        "solucion": "Configure costo_referencia_usd para este producto base." if not producto.es_receta else "Verifique que los ingredientes de la receta tengan costos válidos."
                     }), 400
             except Exception as e:
                 return jsonify({
-                    "error": f"Error al verificar costo del producto '{producto.nombre}': {str(e)}"
+                    "error": f"Error al verificar costo del producto '{producto.nombre}': {str(e)}",
+                    "debug": {
+                        "producto_id": producto.id,
+                        "producto_nombre": producto.nombre,
+                        "es_receta": producto.es_receta,
+                        "costo_referencia_usd": float(producto.costo_referencia_usd) if producto.costo_referencia_usd is not None else None,
+                        "exception": str(e)
+                    }
                 }), 400
             
             from ..utils.precios_utils import calculate_price
@@ -924,7 +961,18 @@ def calculadora_calcular_margen(current_user):
             # Calcular precio base usando la función de cálculo para cantidad = 1
             resultado_calculo = calculate_price(producto.id, 1, cliente_id=None, db=db)
             if resultado_calculo.get('status') != 'success':
-                return jsonify({"error": f"Error en cálculo de precio: {resultado_calculo.get('message', 'Unknown error')}"}), 500
+                return jsonify({
+                    "error": f"Error en cálculo de precio: {resultado_calculo.get('message', 'Unknown error')}",
+                    "debug": {
+                        "producto_id": producto.id,
+                        "producto_nombre": producto.nombre,
+                        "es_receta": producto.es_receta,
+                        "costo_referencia_usd": float(producto.costo_referencia_usd) if producto.costo_referencia_usd is not None else None,
+                        "margen": float(producto.margen) if producto.margen is not None else None,
+                        "ajusta_por_tc": producto.ajusta_por_tc,
+                        "calculate_price_result": resultado_calculo
+                    }
+                }), 500
             
             # Obtener valores del resultado
             costo_unitario_usd = Decimal(str(resultado_calculo.get('costo_unitario_usd', '0')))
