@@ -399,19 +399,22 @@ def calcular_total_venta():
         if error_msg:
             return jsonify({"error": error_msg}), 400
             
-        # NUEVO: Aplicar descuento total global sobre el monto con recargos
-        monto_final_con_descuento = monto_con_recargos * (Decimal(1) - descuento_total_global_porc / Decimal(100))
-        
-        # SIMPLIFICADO: Siempre redondear a múltiplo de 100
-        monto_final_redondeado = float(Decimal(math.ceil(monto_final_con_descuento / 100) * 100))
-        
+        # NUEVO: Aplicar descuento y redondeo usando util
+        from app.utils.precios_utils import aplicar_descuento
+        monto_con_descuento, monto_redondeado, tipo_redondeo = aplicar_descuento(
+            monto_con_recargos, descuento_total_global_porc, redondeo='centena'
+        )
         respuesta = {
             "monto_base": float(Decimal(monto_base_str).quantize(Decimal("0.01"))),
             "forma_pago_aplicada": forma_pago,
             "requiere_factura_aplicada": requiere_factura,
             "recargos": { "transferencia": float(recargo_t), "factura_iva": float(recargo_f) },
             "descuento_total_global_porcentaje": float(descuento_total_global_porc),
-            "monto_final_con_recargos": monto_final_redondeado  # Ahora incluye descuentos
+            # Monto antes de redondeo
+            "monto_final_con_descuento": float(monto_con_descuento.quantize(Decimal("0.01"))),
+            # Monto final redondeado según centena
+            "monto_final_con_recargos": float(monto_redondeado),
+            "tipo_redondeo_aplicado": tipo_redondeo
         }
         return jsonify(respuesta)
     except (InvalidOperation, TypeError, ValueError):
@@ -615,12 +618,13 @@ def actualizar_venta(current_user, venta_id):
             monto_total_base_nuevo, forma_pago_nueva, requiere_factura_nueva
         )
 
-        # 3. Aplicar descuento global al total con recargos y redondear el descuento
-        monto_final_sin_descuento = monto_con_recargos
-        descuento_global_en_plata = (monto_final_sin_descuento * descuento_total_nuevo_porc / Decimal(100)).quantize(Decimal("0.01"), ROUND_HALF_UP)
-        descuento_global_en_plata_redondeado = Decimal(math.ceil(descuento_global_en_plata / 100) * 100)
-        monto_final_a_pagar_nuevo = monto_final_sin_descuento - descuento_global_en_plata_redondeado
-        monto_final_a_pagar_nuevo = Decimal(math.ceil(monto_final_a_pagar_nuevo / 100) * 100)
+        # 3. Aplicar descuento global y redondeo usando util
+        from app.utils.precios_utils import aplicar_descuento
+        monto_sin_redondeo = monto_con_recargos
+        monto_con_descuento, monto_redondeado, tipo_redondeo = aplicar_descuento(
+            monto_sin_redondeo, descuento_total_nuevo_porc, redondeo='centena'
+        )
+        monto_final_a_pagar_nuevo = monto_redondeado
 
         # --- BLOQUE 2: GUARDAR LOS MONTOS ENVIADOS POR EL FRONTEND SI ESTÁN PRESENTES ---
         forma_pago_nueva = data.get('forma_pago', venta_db.forma_pago)
@@ -652,8 +656,11 @@ def actualizar_venta(current_user, venta_id):
         venta_db.requiere_factura = requiere_factura_nueva
         venta_db.recargo_transferencia = recargo_t_nuevo
         venta_db.recargo_factura = recargo_f_nuevo
+        # Asignar montos calculados y redondeados
         venta_db.monto_final_con_recargos = monto_final_a_pagar_nuevo
         venta_db.monto_final_redondeado = monto_final_a_pagar_nuevo
+        # Tipo de redondeo aplicado (si se desea almacenar)
+        # venta_db.tipo_redondeo_general = tipo_redondeo
         venta_db.monto_pagado_cliente = Decimal(str(monto_pagado_nuevo_str)).quantize(Decimal("0.01")) if monto_pagado_nuevo_str is not None else None
         venta_db.vuelto_calculado = vuelto_final_nuevo.quantize(Decimal("0.01"), ROUND_HALF_UP)
         venta_db.detalles = detalles_venta_nuevos

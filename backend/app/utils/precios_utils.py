@@ -1,5 +1,6 @@
 from decimal import Decimal, InvalidOperation
 import traceback
+import math
 
 def calculate_price(product_id: int, quantity, cliente_id=None, db=None):
     """
@@ -118,3 +119,20 @@ def calculate_price(product_id: int, quantity, cliente_id=None, db=None):
     except Exception as e:
         traceback.print_exc()
         return {"status": "error", "message": "Error interno del servidor."}
+ 
+def aplicar_descuento(monto: Decimal, porcentaje: Decimal, redondeo: str = 'centena'):
+    """
+    Aplica un descuento global sobre el monto y redondea al siguiente múltiplo.
+    :param monto: Monto original (Decimal).
+    :param porcentaje: Porcentaje de descuento (Decimal, 0-100).
+    :param redondeo: Tipo de redondeo: 'centena' o 'decena'.
+    :return: tupla (monto_con_descuento, monto_redondeado, tipo_redondeo_aplicado).
+    """
+    monto_con_descuento = monto * (Decimal(1) - porcentaje / Decimal(100))
+    if redondeo == 'decena':
+        monto_redondeado = Decimal(math.ceil(monto_con_descuento / 10) * 10)
+        tipo = 'decena'
+    else:
+        monto_redondeado = Decimal(math.ceil(monto_con_descuento / 100) * 100)
+        tipo = 'centena'
+    return monto_con_descuento, monto_redondeado, tipo
