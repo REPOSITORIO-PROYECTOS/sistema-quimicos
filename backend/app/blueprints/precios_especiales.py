@@ -1276,6 +1276,10 @@ def cargar_precios_desde_csv(current_user):
         margen_sobre_base_col = find_column(df.columns, column_variants.get('margen_sobre_base', []))
         cliente_id_col = find_column(df.columns, column_variants.get('cliente_id', []))
         producto_id_col = find_column(df.columns, column_variants.get('producto_id', []))
+        
+        # Debug: mostrar columnas detectadas
+        logger.info(f"[CSV DEBUG] Columnas detectadas - usar_precio_base: {usar_precio_base_col}, margen_sobre_base: {margen_sobre_base_col}")
+        logger.info(f"[CSV DEBUG] Columnas disponibles en CSV: {list(df.columns)}")
 
         if precio_col is None or (cliente_col is None and cliente_id_col is None) or (producto_col is None and producto_id_col is None):
             missing = []
@@ -1476,27 +1480,7 @@ def cargar_precios_desde_csv(current_user):
                 })
                 continue
 
-            try:
-                precio_original = parse_price_to_decimal(precio_raw)
-                if precio_original < 0:
-                    raise ValueError("Precio negativo")
-            except (InvalidOperation, ValueError) as e:
-                registrar_error(linea_num, cliente_raw, producto_raw, f"Precio '{precio_raw}' no es un número válido: {e}")
-                acciones_por_fila.append({
-                    'linea': linea_num,
-                    'accion': 'error',
-                    'motivo': f"Precio '{precio_raw}' no es un número válido: {e}",
-                    'cliente': cliente_raw,
-                    'producto': producto_raw,
-                    'precio_raw': precio_raw
-                })
-                continue
-
-            # --- LÓGICA DE CONVERSIÓN Y REGISTRO DE MONEDA ---
-            # Normalizar modo_precio
-            modo_precio = 'margen' if normalize_text(modo_precio_raw) == 'margen' else 'fijo'
-
-            # Leer columnas nuevas si están presentes
+            # Primero leemos las columnas de margen para saber si es modo margen explícito
             usar_precio_base_val = None
             margen_sobre_base_val = None
             if usar_precio_base_col:
@@ -1504,31 +1488,67 @@ def cargar_precios_desde_csv(current_user):
             if margen_sobre_base_col:
                 margen_sobre_base_val = row.get(margen_sobre_base_col, None)
 
-            # Variables para el registro
-            # Prioridad: si la columna 'Usar Precio Base' está presente y es truthy, la respetamos.
+            # Determinar si usará precio base
             if usar_precio_base_val is not None and str(usar_precio_base_val).strip() != '':
                 usar_precio_base = parse_bool_like(usar_precio_base_val)
             else:
-                usar_precio_base = (modo_precio == 'margen')
+                usar_precio_base = False
+
+            # Verificar si es margen explícito (tiene margen y usar_precio_base=TRUE)
+            es_margen_explicito = (usar_precio_base and 
+                                 margen_sobre_base_val is not None and 
+                                 str(margen_sobre_base_val).strip() != '')
+
+            # Validar precio solo si NO es margen explícito
+            precio_original = None
+            if not es_margen_explicito:
+                try:
+                    precio_original = parse_price_to_decimal(precio_raw)
+                    if precio_original < 0:
+                        raise ValueError("Precio negativo")
+                except (InvalidOperation, ValueError) as e:
+                    registrar_error(linea_num, cliente_raw, producto_raw, f"Precio '{precio_raw}' no es un número válido: {e}")
+                    acciones_por_fila.append({
+                        'linea': linea_num,
+                        'accion': 'error',
+                        'motivo': f"Precio '{precio_raw}' no es un número válido: {e}",
+                        'cliente': cliente_raw,
+                        'producto': producto_raw,
+                        'precio_raw': precio_raw
+                    })
+                    continue
+            else:
+                # En modo margen explícito, el precio puede estar vacío
+                precio_original = Decimal('0')
+
+            # --- LÓGICA DE CONVERSIÓN Y REGISTRO DE MONEDA ---
+            # Normalizar modo_precio
+            modo_precio = 'margen' if normalize_text(modo_precio_raw) == 'margen' else 'fijo'
+
+            # Debug: mostrar valores leídos para filas con margen
+            if margen_sobre_base_val is not None and str(margen_sobre_base_val).strip() != '':
+                logger.info(f"[CSV DEBUG] Fila {linea_num} - margen_sobre_base_val: '{margen_sobre_base_val}' (tipo: {type(margen_sobre_base_val)})")
 
             margen_sobre_base_calculado = None
             precio_final_ars = None
             precio_original_guardado = precio_original
             moneda_original_guardada = moneda_csv
+            
             if usar_precio_base:
-                # MODO MARGEN: El 'precio' del CSV puede ser el objetivo final o se puede indicar
-                # directamente el margen en 'Margen Sobre Base'. Prioridad al margen explícito.
+                # MODO MARGEN: Usar el precio base del producto con margen
                 try:
-                    # Si el CSV provee un margen explícito, usarlo directamente
+                    # CASO 1: Margen explícito - Prioridad máxima
                     if margen_sobre_base_val is not None and str(margen_sobre_base_val).strip() != '':
                         try:
                             margen_sobre_base_calculado = parse_margin_to_decimal(margen_sobre_base_val)
+                            precio_final_ars = Decimal('0')  # Modo margen: precio se calcula dinámicamente
+                            # En este caso, precio_original puede ser 0 (vacío) - no importa
+                            logger.info(f"[CSV] Fila {linea_num}: Margen explícito {margen_sobre_base_calculado}")
                         except Exception as e:
                             raise ValueError(f"Margen sobre base inválido: {e}")
-                        # Precio guardado será 0 (modo margin-based)
-                        precio_final_ars = Decimal('0')
-                    else:
-                        # Importar localmente para evitar ciclos
+                    
+                    # CASO 2: Precio objetivo - Calcular margen automáticamente
+                    elif precio_original is not None and precio_original > 0:
                         from ..utils.precios_utils import calculate_price
 
                         # 1. Calcular precio base usando la función de cálculo para cantidad = 1
@@ -1544,19 +1564,42 @@ def cargar_precios_desde_csv(current_user):
                         # 3. Convertir precio objetivo a ARS
                         precio_objetivo_ars = precio_original * valor_dolar_oficial if moneda_csv == 'USD' else precio_original
 
-                        # NUEVO: Redondear el precio objetivo al múltiplo de 100 más cercano (igual que calculadora)
+                        # 4. Redondear el precio objetivo al múltiplo de 100 más cercano
                         precio_objetivo_ars = Decimal(round(float(precio_objetivo_ars) / 100) * 100)
 
-                        # 4. Calcular el margen necesario
+                        # 5. Calcular el margen necesario para llegar al precio objetivo
                         margen_sobre_base_calculado = (precio_objetivo_ars / precio_base_ars) - Decimal('1')
-                        # Para consistencia, el precio guardado en la columna principal será 0
-                        precio_final_ars = Decimal('0')
+                        precio_final_ars = Decimal('0')  # Modo margen: precio se calcula dinámicamente
+                        
+                        logger.info(f"[CSV] Fila {linea_num}: Margen calculado {margen_sobre_base_calculado} para precio objetivo {precio_objetivo_ars}")
+                    
+                    # CASO 3: Error - usar_precio_base=TRUE pero sin margen ni precio
+                    else:
+                        raise ValueError("Para usar precio base debe especificar un margen en 'Margen Sobre Base' o un precio objetivo")
 
                 except Exception as e:
-                    registrar_error(linea_num, cliente_raw, producto_raw, f"Error al calcular margen para el precio objetivo: {e}")
+                    registrar_error(linea_num, cliente_raw, producto_raw, f"Error en modo margen: {e}")
+                    acciones_por_fila.append({
+                        'linea': linea_num,
+                        'accion': 'error',
+                        'motivo': f"Error en modo margen: {e}",
+                        'cliente': cliente_raw,
+                        'producto': producto_raw
+                    })
                     continue # Saltar a la siguiente fila
             else:
-                # MODO FIJO: Comportamiento original
+                # MODO FIJO: Precio fijo tradicional
+                if precio_original is None or precio_original <= 0:
+                    registrar_error(linea_num, cliente_raw, producto_raw, "Precio requerido para modo precio fijo")
+                    acciones_por_fila.append({
+                        'linea': linea_num,
+                        'accion': 'error',
+                        'motivo': "Precio requerido para modo precio fijo",
+                        'cliente': cliente_raw,
+                        'producto': producto_raw
+                    })
+                    continue
+                    
                 if moneda_csv == 'USD':
                     precio_final_ars = precio_original * valor_dolar_oficial
                 else:
