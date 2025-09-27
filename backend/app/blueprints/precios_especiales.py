@@ -896,12 +896,29 @@ def calculadora_calcular_margen(current_user):
         costo_unitario_usd = None
         tipo_cambio = None
         margen_producto = None
+        resultado_calculo = None
+        producto = None
 
         # Si el frontend envía producto_id, obtener costo y margen desde la lógica existente
         if producto_id is not None:
             producto = db.session.get(Producto, int(producto_id))
             if not producto:
                 return jsonify({"error": f"Producto ID {producto_id} no encontrado"}), 404
+            
+            # Verificar si el producto tiene costo antes de intentar el cálculo
+            from ..blueprints.productos import calcular_costo_producto_referencia
+            try:
+                costo_test = calcular_costo_producto_referencia(producto.id)
+                if costo_test <= 0:
+                    return jsonify({
+                        "error": f"El producto '{producto.nombre}' (ID: {producto.id}) no tiene costo definido. "
+                                f"{'Configure costo_referencia_usd para este producto base.' if not producto.es_receta else 'Verifique que los ingredientes de la receta tengan costos válidos.'}"
+                    }), 400
+            except Exception as e:
+                return jsonify({
+                    "error": f"Error al verificar costo del producto '{producto.nombre}': {str(e)}"
+                }), 400
+            
             from ..utils.precios_utils import calculate_price
 
             # Calcular precio base usando la función de cálculo para cantidad = 1
@@ -938,9 +955,17 @@ def calculadora_calcular_margen(current_user):
         elif margen_producto >= 1:
             return jsonify({"error": "margen_producto inválido (>=1)."}), 400
 
-        # Cálculos - obtener precio_base_ars del resultado del cálculo
-        precio_base_ars = Decimal(str(resultado_calculo.get('precio_unitario_ars', '0')))
+        # Cálculos
         costo_unitario_ars = costo_unitario_usd * tipo_cambio
+        
+        # Obtener precio_base_ars del resultado del cálculo si tenemos resultado_calculo
+        if resultado_calculo is not None:
+            precio_base_ars = Decimal(str(resultado_calculo.get('precio_unitario_ars', '0')))
+        else:
+            # Calcular precio base manualmente si no tenemos resultado_calculo
+            if margen_producto >= 1:
+                return jsonify({"error": "Margen del producto inválido (>=1)"}), 400
+            precio_base_ars = costo_unitario_ars / (Decimal('1') - margen_producto)
         
         if precio_base_ars <= 0:
             return jsonify({"error": "Precio base calculado es cero o inválido"}), 400
