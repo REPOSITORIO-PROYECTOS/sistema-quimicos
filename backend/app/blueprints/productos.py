@@ -731,10 +731,17 @@ def calculate_price(product_id: int):
             precio_venta_unitario_redondeado = redondear_a_siguiente_centena(precio_venta_unitario_bruto)
             tipo_redondeo_unitario = 'centena'
 
-        # Total final siempre redondeado a centena
-        precio_total_final_ars = redondear_a_siguiente_centena(precio_venta_unitario_redondeado * cantidad_decimal)
+        # Paso 5 bis: Redondear total según tipo de precio
+        if se_aplico_precio_especial:
+            # Para precios especiales, redondear total a decena
+            precio_total_final_ars = redondear_a_siguiente_decena(precio_venta_unitario_redondeado * cantidad_decimal)
+            tipo_redondeo_total = 'decena'
+        else:
+            # Para precios generales, redondear total a centena
+            precio_total_final_ars = redondear_a_siguiente_centena(precio_venta_unitario_redondeado * cantidad_decimal)
+            tipo_redondeo_total = 'centena'
         debug_info_response['etapas_calculo'].append(
-            f"5. Total Final (Redondeo Unificado a 100): {precio_venta_unitario_redondeado * cantidad_decimal:.2f} -> {precio_total_final_ars}"
+            f"5. Total Final (Redondeo Total {tipo_redondeo_total}): {precio_venta_unitario_redondeado * cantidad_decimal:.2f} -> {precio_total_final_ars}"
         )
 
         detalles_calculo_dinamico['F_PRECIO_UNITARIO_REDONDEADO'] = f"{precio_venta_unitario_redondeado:.2f}"
