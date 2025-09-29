@@ -6,10 +6,12 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest"
   },
   "browserslist": [
-    "last 2 versions", 
+    "last 2 versions",
     "not dead",
     "not < 0.2%"
   ],
@@ -43,15 +45,22 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4.1.4",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "^6.8.0",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "20.17.30",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
     "@types/react-router-dom": "^5.3.3",
+    "@vitejs/plugin-react": "^4.7.0",
     "browserslist": "^4.24.4",
     "eslint": "^9",
     "eslint-config-next": "15.2.4",
+    "jsdom": "^25.0.1",
     "postcss": "^8.5.3",
     "tailwindcss": "^4.1.4",
-    "typescript": "5.8.3"
+    "typescript": "5.8.3",
+    "vitest": "^2.1.9"
   }
 }

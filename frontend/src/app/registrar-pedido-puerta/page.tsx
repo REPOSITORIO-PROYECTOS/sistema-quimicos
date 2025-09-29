@@ -15,14 +15,33 @@ interface IFormData {
     fechaEmision: string; 
     formaPago: string; 
     montoPagado: number; 
-    descuentoTotal: number; // <-- NUEVO
     vuelto: number; 
     requiereFactura: boolean; 
     observaciones?: string; 
 }
-interface TotalCalculadoAPI { monto_base: number; forma_pago_aplicada: string; requiere_factura_aplicada: boolean; recargos: { transferencia: number; factura_iva: number; }; monto_final_con_recargos: number; }
+interface TotalCalculadoAPI { 
+    monto_base: number; 
+    forma_pago_aplicada: string; 
+    requiere_factura_aplicada: boolean; 
+    recargos: { transferencia: number; factura_iva: number; }; 
+    monto_final_con_recargos: number; 
+    monto_final_con_descuento?: number; // Puede venir del backend si se pasa descuento_total_global_porcentaje
+    tipo_redondeo_general?: string; // centena | decena
+}
 
-const initialFormData: IFormData = { clienteId: null, cuit: "", fechaEmision: "", formaPago: "efectivo", montoPagado: 0, descuentoTotal: 0, vuelto: 0, requiereFactura: false, observaciones: "" };
+// Respuesta cruda posible de la API antes de normalizar
+interface RawTotalCalculadoResponse {
+    monto_base?: number;
+    forma_pago_aplicada?: string;
+    requiere_factura_aplicada?: boolean;
+    recargos?: { transferencia?: number; factura_iva?: number };
+    monto_final_con_recargos?: number;
+    monto_final_con_descuento?: number;
+    tipo_redondeo_general?: string;
+    error?: string;
+}
+
+const initialFormData: IFormData = { clienteId: null, cuit: "", fechaEmision: "", formaPago: "efectivo", montoPagado: 0, vuelto: 0, requiereFactura: false, observaciones: "" };
 const initialProductos: ProductoVenta[] = [{ producto: 0, qx: 0, precio: 0, descuento: 0, total: 0, observacion: "" }];
 const VENDEDORES = ["martin", "moises", "sergio", "gabriel", "mauricio", "elias", "ardiles", "redonedo"];
 
@@ -109,44 +128,52 @@ export default function RegistrarPedidoPuertaPage() {
 
     useEffect(() => {
         const recalcularTodo = async () => {
-            if (montoBaseProductos <= 0 && formData.montoPagado <= 0 && formData.descuentoTotal <= 0) { setTotalCalculadoApi(null); setFormData(prev => ({ ...prev, vuelto: 0 })); return; }
-            setIsCalculatingTotal(true); setErrorMessage(''); const token = localStorage.getItem("token"); if (!token) { setErrorMessage("No autenticado."); setIsCalculatingTotal(false); return; }
+            if (montoBaseProductos <= 0) { setTotalCalculadoApi(null); setFormData(prev => ({ ...prev, vuelto: 0 })); return; }
+            setIsCalculatingTotal(true); setErrorMessage('');
+            const token = localStorage.getItem("token"); if (!token) { setErrorMessage("No autenticado."); setIsCalculatingTotal(false); return; }
             try {
+                const payload = { 
+                    monto_base: montoBaseProductos, 
+                    forma_pago: formData.formaPago, 
+                    requiere_factura: formData.requiereFactura
+                };
                 const resTotal = await fetch("https://quimex.sistemataup.online/ventas/calcular_total", {
-                    method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-                    body: JSON.stringify({ monto_base: montoBaseProductos, forma_pago: formData.formaPago, requiere_factura: formData.requiereFactura }),
+                    method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }, body: JSON.stringify(payload),
                 });
-                if (!resTotal.ok) throw new Error((await resTotal.json()).error || "Error al calcular total.");
-                const dataTotal: TotalCalculadoAPI = await resTotal.json();
-                setTotalCalculadoApi(dataTotal);
+                                const raw = await resTotal.json() as RawTotalCalculadoResponse;
+                                if (!resTotal.ok) throw new Error(raw?.error || "Error al calcular total.");
+                                const dataTotal: TotalCalculadoAPI = {
+                                        monto_base: Number(raw.monto_base) || 0,
+                                        forma_pago_aplicada: String(raw.forma_pago_aplicada || formData.formaPago),
+                                        requiere_factura_aplicada: Boolean(raw.requiere_factura_aplicada || formData.requiereFactura),
+                                        recargos: {
+                                                transferencia: Number(raw?.recargos?.transferencia) || 0,
+                                                factura_iva: Number(raw?.recargos?.factura_iva) || 0
+                                        },
+                                        monto_final_con_recargos: Number(raw.monto_final_con_recargos) || 0,
+                                        monto_final_con_descuento: typeof raw.monto_final_con_descuento === 'number' ? raw.monto_final_con_descuento : undefined,
+                                        tipo_redondeo_general: raw.tipo_redondeo_general
+                                };
+                                setTotalCalculadoApi(dataTotal);
 
-                // CAMBIO: El descuento total se aplica sobre el monto con recargos
-                const montoConRecargos = dataTotal.monto_final_con_recargos;
-                const montoFinalParaVuelto = montoConRecargos * (1 - (formData.descuentoTotal / 100));
-
-                if (formData.montoPagado >= montoFinalParaVuelto && montoFinalParaVuelto > 0) {
+                                const totalParaVuelto: number = typeof dataTotal.monto_final_con_descuento === 'number'
+                                    ? dataTotal.monto_final_con_descuento
+                                    : dataTotal.monto_final_con_recargos;
+                                if (formData.formaPago === 'efectivo' && formData.montoPagado >= totalParaVuelto && totalParaVuelto > 0) {
                     const resVuelto = await fetch("https://quimex.sistemataup.online/ventas/calcular_vuelto", {
-                        method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-                        body: JSON.stringify({ monto_pagado: formData.montoPagado, monto_total_final: montoFinalParaVuelto }),
+                        method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }, body: JSON.stringify({ monto_pagado: formData.montoPagado, monto_total_final: totalParaVuelto }),
                     });
-                    if (!resVuelto.ok) throw new Error((await resVuelto.json()).error || "Error calculando vuelto.");
                     const dataVuelto = await resVuelto.json();
-                    setFormData(prev => ({ ...prev, vuelto: parseFloat((dataVuelto.vuelto || 0).toFixed(2)) }));
+                    if (resVuelto.ok) { setFormData(prev => ({ ...prev, vuelto: parseFloat((dataVuelto.vuelto || 0).toFixed(2)) })); }
+                    else { setFormData(prev => ({ ...prev, vuelto: 0 })); }
                 } else { setFormData(prev => ({ ...prev, vuelto: 0 })); }
-          } catch (error) {
-              if (error instanceof Error) {
-                  setErrorMessage(error.message);
-              } else {
-                  setErrorMessage("Un error desconocido ocurrió al recalcular.");
-              }
-              setTotalCalculadoApi(null);
-              setFormData(prev => ({ ...prev, vuelto: 0 }));
-          } finally {
-              setIsCalculatingTotal(false);
-          }
+            } catch (error) {
+                if (error instanceof Error) setErrorMessage(error.message); else setErrorMessage('Un error desconocido ocurrió al recalcular.');
+                setTotalCalculadoApi(null); setFormData(prev => ({ ...prev, vuelto: 0 }));
+            } finally { setIsCalculatingTotal(false); }
         };
         recalcularTodo();
-    }, [montoBaseProductos, formData.formaPago, formData.requiereFactura, formData.montoPagado, formData.descuentoTotal]);
+    }, [montoBaseProductos, formData.formaPago, formData.requiereFactura, formData.montoPagado]);
     
     const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value, type } = e.target;
@@ -154,7 +181,6 @@ export default function RegistrarPedidoPuertaPage() {
         if (type === 'checkbox') { val = (e.target as HTMLInputElement).checked; }
         else if (type === 'number') {
             val = parseFloat(value) || 0;
-            if (name === 'descuentoTotal') { val = Math.max(0, Math.min(100, val)); }
         }
         setFormData(prev => ({ ...prev, [name]: val, ...(name === 'formaPago' && { requiereFactura: val === 'factura' }) }));
     };
@@ -199,20 +225,22 @@ export default function RegistrarPedidoPuertaPage() {
         if (!token || !usuarioId) { setErrorMessage("Sesión inválida."); setIsSubmitting(false); return; }
         
         // CAMBIO: Se calcula el total final para enviarlo a la API
-        const baseTotalConRecargos = totalCalculadoApi ? totalCalculadoApi.monto_final_con_recargos : montoBaseProductos;
-        const totalFinalNeto = Math.max(0, baseTotalConRecargos * (1 - (formData.descuentoTotal / 100)));
+        // El total final (con o sin descuento) lo determina el backend; evitamos recalcular lógica de redondeo o descuentos aquí.
+        const totalFinalNeto = typeof totalCalculadoApi?.monto_final_con_descuento === 'number'
+            ? totalCalculadoApi.monto_final_con_descuento
+            : (totalCalculadoApi?.monto_final_con_recargos ?? montoBaseProductos);
 
         const dataPayload = {
             usuario_interno_id: parseInt(usuarioId), nombre_vendedor: nombreVendedor.trim(),
             items: productos.filter(i => i.producto !== 0 && i.qx > 0).map(i => ({ 
                 producto_id: i.producto, cantidad: i.qx, 
                 observacion_item: i.observacion || "",
-                descuento_item_porcentaje: i.descuento, // <-- NUEVO
+                descuento_item_porcentaje: 0, // descuentos deshabilitados en puerta
             })),
             cliente_id: null, fecha_pedido: formData.fechaEmision, direccion_entrega: "", cuit_cliente: "", 
             monto_pagado_cliente: formData.montoPagado, forma_pago: formData.formaPago, 
             requiere_factura: formData.requiereFactura, observaciones: formData.observaciones || "",
-            descuento_total_global_porcentaje: formData.descuentoTotal, // <-- NUEVO
+            descuento_total_global_porcentaje: 0, // Forzado a 0 en puerta
             monto_final_con_recargos: totalFinalNeto, // <-- Se envía el total con todos los descuentos
         };
         try {
@@ -241,14 +269,12 @@ export default function RegistrarPedidoPuertaPage() {
         setTimeout(() => { resetearFormulario(); irAccionesPuerta(); }, 1500);
     };
     const displayTotal = useMemo(() => {
-        const montoConRecargos = totalCalculadoApi ? totalCalculadoApi.monto_final_con_recargos : montoBaseProductos;
-        const montoBrutoFinal = Math.max(0, montoConRecargos * (1 - (formData.descuentoTotal || 0) / 100));
-        if (montoBrutoFinal > 0) {
-            // Redondear siempre hacia arriba a la centena más cercana
-            return Math.ceil(montoBrutoFinal / 100) * 100;
+        if (totalCalculadoApi) {
+            if (typeof totalCalculadoApi.monto_final_con_descuento === 'number') return totalCalculadoApi.monto_final_con_descuento;
+            return totalCalculadoApi.monto_final_con_recargos;
         }
-        return 0;
-    }, [totalCalculadoApi, montoBaseProductos, formData.descuentoTotal]);
+        return montoBaseProductos;
+    }, [totalCalculadoApi, montoBaseProductos]);
 
     const ventaDataParaTicket: VentaData = {
     venta_id: lastVentaId,
@@ -259,13 +285,7 @@ export default function RegistrarPedidoPuertaPage() {
         .filter(p => p.producto && p.qx > 0)
         .map(item => {
             const pInfo = productosContext?.productos.find(p => p.id === item.producto);
-            const subtotalRedondeadoBase = item.total || 0;
-            let subtotalFinalParaTicket = subtotalRedondeadoBase;
-            if (totalCalculadoApi && montoBaseProductos > 0) {
-                const factorRecargo = totalCalculadoApi.monto_final_con_recargos / montoBaseProductos;
-                const subtotalConRecargo = subtotalRedondeadoBase * factorRecargo;
-                subtotalFinalParaTicket = Math.ceil(subtotalConRecargo / 100) * 100;
-            }
+            const subtotalFinalParaTicket = item.total || 0; // Ahora el backend se encarga del redondeo final global
             return {
                 producto_id: item.producto,
                 producto_nombre: pInfo?.nombre || `ID: ${item.producto}`,
@@ -366,6 +386,10 @@ return (
                                 <span>Base: ${totalCalculadoApi.monto_base.toFixed(2)}</span>
                                 {totalCalculadoApi.recargos.transferencia > 0 && <span className="ml-3">Rec. Transf: ${totalCalculadoApi.recargos.transferencia.toFixed(2)}</span>}
                                 {totalCalculadoApi.recargos.factura_iva > 0 && <span className="ml-3">IVA: ${totalCalculadoApi.recargos.factura_iva.toFixed(2)}</span>}
+                                {/* Descuento global deshabilitado en puerta */}
+                                {totalCalculadoApi.tipo_redondeo_general && (
+                                    <span className="ml-3 italic">Redondeo: {totalCalculadoApi.tipo_redondeo_general}</span>
+                                )}
                             </div>
                         )}
                         <div className="flex justify-end items-center">

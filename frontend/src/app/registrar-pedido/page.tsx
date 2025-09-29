@@ -19,7 +19,9 @@ interface TotalCalculadoAPI {
     transferencia: number;
     factura_iva: number;
   };
-  monto_final_con_recargos: number;
+  monto_final_con_recargos: number;            // Total después de recargos (sin descuento global si backend decide separar)
+  monto_final_con_descuento?: number;          // Total final tras descuento global (si el backend lo provee)
+  tipo_redondeo_aplicado?: string;             // Info de trazabilidad opcional
 }
 const initialFormData: FormDataVenta = {
   clienteId: null, cuit: "", nombre: "", direccion: "",
@@ -27,13 +29,14 @@ const initialFormData: FormDataVenta = {
   fechaEmision: "", fechaEntrega: "", formaPago: "efectivo",
   montoPagado: 0, descuentoTotal: 0, vuelto: 0,
   requiereFactura: false, observaciones: "",
+  vendedor: 'pedidos', // Forzado: siempre 'pedidos'
 };
 const initialProductos: ProductoVenta[] = [{ producto: 0, qx: 0, precio: 0, descuento: 0, total: 0, observacion: "" }];
-const VENDEDOR_FIJO = "pedidos";
+// Eliminado selector de vendedores: flujo registrar pedido siempre usa 'pedidos'
 
 export default function RegistrarPedidoPage() {
   const router = useRouter();
-  const [formData, setFormData] = useState<FormDataVenta>(initialFormData);
+  const [formData, setFormData] = useState<FormDataVenta>({...initialFormData});
   const [productos, setProductos] = useState<ProductoVenta[]>(initialProductos);
   const [lastVentaId, setLastVentaId] = useState<number | undefined>();
   const irAccionesPedidos = () => router.push('/acciones');
@@ -74,7 +77,7 @@ const resetearFormulario = useCallback(() => {
     const fechaLocalAjustada = new Date(now.getTime() - (now.getTimezoneOffset() * 60000));
     const fechaEmisionEstandar = fechaLocalAjustada.toISOString().slice(0, 16); // <-- CORRECTO
     
-    setFormData({ ...initialFormData, fechaEmision: fechaEmisionEstandar });
+  setFormData({ ...initialFormData, fechaEmision: fechaEmisionEstandar, vendedor: 'pedidos' });
     setProductos([{ ...initialProductos[0] }]);
     setTotalCalculadoApi(null);
     setSuccessMessage('');
@@ -87,15 +90,17 @@ const resetearFormulario = useCallback(() => {
     return productos.reduce((sum, item) => sum + (item.total || 0), 0);
   }, [productos]);
     
+// Total mostrado: confiar en el backend; si entrega monto_final_con_descuento usarlo; si no, usar monto_final_con_recargos
 const displayTotal = useMemo(() => {
-    const montoConRecargos = totalCalculadoApi ? totalCalculadoApi.monto_final_con_recargos : montoBaseProductos;
-    const montoBrutoFinal = Math.max(0, montoConRecargos * (1 - (formData.descuentoTotal || 0) / 100));
-    if (montoBrutoFinal > 0) {
-        return montoBrutoFinal;
+  if (totalCalculadoApi) {
+    if (typeof totalCalculadoApi.monto_final_con_descuento === 'number') {
+      return totalCalculadoApi.monto_final_con_descuento;
     }
-    return 0;
-    
-}, [totalCalculadoApi, montoBaseProductos, formData.descuentoTotal]);
+    return totalCalculadoApi.monto_final_con_recargos;
+  }
+  // Fallback: suma local (sin aplicar descuento global ni redondeos, ya que eso lo hace el backend cuando responde)
+  return montoBaseProductos;
+}, [totalCalculadoApi, montoBaseProductos]);
 
   useEffect(() => {
     const recalcularTodo = async () => {
@@ -201,23 +206,16 @@ const displayTotal = useMemo(() => {
     const newProducts = [...currentProducts];
 
   priceResults.forEach(({ precioUnitario, precioTotalCalculado, indices }) => {
-      const totalQuantityForProduct = indices.reduce((sum, index) => sum + (newProducts[index].qx || 0), 0);
-
-      indices.forEach(index => {
-          const item = newProducts[index];
-          if (item) {
-              item.precio = precioUnitario;
-              
-              const totalBruto = totalQuantityForProduct > 0 
-                  ? (precioTotalCalculado / totalQuantityForProduct) * item.qx
-                  : 0;
-
-              // Aplicar descuento y luego redondear subtotal a centena
-              let subtotalBrutoConDescuento = totalBruto * (1 - (item.descuento / 100));
-              subtotalBrutoConDescuento = Math.ceil(subtotalBrutoConDescuento / 100) * 100;
-              item.total = subtotalBrutoConDescuento;
-          }
-      });
+    const totalQuantityForProduct = indices.reduce((sum, index) => sum + (newProducts[index].qx || 0), 0);
+    indices.forEach(index => {
+      const item = newProducts[index];
+      if (!item) return;
+      item.precio = precioUnitario;
+      const totalBrutoDistribuido = totalQuantityForProduct > 0 ? (precioTotalCalculado / totalQuantityForProduct) * item.qx : 0;
+      // Aplicar solo descuento de ítem (sin redondeos locales) para estimar la base; backend hará redondeo global
+      const subtotalConDescuento = totalBrutoDistribuido * (1 - (item.descuento / 100));
+      item.total = subtotalConDescuento; // Mantener decimales; presentación formateada afuera
+    });
   });
 
     // 5. Actualizar el estado del componente con los precios correctos.
@@ -271,6 +269,7 @@ const displayTotal = useMemo(() => {
       val = value === '' ? 0 : parseFloat(value);
       if (name === 'descuentoTotal') val = Math.max(0, Math.min(100, val));
     }
+    if (name === 'vendedor') return; // Ignorar intentos de cambio de vendedor
     setFormData(prev => ({ ...prev, [name]: val, ...(name === 'formaPago' && { requiereFactura: val === 'factura' }) }));
   };
   const handleClienteSelectChange = (selectedOption: SingleValue<unknown>) => {
@@ -313,7 +312,7 @@ const handleSubmit = async (e: React.FormEvent ) => {
       fecha_pedido: formData.fechaEntrega ? new Date(formData.fechaEntrega).toISOString() : formData.fechaEmision,
       direccion_entrega: formData.direccion,
       localidad: formData.localidad,
-      nombre_vendedor: VENDEDOR_FIJO,
+  nombre_vendedor: 'pedidos',
       monto_pagado_cliente: formData.montoPagado, 
       forma_pago: formData.formaPago, 
       vuelto: formData.vuelto, 
@@ -392,7 +391,7 @@ const handleSubmit = async (e: React.FormEvent ) => {
       direccion: formData.direccion,
       localidad: formData.localidad
     },
-    nombre_vendedor: VENDEDOR_FIJO,
+  nombre_vendedor: formData.vendedor || 'pedidos',
     items: (() => {
       const itemsFiltrados = productos.filter(p => p.producto && p.qx > 0);
       // Usar totales sin redondear
@@ -478,6 +477,8 @@ return (
                   <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="fechaEmision">Fecha Emisión*</label>
                   <input type="datetime-local" name="fechaEmision" id="fechaEmision" disabled value={formData.fechaEmision} className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 bg-gray-100"/>
                 </div>
+                {/* Vendedor fijo: 'pedidos' (se elimina el selector) */}
+                <input type="hidden" name="vendedor" value="pedidos" />
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="fechaEntrega">Fecha Entrega</label>
                   <input type="datetime-local" name="fechaEntrega" id="fechaEntrega" value={formData.fechaEntrega} onChange={handleFormChange} className="shadow-sm border rounded w-full py-2 px-3 text-gray-700"/>

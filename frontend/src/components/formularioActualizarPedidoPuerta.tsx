@@ -18,7 +18,6 @@ type DetalleAPI = {
   producto_id: number;
   cantidad: number;
   precio_unitario_ars: number;
-  descuento_item_porcentaje: number;
   monto_total_ars: number;
   observacion_item?: string;
 };
@@ -27,7 +26,6 @@ interface IFormData {
   fecha_emision: string;
   forma_pago: string;
   monto_pagado: number;
-  descuentoTotal: number;
   vuelto: number;
   requiere_factura: boolean;
   observaciones?: string;
@@ -35,10 +33,20 @@ interface IFormData {
 interface TotalCalculadoAPI {
   monto_base: number;
   monto_final_con_recargos: number;
-  recargos: {
-      transferencia: number;
-      factura_iva: number;
-  }
+  monto_final_con_descuento?: number;
+  descuento_total_global_porcentaje?: number;
+  tipo_redondeo_aplicado?: string;
+  recargos: { transferencia: number; factura_iva: number; }
+}
+
+interface RawTotalCalculadoPuertaResponse {
+  monto_base?: number;
+  monto_final_con_recargos?: number;
+  monto_final_con_descuento?: number;
+  descuento_total_global_porcentaje?: number;
+  tipo_redondeo_aplicado?: string;
+  recargos?: { transferencia?: number; factura_iva?: number };
+  error?: string;
 }
 interface FormularioProps {
   id: number | undefined;
@@ -51,7 +59,7 @@ const initialProductoItem : ProductoPedido = { producto_id: 0, cantidad: 0, prec
 export default function FormularioActualizarPedidoPuerta({ id, onVolver }: FormularioProps) {
   const [formData, setFormData] = useState<IFormData>({
     nombre_vendedor: "", fecha_emision: "", forma_pago: "efectivo",
-    monto_pagado: 0, descuentoTotal: 0, vuelto: 0,
+  monto_pagado: 0, vuelto: 0,
     requiere_factura: false, observaciones: "",
   });
   const [productos, setProductos] = useState<ProductoPedido[]>([]);
@@ -165,7 +173,7 @@ export default function FormularioActualizarPedidoPuerta({ id, onVolver }: Formu
           fecha_emision: datosAPI.fecha_pedido || "",
           forma_pago: datosAPI.forma_pago || "efectivo",
           monto_pagado: datosAPI.monto_pagado_cliente || 0,
-          descuentoTotal: datosAPI.descuento_total_global_porcentaje || 0,
+          // Descuento global deshabilitado en puerta (forzado a 0)
           vuelto: datosAPI.vuelto_calculado ?? 0,
           requiere_factura: datosAPI.requiere_factura || false,
           observaciones: datosAPI.observaciones || "",
@@ -176,8 +184,6 @@ export default function FormularioActualizarPedidoPuerta({ id, onVolver }: Formu
         const productosParaRecalcular: ProductoPedido[] = datosAPI.detalles?.map((detalle: DetalleAPI) => ({
           producto_id: detalle.producto_id,
           cantidad: detalle.cantidad,
-          // Asumimos descuentos guardados si existen, si no, 0.
-          descuento: detalle.descuento_item_porcentaje || 0,
           observacion_item: detalle.observacion_item || "",
           // Precios y totales se inicializan en 0, serán calculados ahora.
           precio_unitario: 0,
@@ -209,42 +215,51 @@ export default function FormularioActualizarPedidoPuerta({ id, onVolver }: Formu
   
 useEffect(() => {
     const recalcularTotalConAPI = async () => {
-      // La condición de salida ahora también considera el descuento. Si todo es 0, no hace nada.
       if (isLoading || isSubmitting) return;
-      if (montoBaseProductos <= 0 && formData.descuentoTotal <= 0) { 
-        setTotalCalculadoApi(null); 
-        return; 
-      }
-      
+  if (montoBaseProductos <= 0) { setTotalCalculadoApi(null); return; }
       setIsCalculatingTotal(true);
       const token = localStorage.getItem("token");
       if (!token) { setIsCalculatingTotal(false); return; }
-
       try {
+        const payload = {
+          monto_base: montoBaseProductos,
+          forma_pago: formData.forma_pago,
+            requiere_factura: formData.requiere_factura,
+            // descuento_total_global_porcentaje eliminado (puerta no usa descuento global)
+        };
         const response = await fetch("https://quimex.sistemataup.online/ventas/calcular_total", {
-          method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-          body: JSON.stringify({ monto_base: montoBaseProductos, forma_pago: formData.forma_pago, requiere_factura: formData.requiere_factura }),
+          method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }, body: JSON.stringify(payload)
         });
-        const data = await response.json(); // Se lee la respuesta una sola vez
-        if (!response.ok) throw new Error(data.error || `Error calculando total.`);
-        
+        const raw = await response.json() as RawTotalCalculadoPuertaResponse;
+        if (!response.ok) throw new Error(raw?.error || `Error calculando total.`);
+        const data: TotalCalculadoAPI = {
+          monto_base: Number(raw.monto_base) || 0,
+          monto_final_con_recargos: Number(raw.monto_final_con_recargos) || 0,
+          monto_final_con_descuento: typeof raw.monto_final_con_descuento === 'number' ? raw.monto_final_con_descuento : undefined,
+          descuento_total_global_porcentaje: typeof raw.descuento_total_global_porcentaje === 'number' ? raw.descuento_total_global_porcentaje : undefined,
+          tipo_redondeo_aplicado: raw.tipo_redondeo_aplicado,
+          recargos: {
+            transferencia: Number(raw?.recargos?.transferencia) || 0,
+            factura_iva: Number(raw?.recargos?.factura_iva) || 0,
+          }
+        };
         setTotalCalculadoApi(data);
       } catch (e) {
-        if(e instanceof Error) setErrorMensaje(e.message);
-        else setErrorMensaje("Error al calcular el total final.");
+        setErrorMensaje(e instanceof Error ? e.message : 'Error al calcular el total final.');
         setTotalCalculadoApi(null);
-      } finally { 
-        setIsCalculatingTotal(false); 
-      }
+      } finally { setIsCalculatingTotal(false); }
     };
     recalcularTotalConAPI();
   // CAMBIO CRÍTICO: Se añade la dependencia que faltaba
-  }, [montoBaseProductos, formData.forma_pago, formData.requiere_factura, formData.descuentoTotal, isLoading, isSubmitting]);
+  }, [montoBaseProductos, formData.forma_pago, formData.requiere_factura, isLoading, isSubmitting]);
 
   const displayTotal = useMemo(() => {
-      const baseTotalConRecargos = totalCalculadoApi ? totalCalculadoApi.monto_final_con_recargos : montoBaseProductos;
-      return Math.max(0, baseTotalConRecargos * (1 - (formData.descuentoTotal / 100)));
-  }, [totalCalculadoApi, montoBaseProductos, formData.descuentoTotal]);
+    if (totalCalculadoApi) {
+      if (typeof totalCalculadoApi.monto_final_con_descuento === 'number') return totalCalculadoApi.monto_final_con_descuento;
+      return totalCalculadoApi.monto_final_con_recargos;
+    }
+    return montoBaseProductos;
+  }, [totalCalculadoApi, montoBaseProductos]);
 
   useEffect(() => {
     if (formData.forma_pago !== 'efectivo') {
@@ -268,11 +283,8 @@ useEffect(() => {
   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
     let val: string | number | boolean = value;
-    if (type === 'checkbox') val = (e.target as HTMLInputElement).checked;
-    else if (type === 'number') {
-        val = parseFloat(value) || 0;
-        if(name === 'descuentoTotal') val = Math.max(0, Math.min(100, val));
-    }
+  if (type === 'checkbox') val = (e.target as HTMLInputElement).checked;
+  else if (type === 'number') { val = parseFloat(value) || 0; }
     setFormData(prev => ({ ...prev, [name]: val, ...(name === 'forma_pago' && { requiere_factura: val === 'factura' }) }));
   };
 
@@ -310,13 +322,16 @@ useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) { setErrorMensaje("No autenticado."); setIsSubmitting(false); return; }
     const dataToUpdate = {
-      nombre_vendedor: formData.nombre_vendedor.trim(), forma_pago: formData.forma_pago,
-      monto_pagado_cliente: formData.monto_pagado, requiere_factura: formData.requiere_factura,
-      observaciones: formData.observaciones || "", monto_total_base: montoBaseProductos,
-      monto_total_final_con_recargos: displayTotal,
+      nombre_vendedor: formData.nombre_vendedor.trim(),
+      forma_pago: formData.forma_pago,
+      monto_pagado_cliente: formData.monto_pagado,
+      requiere_factura: formData.requiere_factura,
+      observaciones: formData.observaciones || "",
+  descuento_total_global_porcentaje: 0,
       items: productos.filter(item => item.producto_id > 0 && item.cantidad > 0).map(item => ({
-          producto_id: item.producto_id, cantidad: item.cantidad,
-          observacion_item: item.observacion_item || "",
+        producto_id: item.producto_id,
+        cantidad: item.cantidad,
+        observacion_item: item.observacion_item || "",
       })),
     };
     try {
@@ -346,9 +361,10 @@ useEffect(() => {
         producto_id: p.producto_id,
         producto_nombre: productosContext.productos.find(prod => prod.id === p.producto_id)?.nombre || `ID:${p.producto_id}`,
         cantidad: p.cantidad,
-        precio_total_item_ars: (p.total_linea || 0) * (totalCalculadoApi && montoBaseProductos > 0 ? totalCalculadoApi.monto_final_con_recargos / montoBaseProductos : 1)
+        precio_total_item_ars: (p.total_linea || 0)
       })),
-      total_final: displayTotal, observaciones: formData.observaciones,
+      total_final: displayTotal,
+      observaciones: formData.observaciones,
       forma_pago: formData.forma_pago,
       monto_pagado_cliente: formData.monto_pagado,
       vuelto_calculado: formData.vuelto,
@@ -426,7 +442,17 @@ useEffect(() => {
               </div>
               <div className="mt-4 text-right">
                 {isCalculatingTotal && <p className="text-sm text-blue-600 italic">Calculando...</p>}
-                {totalCalculadoApi && (<div className="text-xs text-gray-600 mb-1"><span>Base: ${totalCalculadoApi.monto_base.toFixed(2)}</span>{totalCalculadoApi.recargos.transferencia > 0 && <span className="ml-2">Rec.T: ${totalCalculadoApi.recargos.transferencia.toFixed(2)}</span>}{totalCalculadoApi.recargos.factura_iva > 0 && <span className="ml-2">IVA: ${totalCalculadoApi.recargos.factura_iva.toFixed(2)}</span>}</div>)}
+                {totalCalculadoApi && (
+                  <div className="text-xs text-gray-600 mb-1 p-2 bg-gray-100 rounded">
+                    <span>Base: ${totalCalculadoApi.monto_base.toFixed(2)}</span>
+                    {totalCalculadoApi.recargos.transferencia > 0 && <span className="ml-2">Rec.T: ${totalCalculadoApi.recargos.transferencia.toFixed(2)}</span>}
+                    {totalCalculadoApi.recargos.factura_iva > 0 && <span className="ml-2">IVA: ${totalCalculadoApi.recargos.factura_iva.toFixed(2)}</span>}
+                    {/* Descuento global deshabilitado en puerta */}
+                    {totalCalculadoApi.tipo_redondeo_aplicado && (
+                      <span className="ml-2 italic">Redondeo: {totalCalculadoApi.tipo_redondeo_aplicado}</span>
+                    )}
+                  </div>
+                )}
                 <label className="block text-sm font-medium text-gray-500">Total Pedido</label>
                 <input type="text" value={`$ ${displayTotal.toFixed(2)}`} readOnly className="w-full md:w-auto md:max-w-xs inline-block bg-gray-100 shadow-sm border rounded py-2 px-3 text-gray-900 text-right font-bold text-lg"/>
               </div>

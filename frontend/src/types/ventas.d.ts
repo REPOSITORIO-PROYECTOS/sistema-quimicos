@@ -26,6 +26,8 @@ export interface FormDataVenta {
   cuit: string;
   localidad: string;
   direccion: string;
+  // --- Vendedor (para pedidos, seleccionable; en puerta ya existe otra gestión) ---
+  vendedor?: string;
   
   // --- Datos del Pedido ---
   fechaEmision: string;

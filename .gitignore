@@ -38,6 +38,11 @@ test_results.json
 *_test.py
 quick_*.py
 
+# --- Tests Frontend (mantener locales, no subir) ---
+frontend/src/__tests__/
+**/*.test.ts
+**/*.test.tsx
+
 # Otros
 *.bak
 *.swp

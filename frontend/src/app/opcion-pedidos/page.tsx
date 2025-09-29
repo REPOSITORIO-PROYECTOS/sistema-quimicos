@@ -6,18 +6,21 @@ import BotonVolver from '@/components/BotonVolver';
 
 // --- TIPOS COMPLETOS Y ESTRICTOS ---
 type DetalleProducto = {
-  subtotal_proporcional_con_recargos: number;
+  subtotal_proporcional_con_recargos?: number; // hacerlo opcional para reutilizar en impresión
   producto_id: number;
   producto_nombre: string;
   cantidad: number;
   precio_total_item_ars: number;
   observacion_item?: string;
+  descuento_item_porcentaje?: number;
+  subtotal_bruto_item_ars?: number; // si backend lo expone; si no se infiere
 };
 
 type BoletaOriginal = {
   venta_id: number;
   estado: string;
   monto_final_con_recargos: number;
+  monto_final_con_descuento?: number; // Puede venir si hay descuento global
   fecha_pedido: string;
   cliente_nombre: string;
   cliente_zona?: string;
@@ -31,6 +34,7 @@ type BoletaOriginal = {
   vuelto_calculado?: number;
   observaciones?: string;
   descuento_total_global_porcentaje?: number;
+  tipo_redondeo_general?: string; // decena | centena
   recargos?: {
     transferencia?: number;
     factura_iva?: number;
@@ -41,6 +45,8 @@ type BoletaParaLista = {
   venta_id: number;
   estado: string;
   monto_final_con_recargos: number;
+  monto_final_con_descuento?: number;
+  tipo_redondeo_general?: string;
   fecha_pedido_formateada: string;
   cliente_nombre: string;
   direccion_entrega: string;
@@ -108,6 +114,8 @@ export default function TotalPedidos() {
         venta_id: item.venta_id,
         estado: item.estado || 'Pendiente',
         monto_final_con_recargos: item.monto_final_con_recargos,
+        monto_final_con_descuento: item.monto_final_con_descuento,
+        tipo_redondeo_general: item.tipo_redondeo_general,
         fecha_pedido_formateada: new Date(item.fecha_pedido).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" }),
         cliente_nombre: item.cliente_nombre,
         direccion_entrega: item.direccion_entrega,
@@ -208,30 +216,38 @@ const handlePrint = async (tipo: 'comprobante' | 'orden_de_trabajo') => {
       const boletasDetalladas: BoletaOriginal[] = await response.json();
 
       const boletasAImprimir: VentaData[] = boletasDetalladas.map((data: BoletaOriginal) => {
-        // Usar directamente los datos calculados por el backend
         const detalles = data.detalles || [];
-        const itemsSimplificados = detalles.map((item) => ({
-          ...item,
-          precio_total_item_ars: item.precio_total_item_ars || 0,
-        }));
-        
+        const itemsNormalizados = detalles.map((item) => {
+          // Si viene subtotal bruto explícito lo usamos, de lo contrario lo inferimos si hay descuento
+          let subtotalBruto = item.subtotal_bruto_item_ars;
+          if (subtotalBruto === undefined && item.descuento_item_porcentaje && item.descuento_item_porcentaje > 0 && item.descuento_item_porcentaje < 100) {
+            subtotalBruto = item.precio_total_item_ars / (1 - item.descuento_item_porcentaje / 100);
+          }
+          return {
+            producto_id: item.producto_id,
+            producto_nombre: item.producto_nombre,
+            cantidad: item.cantidad,
+            precio_total_item_ars: item.precio_total_item_ars || 0,
+            descuento_item_porcentaje: item.descuento_item_porcentaje,
+            subtotal_bruto_item_ars: subtotalBruto,
+            observacion_item: item.observacion_item,
+          };
+        });
+        const totalPreferido = (typeof data.monto_final_con_descuento === 'number') ? data.monto_final_con_descuento : data.monto_final_con_recargos;
         return {
           venta_id: data.venta_id,
           fecha_emision: data.fecha_pedido || data.fecha_emision || '',
-          cliente: {
-            nombre: data.cliente_nombre,
-            direccion: data.direccion_entrega,
-            localidad: data.cliente_zona
-          },
+          cliente: { nombre: data.cliente_nombre, direccion: data.direccion_entrega, localidad: data.cliente_zona },
           nombre_vendedor: data.nombre_vendedor || '',
-          items: itemsSimplificados,
-          total_final: data.monto_final_con_recargos, // Usar el total calculado por el backend
-          observaciones: data.observaciones,
-          forma_pago: data.forma_pago,
-          monto_pagado_cliente: data.monto_pagado_cliente,
-          vuelto_calculado: data.vuelto_calculado
+            items: itemsNormalizados,
+            total_final: totalPreferido,
+            observaciones: data.observaciones,
+            forma_pago: data.forma_pago,
+            monto_pagado_cliente: data.monto_pagado_cliente,
+            vuelto_calculado: data.vuelto_calculado,
+            descuento_total_global_porcentaje: data.descuento_total_global_porcentaje,
         };
-    });
+      });
       
       // 3. El resto de la lógica se queda igual
       if (boletasAImprimir.length > 0) {
@@ -393,7 +409,17 @@ const handlePrint = async (tipo: 'comprobante' | 'orden_de_trabajo') => {
                         <li key={boleta.venta_id} className={`grid grid-cols-13 gap-3 items-center p-2 rounded-md bg-gray-50`}>
                           <div className="col-span-1 flex justify-center"><input type="checkbox" checked={selectedBoletas.has(boleta.venta_id)} onChange={() => handleCheckboxChange(boleta.venta_id)} /></div>
                           <span className="col-span-3 truncate font-medium">{boleta.cliente_nombre}</span>
-                          <span className="col-span-2">$ {boleta.monto_final_con_recargos}</span>
+                          <span className="col-span-2">
+                            {(() => {
+                              const total = (boleta.monto_final_con_descuento ?? boleta.monto_final_con_recargos) || 0;
+                              // Formato moneda simple sin Intl.NumberFormat pesado en SSR (cliente únicamente)
+                              const formatted = total.toLocaleString('es-AR');
+                              return <>
+                                $ {formatted}{boleta.monto_final_con_descuento !== undefined && boleta.monto_final_con_descuento !== boleta.monto_final_con_recargos ? <span className="text-xs text-green-600 ml-1">(desc)</span> : null}
+                                {boleta.tipo_redondeo_general ? <span className="text-[10px] text-gray-500 ml-1">[{boleta.tipo_redondeo_general === 'decena' ? 'x10' : 'x100'}]</span> : null}
+                              </>;
+                            })()}
+                          </span>
                           <span className="col-span-3 truncate">{boleta.direccion_entrega}</span>
                           <span className="col-span-2 truncate">{boleta.cliente_zona || '-'}</span>
                           <span className="col-span-2"><span className={`px-2 py-1 text-xs font-semibold rounded-full ${getColorForStatus(boleta.estado)}`}>{boleta.estado}</span></span>

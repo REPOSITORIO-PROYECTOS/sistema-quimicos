@@ -11,12 +11,11 @@ interface TotalCalculadoAPI {
   monto_base: number;
   forma_pago_aplicada: string;
   requiere_factura_aplicada: boolean;
-  recargos: {
-    transferencia: number;
-    factura_iva: number;
-  };
-  monto_final_con_recargos: number;
-  monto_final_con_descuento: number;
+  recargos: { transferencia: number; factura_iva: number; };
+  monto_final_con_recargos: number; // ya redondeado por backend
+  monto_final_con_descuento?: number; // monto con descuento antes de redondeo final o final según implementación
+  descuento_total_global_porcentaje?: number;
+  tipo_redondeo_aplicado?: string; // centena | decena
 }
 const initialProductoItem: ProductoVenta = { producto: 0, qx: 0, precio: 0, descuento: 0, total: 0, observacion: "" };
 const initialFormData: FormDataVenta = {
@@ -76,7 +75,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
 
     const pricePromises = Array.from(productQuantities.entries()).map(async ([productoId, { totalQuantity, indices }]) => {
         if (totalQuantity <= 0) {
-            return { precioUnitario: 0, precioTotalCalculado: 0, indices };
+            return { precioUnitario: 0, precioTotalCalculado: 0, indices, esPrecioEspecial: false };
         }
         try {
             const precioRes = await fetch(`https://quimex.sistemataup.online/productos/calcular_precio/${productoId}`, {
@@ -97,34 +96,29 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
             return { 
                 precioUnitario: precioData.precio_venta_unitario_ars || 0,
                 precioTotalCalculado: precioData.precio_total_calculado_ars || 0,
+                esPrecioEspecial: precioData.es_precio_especial || false,
                 indices 
             };
         } catch (error) {
             if (error instanceof Error) {
                 setErrorMensaje(prev => `${prev}\nError al calcular precio para Prod ID ${productoId}: ${error.message}`);
             }
-            return { precioUnitario: 0, precioTotalCalculado: 0, indices };
+            return { precioUnitario: 0, precioTotalCalculado: 0, indices, esPrecioEspecial: false };
         }
     });
 
     const priceResults = await Promise.all(pricePromises);
     const newProducts = [...currentProducts];
 
-    priceResults.forEach(({ precioUnitario, precioTotalCalculado, indices }) => {
-        const totalQuantityForProduct = indices.reduce((sum, index) => sum + (newProducts[index].qx || 0), 0);
-        
-    indices.forEach(index => {
-      const item = newProducts[index];
-      if (item) {
-        item.precio = precioUnitario;
-        const totalBruto = totalQuantityForProduct > 0 
-          ? (precioTotalCalculado / totalQuantityForProduct) * item.qx
-          : 0;
-        const subtotalBrutoConDescuento = totalBruto * (1 - (item.descuento / 100));
-        const subtotalRedondeado = Math.ceil(subtotalBrutoConDescuento / 100) * 100;
-        item.total = subtotalRedondeado;
-      }
-    });
+    priceResults.forEach(({ precioUnitario, indices }) => {
+      indices.forEach(index => {
+        const item = newProducts[index];
+        if (item) {
+          item.precio = precioUnitario;
+          // Total sin lógica de rounding/descuento en frontend, la hace el backend
+          item.total = precioUnitario * item.qx;
+        }
+      });
     });
 
     setProductos(newProducts);
@@ -204,14 +198,16 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     else { setIsLoading(false); setErrorMensaje("ID de pedido no proporcionado."); }
   }, [id, cargarFormulario]);
 
-const displayTotalToShow = useMemo(() => {
-  // Aplica descuento global primero, luego suma recargos
-  const montoBaseDescontado = montoBaseProductos * (1 - (formData.descuentoTotal / 100));
-  const recargoTransferencia = totalCalculadoApi?.recargos.transferencia || 0;
-  const recargoFactura = totalCalculadoApi?.recargos.factura_iva || 0;
-  const montoFinal = Math.max(0, montoBaseDescontado + recargoTransferencia + recargoFactura);
-  return montoFinal;
-}, [totalCalculadoApi, montoBaseProductos, formData.descuentoTotal]);
+// Total final mostrado: preferir monto_final_con_descuento (si existe) sino monto_final_con_recargos
+const totalFinalCalculado = useMemo(() => {
+  if (totalCalculadoApi) {
+    if (typeof totalCalculadoApi.monto_final_con_descuento === 'number') {
+      return totalCalculadoApi.monto_final_con_descuento;
+    }
+    return totalCalculadoApi.monto_final_con_recargos;
+  }
+  return montoBaseProductos; // fallback básico
+}, [totalCalculadoApi, montoBaseProductos]);
 
   useEffect(() => {
     const recalcularTodo = async () => {
@@ -240,16 +236,16 @@ const displayTotalToShow = useMemo(() => {
         }
     };
     recalcularTodo();
-  }, [montoBaseProductos, formData.formaPago, formData.requiereFactura, isLoading]);
+  }, [montoBaseProductos, formData.formaPago, formData.requiereFactura, formData.descuentoTotal, isLoading]);
 
   useEffect(() => {
-    if (formData.montoPagado >= displayTotalToShow) {
-        const nuevoVuelto = formData.montoPagado - displayTotalToShow;
-        setFormData(prev => ({ ...prev, vuelto: parseFloat(nuevoVuelto.toFixed(2)) }));
+    if (formData.formaPago === 'efectivo' && formData.montoPagado >= totalFinalCalculado) {
+      const nuevoVuelto = formData.montoPagado - totalFinalCalculado;
+      setFormData(prev => ({ ...prev, vuelto: parseFloat(nuevoVuelto.toFixed(2)) }));
     } else {
-        setFormData(prev => ({ ...prev, vuelto: 0 }));
+      setFormData(prev => ({ ...prev, vuelto: 0 }));
     }
-  }, [formData.montoPagado, displayTotalToShow]);
+  }, [formData.montoPagado, formData.formaPago, totalFinalCalculado]);
 
   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
@@ -320,14 +316,12 @@ const displayTotalToShow = useMemo(() => {
       requiere_factura: formData.requiereFactura,
       usuario_interno_id: parseInt(usuarioId),
       items: productos.filter(item => item.producto > 0 && item.qx > 0).map(item => ({
-          id_detalle: item.id_detalle,
-          producto_id: item.producto,
-          cantidad: item.qx,
-          observacion_item: item.observacion || "",
-           descuento_item_porcentaje: item.descuento || 0,
-        })),
-      monto_total_base: montoBaseProductos,
-      monto_final_con_recargos: parseFloat(displayTotalToShow.toFixed(2)),
+        id_detalle: item.id_detalle,
+        producto_id: item.producto,
+        cantidad: item.qx,
+        observacion_item: item.observacion || "",
+        descuento_item_porcentaje: item.descuento || 0,
+      })),
       descuento_total_global_porcentaje: formData.descuentoTotal || 0,
     };
     try {
@@ -352,16 +346,7 @@ const displayTotalToShow = useMemo(() => {
 
   // Calcular el subtotal de todos los ítems con descuento particular
   const itemsFiltrados = productos.filter(p => p.producto && p.qx > 0);
-  const subtotalSinRecargo = itemsFiltrados.reduce((sum, item) => sum + (item.total || 0), 0);
-  // Calcular el recargo total
-  const recargoTransferencia = totalCalculadoApi?.recargos.transferencia || 0;
-  const recargoFactura = totalCalculadoApi?.recargos.factura_iva || 0;
-  const totalRecargos = recargoTransferencia + recargoFactura;
-  // Construir el array de ítems finales para enviar y mostrar
-  const itemsFinalesSinRedondear = itemsFiltrados.map(item => {
-    const proporcion = subtotalSinRecargo > 0 ? (item.total || 0) / subtotalSinRecargo : 0;
-    const recargoItem = totalRecargos * proporcion;
-    const subtotalConRecargo = (item.total || 0) + recargoItem;
+  const itemsFinales = itemsFiltrados.map(item => {
     const pInfo = productosContext?.productos.find(p => p.id === item.producto);
     return {
       id_detalle: item.id_detalle,
@@ -369,13 +354,10 @@ const displayTotalToShow = useMemo(() => {
       producto_nombre: pInfo?.nombre || `ID: ${item.producto}`,
       cantidad: item.qx,
       observacion_item: item.observacion || "",
-      precio_total_item_ars: subtotalConRecargo,
-      subtotal_bruto_item_ars: subtotalConRecargo,
+      precio_total_item_ars: item.total || 0,
+      subtotal_bruto_item_ars: item.total || 0,
     };
   });
-  // Sumar los subtotales sin redondear
-  const sumaItemsTotal = itemsFinalesSinRedondear.reduce((sum, item) => sum + item.precio_total_item_ars, 0);
-  const itemsFinales = itemsFinalesSinRedondear;
 
   const ventaDataParaTicket: VentaDataParaTicket = {
     venta_id: id,
@@ -383,12 +365,12 @@ const displayTotalToShow = useMemo(() => {
     cliente: { nombre: formData.nombre, direccion: formData.direccion },
     nombre_vendedor: "pedidos",
     items: itemsFinales,
-    total_final: sumaItemsTotal,
+  total_final: totalFinalCalculado,
     observaciones: formData.observaciones,
     forma_pago: formData.formaPago, 
     monto_pagado_cliente: formData.montoPagado,
     vuelto_calculado: formData.vuelto,
-    total_bruto_sin_descuento: subtotalSinRecargo,
+  // total_bruto_sin_descuento removido: backend maneja cálculo global
   };
 
   return (
@@ -441,9 +423,21 @@ const displayTotalToShow = useMemo(() => {
               </div>
               <div className="mt-4 text-right">
                 {isCalculatingTotal && <p className="text-sm text-blue-600 italic">Calculando...</p>}
-                {totalCalculadoApi && <div className="text-xs text-gray-600 mb-1">...</div>}
+                {totalCalculadoApi && (
+                  <div className="text-xs text-gray-600 mb-2 p-2 bg-gray-100 rounded">
+                    <span>Base: $ {totalCalculadoApi.monto_base.toFixed(2)}</span>
+                    {totalCalculadoApi.recargos.transferencia > 0 && <span className="ml-3">Rec. Transf: $ {totalCalculadoApi.recargos.transferencia.toFixed(2)}</span>}
+                    {totalCalculadoApi.recargos.factura_iva > 0 && <span className="ml-3">IVA: $ {totalCalculadoApi.recargos.factura_iva.toFixed(2)}</span>}
+                    {formData.descuentoTotal > 0 && typeof totalCalculadoApi.monto_final_con_descuento === 'number' && (
+                      <span className="ml-3 text-red-600">Desc: {formData.descuentoTotal}%</span>
+                    )}
+                    {totalCalculadoApi.tipo_redondeo_aplicado && (
+                      <span className="ml-3 italic">Redondeo: {totalCalculadoApi.tipo_redondeo_aplicado}</span>
+                    )}
+                  </div>
+                )}
                 <label className="block text-sm font-medium text-gray-500 mb-1">Total Pedido</label>
-                <input type="text" value={`$ ${sumaItemsTotal.toFixed(2)}`} readOnly className="w-full md:w-auto md:max-w-xs inline-block bg-gray-100 shadow-sm border rounded py-2 px-3 text-gray-900 text-right font-bold text-lg"/>
+                <input type="text" value={`$ ${totalFinalCalculado.toFixed(2)}`} readOnly className="w-full md:w-auto md:max-w-xs inline-block bg-gray-100 shadow-sm border rounded py-2 px-3 text-gray-900 text-right font-bold text-lg"/>
               </div>
             </fieldset>
             {/* CAMBIO: Lógica de botones de impresión */}
