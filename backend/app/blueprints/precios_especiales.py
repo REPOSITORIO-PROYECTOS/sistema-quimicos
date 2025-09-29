@@ -1638,6 +1638,44 @@ def cargar_precios_desde_csv(current_user):
                 else:
                     precio_final_ars = precio_original
 
+            # --- VALIDACIÓN DE RANGO PARA EVITAR OVERFLOW EN NUMERIC(15,4) ---
+            # precision=15, scale=4 => máximo entero permitido: 11 dígitos ( < 100_000_000_000 )
+            if precio_final_ars is not None:
+                try:
+                    entero_abs = abs(precio_final_ars.quantize(Decimal('1')))
+                    if entero_abs >= Decimal('100000000000'):  # 1e11 => 12 dígitos o overflow
+                        registrar_error(
+                            linea_num,
+                            cliente_raw,
+                            producto_raw,
+                            f"Precio resultante {precio_final_ars} excede el límite permitido (máx < 100000000000). Verifique formato (separadores de miles / tipo de cambio)."
+                        )
+                        acciones_por_fila.append({
+                            'linea': linea_num,
+                            'accion': 'error',
+                            'motivo': f"Precio final fuera de rango para la columna NUMERIC(15,4): {precio_final_ars}",
+                            'cliente': cliente_raw,
+                            'producto': producto_raw,
+                            'precio_final_ars': str(precio_final_ars)
+                        })
+                        continue
+                except Exception:
+                    registrar_error(
+                        linea_num,
+                        cliente_raw,
+                        producto_raw,
+                        f"No se pudo validar rango de precio {precio_final_ars}."
+                    )
+                    acciones_por_fila.append({
+                        'linea': linea_num,
+                        'accion': 'error',
+                        'motivo': "Error validando rango de precio",
+                        'cliente': cliente_raw,
+                        'producto': producto_raw,
+                        'precio_final_ars': str(precio_final_ars)
+                    })
+                    continue
+
             # Lógica de creación/actualización
             precio_esp_existente = precios_existentes.get((cliente.id, producto.id))
 
