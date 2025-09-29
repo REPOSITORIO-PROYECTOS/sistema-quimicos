@@ -1495,13 +1495,49 @@ def cargar_precios_desde_csv(current_user):
                 usar_precio_base = False
 
             # Verificar si es margen explícito (tiene margen y usar_precio_base=TRUE)
-            es_margen_explicito = (usar_precio_base and 
-                                 margen_sobre_base_val is not None and 
-                                 str(margen_sobre_base_val).strip() != '')
+            es_margen_explicito = (
+                usar_precio_base and
+                margen_sobre_base_val is not None and
+                str(margen_sobre_base_val).strip() != ''
+            )
 
-            # Validar precio solo si NO es margen explícito
+            # --- Nueva lógica de parsing de precio ---
+            # Problema reportado: Filas con usar_precio_base=TRUE + margen daban error "Precio vacío" porque
+            # se intentaba parsear el precio antes de considerar el modo margen. Ajustamos el flujo para:
+            # 1. Si usar_precio_base es TRUE:
+            #    a) Si hay margen explícito => ignorar precio (puede estar vacío)
+            #    b) Si NO hay margen pero sí un precio objetivo => parsear precio para calcular margen (CASO 2)
+            #    c) Si no hay margen ni precio => se validará más adelante (CASO 3) con mensaje específico
+            # 2. Si usar_precio_base es FALSE => precio obligatorio (modo fijo, como antes)
+
             precio_original = None
-            if not es_margen_explicito:
+            if usar_precio_base:
+                if es_margen_explicito:
+                    # Modo margen explícito: ignoramos precio (puede estar vacío)
+                    precio_original = Decimal('0')
+                else:
+                    # Puede ser un precio objetivo para calcular margen (CASO 2) o estar vacío (CASO 3)
+                    if precio_raw is not None and str(precio_raw).strip() != '':
+                        try:
+                            precio_original = parse_price_to_decimal(precio_raw)
+                            if precio_original < 0:
+                                raise ValueError("Precio negativo")
+                        except (InvalidOperation, ValueError) as e:
+                            registrar_error(linea_num, cliente_raw, producto_raw, f"Precio objetivo '{precio_raw}' no es un número válido: {e}")
+                            acciones_por_fila.append({
+                                'linea': linea_num,
+                                'accion': 'error',
+                                'motivo': f"Precio objetivo '{precio_raw}' no es un número válido: {e}",
+                                'cliente': cliente_raw,
+                                'producto': producto_raw,
+                                'precio_raw': precio_raw
+                            })
+                            continue
+                    else:
+                        # Dejamos precio_original en 0 para que CASO 3 valide falta de margen y precio
+                        precio_original = Decimal('0')
+            else:
+                # Modo fijo: precio obligatorio
                 try:
                     precio_original = parse_price_to_decimal(precio_raw)
                     if precio_original < 0:
@@ -1517,9 +1553,6 @@ def cargar_precios_desde_csv(current_user):
                         'precio_raw': precio_raw
                     })
                     continue
-            else:
-                # En modo margen explícito, el precio puede estar vacío
-                precio_original = Decimal('0')
 
             # --- LÓGICA DE CONVERSIÓN Y REGISTRO DE MONEDA ---
             # Normalizar modo_precio
