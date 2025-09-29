@@ -1312,6 +1312,7 @@ def cargar_precios_desde_csv(current_user):
         # --- 4. PROCESAMIENTO DE FILAS ---
         registros_creados = 0
         registros_actualizados = 0
+        filas_ignoradas = 0  # Filas vacías / sin datos relevantes
         filas_fallidas = []
         acciones_por_fila = []
 
@@ -1418,6 +1419,34 @@ def cargar_precios_desde_csv(current_user):
             precio_raw = row.get(precio_col, '')
             moneda_raw = row.get(moneda_col, '') if moneda_col else ''
             modo_precio_raw = row.get(modo_precio_col, 'fijo') if modo_precio_col else 'fijo'
+
+            # Detectar fila totalmente vacía (blancos/None) para ignorarla silenciosamente
+            def vacio(v):
+                if v is None:
+                    return True
+                s = str(v).strip().lower()
+                return s == '' or s in {'none','null','-'}
+            # Capturar potenciales columnas extra de margen/base para decidir si es realmente vacía
+            usar_precio_base_val_tmp = row.get(usar_precio_base_col, None) if usar_precio_base_col else None
+            margen_sobre_base_val_tmp = row.get(margen_sobre_base_col, None) if margen_sobre_base_col else None
+            if all(vacio(v) for v in [cliente_raw, cliente_id_val, producto_raw, producto_id_val, precio_raw, moneda_raw, usar_precio_base_val_tmp, margen_sobre_base_val_tmp]):
+                filas_ignoradas += 1
+                try:
+                    logger.debug(f"[CSV DEBUG] Fila {linea_num} ignorada (vacía)")
+                except Exception:
+                    pass
+                continue
+
+            # NUEVO: Ignorar filas que tienen cliente y producto pero no aportan ninguna definición de precio
+            # (sin precio, sin usar_precio_base, sin margen). Son placeholders o filas que el usuario dejó incompletas.
+            if (not vacio(cliente_raw) or not vacio(cliente_id_val)) and (not vacio(producto_raw) or not vacio(producto_id_val)):
+                if vacio(precio_raw) and vacio(usar_precio_base_val_tmp) and vacio(margen_sobre_base_val_tmp):
+                    filas_ignoradas += 1
+                    try:
+                        logger.debug(f"[CSV DEBUG] Fila {linea_num} ignorada (cliente+producto sin precio ni modo)")
+                    except Exception:
+                        pass
+                    continue
 
             # Resolver cliente/ producto por ID si vienen
             cliente = None
@@ -1727,8 +1756,10 @@ def cargar_precios_desde_csv(current_user):
         db.session.commit()
         
         summary = {
-            "creados": registros_creados, "actualizados": registros_actualizados,
-            "errores": len(filas_fallidas)
+            "creados": registros_creados,
+            "actualizados": registros_actualizados,
+            "errores": len(filas_fallidas),
+            "ignoradas": filas_ignoradas
         }
 
         debug_mode = request.args.get('debug', 'false').lower() == 'true'
