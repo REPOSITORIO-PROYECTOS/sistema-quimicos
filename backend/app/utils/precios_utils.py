@@ -2,7 +2,7 @@ from decimal import Decimal, InvalidOperation
 import traceback
 import math
 
-def calculate_price(product_id: int, quantity, cliente_id=None, db=None):
+def calculate_price(product_id: int, quantity, cliente_id=None, db=None, freeze_unit_price: bool = False):
     """
     Lógica de cálculo de precio exportable para uso en otros blueprints.
     Devuelve un dict con los resultados y errores.
@@ -158,6 +158,54 @@ def calculate_price(product_id: int, quantity, cliente_id=None, db=None):
             detalles_calculo_dinamico['E_PRECIO_VENTA_UNITARIO_BRUTO'] = f"{precio_venta_unitario_bruto:.4f}"
         if precio_venta_unitario_bruto is None:
             raise ValueError("Fallo en la lógica: no se pudo determinar un precio.")
+
+        # --- MODO OPCIONAL: CONGELAR PRECIO UNITARIO (usar coeficiente como si qty=1) ---
+        # Activación automática: cualquier precio especial debe considerarse congelado.
+        if se_aplico_precio_especial and not freeze_unit_price:
+            freeze_unit_price = True
+            debug_info_response['etapas_calculo'].append("DEBUG: FREEZE AUTO activado (precio especial).")
+
+        if freeze_unit_price:
+            try:
+                debug_info_response['etapas_calculo'].append("DEBUG: MODO CONGELAR UNITARIO ACTIVADO (coeficiente qty=1)")
+                from ..blueprints.productos import obtener_coeficiente_por_rango  # type: ignore
+                if se_aplico_precio_especial and precio_especial_db is not None and getattr(precio_especial_db, 'usar_precio_base', False):
+                    margen_producto = Decimal(str(producto.margen or '0.0'))
+                    if not (Decimal('0') <= margen_producto < Decimal('1')):
+                        raise ValueError(f"Margen de producto inválido: {margen_producto}")
+                    precio_base_ars_freeze = costo_unitario_venta_ars / (Decimal('1') - margen_producto)
+                    resultado_tabla_freeze = obtener_coeficiente_por_rango(str(producto.ref_calculo or ''), '1', producto.tipo_calculo)
+                    if resultado_tabla_freeze is None:
+                        raise ValueError("No se encontró coeficiente (qty=1) para congelar precio especial margen.")
+                    coef_str_f, _ = resultado_tabla_freeze
+                    if not coef_str_f or coef_str_f.strip() == '':
+                        raise ValueError("Coeficiente vacío (qty=1) en modo congelar.")
+                    coef_freeze = Decimal(coef_str_f)
+                    margen_especial = Decimal(str(precio_especial_db.margen_sobre_base or '0'))
+                    precio_dinamico_base_freeze = precio_base_ars_freeze * coef_freeze
+                    precio_venta_unitario_bruto = precio_dinamico_base_freeze * (Decimal('1') + margen_especial)
+                    debug_info_response['etapas_calculo'].append(
+                        f"DEBUG: CONGELADO ESPECIAL -> base_ars={precio_base_ars_freeze:.4f} coef(1)={coef_freeze} bruto={precio_venta_unitario_bruto:.4f}")
+                elif se_aplico_precio_especial:
+                    # Precio especial fijo ya es independiente de cantidad
+                    debug_info_response['etapas_calculo'].append("DEBUG: CONGELADO NO CAMBIA PRECIO ESPECIAL FIJO")
+                else:
+                    margen_producto = Decimal(str(producto.margen or '0.0'))
+                    if not (Decimal('0') <= margen_producto < Decimal('1')):
+                        raise ValueError(f"Margen de producto inválido: {margen_producto}")
+                    precio_base_ars_freeze = costo_unitario_venta_ars / (Decimal('1') - margen_producto)
+                    resultado_tabla_freeze = obtener_coeficiente_por_rango(str(producto.ref_calculo or ''), '1', producto.tipo_calculo)
+                    if resultado_tabla_freeze is None:
+                        raise ValueError("No se encontró coeficiente (qty=1) para congelar precio dinámico.")
+                    coef_str_f, _ = resultado_tabla_freeze
+                    if not coef_str_f or coef_str_f.strip() == '':
+                        raise ValueError("Coeficiente vacío (qty=1) en modo congelar.")
+                    coef_freeze = Decimal(coef_str_f)
+                    precio_venta_unitario_bruto = precio_base_ars_freeze * coef_freeze
+                    debug_info_response['etapas_calculo'].append(
+                        f"DEBUG: CONGELADO DINÁMICO -> base_ars={precio_base_ars_freeze:.4f} coef(1)={coef_freeze} bruto={precio_venta_unitario_bruto:.4f}")
+            except Exception as e:
+                debug_info_response['etapas_calculo'].append(f"WARN: Error congelando unitario: {e}")
         # --- REDONDEO (alineado con productos.calculate_price) ---
         # Regla vigente acordada:
         #  - Unitario: siempre se redondea hacia ARRIBA a la siguiente DECENA.
@@ -188,6 +236,7 @@ def calculate_price(product_id: int, quantity, cliente_id=None, db=None):
             "precio_venta_unitario_ars": float(precio_venta_unitario_redondeado),
             "precio_unitario_ars": float(precio_venta_unitario_redondeado),  # Alias para compatibilidad
             "precio_total_calculado_ars": float(precio_total_final_ars),
+            "unit_price_locked": bool(freeze_unit_price),
             "tipo_redondeo_unitario": tipo_redondeo_unitario,
             "tipo_redondeo_total": tipo_redondeo_total,
             "tipo_redondeo_aplicado": tipo_redondeo_unitario,  # compat con productos (unitario)

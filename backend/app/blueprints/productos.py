@@ -630,6 +630,9 @@ def calculate_price(product_id: int):
     """
     debug_info_response = {"etapas_calculo": []}
     detalles_calculo_dinamico = {}
+    unit_price_locked = False  # se setea en True si se aplica congelamiento (freeze)
+    es_precio_especial_margen = False  # distingue especial margen vs fijo
+    precio_especial_db = None  # referencia segura para bloque freeze
 
     try:
         producto = db.session.get(Producto, product_id)
@@ -641,6 +644,17 @@ def calculate_price(product_id: int):
         quantity_str = str(data['quantity']).strip().replace(',', '.')
         cantidad_decimal = Decimal(quantity_str)
         if cantidad_decimal <= Decimal('0'): raise ValueError("La cantidad debe ser positiva.")
+
+        # Parseo robusto de freeze_unit_price
+        freeze_raw = data.get('freeze_unit_price', False)
+        if isinstance(freeze_raw, bool):
+            freeze_unit_price = freeze_raw
+        elif isinstance(freeze_raw, (int, float)):
+            freeze_unit_price = bool(freeze_raw)
+        elif isinstance(freeze_raw, str):
+            freeze_unit_price = freeze_raw.strip().lower() in ('1','true','si','sí','y','yes','t','on')
+        else:
+            freeze_unit_price = False
         
         # --- PRIORIDAD 1: PRECIO ESPECIAL ---
         precio_venta_unitario_bruto = None
@@ -653,6 +667,7 @@ def calculate_price(product_id: int):
                 if precio_especial_db:
                     # --- NUEVA LÓGICA: soportar precio especial "con margen" (usar_precio_base=True) igual que en utils ---
                     if getattr(precio_especial_db, 'usar_precio_base', False):
+                        es_precio_especial_margen = True
                         # 1. Costo unitario USD y conversión a ARS según TC elegido por el producto
                         costo_unitario_venta_usd = calcular_costo_producto_referencia(product_id)
                         nombre_tc = 'Oficial' if producto.ajusta_por_tc else 'Empresa'
@@ -757,6 +772,63 @@ def calculate_price(product_id: int):
             
             detalles_calculo_dinamico['E_PRECIO_VENTA_UNITARIO_BRUTO'] = f"{precio_venta_unitario_bruto:.4f}"
 
+        # --- FREEZE UNITARIO (antes de redondeos) ---
+        # Reglas nuevas: siempre que sea precio especial (fijo o margen) el unitario se congela (usa coeficiente qty=1 en caso margen)
+        if se_aplico_precio_especial and not freeze_unit_price:
+            freeze_unit_price = True
+            debug_info_response['etapas_calculo'].append("FREEZE AUTO: Activado por ser precio especial.")
+        if precio_venta_unitario_bruto is None:
+            raise ValueError("Fallo en la lógica: no se pudo determinar un precio.")
+
+        if freeze_unit_price:
+            # Caso 1: precio especial fijo -> ya es independiente de la cantidad
+            if se_aplico_precio_especial and not es_precio_especial_margen:
+                unit_price_locked = True
+                debug_info_response['etapas_calculo'].append("FREEZE: Precio especial fijo ya era invariable (sin recálculo).")
+            else:
+                # Recalcular unitario como si cantidad = 1 usando misma lógica (dynamic o especial margen)
+                try:
+                    if se_aplico_precio_especial and es_precio_especial_margen and precio_especial_db:
+                        # Repetimos pipeline especial margen para qty=1
+                        costo_unitario_venta_usd_fr = calcular_costo_producto_referencia(product_id)
+                        nombre_tc_fr = 'Oficial' if producto.ajusta_por_tc else 'Empresa'
+                        tc_obj_fr = TipoCambio.query.filter_by(nombre=nombre_tc_fr).first()
+                        if not tc_obj_fr or tc_obj_fr.valor is None or tc_obj_fr.valor <= 0:
+                            raise ValueError("TC inválido en freeze especial margen.")
+                        costo_unitario_venta_ars_fr = costo_unitario_venta_usd_fr * tc_obj_fr.valor
+                        margen_producto_fr = Decimal(str(producto.margen or '0'))
+                        precio_base_ars_fr = costo_unitario_venta_ars_fr / (Decimal('1') - margen_producto_fr)
+                        resultado_tabla_fr = obtener_coeficiente_por_rango(str(producto.ref_calculo or ''), '1', producto.tipo_calculo)
+                        if resultado_tabla_fr is None:
+                            raise ValueError("No hay coeficiente qty=1 en freeze especial margen.")
+                        coef_str_fr, _esc_fr = resultado_tabla_fr
+                        coef_fr = Decimal(coef_str_fr)
+                        precio_dinamico_base_fr = precio_base_ars_fr * coef_fr  # qty=1 => camino normal >=1
+                        margen_especial_fr = Decimal(str(precio_especial_db.margen_sobre_base or '0'))
+                        precio_venta_unitario_bruto = precio_dinamico_base_fr * (Decimal('1') + margen_especial_fr)
+                    else:
+                        # Dinámico estándar
+                        costo_unitario_venta_usd_fr = calcular_costo_producto_referencia(product_id)
+                        nombre_tc_fr = 'Oficial' if producto.ajusta_por_tc else 'Empresa'
+                        tc_obj_fr = TipoCambio.query.filter_by(nombre=nombre_tc_fr).first()
+                        if not tc_obj_fr or tc_obj_fr.valor is None or tc_obj_fr.valor <= 0:
+                            raise ValueError("TC inválido en freeze dinámico.")
+                        costo_unitario_venta_ars_fr = costo_unitario_venta_usd_fr * tc_obj_fr.valor
+                        margen_fr = Decimal(str(producto.margen or '0'))
+                        precio_base_ars_fr = costo_unitario_venta_ars_fr / (Decimal('1') - margen_fr)
+                        resultado_tabla_fr = obtener_coeficiente_por_rango(str(producto.ref_calculo or ''), '1', producto.tipo_calculo)
+                        if resultado_tabla_fr is None:
+                            raise ValueError("No hay coeficiente qty=1 en freeze dinámico.")
+                        coef_str_fr, _esc_fr = resultado_tabla_fr
+                        coef_fr = Decimal(coef_str_fr)
+                        precio_venta_unitario_bruto = precio_base_ars_fr * coef_fr
+                    if precio_venta_unitario_bruto <= 0:
+                        raise ValueError("Freeze produjo precio <= 0")
+                    unit_price_locked = True
+                    debug_info_response['etapas_calculo'].append("FREEZE: Recalculado unitario con qty=1 (precio unitario congelado).")
+                except Exception as fr_e:
+                    debug_info_response['etapas_calculo'].append(f"FREEZE: Error al congelar precio - {fr_e}")
+
         # --- PASO 5: REDONDEO Y TOTAL ---
         if precio_venta_unitario_bruto is None: raise ValueError("Fallo en la lógica: no se pudo determinar un precio.")
 
@@ -799,6 +871,10 @@ def calculate_price(product_id: int):
             "precio_venta_unitario_ars": float(precio_venta_unitario_redondeado),
             "precio_total_calculado_ars": float(precio_total_final_ars),
             "tipo_redondeo_aplicado": tipo_redondeo_unitario,
+            "tipo_redondeo_total": tipo_redondeo_total,
+            "freeze_unit_price_solicitado": bool(freeze_unit_price),
+            "unit_price_locked": unit_price_locked,
+            "modo_precio_especial": ("margen" if se_aplico_precio_especial and es_precio_especial_margen else ("fijo" if se_aplico_precio_especial else None)),
             "debug_info_completo": {
                 "resumen_pasos": debug_info_response["etapas_calculo"],
                 "desglose_variables": detalles_calculo_dinamico if not se_aplico_precio_especial else None
