@@ -1382,7 +1382,15 @@ def cargar_precios_desde_csv(current_user):
             if raw is None:
                 return False
             s = str(raw).strip().lower()
-            if s in ['1', 'true', 't', 'si', 'sí', 'yes', 'y']:
+            # Aceptar variantes en inglés y español
+            true_values = {'1','true','t','si','sí','yes','y','verdadero','v','x'}
+            false_values = {'0','false','f','no','n','falso'}
+            if s in true_values:
+                return True
+            if s in false_values:
+                return False
+            # Si contiene al menos 'verdad' parcial también consideramos True
+            if 'verdad' in s:
                 return True
             return False
 
@@ -1490,7 +1498,14 @@ def cargar_precios_desde_csv(current_user):
 
             # Determinar si usará precio base
             if usar_precio_base_val is not None and str(usar_precio_base_val).strip() != '':
-                usar_precio_base = parse_bool_like(usar_precio_base_val)
+                parsed_bool = parse_bool_like(usar_precio_base_val)
+                if not parsed_bool:
+                    # Loguear si la cadena parece contener algo pero no se reconoció como true
+                    try:
+                        logger.debug(f"[CSV DEBUG] Valor no reconocido como TRUE para usar_precio_base: '{usar_precio_base_val}' (fila {linea_num})")
+                    except Exception:
+                        pass
+                usar_precio_base = parsed_bool
             else:
                 usar_precio_base = False
 
