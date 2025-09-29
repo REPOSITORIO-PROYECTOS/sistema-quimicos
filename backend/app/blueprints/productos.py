@@ -728,7 +728,7 @@ def calculate_price(product_id: int):
             tipo_redondeo_unitario = 'decena'
         else:
             # Para precios generales, redondear a centena (múltiplo de 10)
-            precio_venta_unitario_redondeado = redondear_a_siguiente_centena(precio_venta_unitario_bruto)
+            precio_venta_unitario_redondeado = redondear_a_siguiente_decena(precio_venta_unitario_bruto)
             tipo_redondeo_unitario = 'decena'
 
         # Paso 5 bis: Redondear total según tipo de precio
