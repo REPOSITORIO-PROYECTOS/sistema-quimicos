@@ -651,26 +651,65 @@ def calculate_price(product_id: int):
                 cliente_id = int(cliente_id_payload)
                 precio_especial_db = PrecioEspecialCliente.query.filter_by(cliente_id=cliente_id, producto_id=product_id, activo=True).first()
                 if precio_especial_db:
-                    # Usar la función de ventas para calcular tanto precios fijos como marginados
-                    from app.blueprints.ventas import calcular_precio_item_venta
-                    precio_unitario, precio_total, costo_momento, coeficiente, error_msg, es_precio_especial = calcular_precio_item_venta(
-                        product_id, cantidad_decimal, cliente_id
-                    )
-                    if es_precio_especial and precio_unitario is not None:
-                        precio_venta_unitario_bruto = Decimal(str(precio_unitario))
-                        se_aplico_precio_especial = True
-                        
-                        # Determinar si es precio con margen
-                        tipo_precio = "fijo"
-                        if hasattr(precio_especial_db, 'usar_precio_base') and precio_especial_db.usar_precio_base:
-                            tipo_precio = "margen"
-                            margen_pct = float(precio_especial_db.margen_sobre_base) * 100 if precio_especial_db.margen_sobre_base else 0
-                            debug_info_response['etapas_calculo'].append(f"INICIO: PRECIO ESPECIAL CON MARGEN ({margen_pct:+.1f}%) APLICADO.")
+                    # --- NUEVA LÓGICA: soportar precio especial "con margen" (usar_precio_base=True) igual que en utils ---
+                    if getattr(precio_especial_db, 'usar_precio_base', False):
+                        # 1. Costo unitario USD y conversión a ARS según TC elegido por el producto
+                        costo_unitario_venta_usd = calcular_costo_producto_referencia(product_id)
+                        nombre_tc = 'Oficial' if producto.ajusta_por_tc else 'Empresa'
+                        tc_obj = TipoCambio.query.filter_by(nombre=nombre_tc).first()
+                        if not tc_obj or tc_obj.valor is None or tc_obj.valor <= 0:
+                            raise ValueError(f"TC '{nombre_tc}' inválido para precio especial margen.")
+                        costo_unitario_venta_ars = costo_unitario_venta_usd * tc_obj.valor
+                        # 2. Reconstruir precio base aplicando margen propio del producto
+                        margen_producto = Decimal(str(producto.margen or '0'))
+                        if not (Decimal('0') <= margen_producto < Decimal('1')):
+                            raise ValueError(f"Margen de producto inválido: {margen_producto}")
+                        precio_base_ars = costo_unitario_venta_ars / (Decimal('1') - margen_producto)
+                        # 3. Obtener coeficiente de matriz y escalón
+                        resultado_tabla = obtener_coeficiente_por_rango(str(producto.ref_calculo or ''), quantity_str, producto.tipo_calculo)
+                        if resultado_tabla is None:
+                            raise ValueError("No se encontró coeficiente para precio especial con margen.")
+                        coeficiente_str, escalon_cantidad_str = resultado_tabla
+                        if not coeficiente_str or coeficiente_str.strip() == '':
+                            raise ValueError("Coeficiente vacío para precio especial con margen.")
+                        coeficiente_decimal = Decimal(coeficiente_str)
+                        # 4. Precio dinámico base (misma lógica híbrida que cálculo normal)
+                        if cantidad_decimal >= Decimal('1.0'):
+                            precio_dinamico_base = precio_base_ars * coeficiente_decimal
                         else:
+                            escalon_decimal = Decimal(escalon_cantidad_str)
+                            if escalon_decimal == 0:
+                                raise ValueError("Escalón = 0 en precio especial con margen.")
+                            precio_dinamico_base = (precio_base_ars * coeficiente_decimal) / escalon_decimal
+                        # 5. Aplicar margen especial (fracción, ej 0.25 = +25%)
+                        margen_especial = Decimal(str(precio_especial_db.margen_sobre_base or '0'))
+                        if margen_especial < Decimal('-0.99'):
+                            raise ValueError(f"Margen especial demasiado negativo: {margen_especial}")
+                        precio_venta_unitario_bruto = precio_dinamico_base * (Decimal('1') + margen_especial)
+                        if precio_venta_unitario_bruto <= 0:
+                            raise ValueError("Resultado de precio especial con margen <= 0")
+                        se_aplico_precio_especial = True
+                        debug_info_response['etapas_calculo'].append(
+                            f"INICIO: PRECIO ESPECIAL CON MARGEN aplicado (margen_especial={margen_especial*100:.2f}%, margen_producto={margen_producto*100:.2f}%, coef={coeficiente_decimal})"
+                        )
+                        debug_info_response['etapas_calculo'].append(
+                            f"DEBUG: costo_usd={costo_unitario_venta_usd:.4f} tc={tc_obj.valor} costo_ars={costo_unitario_venta_ars:.4f} base_ars={precio_base_ars:.4f}"
+                        )
+                        debug_info_response['etapas_calculo'].append(
+                            f"DEBUG: precio_dinamico_base={precio_dinamico_base:.4f} precio_bruto_especial={precio_venta_unitario_bruto:.4f}"
+                        )
+                    else:
+                        # Mantener comportamiento existente para precio especial fijo usando la lógica de ventas
+                        from app.blueprints.ventas import calcular_precio_item_venta
+                        precio_unitario, precio_total, costo_momento, coeficiente, error_msg, es_precio_especial = calcular_precio_item_venta(
+                            product_id, cantidad_decimal, cliente_id
+                        )
+                        if es_precio_especial and precio_unitario is not None:
+                            precio_venta_unitario_bruto = Decimal(str(precio_unitario))
+                            se_aplico_precio_especial = True
                             debug_info_response['etapas_calculo'].append("INICIO: PRECIO ESPECIAL FIJO APLICADO.")
-                            
-                    elif error_msg:
-                        debug_info_response['etapas_calculo'].append(f"WARN: Error en precio especial - {error_msg}")
+                        elif error_msg:
+                            debug_info_response['etapas_calculo'].append(f"WARN: Error en precio especial - {error_msg}")
             except (ValueError, TypeError):
                 debug_info_response['etapas_calculo'].append("WARN: Cliente ID inválido, se ignora.")
 

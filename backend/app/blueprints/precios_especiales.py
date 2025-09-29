@@ -1313,6 +1313,9 @@ def cargar_precios_desde_csv(current_user):
         registros_creados = 0
         registros_actualizados = 0
         filas_ignoradas = 0  # Filas vacías / sin datos relevantes
+        contador_margen_explicito = 0
+        contador_margen_objetivo = 0
+        contador_fijo = 0
         filas_fallidas = []
         acciones_por_fila = []
 
@@ -1621,6 +1624,7 @@ def cargar_precios_desde_csv(current_user):
                             precio_final_ars = Decimal('0')  # Modo margen: precio se calcula dinámicamente
                             # En este caso, precio_original puede ser 0 (vacío) - no importa
                             logger.info(f"[CSV] Fila {linea_num}: Margen explícito {margen_sobre_base_calculado}")
+                            contador_margen_explicito += 1
                         except Exception as e:
                             raise ValueError(f"Margen sobre base inválido: {e}")
                     
@@ -1649,6 +1653,7 @@ def cargar_precios_desde_csv(current_user):
                         precio_final_ars = Decimal('0')  # Modo margen: precio se calcula dinámicamente
                         
                         logger.info(f"[CSV] Fila {linea_num}: Margen calculado {margen_sobre_base_calculado} para precio objetivo {precio_objetivo_ars}")
+                        contador_margen_objetivo += 1
                     
                     # CASO 3: Error - usar_precio_base=TRUE pero sin margen ni precio
                     else:
@@ -1681,6 +1686,7 @@ def cargar_precios_desde_csv(current_user):
                     precio_final_ars = precio_original * valor_dolar_oficial
                 else:
                     precio_final_ars = precio_original
+                contador_fijo += 1
 
             # --- VALIDACIÓN DE RANGO PARA EVITAR OVERFLOW EN NUMERIC(15,4) ---
             # precision=15, scale=4 => máximo entero permitido: 11 dígitos ( < 100_000_000_000 )
@@ -1759,7 +1765,12 @@ def cargar_precios_desde_csv(current_user):
             "creados": registros_creados,
             "actualizados": registros_actualizados,
             "errores": len(filas_fallidas),
-            "ignoradas": filas_ignoradas
+            "ignoradas": filas_ignoradas,
+            "modos": {
+                "margen_explicito": contador_margen_explicito,
+                "margen_objetivo": contador_margen_objetivo,
+                "fijo": contador_fijo
+            }
         }
 
         debug_mode = request.args.get('debug', 'false').lower() == 'true'
