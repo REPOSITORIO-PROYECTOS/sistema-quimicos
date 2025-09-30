@@ -1093,7 +1093,8 @@ def obtener_detalles_lote(current_user):
                 venta['observaciones'] = ''
             monto_total_items = Decimal('0.00')
             # 1. NO aplicar descuento por ítem nuevamente, solo usar el valor guardado
-            from .productos import redondear_a_siguiente_decena, redondear_a_siguiente_centena
+            # Usar funciones canónicas de redondeo centralizadas
+            from ..utils.math_utils import redondear_a_siguiente_decena, redondear_a_siguiente_centena
             for detalle in venta.get('detalles', []):
                 # Calcular precio base y total por ítem desde cero, igual que en registro/actualización
                 if 'observacion_item' not in detalle:
@@ -1102,7 +1103,7 @@ def obtener_detalles_lote(current_user):
                 cantidad = Decimal(str(detalle.get('cantidad', 0.0)))
                 descuento_item = Decimal(str(detalle.get('descuento_item_porcentaje', 0.0))) if 'descuento_item_porcentaje' in detalle else Decimal('0.0')
                 # Calcular precio unitario base desde cero
-                precio_u_bruto, _, _, _, error_msg, _ = calcular_precio_item_venta(producto_id, cantidad, venta.get('cliente_id'))
+                precio_u_bruto, _, _, _, error_msg, es_precio_especial_calculo = calcular_precio_item_venta(producto_id, cantidad, venta.get('cliente_id'))
                 # Si hubo error o el cálculo devuelve None/0, usar fallback a los valores guardados en el detalle
                 if error_msg or precio_u_bruto is None or (isinstance(precio_u_bruto, Decimal) and precio_u_bruto <= Decimal('0')):
                     # Intentamos recuperar un precio unitario guardado en el detalle (serializado en venta_a_dict_completo)
@@ -1123,6 +1124,7 @@ def obtener_detalles_lote(current_user):
                                 precio_calc, tc_used = calcular_precio_ars(precio_esp_obj)
                                 if precio_calc is not None and Decimal(str(precio_calc)) > Decimal('0'):
                                     precio_u_bruto = Decimal(str(precio_calc))
+                                    es_precio_especial_calculo = True
                                     print(f"INFO [obtener_detalles_lote]: fallback desde PrecioEspecialCliente para prod {producto_id}, cliente {venta.get('cliente_id')}")
                                 else:
                                     raise ValueError("PrecioEspecialCliente existía pero no devolvió precio calculado")
@@ -1140,6 +1142,16 @@ def obtener_detalles_lote(current_user):
                             else:
                                 precio_u_bruto = Decimal('0')
                                 print(f"ERROR [obtener_detalles_lote]: No se pudo calcular precio para prod {producto_id} (cliente {venta.get('cliente_id')}). Se usará 0 en respuesta. Detalle fallback error: {e_fallback}")
+                # Determinar si hay un precio especial activo (si la llamada directa no lo marcó ya)
+                if not es_precio_especial_calculo:
+                    try:
+                        es_precio_especial_activo = db.session.query(PrecioEspecialCliente).filter_by(
+                            cliente_id=venta.get('cliente_id'), producto_id=producto_id, activo=True
+                        ).first() is not None
+                    except Exception:
+                        es_precio_especial_activo = False
+                else:
+                    es_precio_especial_activo = True
                 precio_unitario_redondeado = redondear_a_siguiente_decena(precio_u_bruto)
                 # Aplicar descuento particular si corresponde
                 if descuento_item > 0:
@@ -1147,11 +1159,16 @@ def obtener_detalles_lote(current_user):
                 else:
                     precio_unitario_con_descuento = precio_unitario_redondeado
                 subtotal_item = precio_unitario_con_descuento * cantidad
-                precio_total_item = redondear_a_siguiente_centena(subtotal_item)
+                # Regla: si es precio especial -> total a decena; si no -> centena
+                if es_precio_especial_activo:
+                    precio_total_item = redondear_a_siguiente_decena(subtotal_item)
+                else:
+                    precio_total_item = redondear_a_siguiente_centena(subtotal_item)
                 detalle['precio_unitario_con_descuento_ars'] = float(precio_unitario_con_descuento)
                 detalle['precio_unitario_venta_ars'] = float(precio_unitario_con_descuento)
                 detalle['precio_total_item_ars'] = float(precio_total_item)
                 detalle['descuento_item_porcentaje'] = float(descuento_item)
+                detalle['es_precio_especial'] = bool(es_precio_especial_activo)
                 monto_total_items += precio_total_item
             # 2. Aplica descuento global sobre la suma de ítems ya descontados y redondeados
             descuento_global = Decimal(str(venta.get('descuento_total_global_porcentaje', 0.0)))

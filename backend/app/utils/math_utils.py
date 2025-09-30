@@ -23,3 +23,27 @@ def redondear_a_siguiente_decena_simplificado(valor_decimal: Decimal) -> tuple[D
     debug_pasos_redondeo['paso5_formateado_final'] = str(resultado_formateado)
 
     return resultado_formateado, debug_pasos_redondeo
+
+
+def redondear_a_siguiente_decena(valor_decimal: Decimal) -> Decimal:
+    """
+    Redondea un valor Decimal hacia arriba al siguiente múltiplo de 10
+    y devuelve un Decimal con 2 decimales (compatible con el resto del código).
+    """
+    if not isinstance(valor_decimal, Decimal):
+        valor_decimal = Decimal(str(valor_decimal))
+    valor_dividido = valor_decimal / Decimal('10')
+    valor_entero_arriba = valor_dividido.to_integral_value(rounding=ROUND_CEILING)
+    resultado = (valor_entero_arriba * Decimal('10')).quantize(Decimal('0.01'))
+    return resultado
+
+
+def redondear_a_siguiente_centena(valor_decimal: Decimal) -> Decimal:
+    """
+    Redondea un valor Decimal hacia arriba al siguiente múltiplo de 100.
+    Devuelve un Decimal (sin formateo a 0.01 extra, la llamada puede decidirlo).
+    """
+    if not isinstance(valor_decimal, Decimal):
+        valor_decimal = Decimal(str(valor_decimal))
+    resultado = (valor_decimal / Decimal('100')).to_integral_value(rounding=ROUND_CEILING) * Decimal('100')
+    return resultado
