@@ -56,6 +56,20 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     return productos.reduce((sum, item) => sum + (item.total || 0), 0);
   }, [productos]);
 
+  // Helper: redondear hacia arriba a la centena (múltiplo de 100) igual que backend
+  const roundUpToCentena = (v: number) => {
+    if (!v || isNaN(v)) return 0;
+    return Math.ceil(v / 100) * 100;
+  };
+
+  /**
+   * Recalcula precios unitarios y totales replicando la lógica del backend:
+   * 1. Obtener precio unitario base (API productos/calcular_precio) para la suma de cantidades del mismo producto.
+   * 2. Redondear unitario a centena.
+   * 3. Aplicar descuento por ítem (%).
+   * 4. Calcular total = (unitario_con_descuento * cantidad) y redondear a centena.
+   * 5. Guardar unitario_con_descuento en campo precio (como hace backend) y total en campo total.
+   */
   const recalculatePricesForProducts = useCallback(async (currentProducts: ProductoVenta[], clienteId: number | null) => {
     const token = localStorage.getItem("token");
     if (!token) { 
@@ -113,11 +127,18 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     priceResults.forEach(({ precioUnitario, indices }) => {
       indices.forEach(index => {
         const item = newProducts[index];
-        if (item) {
-          item.precio = precioUnitario;
-          // Total sin lógica de rounding/descuento en frontend, la hace el backend
-          item.total = precioUnitario * item.qx;
-        }
+        if (!item) return;
+        const cantidad = item.qx || 0;
+        const descuento = item.descuento || 0; // %
+        // Paso 1: redondear unitario bruto a centena
+        const unitRounded = roundUpToCentena(precioUnitario);
+        // Paso 2: aplicar descuento por ítem (no se re-redondea unitario con descuento, igual que backend)
+        const unitWithDiscount = unitRounded * (1 - (descuento / 100));
+        // Paso 3: calcular total bruto y redondearlo a centena
+        const totalBruto = unitWithDiscount * cantidad;
+        const totalRedondeado = roundUpToCentena(totalBruto);
+        item.precio = unitWithDiscount; // Mostrar unitario neto (coincide con backend guardado)
+        item.total = totalRedondeado;   // Total item ya redondeado como backend
       });
     });
 
@@ -164,23 +185,23 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
       precio_total_item_ars: number;
       observacion_item?: string;
     };
-      // Paso 1: Mapeamos los datos básicos de la API (producto, cantidad, descuento).
-      const productosParaRecalcular: ProductoVenta[] = datosAPI.detalles?.map((detalle: DetalleFromAPI) => ({
+      // Cargamos directamente los valores que YA vienen guardados (sin recálculo forzado inicial)
+      // Esto evita diferencias con la boleta almacenada.
+      const productosDesdeAPI: ProductoVenta[] = datosAPI.detalles?.map((detalle: DetalleFromAPI) => ({
         id_detalle: detalle.detalle_id,
         producto: detalle.producto_id,
         qx: detalle.cantidad,
         descuento: detalle.descuento_item_porcentaje || 0,
         observacion: detalle.observacion_item || "",
         observacion_item: detalle.observacion_item || "",
-        // Precios y totales se inicializan en 0, serán calculados ahora.
-        precio: 0,
-        total: 0,
+        precio: detalle.precio_unitario_venta_ars || 0, // ya viene con descuento aplicado
+        total: detalle.precio_total_item_ars || 0       // ya viene redondeado
       })) || [];
-      
-      // Paso 2: Forzamos el recálculo de precios inmediatamente con los productos cargados.
-      // Esto asegura que los precios se actualicen al abrir el formulario.
-      if (productosParaRecalcular.length > 0) {
-        await recalculatePricesForProducts(productosParaRecalcular, clienteId);
+
+      if (productosDesdeAPI.length > 0) {
+        setProductos(productosDesdeAPI);
+        // Recalcular inmediatamente usando los valores actuales para normalizar fórmula con lógica vigente
+        await recalculatePricesForProducts(productosDesdeAPI, clienteId);
       } else {
         setProductos([initialProductoItem]);
       }
