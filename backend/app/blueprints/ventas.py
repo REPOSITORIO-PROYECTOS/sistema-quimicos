@@ -1103,8 +1103,43 @@ def obtener_detalles_lote(current_user):
                 descuento_item = Decimal(str(detalle.get('descuento_item_porcentaje', 0.0))) if 'descuento_item_porcentaje' in detalle else Decimal('0.0')
                 # Calcular precio unitario base desde cero
                 precio_u_bruto, _, _, _, error_msg, _ = calcular_precio_item_venta(producto_id, cantidad, venta.get('cliente_id'))
-                if error_msg:
-                    continue
+                # Si hubo error o el cálculo devuelve None/0, usar fallback a los valores guardados en el detalle
+                if error_msg or precio_u_bruto is None or (isinstance(precio_u_bruto, Decimal) and precio_u_bruto <= Decimal('0')):
+                    # Intentamos recuperar un precio unitario guardado en el detalle (serializado en venta_a_dict_completo)
+                    try:
+                        stored_unit = Decimal(str(detalle.get('precio_unitario_venta_ars', '0') or '0'))
+                    except Exception:
+                        stored_unit = Decimal('0')
+                    if stored_unit and stored_unit > Decimal('0'):
+                        precio_u_bruto = stored_unit
+                        # Log de depuración para identificar casos que cayeron en fallback
+                        print(f"WARN [obtener_detalles_lote]: fallback unitario para prod {producto_id} usando stored_unit={stored_unit}, cliente={venta.get('cliente_id')}")
+                    else:
+                        # Intentar fallback 2: si existe una regla de PrecioEspecialCliente, calcular usando ella (soporta usar_precio_base)
+                        try:
+                            precio_esp_obj = db.session.query(PrecioEspecialCliente).filter_by(cliente_id=venta.get('cliente_id'), producto_id=producto_id, activo=True).first()
+                            if precio_esp_obj:
+                                from .precios_especiales import calcular_precio_ars
+                                precio_calc, tc_used = calcular_precio_ars(precio_esp_obj)
+                                if precio_calc is not None and Decimal(str(precio_calc)) > Decimal('0'):
+                                    precio_u_bruto = Decimal(str(precio_calc))
+                                    print(f"INFO [obtener_detalles_lote]: fallback desde PrecioEspecialCliente para prod {producto_id}, cliente {venta.get('cliente_id')}")
+                                else:
+                                    raise ValueError("PrecioEspecialCliente existía pero no devolvió precio calculado")
+                            else:
+                                raise ValueError("No existe PrecioEspecialCliente activo para este producto/cliente")
+                        except Exception as e_fallback:
+                            # Si no funciona el fallback con regla especial, intentar usar total guardado dividido por cantidad
+                            try:
+                                stored_total = Decimal(str(detalle.get('precio_total_item_ars', '0') or '0'))
+                            except Exception:
+                                stored_total = Decimal('0')
+                            if stored_total and cantidad > Decimal('0'):
+                                precio_u_bruto = (stored_total / cantidad)
+                                print(f"WARN [obtener_detalles_lote]: fallback unitario calculado = total_guardado/cantidad for prod {producto_id}")
+                            else:
+                                precio_u_bruto = Decimal('0')
+                                print(f"ERROR [obtener_detalles_lote]: No se pudo calcular precio para prod {producto_id} (cliente {venta.get('cliente_id')}). Se usará 0 en respuesta. Detalle fallback error: {e_fallback}")
                 precio_unitario_redondeado = redondear_a_siguiente_decena(precio_u_bruto)
                 # Aplicar descuento particular si corresponde
                 if descuento_item > 0:

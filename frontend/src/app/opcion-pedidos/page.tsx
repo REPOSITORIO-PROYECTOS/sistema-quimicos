@@ -213,7 +213,9 @@ const handlePrint = async (tipo: 'comprobante' | 'orden_de_trabajo') => {
         throw new Error(errorData.error || `No se pudieron cargar los detalles.`);
       }
       
-      const boletasDetalladas: BoletaOriginal[] = await response.json();
+  const boletasDetalladas: BoletaOriginal[] = await response.json();
+  // DEBUG temporal: mostrar en consola la respuesta completa para verificar precios especiales
+  console.log('DEBUG obtener-detalles-lote response:', boletasDetalladas);
 
       const boletasAImprimir: VentaData[] = boletasDetalladas.map((data: BoletaOriginal) => {
         const detalles = data.detalles || [];
