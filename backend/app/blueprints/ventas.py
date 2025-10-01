@@ -298,23 +298,37 @@ def registrar_venta(current_user):
             error_msg = None
             try:
                 if precio_u_bruto is not None and precio_t_bruto is not None:
+                    # El front envió ambos precios; convertir a Decimal
                     precio_u_bruto = Decimal(str(precio_u_bruto))
                     precio_t_bruto = Decimal(str(precio_t_bruto))
                 else:
+                    # Calcular en backend si faltan
                     precio_u_bruto, precio_t_bruto, costo_u, _, error_msg, _ = calcular_precio_item_venta(producto_id, cantidad, cliente_id)
                     if error_msg:
                         return jsonify({"error": f"Error en Prod ID {producto_id}: {error_msg}"}), 400
             except Exception:
                 return jsonify({"error": f"Precio unitario o total inválido para Prod ID {producto_id}"}), 400
-            # Redondear precio unitario antes de aplicar descuento (múltiplo de 100)
-            precio_unitario_redondeado = redondear_a_siguiente_centena(precio_u_bruto)
-            if descuento_item_porc > 0:
-                precio_unitario_con_descuento = precio_unitario_redondeado * (Decimal('1.0') - descuento_item_porc / Decimal('100'))
-                # Redondear precio unitario con descuento a centena
-                precio_unitario_con_descuento = redondear_a_siguiente_centena(precio_unitario_con_descuento)
+            # Si el front ya mandó precios y NO hay descuento de item, usamos tal cual (solo cuantizamos a 2 decimales)
+            if precio_u_bruto is not None and precio_t_bruto is not None and descuento_item_porc == 0:
+                precio_unitario_con_descuento = precio_u_bruto.quantize(Decimal("0.01"), ROUND_HALF_UP)
+                precio_total_item = precio_t_bruto.quantize(Decimal("0.01"), ROUND_HALF_UP)
+                # Coherencia: si la multiplicación difiere más de 1 peso, ajustar total a multiplicación redondeada a centena
+                try:
+                    total_calculado = (precio_unitario_con_descuento * cantidad).quantize(Decimal("0.01"), ROUND_HALF_UP)
+                    if abs(total_calculado - precio_total_item) > Decimal('1'):
+                        # Ajustamos manteniendo criterio histórico (centena)
+                        precio_total_item = redondear_a_siguiente_centena(total_calculado)
+                except Exception:
+                    pass
             else:
-                precio_unitario_con_descuento = precio_unitario_redondeado
-            precio_total_item = redondear_a_siguiente_centena(precio_unitario_con_descuento * cantidad)
+                # Camino original: aplicar redondeos backend
+                precio_unitario_redondeado = redondear_a_siguiente_centena(precio_u_bruto)
+                if descuento_item_porc > 0:
+                    precio_unitario_con_descuento = precio_unitario_redondeado * (Decimal('1.0') - descuento_item_porc / Decimal('100'))
+                    precio_unitario_con_descuento = redondear_a_siguiente_centena(precio_unitario_con_descuento)
+                else:
+                    precio_unitario_con_descuento = precio_unitario_redondeado
+                precio_total_item = redondear_a_siguiente_centena(precio_unitario_con_descuento * cantidad)
             detalle = DetalleVenta(
                 producto_id=producto_id, cantidad=cantidad,
                 precio_unitario_venta_ars=precio_unitario_con_descuento,
@@ -332,11 +346,15 @@ def registrar_venta(current_user):
         monto_con_recargos, recargo_t_calc, recargo_f_calc, _, _ = calcular_monto_final_y_vuelto(
             monto_total_base_neto, forma_pago, requiere_factura
         )
-        # Aplicar descuento y redondeo usando función util
-        from app.utils.precios_utils import aplicar_descuento
-        _, monto_final_a_pagar, tipo_redondeo = aplicar_descuento(
-            monto_con_recargos, descuento_total_global_porc, redondeo='centena'
-        )
+        # Aplicar descuento global SOLO si es > 0; si es 0 evitamos segundo redondeo
+        if descuento_total_global_porc == 0:
+            monto_final_a_pagar = monto_con_recargos
+            tipo_redondeo = 'recargos_unico'
+        else:
+            from app.utils.precios_utils import aplicar_descuento
+            _, monto_final_a_pagar, tipo_redondeo = aplicar_descuento(
+                monto_con_recargos, descuento_total_global_porc, redondeo='centena'
+            )
         print(f"Suma monto_total_base_neto después de redondear: {monto_total_base_neto}")
         print(f"Recargos calculados: transferencia={recargo_t_calc}, factura={recargo_f_calc}")
         print(f"Monto final a pagar (redondeado): {monto_final_a_pagar}")
@@ -1277,118 +1295,3 @@ def recalcular_montos_por_dolar(current_user):
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": "Error interno al recalcular los montos.", "detalle": str(e)}), 500
-    
-    
-@ventas_bp.route('/actualizar_precios_pendientes', methods=['POST'])
-@token_required
-@roles_required(ROLES['ADMIN'], ROLES['VENTAS_PEDIDOS'])
-def actualizar_precios_pendientes(current_user):
-    """
-    Recalcula y actualiza los precios de todas las boletas pendientes (estado 'Pendiente').
-    Permite filtrar por cliente si se envía 'cliente_id'.
-    """
-    data = request.get_json() or {}
-    cliente_id = data.get('cliente_id')
-    # Filtrar ventas pendientes por el formato en nombre_vendedor (ej: 'PENDIENTE-...')
-    from sqlalchemy import or_
-    query = Venta.query.filter(
-        or_(
-            Venta.nombre_vendedor.ilike('PENDIENTE-%'),
-            Venta.nombre_vendedor.ilike('pedidos')
-        )
-    )
-    if cliente_id:
-        query = query.filter_by(cliente_id=cliente_id)
-    ventas_pendientes = query.all()
-    logs = []
-    actualizadas = []
-    logs.append(f"Total boletas pendientes encontradas: {len(ventas_pendientes)}")
-    if len(ventas_pendientes) == 0:
-        # Mostrar los primeros 10 y los últimos 10 nombre_vendedor de todas las ventas para depuración
-        primeras_ventas = Venta.query.order_by(Venta.id.asc()).limit(10).all()
-        ultimas_ventas = Venta.query.order_by(Venta.id.desc()).limit(10).all()
-        logs.append("Primeros 10 nombre_vendedor en la base de datos:")
-        for v in primeras_ventas:
-            logs.append(f"ID: {v.id}, nombre_vendedor: {v.nombre_vendedor}")
-        logs.append("Últimos 10 nombre_vendedor en la base de datos:")
-        for v in ultimas_ventas:
-            logs.append(f"ID: {v.id}, nombre_vendedor: {v.nombre_vendedor}")
-    else:
-        logs.append("Boletas pendientes encontradas:")
-        for v in ventas_pendientes:
-            logs.append(f"ID: {v.id}, nombre_vendedor: {v.nombre_vendedor}")
-    for venta in ventas_pendientes:
-        db.session.expire_all()  # Fuerza recarga de datos desde la base de datos, incluido el tipo de cambio
-        if not venta.detalles or len(venta.detalles) == 0:
-            logs.append(f"Venta ID {venta.id}: NO se recalcula porque no tiene ítems. Se mantiene sin cambios.")
-            continue
-        monto_total_base_nuevo = Decimal('0.00')
-        detalles_nuevos = []
-        tc_usados = []
-        from ..models import DetalleVenta, Producto, TipoCambio
-        DetalleVenta.query.filter_by(venta_id=venta.id).delete()
-        db.session.flush()
-        for d in venta.detalles:
-            # Recalcular usando la función completa
-            precio_u_bruto, precio_t_bruto, costo_u, _, error_msg, es_precio_especial = calcular_precio_item_venta(
-                d.producto_id, Decimal(str(d.cantidad)), venta.cliente_id
-            )
-            if error_msg:
-                logs.append(f"Venta ID {venta.id} - Producto {d.producto_id}: ERROR: {error_msg}")
-                continue
-            # Obtener tipo de cambio usado
-            producto = db.session.get(Producto, d.producto_id)
-            tc_nombre = 'Oficial' if getattr(producto, 'ajusta_por_tc', False) else 'Empresa'
-            tipo_cambio = TipoCambio.query.filter_by(nombre=tc_nombre).first()
-            tc_valor = tipo_cambio.valor if tipo_cambio else None
-            tc_usados.append(f"Prod {d.producto_id}: TC '{tc_nombre}'={tc_valor}")
-            precio_t_neto_item = precio_t_bruto * (Decimal(1) - (Decimal(str(d.descuento_item or 0)) / Decimal(100)))
-            # Redondeo SIEMPRE hacia arriba a la centena
-            precio_t_neto_item = Decimal(math.ceil(precio_t_neto_item / 100) * 100)
-            detalle_nuevo = DetalleVenta(
-                venta_id=venta.id,
-                producto_id=d.producto_id,
-                cantidad=d.cantidad,
-                precio_unitario_venta_ars=precio_u_bruto,
-                precio_total_item_ars=precio_t_neto_item,
-                costo_unitario_momento_ars=costo_u,
-                descuento_item=d.descuento_item,
-                observacion_item=d.observacion_item
-            )
-            db.session.add(detalle_nuevo)
-            monto_total_base_nuevo += precio_t_neto_item
-            detalles_nuevos.append(detalle_nuevo)
-        venta.monto_total = monto_total_base_nuevo.quantize(Decimal('0.01'))
-        monto_con_recargos_nuevo, recargo_t_nuevo, recargo_f_nuevo, _, _ = calcular_monto_final_y_vuelto(
-            venta.monto_total, venta.forma_pago, venta.requiere_factura
-        )
-        descuento_total_nuevo_porc = Decimal(str(getattr(venta, 'descuento_general', '0.0')))
-        monto_final_a_pagar_nuevo = monto_con_recargos_nuevo * (Decimal(1) - descuento_total_nuevo_porc / Decimal(100))
-        monto_final_a_pagar_nuevo = Decimal(math.ceil(monto_final_a_pagar_nuevo / 100) * 100)
-        monto_final_anterior = float(venta.monto_final_con_recargos) if venta.monto_final_con_recargos is not None else None
-        logs.append(f"Venta ID {venta.id}: TC usados: {', '.join(tc_usados)}")
-        logs.append(f"Venta ID {venta.id}: monto_final_con_recargos anterior = {monto_final_anterior}, nuevo = {float(monto_final_a_pagar_nuevo)}")
-        venta.recargo_transferencia = recargo_t_nuevo
-        venta.recargo_factura = recargo_f_nuevo
-        venta.monto_final_con_recargos = monto_final_a_pagar_nuevo
-        venta.monto_final_redondeado = monto_final_a_pagar_nuevo
-        actualizadas.append(venta.id)
-    db.session.flush()
-    db.session.commit()
-    db.session.expire_all()  # Fuerza que los datos estén actualizados en futuras consultas
-
-    # Consultar nuevamente las ventas actualizadas y recargar detalles antes de serializar
-    ventas_actualizadas_objs = db.session.query(Venta).filter(Venta.id.in_(actualizadas)).all()
-    ventas_actualizadas_data = []
-    for v in ventas_actualizadas_objs:
-        db.session.refresh(v)
-        v.detalles = db.session.query(DetalleVenta).filter_by(venta_id=v.id).all()
-        ventas_actualizadas_data.append(venta_a_dict_completo(v))
-
-    return jsonify({
-        "status": "success",
-        "message": f"Precios actualizados en {len(actualizadas)} boletas pendientes.",
-        "ventas_actualizadas": actualizadas,
-        "ventas_actualizadas_data": ventas_actualizadas_data,
-        "logs": logs
-    })
