@@ -56,10 +56,10 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     return productos.reduce((sum, item) => sum + (item.total || 0), 0);
   }, [productos]);
 
-  // Helper: redondear hacia arriba a la centena (múltiplo de 100) igual que backend
-  const roundUpToCentena = (v: number) => {
+  // Helper: solo cuantizar a 2 decimales sin redondeo adicional
+  const quantizeToDecimals = (v: number) => {
     if (!v || isNaN(v)) return 0;
-    return Math.ceil(v / 100) * 100;
+    return Math.round(v * 100) / 100;
   };
 
   /**
@@ -130,15 +130,15 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         if (!item) return;
         const cantidad = item.qx || 0;
         const descuento = item.descuento || 0; // %
-        // Paso 1: redondear unitario bruto a centena
-        const unitRounded = roundUpToCentena(precioUnitario);
-        // Paso 2: aplicar descuento por ítem (no se re-redondea unitario con descuento, igual que backend)
-        const unitWithDiscount = unitRounded * (1 - (descuento / 100));
-        // Paso 3: calcular total bruto y redondearlo a centena
+        // Solo cuantizar a 2 decimales, el backend se encarga del redondeo final
+        const unitQuantized = quantizeToDecimals(precioUnitario);
+        // Aplicar descuento por ítem
+        const unitWithDiscount = unitQuantized * (1 - (descuento / 100));
+        // Calcular total sin redondeo adicional (backend lo maneja)
         const totalBruto = unitWithDiscount * cantidad;
-        const totalRedondeado = roundUpToCentena(totalBruto);
-        item.precio = unitWithDiscount; // Mostrar unitario neto (coincide con backend guardado)
-        item.total = totalRedondeado;   // Total item ya redondeado como backend
+        const totalQuantized = quantizeToDecimals(totalBruto);
+        item.precio = quantizeToDecimals(unitWithDiscount); // Unitario con descuento cuantizado
+        item.total = totalQuantized;   // Total cuantizado, backend aplicará redondeo final
       });
     });
 
@@ -200,8 +200,8 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
 
       if (productosDesdeAPI.length > 0) {
         setProductos(productosDesdeAPI);
-        // Recalcular inmediatamente usando los valores actuales para normalizar fórmula con lógica vigente
-        await recalculatePricesForProducts(productosDesdeAPI, clienteId);
+        // NO recalcular inmediatamente - usar valores guardados para evitar diferencias
+        // Solo recalcular si el usuario cambia algo manualmente
       } else {
         setProductos([initialProductoItem]);
       }
