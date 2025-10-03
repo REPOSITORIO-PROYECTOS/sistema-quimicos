@@ -727,7 +727,34 @@ def get_dashboard_kpis(current_user):
         kpis_compras = _get_kpis_de_compras()
         kpis_mes = _get_kpis_del_mes(fecha_seleccionada)
 
-        # 2. Armar el JSON de respuesta final
+        # 2. Convertir SOLO los KPIs del mes a USD (según requerimiento) usando TC 'Oficial'
+        try:
+            tc_oficial = TipoCambio.query.filter_by(nombre='Oficial').first()
+            tc_conversion = Decimal(str(tc_oficial.valor)) if tc_oficial and tc_oficial.valor else Decimal('0')
+        except Exception:
+            tc_conversion = Decimal('0')
+
+        if tc_conversion and tc_conversion > 0:
+            ventas_mes_usd = (kpis_mes["ventas_mes"] / tc_conversion).quantize(Decimal('0.01'), ROUND_HALF_UP)
+            costos_variables_mes_usd = (kpis_mes["costos_variables_mes"] / tc_conversion).quantize(Decimal('0.01'), ROUND_HALF_UP)
+            ganancia_bruta_mes_usd = (kpis_mes["ganancia_bruta_mes"] / tc_conversion).quantize(Decimal('0.01'), ROUND_HALF_UP)
+            ingresos_puerta_mes_usd = (kpis_mes["ingresos_puerta_mes"] / tc_conversion).quantize(Decimal('0.01'), ROUND_HALF_UP)
+            ingresos_pedidos_mes_usd = (kpis_mes["ingresos_pedidos_mes"] / tc_conversion).quantize(Decimal('0.01'), ROUND_HALF_UP)
+            ingresos_efectivo_mes_usd = (kpis_mes["ingresos_efectivo_mes"] / tc_conversion).quantize(Decimal('0.01'), ROUND_HALF_UP)
+            ingresos_otros_mes_usd = (kpis_mes["ingresos_otros_mes"] / tc_conversion).quantize(Decimal('0.01'), ROUND_HALF_UP)
+            moneda_mes = 'USD'
+        else:
+            # Si no hay TC válido, devolver en ARS pero marcando moneda
+            ventas_mes_usd = kpis_mes["ventas_mes"].quantize(Decimal('0.01'), ROUND_HALF_UP)
+            costos_variables_mes_usd = kpis_mes["costos_variables_mes"].quantize(Decimal('0.01'), ROUND_HALF_UP)
+            ganancia_bruta_mes_usd = kpis_mes["ganancia_bruta_mes"].quantize(Decimal('0.01'), ROUND_HALF_UP)
+            ingresos_puerta_mes_usd = kpis_mes["ingresos_puerta_mes"].quantize(Decimal('0.01'), ROUND_HALF_UP)
+            ingresos_pedidos_mes_usd = kpis_mes["ingresos_pedidos_mes"].quantize(Decimal('0.01'), ROUND_HALF_UP)
+            ingresos_efectivo_mes_usd = kpis_mes["ingresos_efectivo_mes"].quantize(Decimal('0.01'), ROUND_HALF_UP)
+            ingresos_otros_mes_usd = kpis_mes["ingresos_otros_mes"].quantize(Decimal('0.01'), ROUND_HALF_UP)
+            moneda_mes = 'ARS_FALLBACK'
+
+        # 3. Armar el JSON de respuesta final (día y proveedores siguen en ARS; mes en USD)
         response_data = {
             "primera_fila": {
                 "ingreso_puerta_hoy": float(kpis_dia["ingreso_puerta_hoy"]),
@@ -752,20 +779,22 @@ def get_dashboard_kpis(current_user):
                 "compras_por_recibir": float(kpis_compras["compras_por_recibir"])
             },
             "segunda_fila": {
-                "ventas_mes": float(kpis_mes["ventas_mes"]),
-                "costos_variables_mes": float(kpis_mes["costos_variables_mes"]),
-                "ganancia_bruta_mes": float(kpis_mes["ganancia_bruta_mes"]),
-                # factor_ganancia_mes se calcula en el frontend o se puede añadir aquí
+                "ventas_mes": float(ventas_mes_usd),
+                "costos_variables_mes": float(costos_variables_mes_usd),
+                "ganancia_bruta_mes": float(ganancia_bruta_mes_usd),
+                "moneda": moneda_mes,
+                "tc_usado": float(tc_conversion) if tc_conversion and tc_conversion > 0 else None
             },
             "tercera_fila": {
                 "relacion_ingresos": { 
-                    "puerta": float(kpis_mes["ingresos_puerta_mes"]), 
-                    "pedidos": float(kpis_mes["ingresos_pedidos_mes"]) 
+                    "puerta": float(ingresos_puerta_mes_usd), 
+                    "pedidos": float(ingresos_pedidos_mes_usd) 
                 },
                 "relacion_pagos": { 
-                    "efectivo": float(kpis_mes["ingresos_efectivo_mes"]), 
-                    "otros": float(kpis_mes["ingresos_otros_mes"]) 
-                }
+                    "efectivo": float(ingresos_efectivo_mes_usd), 
+                    "otros": float(ingresos_otros_mes_usd) 
+                },
+                "moneda": moneda_mes
             }
         }
         
