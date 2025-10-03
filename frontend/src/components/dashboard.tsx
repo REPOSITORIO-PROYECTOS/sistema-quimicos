@@ -137,21 +137,36 @@ export default function DashboardPage() {
         }
     };
     
-    const relacionIngresosData = useMemo(() => {
-        if (!data) return [];
+    const relacionIngresosDataRaw = useMemo(() => {
+        if (!data) return [] as { name: string; value: number }[];
         return [
             { name: 'Ingresos Puerta', value: data.tercera_fila.relacion_ingresos.puerta },
             { name: 'Ingresos Pedidos', value: data.tercera_fila.relacion_ingresos.pedidos },
         ].filter(item => item.value > 0);
     }, [data]);
 
-    const relacionPagosData = useMemo(() => {
-        if (!data) return [];
+    const relacionIngresosData = useMemo(() => {
+        if (!showFinanzas) {
+            // Enmascara valores reales para no revelar proporciones
+            return relacionIngresosDataRaw.map(d => ({ ...d, value: 1 }));
+        }
+        return relacionIngresosDataRaw;
+    }, [relacionIngresosDataRaw, showFinanzas]);
+
+    const relacionPagosDataRaw = useMemo(() => {
+        if (!data) return [] as { name: string; value: number }[];
         return [
             { name: 'Efectivo', value: data.tercera_fila.relacion_pagos.efectivo },
             { name: 'Transferencia/Factura', value: data.tercera_fila.relacion_pagos.otros },
         ].filter(item => item.value > 0);
     }, [data]);
+
+    const relacionPagosData = useMemo(() => {
+        if (!showFinanzas) {
+            return relacionPagosDataRaw.map(d => ({ ...d, value: 1 }));
+        }
+        return relacionPagosDataRaw;
+    }, [relacionPagosDataRaw, showFinanzas]);
 
     const hoy = getISODate(new Date());
     const ayer = getISODate(new Date(Date.now() - 86400000));
@@ -328,10 +343,10 @@ export default function DashboardPage() {
                         <CardContent className="h-[300px]">
                             <ResponsiveContainer width="100%" height="100%">
                                 <PieChart>
-                                    <Pie data={relacionIngresosData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
-                                        {relacionIngresosData.map((entry, index) => <Cell key={`cell-${index}`} fill={PIE_COLORS.ingresos[index % PIE_COLORS.ingresos.length]} />)}
+                                    <Pie data={relacionIngresosData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={({ name }) => name}>
+                                        {relacionIngresosData.map((entry, index) => <Cell key={`cell-ing-${index}`} fill={PIE_COLORS.ingresos[index % PIE_COLORS.ingresos.length]} />)}
                                     </Pie>
-                                    <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                                    <Tooltip formatter={(value: number) => showFinanzas ? formatCurrency(value) : '***'} />
                                     <Legend />
                                 </PieChart>
                             </ResponsiveContainer>
@@ -342,10 +357,10 @@ export default function DashboardPage() {
                         <CardContent className="h-[300px]">
                             <ResponsiveContainer width="100%" height="100%">
                                 <PieChart>
-                                    <Pie data={relacionPagosData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
-                                        {relacionPagosData.map((entry, index) => <Cell key={`cell-${index}`} fill={PIE_COLORS.pagos[index % PIE_COLORS.pagos.length]} />)}
+                                    <Pie data={relacionPagosData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={({ name }) => name}>
+                                        {relacionPagosData.map((entry, index) => <Cell key={`cell-pagos-${index}`} fill={PIE_COLORS.pagos[index % PIE_COLORS.pagos.length]} />)}
                                     </Pie>
-                                    <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                                    <Tooltip formatter={(value: number) => showFinanzas ? formatCurrency(value) : '***'} />
                                     <Legend />
                                 </PieChart>
                             </ResponsiveContainer>
