@@ -56,6 +56,7 @@ export default function DashboardPage() {
     const [isDownloading, setIsDownloading] = useState(false);
     const [showPuertaMontos, setShowPuertaMontos] = useState(false);
     const [showPedidoMontos, setShowPedidoMontos] = useState(false);
+    const [showFinanzas, setShowFinanzas] = useState(false); // Cambiado: ahora oculto por defecto
     // Unidades por forma de pago
     const puertaUnidades = {
         efectivo: data ? (data.primera_fila.puerta_efectivo_unidades ?? 0) : 0,
@@ -165,6 +166,14 @@ export default function DashboardPage() {
             <div className="flex flex-col md:flex-row justify-between items-center gap-4 border-b pb-4">
                 <h2 className="text-3xl font-bold tracking-tight">Dashboard General</h2>
                 <div className="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto">
+                    {/* Botón toggle montos 3ra fila */}
+                    <button
+                        type="button"
+                        onClick={() => setShowFinanzas(v => !v)}
+                        className="w-full sm:w-auto bg-indigo-600 text-white px-4 py-2 rounded-md shadow-sm hover:bg-indigo-700 text-sm"
+                    >
+                        {showFinanzas ? 'Ocultar Ventas/Costos/Ganancia' : 'Mostrar Ventas/Costos/Ganancia'}
+                    </button>
                     <div className="flex items-center gap-2">
                         <label htmlFor="dashboard-date" className="font-medium text-sm">Ver KPIs del día:</label>
                         <input
@@ -281,9 +290,36 @@ export default function DashboardPage() {
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-3">
-                    <Card><CardHeader className="pb-2 flex flex-row items-center justify-between"><CardTitle className="text-sm font-medium">Ventas del Mes</CardTitle><DollarSign className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><p className="text-2xl font-bold">{formatCurrency(data.segunda_fila.ventas_mes)}</p></CardContent></Card>
-                    <Card><CardHeader className="pb-2 flex flex-row items-center justify-between"><CardTitle className="text-sm font-medium">Costo Mercadería Vendida</CardTitle><ShoppingCart className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><p className="text-2xl font-bold">{formatCurrency(data.segunda_fila.costos_variables_mes)}</p></CardContent></Card>
-                    <Card><CardHeader className="pb-2 flex flex-row items-center justify-between"><CardTitle className="text-sm font-medium">Ganancia Bruta del Mes</CardTitle><TrendingUp className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><p className={`text-2xl font-bold ${data.segunda_fila.ganancia_bruta_mes < 0 ? 'text-red-600' : 'text-green-600'}`}>{formatCurrency(data.segunda_fila.ganancia_bruta_mes)}</p><p className="text-xs text-muted-foreground">Ventas - Costo de Mercadería</p></CardContent></Card>
+                    <Card>
+                        <CardHeader className="pb-2 flex flex-row items-center justify-between">
+                            <CardTitle className="text-sm font-medium">Ventas del Mes</CardTitle>
+                            <DollarSign className="h-4 w-4 text-muted-foreground" />
+                        </CardHeader>
+                        <CardContent>
+                            <p className="text-2xl font-bold">{showFinanzas ? formatCurrency(data.segunda_fila.ventas_mes) : '***'}</p>
+                        </CardContent>
+                    </Card>
+                    <Card>
+                        <CardHeader className="pb-2 flex flex-row items-center justify-between">
+                            <CardTitle className="text-sm font-medium">Costo Mercadería Vendida</CardTitle>
+                            <ShoppingCart className="h-4 w-4 text-muted-foreground" />
+                        </CardHeader>
+                        <CardContent>
+                            <p className="text-2xl font-bold">{showFinanzas ? formatCurrency(data.segunda_fila.costos_variables_mes) : '***'}</p>
+                        </CardContent>
+                    </Card>
+                    <Card>
+                        <CardHeader className="pb-2 flex flex-row items-center justify-between">
+                            <CardTitle className="text-sm font-medium">Ganancia Bruta del Mes</CardTitle>
+                            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                        </CardHeader>
+                        <CardContent>
+                            <p className={`text-2xl font-bold ${data.segunda_fila.ganancia_bruta_mes < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                                {showFinanzas ? formatCurrency(data.segunda_fila.ganancia_bruta_mes) : '***'}
+                            </p>
+                            {showFinanzas && <p className="text-xs text-muted-foreground">Ventas - Costo de Mercadería</p>}
+                        </CardContent>
+                    </Card>
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2">
