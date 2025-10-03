@@ -292,6 +292,18 @@ def registrar_venta(current_user):
             descuento_item_porc = Decimal(str(item_data.get("descuento_item_porcentaje", "0.0")))
             if cantidad <= 0:
                 continue
+            # Detectar si existe precio especial activo para elegir regla de redondeo (decena vs centena)
+            es_precio_especial_item = False
+            if cliente_id and producto_id:
+                try:
+                    precio_especial_tmp = db.session.query(PrecioEspecialCliente).filter(
+                        PrecioEspecialCliente.cliente_id == cliente_id,
+                        PrecioEspecialCliente.producto_id == producto_id,
+                        PrecioEspecialCliente.activo == True
+                    ).first()
+                    es_precio_especial_item = precio_especial_tmp is not None
+                except Exception:
+                    es_precio_especial_item = False
             precio_u_bruto = item_data.get("precio_unitario_venta_ars")
             precio_t_bruto = item_data.get("precio_total_item_ars")
             costo_u = None
@@ -308,27 +320,30 @@ def registrar_venta(current_user):
                         return jsonify({"error": f"Error en Prod ID {producto_id}: {error_msg}"}), 400
             except Exception:
                 return jsonify({"error": f"Precio unitario o total inválido para Prod ID {producto_id}"}), 400
-            # Si el front ya mandó precios y NO hay descuento de item, usamos tal cual (solo cuantizamos a 2 decimales)
-            if precio_u_bruto is not None and precio_t_bruto is not None and descuento_item_porc == 0:
-                precio_unitario_con_descuento = precio_u_bruto.quantize(Decimal("0.01"), ROUND_HALF_UP)
-                precio_total_item = precio_t_bruto.quantize(Decimal("0.01"), ROUND_HALF_UP)
-                # Coherencia: si la multiplicación difiere más de 1 peso, ajustar total a multiplicación redondeada a centena
-                try:
-                    total_calculado = (precio_unitario_con_descuento * cantidad).quantize(Decimal("0.01"), ROUND_HALF_UP)
-                    if abs(total_calculado - precio_total_item) > Decimal('1'):
-                        # Ajustamos manteniendo criterio histórico (centena)
-                        precio_total_item = redondear_a_siguiente_centena(total_calculado)
-                except Exception:
-                    pass
+            # Nueva regla: el precio unitario SIEMPRE se redondea a la siguiente decena.
+            # El total se redondea: especial -> decena, normal -> centena.
+            try:
+                precio_unitario_base = Decimal(str(precio_u_bruto)) if precio_u_bruto is not None else Decimal('0.00')
+            except Exception:
+                precio_unitario_base = Decimal('0.00')
+
+            # Aplicar descuento a nivel unitario si corresponde
+            if descuento_item_porc > 0:
+                precio_unitario_desc = precio_unitario_base * (Decimal('1.0') - descuento_item_porc / Decimal('100'))
             else:
-                # Camino original: aplicar redondeos backend
-                precio_unitario_redondeado = redondear_a_siguiente_centena(precio_u_bruto)
-                if descuento_item_porc > 0:
-                    precio_unitario_con_descuento = precio_unitario_redondeado * (Decimal('1.0') - descuento_item_porc / Decimal('100'))
-                    precio_unitario_con_descuento = redondear_a_siguiente_centena(precio_unitario_con_descuento)
-                else:
-                    precio_unitario_con_descuento = precio_unitario_redondeado
-                precio_total_item = redondear_a_siguiente_centena(precio_unitario_con_descuento * cantidad)
+                precio_unitario_desc = precio_unitario_base
+
+            # Redondeo unitario siempre a decena
+            precio_unitario_con_descuento = redondear_a_siguiente_decena(precio_unitario_desc)
+
+            # Subtotal previo a redondeo final
+            subtotal_tmp = (precio_unitario_con_descuento * cantidad)
+            if es_precio_especial_item:
+                precio_total_item = redondear_a_siguiente_decena(subtotal_tmp)
+            else:
+                precio_total_item = redondear_a_siguiente_centena(subtotal_tmp)
+
+            # NO recalculamos el unitario desde el total para preservar siempre el redondeo a decena exacto.
             detalle = DetalleVenta(
                 producto_id=producto_id, cantidad=cantidad,
                 precio_unitario_venta_ars=precio_unitario_con_descuento,
@@ -339,7 +354,6 @@ def registrar_venta(current_user):
             )
             detalles_venta_db.append(detalle)
             monto_total_base_neto += precio_total_item
-
         print(f"Suma monto_total_base_neto antes de redondear: {monto_total_base_neto}")
         monto_total_base_neto = monto_total_base_neto.quantize(Decimal("0.01"), ROUND_HALF_UP)
         # Calcular recargos y luego aplicar descuento con redondeo adecuado
