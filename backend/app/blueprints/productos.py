@@ -73,6 +73,11 @@ def producto_a_dict(producto):
     return {
         "id": producto.id,
         "nombre": producto.nombre,
+        "categoria_id": producto.categoria_id,
+        "categoria": {
+            "id": producto.categoria.id,
+            "nombre": producto.categoria.nombre
+        } if producto.categoria else None,
         "unidad_venta": producto.unidad_venta,
         "tipo_calculo": producto.tipo_calculo,
         "ref_calculo": producto.ref_calculo,
@@ -188,11 +193,22 @@ def crear_producto():
         costo_ref_inicial = None
         if 'costo_referencia_usd' in data and not data.get('es_receta'):
              costo_ref_inicial = Decimal(str(data['costo_referencia_usd']))
+        
+        # Validar categoría si se proporciona
+        categoria_id = data.get('categoria_id')
+        if categoria_id is not None:
+            from ..models import CategoriaProducto
+            categoria = CategoriaProducto.query.get(categoria_id)
+            if not categoria:
+                return jsonify({"error": f"Categoría con ID {categoria_id} no encontrada"}), 400
+            if not categoria.activo:
+                return jsonify({"error": f"La categoría '{categoria.nombre}' está inactiva"}), 400
 
         # Crear instancia del modelo
         nuevo_producto = Producto(
             id=data['id'],
             nombre=data['nombre'],
+            categoria_id=categoria_id,
             unidad_venta=data.get('unidad_venta'),
             tipo_calculo=data.get('tipo_calculo'),
             ref_calculo=data.get('ref_calculo'),
@@ -353,6 +369,20 @@ def actualizar_producto(producto_id):
         producto.unidad_venta = data.get('unidad_venta', producto.unidad_venta)
         producto.ajusta_por_tc = data.get('ajusta_por_tc', producto.ajusta_por_tc)
         producto.activo = data.get('activo',producto.activo)
+        
+        # Actualizar categoría si se proporciona
+        if 'categoria_id' in data:
+            categoria_id = data.get('categoria_id')
+            if categoria_id is not None:
+                # Verificar que la categoría existe
+                from ..models import CategoriaProducto
+                categoria = CategoriaProducto.query.get(categoria_id)
+                if not categoria:
+                    return jsonify({"error": f"Categoría con ID {categoria_id} no encontrada"}), 400
+                if not categoria.activo:
+                    return jsonify({"error": f"La categoría '{categoria.nombre}' está inactiva"}), 400
+            producto.categoria_id = categoria_id
+        
         # ... otros campos que actualizas ...
 
         # --- LÓGICA DE ACTUALIZACIÓN DE COSTO Y FLAGS (CORREGIDA Y EXPLÍCITA) ---

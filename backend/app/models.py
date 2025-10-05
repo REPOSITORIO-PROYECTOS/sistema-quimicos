@@ -55,6 +55,32 @@ class Proveedor(db.Model):
             'activo': self.activo
           }
 
+# --- Modelo CategoriaProducto ---
+class CategoriaProducto(db.Model):
+    __tablename__ = 'categorias_producto'
+    id = db.Column(db.Integer, primary_key=True)
+    nombre = db.Column(db.String(100), nullable=False, unique=True, index=True)
+    descripcion = db.Column(db.String(255), nullable=True)
+    activo = db.Column(db.Boolean, default=True, nullable=False, index=True)
+    fecha_creacion = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    fecha_modificacion = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    
+    # Relación con productos
+    productos = db.relationship('Producto', back_populates='categoria', lazy='dynamic')
+    
+    def __repr__(self):
+        return f'<CategoriaProducto {self.nombre}>'
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'nombre': self.nombre,
+            'descripcion': self.descripcion,
+            'activo': self.activo,
+            'fecha_creacion': self.fecha_creacion.isoformat() if self.fecha_creacion else None,
+            'fecha_modificacion': self.fecha_modificacion.isoformat() if self.fecha_modificacion else None
+        }
+
 # --- Modelo Producto ---
 class Producto(db.Model):
     __tablename__ = 'productos'
@@ -62,6 +88,7 @@ class Producto(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     # ... (Pega aquí el resto de columnas y relaciones de Producto) ...
     nombre = db.Column(db.String(200), nullable=False)
+    categoria_id = db.Column(db.Integer, db.ForeignKey('categorias_producto.id', ondelete='SET NULL'), nullable=True, index=True)
 #    receta_id = db.Column(db.Integer, db.ForeignKey('recetas.id', ondelete='SET NULL'), nullable=True)
     unidad_venta = db.Column(db.String(50), nullable=True)
     tipo_calculo = db.Column(db.String(2), nullable=True)
@@ -72,6 +99,7 @@ class Producto(db.Model):
     es_receta = db.Column(db.Boolean, default=False, nullable=False, index=True)
     activo = db.Column(db.Boolean, default=False, nullable=False, index=True)
     fecha_actualizacion_costo = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    categoria = db.relationship('CategoriaProducto', back_populates='productos')
     receta = db.relationship("Receta", back_populates="producto_final", uselist=False, cascade="all, delete-orphan")
     usado_en_recetas = db.relationship("RecetaItem", back_populates="ingrediente", lazy='dynamic')
     detalles_venta = db.relationship("DetalleVenta", back_populates="producto", lazy='dynamic')

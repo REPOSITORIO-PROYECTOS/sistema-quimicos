@@ -141,6 +141,8 @@ def create_app(config_object='config.Config'):
         from .blueprints.precios_especiales import precios_especiales_bp
         from .blueprints.reportes import reportes_bp
         from .blueprints.dashboard import dashboard_bp
+        from .blueprints.categorias import categorias_bp
+        from .blueprints.categoria_productos import categoria_productos_bp
 
         
         app.register_blueprint(auth_bp)
@@ -157,6 +159,8 @@ def create_app(config_object='config.Config'):
         app.register_blueprint(precios_especiales_bp)
         app.register_blueprint(reportes_bp)
         app.register_blueprint(dashboard_bp)
+        app.register_blueprint(categorias_bp)
+        app.register_blueprint(categoria_productos_bp)
 
         print("--- INFO [app/__init__.py]: Todos los blueprints registrados.")
 
