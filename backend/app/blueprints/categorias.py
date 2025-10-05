@@ -66,7 +66,7 @@ def crear_categoria(current_user):
         
         categoria = CategoriaProducto(
             nombre=nombre,
-            descripcion=data.get('descripcion', '').strip() or None,
+            descripcion=(data.get('descripcion') or '').strip() or None,
             activo=data.get('activo', True)
         )
         
@@ -139,7 +139,8 @@ def actualizar_categoria(current_user, categoria_id):
             categoria.nombre = nombre
         
         if 'descripcion' in data:
-            categoria.descripcion = data['descripcion'].strip() or None
+            # Defensive: data['descripcion'] may be None, make safe before strip()
+            categoria.descripcion = (data.get('descripcion') or '').strip() or None
         
         if 'activo' in data:
             categoria.activo = bool(data['activo'])
