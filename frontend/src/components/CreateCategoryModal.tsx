@@ -42,7 +42,7 @@ export const CreateCategoryModal: React.FC<CreateCategoryModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[425px] bg-white p-6 rounded-lg shadow-xl z-50 mx-4">
         <DialogHeader>
           <DialogTitle>Crear Nueva Categoría</DialogTitle>
           <DialogDescription>
@@ -87,21 +87,23 @@ export const CreateCategoryModal: React.FC<CreateCategoryModalProps> = ({
         </div>
         
         <DialogFooter>
-          <Button 
-            type="button" 
-            variant="outline" 
-            onClick={handleClose}
-            disabled={isCreating}
-          >
-            Cancelar
-          </Button>
-          <Button 
-            type="submit" 
-            onClick={onSubmit}
-            disabled={!categoryName.trim() || isCreating}
-          >
-            {isCreating ? 'Creando...' : 'Crear Categoría'}
-          </Button>
+          <div className="w-full flex justify-end gap-2">
+            <Button 
+              type="button" 
+              variant="outline" 
+              onClick={handleClose}
+              disabled={isCreating}
+            >
+              Cancelar
+            </Button>
+            <Button 
+              type="submit" 
+              onClick={onSubmit}
+              disabled={!categoryName.trim() || isCreating}
+            >
+              {isCreating ? 'Creando...' : 'Crear Categoría'}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
