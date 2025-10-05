@@ -1216,23 +1216,8 @@ const handleDeleteProduct = async (itemToDelete: DisplayItem) => {
                 onOpenUploadModal={handleOpenUploadModal}
                 onOpenCreateProductModal={handleOpenCreateProductModal}
               />
-              <DolarControls
-                loadingDolar={loadingDolar}
-                isEditingDolar={isEditingDolar}
-                dolarOficial={dolarOficial}
-                dolarQuimex={dolarQuimex}
-                editDolarOficial={editDolarOficial}
-                editDolarQuimex={editDolarQuimex}
-                loadingDolarSave={loadingDolarSave}
-                errorDolar={errorDolar}
-                errorDolarSave={errorDolarSave}
-                onEditDolarClick={handleEditDolarClick}
-                onDolarInputChange={handleDolarInputChange}
-                onSaveDolarValues={handleSaveDolarValues}
-                onCancelDolarEdit={handleCancelDolarEdit}
-              />
             </div>
-            </div>
+          </div>
         </div>
 
         {/* Controles de Selección Múltiple */}

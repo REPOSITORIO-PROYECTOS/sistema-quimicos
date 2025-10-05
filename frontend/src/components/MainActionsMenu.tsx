@@ -42,13 +42,15 @@ export const MainActionsMenu: React.FC<MainActionsMenuProps> = ({
     const formData = new FormData();
     formData.append('file', file);
     try {
-      // Cambia la URL por la de tu endpoint backend real
-      const response = await fetch('/api/upload-clasificacion', {
+      const token = localStorage.getItem('token');
+      const response = await fetch('https://quimex.sistemataup.online/categoria_productos/upload_clasificacion_csv', {
         method: 'POST',
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
         body: formData,
       });
       if (!response.ok) throw new Error('Error al subir el archivo');
-      alert('Archivo subido y procesado correctamente');
+      const data = await response.json();
+      alert(data.mensaje || 'Archivo subido y procesado correctamente');
     } catch (err) {
       alert('Error al subir el archivo: ' + (err as Error).message);
     }

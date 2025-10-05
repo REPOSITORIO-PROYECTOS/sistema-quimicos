@@ -417,3 +417,46 @@ def asignar_categoria_por_nombres(current_user):
         db.session.rollback()
         traceback.print_exc()
         return jsonify({'error': 'Error interno en la asignación por nombres', 'detalle': str(e)}), 500
+
+@categoria_productos_bp.route('/upload_clasificacion_csv', methods=['POST'])
+@token_required
+@roles_required(ROLES['ADMIN'])
+def upload_clasificacion_csv(current_user):
+    """
+    Recibe un archivo CSV con columnas: ID/Código, Nombre, Categoria
+    Asigna la categoría a cada producto por nombre (exacto o parcial).
+    El archivo debe subirse como multipart/form-data con campo 'file'.
+    """
+    import csv
+    from io import StringIO
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': "No se envió archivo (campo 'file')"}), 400
+        archivo = request.files['file']
+        contenido = archivo.read().decode('utf-8', errors='ignore')
+        lector = csv.DictReader(StringIO(contenido))
+        resultados = []
+        total_actualizados = 0
+        for fila in lector:
+            nombre = fila.get('Nombre', '').strip()
+            categoria_nombre = fila.get('Categoria', '').strip()
+            if not nombre or not categoria_nombre:
+                continue
+            categoria = CategoriaProducto.query.filter(CategoriaProducto.nombre.ilike(categoria_nombre)).first()
+            if not categoria:
+                resultados.append({'nombre': nombre, 'error': f'Categoría "{categoria_nombre}" no encontrada'})
+                continue
+            productos = Producto.query.filter(Producto.nombre.ilike(nombre)).all()
+            if not productos:
+                resultados.append({'nombre': nombre, 'error': 'Producto no encontrado'})
+                continue
+            for producto in productos:
+                producto.categoria_id = categoria.id
+                total_actualizados += 1
+                resultados.append({'id': producto.id, 'nombre': producto.nombre, 'categoria_id': categoria.id, 'categoria_nombre': categoria.nombre})
+        db.session.commit()
+        return jsonify({'mensaje': f'Clasificación completada. {total_actualizados} productos actualizados.', 'resultados': resultados, 'total_actualizados': total_actualizados})
+    except Exception as e:
+        db.session.rollback()
+        import traceback; traceback.print_exc()
+        return jsonify({'error': 'Error procesando el archivo', 'detalle': str(e)}), 500
