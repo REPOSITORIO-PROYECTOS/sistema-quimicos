@@ -424,7 +424,7 @@ def asignar_categoria_por_nombres(current_user):
 def upload_clasificacion_csv(current_user):
     """
     Recibe un archivo CSV con columnas: ID/Código, Nombre, Categoria
-    Asigna la categoría a cada producto por nombre (exacto o parcial).
+    Asigna la categoría a cada producto por nombre (coincidencia parcial, case-insensitive).
     El archivo debe subirse como multipart/form-data con campo 'file'.
     """
     import csv
@@ -437,6 +437,8 @@ def upload_clasificacion_csv(current_user):
         lector = csv.DictReader(StringIO(contenido))
         resultados = []
         total_actualizados = 0
+        productos_no_encontrados = []
+        categorias_no_encontradas = []
         for fila in lector:
             nombre = fila.get('Nombre', '').strip()
             categoria_nombre = fila.get('Categoria', '').strip()
@@ -444,10 +446,12 @@ def upload_clasificacion_csv(current_user):
                 continue
             categoria = CategoriaProducto.query.filter(CategoriaProducto.nombre.ilike(categoria_nombre)).first()
             if not categoria:
+                categorias_no_encontradas.append(categoria_nombre)
                 resultados.append({'nombre': nombre, 'error': f'Categoría "{categoria_nombre}" no encontrada'})
                 continue
-            productos = Producto.query.filter(Producto.nombre.ilike(nombre)).all()
+            productos = Producto.query.filter(Producto.nombre.ilike(f'%{nombre}%')).all()
             if not productos:
+                productos_no_encontrados.append(nombre)
                 resultados.append({'nombre': nombre, 'error': 'Producto no encontrado'})
                 continue
             for producto in productos:
@@ -455,7 +459,13 @@ def upload_clasificacion_csv(current_user):
                 total_actualizados += 1
                 resultados.append({'id': producto.id, 'nombre': producto.nombre, 'categoria_id': categoria.id, 'categoria_nombre': categoria.nombre})
         db.session.commit()
-        return jsonify({'mensaje': f'Clasificación completada. {total_actualizados} productos actualizados.', 'resultados': resultados, 'total_actualizados': total_actualizados})
+        return jsonify({
+            'mensaje': f'Clasificación completada. {total_actualizados} productos actualizados.',
+            'resultados': resultados,
+            'total_actualizados': total_actualizados,
+            'productos_no_encontrados': productos_no_encontrados,
+            'categorias_no_encontradas': list(set(categorias_no_encontradas))
+        })
     except Exception as e:
         db.session.rollback()
         import traceback; traceback.print_exc()
