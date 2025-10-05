@@ -42,14 +42,14 @@ export const SearchAndFilters: React.FC<SearchAndFiltersProps> = ({
           className="px-4 py-2 border rounded-md w-full sm:w-64"
         />
         <Select 
-          value={selectedCategoriaFilter?.toString() || ""} 
-          onValueChange={(value) => setSelectedCategoriaFilter(value === "" ? null : parseInt(value))}
+          value={selectedCategoriaFilter?.toString() || "all"} 
+          onValueChange={(value) => setSelectedCategoriaFilter(value === "all" ? null : parseInt(value))}
         >
           <SelectTrigger className="w-full sm:w-48">
             <SelectValue placeholder="Filtrar por categoría" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">Todas las categorías</SelectItem>
+            <SelectItem value="all">Todas las categorías</SelectItem>
             <SelectItem value="0">Sin categoría</SelectItem>
             {categorias.map((categoria) => (
               <SelectItem key={categoria.id} value={categoria.id.toString()}>
