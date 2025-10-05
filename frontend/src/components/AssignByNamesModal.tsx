@@ -1,6 +1,6 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+
 import { Label } from '@/components/ui/label';
 
 import {
@@ -38,7 +38,7 @@ interface AssignByNamesModalProps {
   categorias: CategoriaData[];
   isAssigning: boolean;
   error: string | null;
-  result: any;
+  result: {total_productos_actualizados: number; resultados: {productos_encontrados: {nombre: string; categoria_anterior?: string}[]; productos_no_encontrados: string[]}[]} | null;
 }
 
 export const AssignByNamesModal: React.FC<AssignByNamesModalProps> = ({
@@ -153,7 +153,7 @@ export const AssignByNamesModal: React.FC<AssignByNamesModalProps> = ({
                         Ver productos actualizados ({result.resultados[0].productos_encontrados.length})
                       </summary>
                       <ul className="mt-1 ml-4 text-xs">
-                        {result.resultados[0].productos_encontrados.slice(0, 10).map((producto: any, idx: number) => (
+                        {result.resultados[0].productos_encontrados.slice(0, 10).map((producto: {nombre: string; categoria_anterior?: string}, idx: number) => (
                           <li key={idx}>
                             {producto.nombre} 
                             {producto.categoria_anterior && ` (era: ${producto.categoria_anterior})`}

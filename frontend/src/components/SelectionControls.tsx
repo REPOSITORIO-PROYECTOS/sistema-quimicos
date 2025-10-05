@@ -18,7 +18,7 @@ interface SelectionControlsProps {
   // Estados de selección
   isSelectMode: boolean;
   selectedItems: Set<string>;
-  displayedItems: any[];
+  displayedItems: unknown[];
   
   // Estados de categorías
   categorias: CategoriaData[];

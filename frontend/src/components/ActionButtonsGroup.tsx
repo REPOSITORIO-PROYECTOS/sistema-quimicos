@@ -1,10 +1,9 @@
 import React from 'react';
-import { Button } from '@/components/ui/button';
 
 interface ActionButtonsGroupProps {
   // Estados generales
   token: string | null;
-  allItems: any[];
+  allItems: unknown[];
   
   // Estados de carga
   isUpdatingAllRecipes: boolean;

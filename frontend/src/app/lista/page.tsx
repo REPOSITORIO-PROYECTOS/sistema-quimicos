@@ -4,24 +4,8 @@
 import React, { useState, useEffect, useCallback, ChangeEvent } from 'react';
 import CreateProductModal from '@/components/CreateProductModal';
 import * as XLSX from 'xlsx';
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
-} from '@/components/ui/select';
-import { Button } from '@/components/ui/button';
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogHeader, 
-  DialogTitle, 
-  DialogDescription, 
-  DialogFooter 
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+
+
 import { CreateCategoryModal } from '@/components/CreateCategoryModal';
 import { AssignByNamesModal } from '@/components/AssignByNamesModal';
 import { ActionButtonsGroup } from '@/components/ActionButtonsGroup';
@@ -170,9 +154,10 @@ export default function ProductPriceTable() {
 
   // --- ESTADOS PARA CATEGORÍAS ---
   const [categorias, setCategorias] = useState<CategoriaData[]>([]);
-  const [loadingCategorias, setLoadingCategorias] = useState(false);
-  const [errorCategorias, setErrorCategorias] = useState<string | null>(null);
+
   const [selectedCategoriaFilter, setSelectedCategoriaFilter] = useState<number | null>(null);
+  const [loadingCategorias, setLoadingCategorias] = useState(false); // eslint-disable-line @typescript-eslint/no-unused-vars
+  const [errorCategorias, setErrorCategorias] = useState<string | null>(null); // eslint-disable-line @typescript-eslint/no-unused-vars
   
   // --- ESTADOS PARA SELECCIÓN MÚLTIPLE ---
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
@@ -181,7 +166,8 @@ export default function ProductPriceTable() {
   
   // --- ESTADOS PARA OPERACIONES MASIVAS ---
   const [isAssigningCategory, setIsAssigningCategory] = useState(false);
-  const [assignCategoryError, setAssignCategoryError] = useState<string | null>(null);
+  const [assignCategoryError, setAssignCategoryError] = useState<string | null>(null); // eslint-disable-line @typescript-eslint/no-unused-vars
+
   
   // --- ESTADOS PARA MODAL DE CREAR CATEGORÍA ---
   const [isCreateCategoryModalOpen, setIsCreateCategoryModalOpen] = useState(false);
@@ -197,7 +183,7 @@ export default function ProductPriceTable() {
   const [usePartialMatch, setUsePartialMatch] = useState(false);
   const [isAssigningByNames, setIsAssigningByNames] = useState(false);
   const [assignByNamesError, setAssignByNamesError] = useState<string | null>(null);
-  const [assignByNamesResult, setAssignByNamesResult] = useState<any>(null);
+  const [assignByNamesResult, setAssignByNamesResult] = useState<{total_productos_actualizados: number; resultados: {productos_encontrados: {nombre: string; categoria_anterior?: string}[]; productos_no_encontrados: string[]}[]} | null>(null);
 
 
  useEffect(() => {
@@ -848,15 +834,7 @@ const handleDownloadFormulas = async () => {
     setSelectedItems(new Set());
   };
 
-  const handleSelectItem = (displayId: string) => {
-    const newSelected = new Set(selectedItems);
-    if (newSelected.has(displayId)) {
-      newSelected.delete(displayId);
-    } else {
-      newSelected.add(displayId);
-    }
-    setSelectedItems(newSelected);
-  };
+
 
   const handleSelectAll = () => {
     if (selectedItems.size === displayedItems.length) {
