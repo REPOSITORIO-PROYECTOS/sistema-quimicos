@@ -8,7 +8,7 @@ import * as XLSX from 'xlsx';
 
 import { CreateCategoryModal } from '@/components/CreateCategoryModal';
 import { AssignByNamesModal } from '@/components/AssignByNamesModal';
-import { ActionButtonsGroup } from '@/components/ActionButtonsGroup';
+import { MainActionsMenu } from '@/components/MainActionsMenu';
 import { SelectionControls } from '@/components/SelectionControls';
 import { SearchAndFilters } from '@/components/SearchAndFilters';
 import { DolarControls } from '@/components/DolarControls';
@@ -1199,22 +1199,39 @@ const handleDeleteProduct = async (itemToDelete: DisplayItem) => {
               onSaveDolarValues={handleSaveDolarValues}
               onCancelDolarEdit={handleCancelDolarEdit}
             />
-            <ActionButtonsGroup
-              token={token}
-              allItems={allItems}
-              isUpdatingAllRecipes={isUpdatingAllRecipes}
-              isDownloadingFormulas={isDownloadingFormulas}
-              isPreparingPriceList={isPreparingPriceList}
-              isPreparingDownload={isPreparingDownload}
-              onUpdateAllRecipeCosts={handleUpdateAllRecipeCosts}
-              onDownloadFormulas={handleDownloadFormulas}
-              onCreateCategory={() => setIsCreateCategoryModalOpen(true)}
-              onAssignByNames={() => setIsAssignByNamesModalOpen(true)}
-              onDownloadPriceList={handleDownloadPriceList}
-              onDownloadExcel={handleDownloadExcel}
-              onOpenUploadModal={handleOpenUploadModal}
-              onOpenCreateProductModal={handleOpenCreateProductModal}
-            />
+            <div className="flex flex-col sm:flex-row items-center gap-4 mb-2">
+              <MainActionsMenu
+                token={token}
+                allItems={allItems}
+                isUpdatingAllRecipes={isUpdatingAllRecipes}
+                isDownloadingFormulas={isDownloadingFormulas}
+                isPreparingPriceList={isPreparingPriceList}
+                isPreparingDownload={isPreparingDownload}
+                onUpdateAllRecipeCosts={handleUpdateAllRecipeCosts}
+                onDownloadFormulas={handleDownloadFormulas}
+                onCreateCategory={() => setIsCreateCategoryModalOpen(true)}
+                onAssignByNames={() => setIsAssignByNamesModalOpen(true)}
+                onDownloadPriceList={handleDownloadPriceList}
+                onDownloadExcel={handleDownloadExcel}
+                onOpenUploadModal={handleOpenUploadModal}
+                onOpenCreateProductModal={handleOpenCreateProductModal}
+              />
+              <DolarControls
+                loadingDolar={loadingDolar}
+                isEditingDolar={isEditingDolar}
+                dolarOficial={dolarOficial}
+                dolarQuimex={dolarQuimex}
+                editDolarOficial={editDolarOficial}
+                editDolarQuimex={editDolarQuimex}
+                loadingDolarSave={loadingDolarSave}
+                errorDolar={errorDolar}
+                errorDolarSave={errorDolarSave}
+                onEditDolarClick={handleEditDolarClick}
+                onDolarInputChange={handleDolarInputChange}
+                onSaveDolarValues={handleSaveDolarValues}
+                onCancelDolarEdit={handleCancelDolarEdit}
+              />
+            </div>
             </div>
         </div>
 
