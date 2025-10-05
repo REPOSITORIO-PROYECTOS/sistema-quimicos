@@ -4,6 +4,31 @@
 import React, { useState, useEffect, useCallback, ChangeEvent } from 'react';
 import CreateProductModal from '@/components/CreateProductModal';
 import * as XLSX from 'xlsx';
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from '@/components/ui/select';
+import { Button } from '@/components/ui/button';
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogHeader, 
+  DialogTitle, 
+  DialogDescription, 
+  DialogFooter 
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { CreateCategoryModal } from '@/components/CreateCategoryModal';
+import { AssignByNamesModal } from '@/components/AssignByNamesModal';
+import { ActionButtonsGroup } from '@/components/ActionButtonsGroup';
+import { SelectionControls } from '@/components/SelectionControls';
+import { SearchAndFilters } from '@/components/SearchAndFilters';
+import { DolarControls } from '@/components/DolarControls';
+
 
 // --- Tipos de Datos (sin cambios) ---
 type ProductDataRaw = {
@@ -21,6 +46,11 @@ type ProductDataRaw = {
   codigo?: string | null;
   es_combo?: boolean;
   combo_id?: number | null;
+  categoria_id?: number | null;
+  categoria?: {
+    id: number;
+    nombre: string;
+  } | null;
 };
 
 type ComboDataRaw = {
@@ -50,6 +80,15 @@ interface ApiComboComponente {
     id: number;
 }
 
+type CategoriaData = {
+  id: number;
+  nombre: string;
+  descripcion?: string | null;
+  activo: boolean;
+  fecha_creacion?: string | null;
+  fecha_modificacion?: string | null;
+};
+
 export type DisplayItem = {
   id: number;
   displayId: string;
@@ -68,6 +107,12 @@ export type DisplayItem = {
   es_combo_proxy?: boolean;
   combo_id_original?: number | null;
   ajusta_por_tc: boolean;
+  categoria_id?: number | null;
+  categoria?: {
+    id: number;
+    nombre: string;
+  } | null;
+  categoria_nombre?: string | null;
 };
 
 
@@ -122,6 +167,37 @@ export default function ProductPriceTable() {
   // --- NUEVOS ESTADOS PARA ACTUALIZACIÓN GLOBAL DE RECETAS ---
   const [isUpdatingAllRecipes, setIsUpdatingAllRecipes] = useState(false);
   const [updateAllRecipesError, setUpdateAllRecipesError] = useState<string | null>(null);
+
+  // --- ESTADOS PARA CATEGORÍAS ---
+  const [categorias, setCategorias] = useState<CategoriaData[]>([]);
+  const [loadingCategorias, setLoadingCategorias] = useState(false);
+  const [errorCategorias, setErrorCategorias] = useState<string | null>(null);
+  const [selectedCategoriaFilter, setSelectedCategoriaFilter] = useState<number | null>(null);
+  
+  // --- ESTADOS PARA SELECCIÓN MÚLTIPLE ---
+  const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
+  const [selectedProductIds, setSelectedProductIds] = useState<number[]>([]);
+  const [isSelectMode, setIsSelectMode] = useState(false);
+  
+  // --- ESTADOS PARA OPERACIONES MASIVAS ---
+  const [isAssigningCategory, setIsAssigningCategory] = useState(false);
+  const [assignCategoryError, setAssignCategoryError] = useState<string | null>(null);
+  
+  // --- ESTADOS PARA MODAL DE CREAR CATEGORÍA ---
+  const [isCreateCategoryModalOpen, setIsCreateCategoryModalOpen] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [newCategoryDescription, setNewCategoryDescription] = useState('');
+  const [isCreatingCategory, setIsCreatingCategory] = useState(false);
+  const [createCategoryError, setCreateCategoryError] = useState<string | null>(null);
+
+  // --- ESTADOS PARA MODAL DE ASIGNACIÓN POR NOMBRES ---
+  const [isAssignByNamesModalOpen, setIsAssignByNamesModalOpen] = useState(false);
+  const [assignByNamesText, setAssignByNamesText] = useState('');
+  const [selectedCategoryForNames, setSelectedCategoryForNames] = useState<number | null>(null);
+  const [usePartialMatch, setUsePartialMatch] = useState(false);
+  const [isAssigningByNames, setIsAssigningByNames] = useState(false);
+  const [assignByNamesError, setAssignByNamesError] = useState<string | null>(null);
+  const [assignByNamesResult, setAssignByNamesResult] = useState<any>(null);
 
 
  useEffect(() => {
@@ -342,6 +418,23 @@ export default function ProductPriceTable() {
     }
 };
 
+  const fetchCategorias = useCallback(async () => {
+    if (!token) { setErrorCategorias("Token no disponible."); return; }
+    setLoadingCategorias(true); setErrorCategorias(null);
+    try {
+      const res = await fetch('https://quimex.sistemataup.online/categorias/?activo=true', { 
+        headers: { "Authorization": `Bearer ${token}` } 
+      });
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      const data = await res.json();
+      setCategorias(data.categorias || []);
+    } catch (err) { 
+      console.error("Error fetchCategorias:", err); 
+      setErrorCategorias("Error cargando categorías."); 
+    }
+    finally { setLoadingCategorias(false); }
+  }, [token]);
+
   const fetchDolarValues = useCallback(async () => {
     // ... (tu lógica sin cambios)
     if (!token) { setErrorDolar("Token no disponible."); setLoadingDolar(false); return; }
@@ -385,6 +478,9 @@ export default function ProductPriceTable() {
         es_combo_proxy: p.es_combo || false, combo_id_original: p.combo_id || null,
         precio: undefined, isLoadingPrice: true, priceError: false,
         ajusta_por_tc : p.ajusta_por_tc,
+        categoria_id: p.categoria_id || null,
+        categoria: p.categoria || null,
+        categoria_nombre: p.categoria?.nombre || null,
       }));
 
       const productProxyComboIds = new Set(displayProducts.filter(p => p.es_combo_proxy && p.combo_id_original).map(p => p.combo_id_original));
@@ -410,6 +506,9 @@ const displayCombos: DisplayItem[] = rawCombos.filter(c => !productProxyComboIds
         // --- FIN DE LA CORRECCIÓN ---
         priceError: false,
         ajusta_por_tc: false,
+        categoria_id: null,
+        categoria: null,
+        categoria_nombre: null,
       }));
 
       const combined = [...displayProducts, ...displayCombos].sort((a, b) => a.nombre.localeCompare(b.nombre));
@@ -502,23 +601,330 @@ const handleDownloadFormulas = async () => {
     }
   };
 
+  // --- FUNCIONES PARA MANEJAR CATEGORÍAS ---
+  const handleCreateCategory = async () => {
+    if (!newCategoryName.trim()) {
+      setCreateCategoryError("El nombre de la categoría es requerido.");
+      return;
+    }
+    if (!token) {
+      setCreateCategoryError("Token no disponible.");
+      return;
+    }
+
+    setIsCreatingCategory(true);
+    setCreateCategoryError(null);
+
+    try {
+      const response = await fetch('https://quimex.sistemataup.online/categorias/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          nombre: newCategoryName.trim(),
+          descripcion: newCategoryDescription.trim() || null,
+          activo: true
+        })
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || `Error ${response.status}`);
+      }
+
+      alert(`Categoría "${result.categoria.nombre}" creada exitosamente.`);
+      setNewCategoryName('');
+      setNewCategoryDescription('');
+      setIsCreateCategoryModalOpen(false);
+      await fetchCategorias(); // Recargar categorías
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Error desconocido";
+      setCreateCategoryError(errorMessage);
+    } finally {
+      setIsCreatingCategory(false);
+    }
+  };
+
+  const handleAssignByNames = async () => {
+    if (!assignByNamesText.trim()) {
+      setAssignByNamesError("Debe proporcionar una lista de nombres de productos.");
+      return;
+    }
+
+    if (!selectedCategoryForNames) {
+      setAssignByNamesError("Debe seleccionar una categoría.");
+      return;
+    }
+
+    if (!token) {
+      setAssignByNamesError("Error: No autenticado.");
+      return;
+    }
+
+    setIsAssigningByNames(true);
+    setAssignByNamesError(null);
+    setAssignByNamesResult(null);
+
+    try {
+      // Procesar la lista de nombres (una por línea)
+      const nombresProductos = assignByNamesText
+        .split('\n')
+        .map(nombre => nombre.trim())
+        .filter(nombre => nombre.length > 0);
+
+      if (nombresProductos.length === 0) {
+        setAssignByNamesError("No se encontraron nombres válidos en la lista.");
+        return;
+      }
+
+      const response = await fetch('https://quimex.sistemataup.online/categoria_productos/asignar_por_nombres', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          reglas: [{
+            categoria_id: selectedCategoryForNames,
+            nombres_productos: nombresProductos,
+            coincidencia_parcial: usePartialMatch
+          }]
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || `Error ${response.status}`);
+      }
+
+      setAssignByNamesResult(data);
+      await fetchAndCombineData(); // Recargar productos
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Error desconocido";
+      setAssignByNamesError(errorMessage);
+    } finally {
+      setIsAssigningByNames(false);
+    }
+  };
+
+  const handleAssignCategoryToSelected = async (categoriaId: number) => {
+    if (selectedItems.size === 0) {
+      alert("No hay productos seleccionados.");
+      return;
+    }
+
+    if (!token) {
+      alert("Error: No autenticado.");
+      return;
+    }
+
+    const categoria = categorias.find(c => c.id === categoriaId);
+    if (!categoria) {
+      alert("Categoría no encontrada.");
+      return;
+    }
+
+    const confirmMsg = `¿Asignar la categoría "${categoria.nombre}" a ${selectedItems.size} productos seleccionados?`;
+    if (!window.confirm(confirmMsg)) {
+      return;
+    }
+
+    setIsAssigningCategory(true);
+    setAssignCategoryError(null);
+
+    try {
+      // Extraer solo los IDs de productos (no combos)
+      const productIds = Array.from(selectedItems)
+        .map(displayId => {
+          const item = allItems.find(i => i.displayId === displayId);
+          return item && item.type === 'product' ? item.id : null;
+        })
+        .filter(id => id !== null) as number[];
+
+      if (productIds.length === 0) {
+        alert("No hay productos válidos seleccionados para asignar categoría.");
+        return;
+      }
+
+      const response = await fetch('https://quimex.sistemataup.online/categoria_productos/asignar_masivo', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          categoria_id: categoriaId,
+          producto_ids: productIds
+        })
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || `Error ${response.status}`);
+      }
+
+      alert(result.mensaje);
+      setSelectedItems(new Set()); // Limpiar selección
+      setIsSelectMode(false);
+      await fetchAndCombineData(); // Recargar datos
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Error desconocido";
+      setAssignCategoryError(errorMessage);
+      alert(`Error al asignar categoría: ${errorMessage}`);
+    } finally {
+      setIsAssigningCategory(false);
+    }
+  };
+
+  const handleRemoveCategoryFromSelected = async () => {
+    if (selectedItems.size === 0) {
+      alert("No hay productos seleccionados.");
+      return;
+    }
+
+    if (!token) {
+      alert("Error: No autenticado.");
+      return;
+    }
+
+    const confirmMsg = `¿Quitar la categoría de ${selectedItems.size} productos seleccionados?`;
+    if (!window.confirm(confirmMsg)) {
+      return;
+    }
+
+    setIsAssigningCategory(true);
+    setAssignCategoryError(null);
+
+    try {
+      // Extraer solo los IDs de productos (no combos)
+      const productIds = Array.from(selectedItems)
+        .map(displayId => {
+          const item = allItems.find(i => i.displayId === displayId);
+          return item && item.type === 'product' ? item.id : null;
+        })
+        .filter(id => id !== null) as number[];
+
+      if (productIds.length === 0) {
+        alert("No hay productos válidos seleccionados para quitar categoría.");
+        return;
+      }
+
+      const response = await fetch('https://quimex.sistemataup.online/categoria_productos/quitar_categoria_masivo', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          producto_ids: productIds
+        })
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || `Error ${response.status}`);
+      }
+
+      alert(result.mensaje);
+      setSelectedItems(new Set()); // Limpiar selección
+      setIsSelectMode(false);
+      await fetchAndCombineData(); // Recargar datos
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Error desconocido";
+      setAssignCategoryError(errorMessage);
+      alert(`Error al quitar categoría: ${errorMessage}`);
+    } finally {
+      setIsAssigningCategory(false);
+    }
+  };
+
+  // --- FUNCIONES PARA MANEJO DE SELECCIÓN ---
+  const handleToggleSelectMode = () => {
+    setIsSelectMode(!isSelectMode);
+    setSelectedItems(new Set());
+  };
+
+  const handleSelectItem = (displayId: string) => {
+    const newSelected = new Set(selectedItems);
+    if (newSelected.has(displayId)) {
+      newSelected.delete(displayId);
+    } else {
+      newSelected.add(displayId);
+    }
+    setSelectedItems(newSelected);
+  };
+
+  const handleSelectAll = () => {
+    if (selectedItems.size === displayedItems.length) {
+      setSelectedItems(new Set());
+      setSelectedProductIds([]);
+    } else {
+      setSelectedItems(new Set(displayedItems.map(item => item.displayId)));
+      setSelectedProductIds(displayedItems
+        .filter(item => item.type === 'product')
+        .map(item => item.id)
+      );
+    }
+  };
+
+  const handleSelectProduct = (productId: number, checked: boolean) => {
+    if (checked) {
+      setSelectedProductIds(prev => [...prev, productId]);
+      // También agregar al selectedItems para mantener consistencia
+      const item = displayedItems.find(item => item.id === productId);
+      if (item) {
+        setSelectedItems(prev => new Set([...prev, item.displayId]));
+      }
+    } else {
+      setSelectedProductIds(prev => prev.filter(id => id !== productId));
+      // También remover de selectedItems
+      const item = displayedItems.find(item => item.id === productId);
+      if (item) {
+        setSelectedItems(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(item.displayId);
+          return newSet;
+        });
+      }
+    }
+  };
+
   useEffect(() => {
     if (token) {
       fetchAndCombineData();
       fetchDolarValues();
+      fetchCategorias();
     }
-  }, [token, fetchAndCombineData, fetchDolarValues]);
+  }, [token, fetchAndCombineData, fetchDolarValues, fetchCategorias]);
 
   useEffect(() => {
-    // ... (tu lógica sin cambios)
+    // Aplicar filtros
     let filtered = allItems;
+    
+    // Filtro por término de búsqueda
     if (searchTerm) {
       const lowerSearchTerm = searchTerm.toLowerCase();
-      filtered = allItems.filter(item =>
+      filtered = filtered.filter(item =>
         item.nombre.toLowerCase().includes(lowerSearchTerm) ||
         (item.codigo && item.codigo.toLowerCase().includes(lowerSearchTerm))
       );
     }
+
+    // Filtro por categoría
+    if (selectedCategoriaFilter !== null) {
+      if (selectedCategoriaFilter === 0) {
+        // Mostrar productos sin categoría
+        filtered = filtered.filter(item => item.type === 'product' && !item.categoria_id);
+      } else {
+        // Mostrar productos de la categoría seleccionada
+        filtered = filtered.filter(item => item.type === 'product' && item.categoria_id === selectedCategoriaFilter);
+      }
+    }
+
     setTotalFilteredItems(filtered.length);
     setTotalPages(Math.ceil(filtered.length / ITEMS_PER_PAGE));
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
@@ -540,7 +946,7 @@ const handleDownloadFormulas = async () => {
       });
     }
     setDisplayedItems(paginated);
-  }, [allItems, searchTerm, currentPage, calculatePrice]);
+  }, [allItems, searchTerm, selectedCategoriaFilter, currentPage, calculatePrice]);
   
   useEffect(() => { setCurrentPage(1); }, [searchTerm]);
 
@@ -722,7 +1128,7 @@ const handleDeleteProduct = async (itemToDelete: DisplayItem) => {
   };
 
   let tableBodyContent;
-  const numberOfColumns = 9;
+  const numberOfColumns = isSelectMode ? 11 : 10;
 
   if (loadingInitial) {
     tableBodyContent = (<tr><td colSpan={numberOfColumns} className="text-center py-10 text-gray-500">Cargando datos iniciales...</td></tr>);
@@ -746,12 +1152,27 @@ const handleDeleteProduct = async (itemToDelete: DisplayItem) => {
                                     : 'hover:bg-indigo-50')
                 }`}
             >
+                {/* Checkbox de selección - solo en modo select */}
+                {isSelectMode && (
+                    <td className="px-4 py-3 whitespace-nowrap text-center">
+                        <input
+                            type="checkbox"
+                            checked={selectedProductIds.includes(item.id)}
+                            onChange={(e) => handleSelectProduct(item.id, e.target.checked)}
+                            className="w-4 h-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                        />
+                    </td>
+                )}
+                
                 <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{item.codigo || item.id}</td>
                 <td className="px-4 py-3 text-sm font-medium text-gray-900">
                     {item.nombre}
                     {item.type === 'combo' && <span className="ml-2 text-xs bg-lime-200 text-lime-800 px-1.5 py-0.5 rounded-full font-semibold">COMBO</span>}
                     {item.type === 'product' && item.es_combo_proxy && <span className="ml-2 text-xs bg-yellow-200 text-yellow-800 px-1.5 py-0.5 rounded-full font-semibold">P-COMBO</span>}
                     {item.ajusta_por_tc && <span className="ml-2 text-xs bg-amber-200 text-amber-800 px-1.5 py-0.5 rounded-full font-semibold">TC</span>}
+                </td>
+                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                    {item.categoria_nombre || <span className="text-gray-400 italic">Sin categoría</span>}
                 </td>
                 <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{item.fecha_actualizacion}</td>
                 <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{item.tipo_calculo}</td>
@@ -775,51 +1196,62 @@ const handleDeleteProduct = async (itemToDelete: DisplayItem) => {
   return (
     <div className="p-4 md:p-6 bg-gray-100 min-h-screen">
       <div className="max-w-7xl mx-auto bg-white shadow-md rounded-lg p-4 md:p-6">
+        <SearchAndFilters
+          searchTerm={searchTerm}
+          setSearchTerm={setSearchTerm}
+          selectedCategoriaFilter={selectedCategoriaFilter}
+          setSelectedCategoriaFilter={setSelectedCategoriaFilter}
+          categorias={categorias}
+        />
+        
         <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
-          <input type="text" placeholder="Buscar por nombre o código..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="px-4 py-2 border rounded-md w-full md:w-auto"/>
           <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto flex-wrap justify-end">
-            <div className="flex items-center gap-x-4 gap-y-2 flex-wrap border p-2 rounded-md">
-                <div className="text-sm flex items-center gap-1"> <label htmlFor="dolarOficialInput" className="font-medium">Dólar Oficial:</label> {loadingDolar ? "..." : isEditingDolar ? <input id="dolarOficialInput" type="text" name="dolarOficial" value={editDolarOficial} onChange={handleDolarInputChange} className="px-2 py-1 border rounded text-sm w-24" disabled={loadingDolarSave} inputMode="decimal" /> : dolarOficial !== null ? <span className="font-semibold">${dolarOficial.toFixed(2)}</span> : <span className="text-red-500 text-xs">{errorDolar || 'Error'}</span>} </div>
-                <div className="text-sm flex items-center gap-1"> <label htmlFor="dolarQuimexInput" className="font-medium">Dólar Empresa:</label> {loadingDolar ? "..." : isEditingDolar ? <input id="dolarQuimexInput" type="text" name="dolarQuimex" value={editDolarQuimex} onChange={handleDolarInputChange} className="px-2 py-1 border rounded text-sm w-24" disabled={loadingDolarSave} inputMode="decimal" /> : dolarQuimex !== null ? <span className="font-semibold">${dolarQuimex.toFixed(2)}</span> : <span className="text-red-500 text-xs">{errorDolar || 'Error'}</span>} </div>
-                <div className="flex items-center gap-2"> {isEditingDolar ? (<> <button onClick={handleSaveDolarValues} disabled={loadingDolarSave || loadingDolar} className={`px-3 py-1 text-xs rounded flex items-center gap-1 ${ loadingDolarSave || loadingDolar ? 'bg-gray-300 cursor-not-allowed' : 'bg-green-100 text-green-700 hover:bg-green-200' }`}> <svg className={`h-3 w-3 ${loadingDolarSave ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg> {loadingDolarSave ? '...' : 'Guardar'} </button> <button onClick={handleCancelDolarEdit} disabled={loadingDolarSave} className="px-3 py-1 text-xs bg-gray-100 rounded hover:bg-gray-200"> Cancelar </button> </> ) : (<button onClick={handleEditDolarClick} disabled={loadingDolar || dolarOficial === null || dolarQuimex === null} className={`px-3 py-1 text-xs rounded flex items-center gap-1 ${ loadingDolar || dolarOficial === null || dolarQuimex === null ? 'bg-gray-300 cursor-not-allowed' : 'bg-blue-100 text-blue-700 hover:bg-blue-200' }`}> <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg> Editar Dólar </button> )} </div>
-                {errorDolarSave && ( <p className="text-xs text-red-600 mt-1 w-full text-right sm:text-left sm:w-auto">{errorDolarSave}</p> )}
+            <DolarControls
+              loadingDolar={loadingDolar}
+              isEditingDolar={isEditingDolar}
+              dolarOficial={dolarOficial}
+              dolarQuimex={dolarQuimex}
+              editDolarOficial={editDolarOficial}
+              editDolarQuimex={editDolarQuimex}
+              loadingDolarSave={loadingDolarSave}
+              errorDolar={errorDolar}
+              errorDolarSave={errorDolarSave}
+              onEditDolarClick={handleEditDolarClick}
+              onDolarInputChange={handleDolarInputChange}
+              onSaveDolarValues={handleSaveDolarValues}
+              onCancelDolarEdit={handleCancelDolarEdit}
+            />
+            <ActionButtonsGroup
+              token={token}
+              allItems={allItems}
+              isUpdatingAllRecipes={isUpdatingAllRecipes}
+              isDownloadingFormulas={isDownloadingFormulas}
+              isPreparingPriceList={isPreparingPriceList}
+              isPreparingDownload={isPreparingDownload}
+              onUpdateAllRecipeCosts={handleUpdateAllRecipeCosts}
+              onDownloadFormulas={handleDownloadFormulas}
+              onCreateCategory={() => setIsCreateCategoryModalOpen(true)}
+              onAssignByNames={() => setIsAssignByNamesModalOpen(true)}
+              onDownloadPriceList={handleDownloadPriceList}
+              onDownloadExcel={handleDownloadExcel}
+              onOpenUploadModal={handleOpenUploadModal}
+              onOpenCreateProductModal={handleOpenCreateProductModal}
+            />
             </div>
-            <div className="flex flex-col sm:flex-row items-center gap-2 flex-wrap">
-                <button
-                    onClick={handleUpdateAllRecipeCosts}
-                    disabled={!token || isUpdatingAllRecipes}
-                    className="w-full sm:w-auto bg-purple-600 text-white px-4 py-2 rounded-md shadow-sm hover:bg-purple-700 disabled:bg-gray-400 flex items-center justify-center gap-2"
-                >
-                    {isUpdatingAllRecipes ? '...' : 'Actualizar Costo Recetas Global'}
-                </button>
-                <button
-                    onClick={handleDownloadFormulas}
-                    disabled={!token || isDownloadingFormulas}
-                    className="w-full sm:w-auto bg-teal-600 text-white px-4 py-2 rounded-md shadow-sm hover:bg-teal-700 disabled:bg-gray-400 flex items-center justify-center gap-2"
-                >
-                    {isDownloadingFormulas ? 'Generando...' : 'Descargar Fórmulas'}
-                </button>
-                <button
-                    onClick={handleDownloadPriceList}
-                    disabled={!token || allItems.length === 0 || isPreparingPriceList}
-                    className="w-full sm:w-auto bg-cyan-600 text-white px-4 py-2 rounded-md shadow-sm hover:bg-cyan-700 disabled:bg-gray-400 flex items-center justify-center gap-2"
-                >
-                    {isPreparingPriceList ? '...' : 'Precios (Kg/Lt)'}
-                </button>
-                <button
-                    onClick={handleDownloadExcel}
-                    disabled={!token || allItems.length === 0 || isPreparingDownload}
-                    className="w-full sm:w-auto bg-green-600 text-white px-4 py-2 rounded-md shadow-sm hover:bg-green-700 disabled:bg-gray-400 flex items-center justify-center gap-2"
-                >
-                    {isPreparingDownload ? '...' : 'Lista General'}
-                </button>
-                <button onClick={handleOpenUploadModal} disabled={!token} className="w-full sm:w-auto bg-teal-500 text-white px-4 py-2 rounded-md shadow-sm hover:bg-teal-600 disabled:bg-gray-400 flex items-center justify-center gap-1">Actualizar Costos</button>
-                <button onClick={handleOpenCreateProductModal} disabled={!token} className="w-full sm:w-auto bg-indigo-600 text-white px-4 py-2 rounded-md shadow-sm hover:bg-indigo-700 disabled:bg-gray-400 flex items-center justify-center gap-1">Crear Item</button>
-            </div>
-          </div>
         </div>
 
-        {updateAllRecipesError && <p className="text-center text-red-600 my-2 bg-red-50 p-2 rounded border text-sm">Error en actualización global: {updateAllRecipesError}</p>}
+        {/* Controles de Selección Múltiple */}
+        <SelectionControls
+          isSelectMode={isSelectMode}
+          selectedItems={selectedItems}
+          displayedItems={displayedItems}
+          categorias={categorias}
+          isAssigningCategory={isAssigningCategory}
+          onToggleSelectMode={handleToggleSelectMode}
+          onSelectAll={handleSelectAll}
+          onAssignCategoryToSelected={handleAssignCategoryToSelected}
+          onRemoveCategoryFromSelected={handleRemoveCategoryFromSelected}
+        />        {updateAllRecipesError && <p className="text-center text-red-600 my-2 bg-red-50 p-2 rounded border text-sm">Error en actualización global: {updateAllRecipesError}</p>}
         {!token && <p className="text-center text-orange-600 my-6 bg-orange-50 p-3 rounded-md border">Inicie sesión.</p>}
         {loadingInitial && token && <p className="text-center text-gray-600 my-6">Cargando...</p>}
         {errorInitial && token && <p className="text-center text-red-600 my-6">Error: {errorInitial}</p>}
@@ -830,14 +1262,25 @@ const handleDeleteProduct = async (itemToDelete: DisplayItem) => {
               <table className="min-w-full bg-white table-fixed">
                 <thead id="product-table-header" className="bg-indigo-700 text-white sticky top-0 z-10">
                  <tr>
-                    <th className="w-[10%] px-4 py-2 text-left text-xs font-bold uppercase tracking-wider">ID/Cód.</th>
-                    <th className="w-[25%] px-4 py-2 text-left text-xs font-bold uppercase tracking-wider">Nombre</th>
-                    <th className="w-[10%] px-4 py-2 text-left text-xs font-bold uppercase tracking-wider">Actualización</th>
-                    <th className="w-[10%] px-4 py-2 text-left text-xs font-bold uppercase tracking-wider">Tipo</th>
-                    <th className="w-[8%] px-4 py-2 text-left text-xs font-bold uppercase tracking-wider ">Margen</th>
-                    <th className="w-[8%] px-4 py-2 text-left text-xs font-bold uppercase tracking-wider">Ref.Calc</th>
-                    <th className="w-[8%] px-4 py-2 text-left text-xs font-bold uppercase tracking-wider ">Costo USD</th>
-                    <th className="w-[8%] px-4 py-2 text-left text-xs font-bold uppercase tracking-wider ">Precio ARS</th>
+                    {isSelectMode && (
+                      <th className="w-[3%] px-2 py-2 text-center text-xs font-bold uppercase tracking-wider">
+                        <input
+                          type="checkbox"
+                          checked={selectedItems.size === displayedItems.length && displayedItems.length > 0}
+                          onChange={handleSelectAll}
+                          className="rounded"
+                        />
+                      </th>
+                    )}
+                    <th className="w-[8%] px-4 py-2 text-left text-xs font-bold uppercase tracking-wider">ID/Cód.</th>
+                    <th className="w-[20%] px-4 py-2 text-left text-xs font-bold uppercase tracking-wider">Nombre</th>
+                    <th className="w-[12%] px-4 py-2 text-left text-xs font-bold uppercase tracking-wider">Categoría</th>
+                    <th className="w-[8%] px-4 py-2 text-left text-xs font-bold uppercase tracking-wider">Actualización</th>
+                    <th className="w-[8%] px-4 py-2 text-left text-xs font-bold uppercase tracking-wider">Tipo</th>
+                    <th className="w-[6%] px-4 py-2 text-left text-xs font-bold uppercase tracking-wider ">Margen</th>
+                    <th className="w-[6%] px-4 py-2 text-left text-xs font-bold uppercase tracking-wider">Ref.Calc</th>
+                    <th className="w-[7%] px-4 py-2 text-left text-xs font-bold uppercase tracking-wider ">Costo USD</th>
+                    <th className="w-[7%] px-4 py-2 text-left text-xs font-bold uppercase tracking-wider ">Precio ARS</th>
                     <th className="w-[13%] px-4 py-2 text-center text-xs font-bold uppercase tracking-wider">Acciones</th>
                   </tr>
                 </thead>
@@ -882,6 +1325,43 @@ const handleDeleteProduct = async (itemToDelete: DisplayItem) => {
           </div>
         </div>
       )}
+
+      {/* Modal para crear categoría */}
+      <CreateCategoryModal
+        isOpen={isCreateCategoryModalOpen}
+        onClose={() => {
+          setIsCreateCategoryModalOpen(false);
+          setCreateCategoryError(null);
+        }}
+        onSubmit={handleCreateCategory}
+        categoryName={newCategoryName}
+        setCategoryName={setNewCategoryName}
+        categoryDescription={newCategoryDescription}
+        setCategoryDescription={setNewCategoryDescription}
+        isCreating={isCreatingCategory}
+        error={createCategoryError}
+      />
+
+      {/* Modal para asignar por nombres */}
+      <AssignByNamesModal
+        isOpen={isAssignByNamesModalOpen}
+        onClose={() => {
+          setIsAssignByNamesModalOpen(false);
+          setAssignByNamesError(null);
+          setAssignByNamesResult(null);
+        }}
+        onSubmit={handleAssignByNames}
+        namesText={assignByNamesText}
+        setNamesText={setAssignByNamesText}
+        selectedCategory={selectedCategoryForNames}
+        setSelectedCategory={setSelectedCategoryForNames}
+        usePartialMatch={usePartialMatch}
+        setUsePartialMatch={setUsePartialMatch}
+        categorias={categorias}
+        isAssigning={isAssigningByNames}
+        error={assignByNamesError}
+        result={assignByNamesResult}
+      />
     </div>
   );
 }

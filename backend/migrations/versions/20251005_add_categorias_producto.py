@@ -1,7 +1,7 @@
 """Agregar tabla categorias_producto y relacion con productos
 
 Revision ID: 20251005_categorias
-Revises: 20250918_add_precio_base_to_precios_especiales
+Revises: 20250918_add_precio_base
 Create Date: 2025-10-05 12:00:00.000000
 
 """
@@ -11,7 +11,7 @@ from datetime import datetime
 
 # revision identifiers, used by Alembic.
 revision = '20251005_categorias'
-down_revision = '20250918_add_precio_base_to_precios_especiales'
+down_revision = '20250918_add_precio_base'
 branch_labels = None
 depends_on = None
 

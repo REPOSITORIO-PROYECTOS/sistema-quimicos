@@ -286,3 +286,134 @@ def migrar_productos_por_tipo(current_user):
         db.session.rollback()
         traceback.print_exc()
         return jsonify({'error': 'Error interno en la migración', 'detalle': str(e)}), 500
+
+
+@categoria_productos_bp.route('/asignar_por_nombres', methods=['POST'])
+@token_required
+@roles_required(ROLES['ADMIN'])
+def asignar_categoria_por_nombres(current_user):
+    """
+    Asigna categorías a productos basándose en los nombres de los productos.
+    
+    Payload esperado:
+    {
+        "reglas": [
+            {
+                "categoria_id": 1,
+                "nombres_productos": ["Producto A", "Producto B", "Producto C"]
+            },
+            {
+                "categoria_id": 2, 
+                "nombres_productos": ["Producto D", "Producto E"]
+            }
+        ]
+    }
+    
+    También acepta coincidencias parciales:
+    {
+        "reglas": [
+            {
+                "categoria_id": 1,
+                "nombres_productos": ["ACIDO", "SODA"],
+                "coincidencia_parcial": true
+            }
+        ]
+    }
+    """
+    try:
+        data = request.get_json()
+        
+        if not data or 'reglas' not in data:
+            return jsonify({'error': 'Debe proporcionar una lista de reglas'}), 400
+        
+        reglas = data['reglas']
+        resultados = []
+        total_productos_actualizados = 0
+        
+        for i, regla in enumerate(reglas):
+            try:
+                categoria_id = regla.get('categoria_id')
+                nombres_productos = regla.get('nombres_productos', [])
+                coincidencia_parcial = regla.get('coincidencia_parcial', False)
+                
+                if not categoria_id:
+                    resultados.append({
+                        'regla_index': i,
+                        'error': 'categoria_id es requerido'
+                    })
+                    continue
+                
+                if not nombres_productos:
+                    resultados.append({
+                        'regla_index': i,
+                        'error': 'nombres_productos es requerido y no puede estar vacío'
+                    })
+                    continue
+                
+                # Verificar que la categoría existe
+                categoria = CategoriaProducto.query.get(categoria_id)
+                if not categoria:
+                    resultados.append({
+                        'regla_index': i,
+                        'error': f'Categoría con ID {categoria_id} no existe'
+                    })
+                    continue
+                
+                productos_encontrados = []
+                productos_no_encontrados = []
+                productos_actualizados = 0
+                
+                for nombre_producto in nombres_productos:
+                    if coincidencia_parcial:
+                        # Buscar productos que contengan el nombre (case insensitive)
+                        productos = Producto.query.filter(
+                            Producto.nombre.ilike(f'%{nombre_producto}%')
+                        ).all()
+                    else:
+                        # Buscar producto con nombre exacto (case insensitive)
+                        productos = Producto.query.filter(
+                            Producto.nombre.ilike(nombre_producto)
+                        ).all()
+                    
+                    if productos:
+                        for producto in productos:
+                            productos_encontrados.append({
+                                'id': producto.id,
+                                'nombre': producto.nombre,
+                                'categoria_anterior': producto.categoria.nombre if producto.categoria else None
+                            })
+                            producto.categoria_id = categoria_id
+                            productos_actualizados += 1
+                    else:
+                        productos_no_encontrados.append(nombre_producto)
+                
+                total_productos_actualizados += productos_actualizados
+                
+                resultados.append({
+                    'regla_index': i,
+                    'categoria_id': categoria_id,
+                    'categoria_nombre': categoria.nombre,
+                    'productos_actualizados': productos_actualizados,
+                    'productos_encontrados': productos_encontrados,
+                    'productos_no_encontrados': productos_no_encontrados,
+                    'coincidencia_parcial': coincidencia_parcial
+                })
+                
+            except Exception as regla_error:
+                resultados.append({
+                    'regla_index': i,
+                    'error': f'Error en regla: {str(regla_error)}'
+                })
+        
+        db.session.commit()
+        
+        return jsonify({
+            'mensaje': f'Asignación por nombres completada. {total_productos_actualizados} productos actualizados en total',
+            'resultados': resultados,
+            'total_productos_actualizados': total_productos_actualizados
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        traceback.print_exc()
+        return jsonify({'error': 'Error interno en la asignación por nombres', 'detalle': str(e)}), 500
