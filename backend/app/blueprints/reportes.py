@@ -117,7 +117,7 @@ def reporte_movimientos_excel_limitado(current_user):
         
         headers_ventas = [
             "Tipo Venta", "N° Pedido", "Fecha", "Hora", "Cliente", "Vendedor", 
-            "Forma de Pago", "Estado", "ID Prod", "Producto", "Cant", 
+            "Forma de Pago", "Estado", "ID Prod", "Producto", "Categoría", "Cant", 
             "Subtotal Item (ARS)", "Costo (ARS)", "Margen (%)", "Total Venta (ARS)"
         ]
         style_header(ws_ventas, headers_ventas)
@@ -186,11 +186,17 @@ def reporte_movimientos_excel_limitado(current_user):
                 ws_ventas.cell(row=row_idx, column=8, value=estado_venta)
                 ws_ventas.cell(row=row_idx, column=9, value=detalle.producto_id)
                 ws_ventas.cell(row=row_idx, column=10, value=detalle.producto.nombre if detalle.producto else "N/A")
-                ws_ventas.cell(row=row_idx, column=11, value=float(detalle.cantidad))
-                ws_ventas.cell(row=row_idx, column=12, value=float(subtotal_item_final_calculado)).number_format = '"$"#,##0.00'
-                ws_ventas.cell(row=row_idx, column=13, value=float(costo_total_prod)).number_format = '"$"#,##0.00'
-                ws_ventas.cell(row=row_idx, column=14, value=float(margen)).number_format = '0.00"%"'
-                ws_ventas.cell(row=row_idx, column=15, value=float(monto_final_real)).number_format = '"$"#,##0.00'
+                # Obtener categoría de producto de forma segura
+                try:
+                    categoria_nombre = detalle.producto.categoria.nombre if (detalle.producto and getattr(detalle.producto, 'categoria', None)) else 'Sin categoría'
+                except Exception:
+                    categoria_nombre = 'Sin categoría'
+                ws_ventas.cell(row=row_idx, column=11, value=categoria_nombre)
+                ws_ventas.cell(row=row_idx, column=12, value=float(detalle.cantidad)).number_format = '#,##0.00'
+                ws_ventas.cell(row=row_idx, column=13, value=float(subtotal_item_final_calculado)).number_format = '"$"#,##0.00'
+                ws_ventas.cell(row=row_idx, column=14, value=float(costo_total_prod)).number_format = '"$"#,##0.00'
+                ws_ventas.cell(row=row_idx, column=15, value=float(margen)).number_format = '0.00"%"'
+                ws_ventas.cell(row=row_idx, column=16, value=float(monto_final_real)).number_format = '"$"#,##0.00'
                 row_idx += 1
 
             # Clasificar forma de pago: efectivo vs transferencia/otros
