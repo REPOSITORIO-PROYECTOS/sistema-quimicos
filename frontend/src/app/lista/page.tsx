@@ -68,7 +68,7 @@ type CategoriaData = {
   id: number;
   nombre: string;
   descripcion?: string | null;
-  activo: boolean;
+  activo?: boolean;
   fecha_creacion?: string | null;
   fecha_modificacion?: string | null;
 };
@@ -92,19 +92,17 @@ export type DisplayItem = {
   combo_id_original?: number | null;
   ajusta_por_tc: boolean;
   categoria_id?: number | null;
-  categoria?: {
-    id: number;
-    nombre: string;
-  } | null;
+  categoria?: { id: number; nombre: string } | null;
   categoria_nombre?: string | null;
 };
 
-
-
-
-const ITEMS_PER_PAGE = 15;
-
 export default function ProductPriceTable() {
+  const ITEMS_PER_PAGE = 15;
+
+  const [isEditingDolar, setIsEditingDolar] = useState(false);
+  const [editDolarOficial, setEditDolarOficial] = useState<string>('');
+  const [editDolarQuimex, setEditDolarQuimex] = useState<string>('');
+  // Core list state
   const [allItems, setAllItems] = useState<DisplayItem[]>([]);
   const [displayedItems, setDisplayedItems] = useState<DisplayItem[]>([]);
   const [loadingInitial, setLoadingInitial] = useState(true);
@@ -114,14 +112,12 @@ export default function ProductPriceTable() {
   const [totalPages, setTotalPages] = useState(0);
   const [totalFilteredItems, setTotalFilteredItems] = useState(0);
 
+  // Dólar state
   const [dolarOficial, setDolarOficial] = useState<number | null>(null);
   const [dolarQuimex, setDolarQuimex] = useState<number | null>(null);
   const [loadingDolar, setLoadingDolar] = useState(true);
   const [errorDolar, setErrorDolar] = useState<string | null>(null);
 
-  const [isEditingDolar, setIsEditingDolar] = useState(false);
-  const [editDolarOficial, setEditDolarOficial] = useState<string>('');
-  const [editDolarQuimex, setEditDolarQuimex] = useState<string>('');
   const [loadingDolarSave, setLoadingDolarSave] = useState(false);
   const [errorDolarSave, setErrorDolarSave] = useState<string | null>(null);
 
@@ -188,8 +184,9 @@ export default function ProductPriceTable() {
 
  useEffect(() => {
     const header = document.getElementById('product-table-header');
-    const isAnyModalOpen = isProductModalOpen || isUploadModalOpen ;
-    
+    // Treat any modal/dialog we render as a full-screen modal so the page doesn't shift when opened
+    const isAnyModalOpen = isProductModalOpen || isUploadModalOpen || isCreateCategoryModalOpen || isAssignByNamesModalOpen;
+
     if (isAnyModalOpen) {
       document.body.classList.add('modal-open');
       document.body.style.overflow = 'hidden';
@@ -211,7 +208,7 @@ export default function ProductPriceTable() {
         header.classList.add('sticky', 'z-10');
       }
     };
-  }, [isProductModalOpen, isUploadModalOpen]);
+  }, [isProductModalOpen, isUploadModalOpen, isCreateCategoryModalOpen, isAssignByNamesModalOpen]);
 
   const generateAndDownloadExcel = (itemsToExport: DisplayItem[]) => {
     // ... (tu lógica de Excel sin cambios)
@@ -1174,16 +1171,18 @@ const handleDeleteProduct = async (itemToDelete: DisplayItem) => {
   return (
     <div className="p-4 md:p-6 bg-gray-100 min-h-screen">
       <div className="max-w-7xl mx-auto bg-white shadow-md rounded-lg p-4 md:p-6">
-        <SearchAndFilters
-          searchTerm={searchTerm}
-          setSearchTerm={setSearchTerm}
-          selectedCategoriaFilter={selectedCategoriaFilter}
-          setSelectedCategoriaFilter={setSelectedCategoriaFilter}
-          categorias={categorias}
-        />
-        
-        <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
-          <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto flex-wrap justify-end">
+        <div className="flex flex-row items-center gap-4 mb-4 w-full overflow-x-auto flex-wrap">
+          <div className="min-w-[340px]">
+            <SearchAndFilters
+              searchTerm={searchTerm}
+              setSearchTerm={setSearchTerm}
+              selectedCategoriaFilter={selectedCategoriaFilter}
+              setSelectedCategoriaFilter={setSelectedCategoriaFilter}
+              categorias={categorias}
+            />
+          </div>
+
+          <div className="flex items-center gap-4">
             <DolarControls
               loadingDolar={loadingDolar}
               isEditingDolar={isEditingDolar}
@@ -1199,7 +1198,24 @@ const handleDeleteProduct = async (itemToDelete: DisplayItem) => {
               onSaveDolarValues={handleSaveDolarValues}
               onCancelDolarEdit={handleCancelDolarEdit}
             />
-            <div className="flex flex-col sm:flex-row items-center gap-4 mb-2">
+          </div>
+
+          {/* SelectionControls moved below to its own display */}
+        </div>
+
+        {/* Controles de Selección Múltiple - colocado en bloque debajo del encabezado principal */}
+        <div className="mt-3">
+          <SelectionControls
+            isSelectMode={isSelectMode}
+            selectedItems={selectedItems}
+            displayedItems={displayedItems}
+            categorias={categorias}
+            isAssigningCategory={isAssigningCategory}
+            onToggleSelectMode={handleToggleSelectMode}
+            onSelectAll={handleSelectAll}
+            onAssignCategoryToSelected={handleAssignCategoryToSelected}
+            onRemoveCategoryFromSelected={handleRemoveCategoryFromSelected}
+            actionsMenu={
               <MainActionsMenu
                 token={token}
                 allItems={allItems}
@@ -1210,28 +1226,16 @@ const handleDeleteProduct = async (itemToDelete: DisplayItem) => {
                 onUpdateAllRecipeCosts={handleUpdateAllRecipeCosts}
                 onDownloadFormulas={handleDownloadFormulas}
                 onCreateCategory={() => setIsCreateCategoryModalOpen(true)}
-                onAssignByNames={() => setIsAssignByNamesModalOpen(true)}
                 onDownloadPriceList={handleDownloadPriceList}
                 onDownloadExcel={handleDownloadExcel}
                 onOpenUploadModal={handleOpenUploadModal}
                 onOpenCreateProductModal={handleOpenCreateProductModal}
               />
-            </div>
-          </div>
+            }
+          />
         </div>
 
-        {/* Controles de Selección Múltiple */}
-        <SelectionControls
-          isSelectMode={isSelectMode}
-          selectedItems={selectedItems}
-          displayedItems={displayedItems}
-          categorias={categorias}
-          isAssigningCategory={isAssigningCategory}
-          onToggleSelectMode={handleToggleSelectMode}
-          onSelectAll={handleSelectAll}
-          onAssignCategoryToSelected={handleAssignCategoryToSelected}
-          onRemoveCategoryFromSelected={handleRemoveCategoryFromSelected}
-        />        {updateAllRecipesError && <p className="text-center text-red-600 my-2 bg-red-50 p-2 rounded border text-sm">Error en actualización global: {updateAllRecipesError}</p>}
+        {updateAllRecipesError && <p className="text-center text-red-600 my-2 bg-red-50 p-2 rounded border text-sm">Error en actualización global: {updateAllRecipesError}</p>}
         {!token && <p className="text-center text-orange-600 my-6 bg-orange-50 p-3 rounded-md border">Inicie sesión.</p>}
         {loadingInitial && token && <p className="text-center text-gray-600 my-6">Cargando...</p>}
         {errorInitial && token && <p className="text-center text-red-600 my-6">Error: {errorInitial}</p>}

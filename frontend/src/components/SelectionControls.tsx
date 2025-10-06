@@ -29,6 +29,8 @@ interface SelectionControlsProps {
   onSelectAll: () => void;
   onAssignCategoryToSelected: (categoryId: number) => void;
   onRemoveCategoryFromSelected: () => void;
+  // Optional actions menu node to render at the right side
+  actionsMenu?: React.ReactNode;
 }
 
 export const SelectionControls: React.FC<SelectionControlsProps> = ({
@@ -41,6 +43,7 @@ export const SelectionControls: React.FC<SelectionControlsProps> = ({
   onSelectAll,
   onAssignCategoryToSelected,
   onRemoveCategoryFromSelected
+  , actionsMenu
 }) => {
   return (
     <div className="flex flex-col sm:flex-row justify-between items-center mb-4 gap-4 p-3 bg-gray-50 rounded-lg">
@@ -49,13 +52,14 @@ export const SelectionControls: React.FC<SelectionControlsProps> = ({
           onClick={onToggleSelectMode}
           variant={isSelectMode ? "destructive" : "outline"}
           size="sm"
+          className="bg-white border-gray-200 text-gray-800"
         >
           {isSelectMode ? "Cancelar Selección" : "Seleccionar Productos"}
         </Button>
         
         {isSelectMode && (
           <>
-            <Button onClick={onSelectAll} variant="outline" size="sm">
+            <Button onClick={onSelectAll} variant="outline" size="sm" className="bg-white border-gray-200 text-gray-800">
               {selectedItems.size === displayedItems.length ? "Deseleccionar Todo" : "Seleccionar Todo"}
             </Button>
             <span className="text-sm text-gray-600">
@@ -65,10 +69,11 @@ export const SelectionControls: React.FC<SelectionControlsProps> = ({
         )}
       </div>
       
-      {isSelectMode && selectedItems.size > 0 && (
-        <div className="flex flex-wrap gap-2">
-          <Select onValueChange={(value) => onAssignCategoryToSelected(parseInt(value))}>
-            <SelectTrigger className="w-48">
+      <div className="flex items-center gap-4">
+        {isSelectMode && selectedItems.size > 0 && (
+          <div className="flex flex-wrap gap-2">
+            <Select onValueChange={(value) => onAssignCategoryToSelected(parseInt(value))}>
+            <SelectTrigger className="w-48 bg-white">
               <SelectValue placeholder="Asignar categoría" />
             </SelectTrigger>
             <SelectContent>
@@ -88,8 +93,16 @@ export const SelectionControls: React.FC<SelectionControlsProps> = ({
           >
             {isAssigningCategory ? "Procesando..." : "Quitar Categoría"}
           </Button>
-        </div>
-      )}
+          </div>
+        )}
+
+        {/* actions menu on the right side when provided */}
+        {actionsMenu && (
+          <div className="ml-2">
+            {actionsMenu}
+          </div>
+        )}
+      </div>
     </div>
   );
 };

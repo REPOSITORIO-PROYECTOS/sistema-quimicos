@@ -78,15 +78,16 @@ export const AssignByNamesModal: React.FC<AssignByNamesModalProps> = ({
             <Label htmlFor="category-select">
               Categoría a asignar
             </Label>
-            <Select 
-              value={selectedCategory?.toString() || ""} 
-              onValueChange={(value) => setSelectedCategory(value ? parseInt(value) : null)}
+            <Select
+              value={selectedCategory?.toString() || '0'}
+              onValueChange={(value) => setSelectedCategory(value === '0' ? null : parseInt(value))}
               disabled={isAssigning}
             >
-              <SelectTrigger>
+              <SelectTrigger className="bg-white">
                 <SelectValue placeholder="Seleccionar categoría" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value={'0'}>Sin categoría</SelectItem>
                 {categorias.map((categoria) => (
                   <SelectItem key={categoria.id} value={categoria.id.toString()}>
                     {categoria.nombre}

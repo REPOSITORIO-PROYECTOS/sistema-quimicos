@@ -1,13 +1,15 @@
 // components/CreateProductModal.tsx
 import React, { useState, useEffect, ChangeEvent, useCallback } from 'react';
 import { useProductsContext } from '@/context/ProductsContext';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { CreateCategoryModal } from '@/components/CreateCategoryModal';
 
 // --- Interfaces (sin cambios) ---
 interface IngredientItem { id: string; ingrediente_id: string | number; porcentaje: string; }
 interface ComboComponentItem { id: string; producto_id: string | number; cantidad: number | string; }
 interface ProductOption { id: string | number; nombre: string; }
 interface ProductDataForEditAPI {
-    activo: boolean; id: string | number; nombre: string; sku?: string | null; unidad_venta: string | null; costo_referencia_usd: number | null; es_receta: boolean; ajusta_por_tc: boolean; ref_calculo: number | null; margen: number | null; tipo_calculo: string | null; descripcion?: string | null; es_combo?: boolean; combo_id?: number | null; 
+    activo: boolean; id: string | number; nombre: string; sku?: string | null; unidad_venta: string | null; costo_referencia_usd: number | null; es_receta: boolean; ajusta_por_tc: boolean; ref_calculo: number | null; margen: number | null; tipo_calculo: string | null; descripcion?: string | null; es_combo?: boolean; combo_id?: number | null; categoria_id?: number | null; categoria?: { id: number; nombre: string } | null;
 }
 interface RecipeItemForEditAPI { ingrediente_id: number | string; porcentaje: number; }
 interface ApiComboComponente { cantidad: number; componente: { es_receta: boolean; nombre: string; producto_id: number | string; }; id: number; }
@@ -56,12 +58,14 @@ interface FormData {
     skuCombo: string;
     descripcionCombo: string;
     margenCombo: string;
+    categoriaId?: string;
 }
 
 const initialFormData: FormData = {
     productCode: '', nombre: '', descripcionProducto: '', unidadVenta: '', costoReferenciaUsd: '',
     ajustaPorTc: false, unidadReferencia: '', margenProducto: '', tipoCalculo: '', esReceta: false,
     skuCombo: '', descripcionCombo: '', margenCombo: '',activo:false
+    , categoriaId: '0'
 };
 
 export interface CreateProductModalProps {
@@ -97,6 +101,12 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({
     const [comboComponents, setComboComponents] = useState<ComboComponentItem[]>([]);
     const [comboIdOriginal, setComboIdOriginal] = useState<number | null>(comboIdToEdit ? Number(comboIdToEdit) : null);
     const [availableProducts, setAvailableProducts] = useState<ProductOption[]>([]);
+    const [categoriasList, setCategoriasList] = useState<{id:number;nombre:string}[]>([]);
+    const [isCreateCategoryModalOpenLocal, setIsCreateCategoryModalOpenLocal] = useState(false);
+    const [newCategoryNameLocal, setNewCategoryNameLocal] = useState('');
+    const [newCategoryDescriptionLocal, setNewCategoryDescriptionLocal] = useState('');
+    const [isCreatingCategoryLocal, setIsCreatingCategoryLocal] = useState(false);
+    const [createCategoryErrorLocal, setCreateCategoryErrorLocal] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
     const [saveError, setSaveError] = useState<string | null>(null);
     const [isLoadingData, setIsLoadingData] = useState(false);
@@ -178,6 +188,7 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({
                         unidadReferencia: productData.ref_calculo?.toString() || '',
                         margenProducto: productData.margen?.toString() || '',
                         tipoCalculo: (productData.tipo_calculo || '').toUpperCase(),
+                        categoriaId: productData.categoria_id ? productData.categoria_id.toString() : '',
                         esReceta: productData.es_receta || false,
                         activo : productData.activo || false,
                         // Limpiar campos de combo
@@ -199,6 +210,40 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({
         };
         if (isEditMode) fetchDetails();
     }, [isEditMode, productIdToEdit, comboIdToEdit, isInitiallyCombo, token, getComboIdFromProductId]);
+
+    // Fetch categories for the select
+    const fetchCategoriasLocal = useCallback(async () => {
+        if (!token) return;
+        try {
+            const res = await fetch('https://quimex.sistemataup.online/categorias/?activo=true', { headers: { 'Authorization': `Bearer ${token}` } });
+            if (!res.ok) return;
+            const data = await res.json();
+            setCategoriasList(data.categorias || []);
+        } catch (e) { console.error('Error fetching categories', e); }
+    }, [token]);
+
+    useEffect(() => { fetchCategoriasLocal(); }, [fetchCategoriasLocal]);
+
+    const handleCreateCategoryLocal = async () => {
+        if (!newCategoryNameLocal.trim() || !token) return;
+        setIsCreatingCategoryLocal(true); setCreateCategoryErrorLocal(null);
+        try {
+            const response = await fetch('https://quimex.sistemataup.online/categorias/', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ nombre: newCategoryNameLocal.trim(), descripcion: newCategoryDescriptionLocal.trim() || null, activo: true }) });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || result.detalle || 'Error creando categoría');
+            // refresh list and select new
+            await fetchCategoriasLocal();
+            setFormData(prev => ({ ...prev, categoriaId: result.categoria?.id?.toString() || '' }));
+            setIsCreateCategoryModalOpenLocal(false);
+            setNewCategoryNameLocal(''); setNewCategoryDescriptionLocal('');
+        } catch (err: unknown) {
+            if (err instanceof Error) {
+                setCreateCategoryErrorLocal(err.message || 'Error creando categoría');
+            } else {
+                setCreateCategoryErrorLocal(String(err) || 'Error creando categoría');
+            }
+        } finally { setIsCreatingCategoryLocal(false); }
+    };
     
     // --- LÓGICA DE MANEJO DE FORMULARIO UNIFICADA ---
     const addIngredientRow = useCallback(() => setIngredients(prev => [...prev, { id: crypto.randomUUID(), ingrediente_id: '', porcentaje: '' }]), []);
@@ -312,6 +357,7 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({
                     es_receta: formData.esReceta,
                     es_combo: false,
                     combo_id: null,
+                    categoria_id: formData.categoriaId && formData.categoriaId !== '0' ? Number(formData.categoriaId) : null,
                 };
 
                 const productApiUrl = isEditMode && productIdToEdit ? `https://quimex.sistemataup.online/productos/actualizar/${productIdToEdit}` : 'https://quimex.sistemataup.online/productos/crear';
@@ -341,11 +387,19 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({
         }
     };
 
+    // CreateCategoryModal handlers
+    const handleOnCreateCategoryModalClose = () => {
+        setIsCreateCategoryModalOpenLocal(false);
+    };
+    const handleOnCreateCategorySubmitLocal = async () => {
+        await handleCreateCategoryLocal();
+    };
+
     const isProductFieldsDisabled = esCombo;
-    if (isEditMode && isLoadingData) { return (<div className="fixed inset-0 bg-black bg-opacity-50 z-40 flex justify-center items-center"><div className="bg-white p-6 rounded-lg shadow-xl">Cargando...</div></div>); }
+    if (isEditMode && isLoadingData) { return (<div className="fixed inset-0 bg-black bg-opacity-50 z-[10002] flex justify-center items-center"><div className="bg-white p-6 rounded-lg shadow-xl">Cargando...</div></div>); }
 
 return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-40 flex justify-center items-start pt-10 md:pt-16 p-4 transition-opacity duration-300 ease-in-out overflow-y-auto">
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-[10002] flex justify-center items-start pt-10 md:pt-16 p-4 transition-opacity duration-300 ease-in-out overflow-y-auto">
         <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[calc(100vh-6rem)] md:max-h-[calc(100vh-8rem)] flex flex-col animate-fade-in-scale mb-10">
             
             <ModalHeader isEditMode={isEditMode} esCombo={esCombo} nombre={formData.nombre} onClose={onClose} />
@@ -371,6 +425,21 @@ return (
                             <option value="">-- Seleccionar --</option> 
                             {unidadesDeVenta.map(u => <option key={u} value={u}>{u}</option>)}
                         </select>
+                    </div>
+                    <div>
+                        <label htmlFor="categoriaId" className="block text-sm font-medium mb-1">Categoría</label>
+                        <div className="flex gap-2">
+                                <Select value={formData.categoriaId} onValueChange={(v) => setFormData(prev => ({ ...prev, categoriaId: v }))}>
+                                    <SelectTrigger className="w-full px-3 py-2 border rounded-md bg-white">
+                                        <SelectValue placeholder="Seleccionar categoría" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="0">Sin categoría</SelectItem>
+                                        {categoriasList.map(c => (<SelectItem key={c.id} value={c.id.toString()}>{c.nombre}</SelectItem>))}
+                                    </SelectContent>
+                                </Select>
+                            <button type="button" onClick={() => setIsCreateCategoryModalOpenLocal(true)} className="px-3 py-1 border rounded bg-white">+</button>
+                        </div>
                     </div>
                     <div>
                         <label htmlFor="costoReferenciaUsd" className="block text-sm font-medium mb-1">Costo Ref. USD</label>
@@ -484,6 +553,7 @@ return (
 
             <ModalFooter isSaving={isSaving} isLoadingData={isLoadingData} isEditMode={isEditMode} esCombo={esCombo} saveError={saveError} onClose={onClose} />
         </form>
+        <CreateCategoryModal isOpen={isCreateCategoryModalOpenLocal} onClose={handleOnCreateCategoryModalClose} onSubmit={handleOnCreateCategorySubmitLocal} categoryName={newCategoryNameLocal} setCategoryName={setNewCategoryNameLocal} categoryDescription={newCategoryDescriptionLocal} setCategoryDescription={setNewCategoryDescriptionLocal} isCreating={isCreatingCategoryLocal} error={createCategoryErrorLocal} />
     </div>
 );
 };

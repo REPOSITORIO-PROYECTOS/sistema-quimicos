@@ -32,21 +32,22 @@ export const SearchAndFilters: React.FC<SearchAndFiltersProps> = ({
   categorias
 }) => {
   return (
-    <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
-      <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
-        <input 
-          type="text" 
-          placeholder="Buscar por nombre o código..." 
-          value={searchTerm} 
-          onChange={(e) => setSearchTerm(e.target.value)} 
-          className="px-4 py-2 border rounded-md w-full sm:w-64"
+    <div className="flex items-center gap-6 flex-wrap">
+      <div className="flex items-center gap-4">
+        <input
+          type="text"
+          placeholder="Buscar por nombre o código..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="px-4 py-2 border rounded-md w-64"
         />
-        <Select 
-          value={selectedCategoriaFilter?.toString() || "all"} 
+
+        <Select
+          value={selectedCategoriaFilter?.toString() || "all"}
           onValueChange={(value) => setSelectedCategoriaFilter(value === "all" ? null : parseInt(value))}
         >
-          <SelectTrigger className="w-full sm:w-48">
-            <SelectValue placeholder="Filtrar por categoría" />
+          <SelectTrigger className="flex items-center justify-between gap-2 px-3 py-2 border rounded-md text-sm shadow w-44 bg-white">
+            <SelectValue placeholder="Todas las categorías" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todas las categorías</SelectItem>

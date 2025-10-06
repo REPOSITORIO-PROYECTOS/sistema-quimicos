@@ -14,6 +14,18 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { useState } from "react";
+import { useEffect } from 'react';
+
+// fetch categories
+async function fetchCategorias(token: string | null) {
+    if (!token) return [];
+    try {
+        const res = await fetch('https://quimex.sistemataup.online/categorias/?activo=true', { headers: { 'Authorization': `Bearer ${token}` } });
+        if (!res.ok) return [];
+        const data = await res.json();
+        return data.categorias || [];
+    } catch (e) { console.error('Error fetching categorias', e); return []; }
+}
 
 type ItemFormData = {
     tipo: string;
@@ -21,6 +33,7 @@ type ItemFormData = {
     descripcion: string;
     cotizacion: string;
     un: string;
+    categoriaId?: string;
 };
 
 type FormularioItemProps = {
@@ -36,7 +49,15 @@ export function FormularioItem({ onSubmit, onCancel, initialData }: FormularioIt
         descripcion: initialData?.descripcion || "",
         cotizacion: initialData?.cotizacion || "",
         un: initialData?.un || "",
+        categoriaId: initialData?.categoriaId ?? '0',
     });
+
+    const [categorias, setCategorias] = useState<{id:number;nombre:string}[]>([]);
+
+    useEffect(() => {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+        fetchCategorias(token).then(setCategorias);
+    }, []);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
@@ -67,7 +88,7 @@ export function FormularioItem({ onSubmit, onCancel, initialData }: FormularioIt
                             }
                             required
                         >
-                            <SelectTrigger>
+                            <SelectTrigger className="bg-white">
                                 <SelectValue placeholder="Seleccionar tipo" />
                             </SelectTrigger>
                             <SelectContent>
@@ -91,7 +112,7 @@ export function FormularioItem({ onSubmit, onCancel, initialData }: FormularioIt
                             }
                             required
                         >
-                            <SelectTrigger>
+                            <SelectTrigger className="bg-white">
                                 <SelectValue placeholder="Seleccionar estatus" />
                             </SelectTrigger>
                             <SelectContent>
@@ -143,6 +164,18 @@ export function FormularioItem({ onSubmit, onCancel, initialData }: FormularioIt
                         UN
                     </Label>
                     <div className="col-span-3">
+                        <div className="mb-2">
+                            <label className="block text-xs text-gray-600 mb-1">Categoría (opcional)</label>
+                            <Select value={formData.categoriaId || ''} onValueChange={(v) => handleSelectChange("categoriaId", v)}>
+                                    <SelectTrigger className="bg-white">
+                                        <SelectValue placeholder="Seleccionar categoría" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="0">Sin categoría</SelectItem>
+                                        {categorias.map(c => (<SelectItem key={c.id} value={c.id.toString()}>{c.nombre}</SelectItem>))}
+                                    </SelectContent>
+                            </Select>
+                        </div>
                         <Select
                             value={formData.un}
                             onValueChange={(value) =>
@@ -150,7 +183,7 @@ export function FormularioItem({ onSubmit, onCancel, initialData }: FormularioIt
                             }
                             required
                         >
-                            <SelectTrigger>
+                            <SelectTrigger className="bg-white">
                                 <SelectValue placeholder="Seleccionar unidad" />
                             </SelectTrigger>
                             <SelectContent>
