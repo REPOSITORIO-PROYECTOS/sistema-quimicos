@@ -136,10 +136,18 @@ def reporte_movimientos_excel_limitado(current_user):
                     estado_venta = 'Pendiente'
             else:
                 estado_venta = "Entregado"
+            # Preferir los valores almacenados en la venta para que el reporte refleje
+            # exactamente lo que está guardado en la base de datos.
             monto_total_base_venta = venta.monto_total or Decimal('0.0')
-            # Usar monto_final_con_recargos redondeado a múltiplo de 100 hacia arriba
-            monto_final_real = venta.monto_final_con_recargos or Decimal('0.0')
-            monto_final_real = Decimal(math.ceil(monto_final_real / 100) * 100)
+            # Usar el campo 'monto_final_redondeado' si existe (es el valor que se utiliza
+            # en caja y en la presentación). Si no está presente, caer atrás a
+            # 'monto_final_con_recargos' y mantener la lógica previa de redondeo por defecto.
+            monto_final_real = venta.monto_final_redondeado if getattr(venta, 'monto_final_redondeado', None) is not None else (venta.monto_final_con_recargos or Decimal('0.0'))
+            try:
+                # Asegurar que sea Decimal y mantener dos decimales
+                monto_final_real = Decimal(monto_final_real).quantize(Decimal('0.01'))
+            except Exception:
+                monto_final_real = Decimal('0.0')
 
             # --- Ajuste de zona horaria para fecha/hora de registro ---
             fecha_registro = venta.fecha_registro
@@ -153,14 +161,10 @@ def reporte_movimientos_excel_limitado(current_user):
             fecha_ar = fecha_registro.astimezone(AR_TZ)
 
             for detalle in venta.detalles:
-                # Usar el subtotal base SIN redondear para cálculos de margen
-                subtotal_item_base = detalle.precio_total_item_ars or Decimal('0.0')
-                subtotal_item_final_calculado = subtotal_item_base
-                if monto_total_base_venta > 0:
-                    proporcion_del_item = subtotal_item_base / monto_total_base_venta
-                    subtotal_con_recargos = monto_final_real * proporcion_del_item
-                    # Mantener subtotal con recargos pero sin forzar redondeo para el cálculo del margen
-                    subtotal_item_final_calculado = Decimal(subtotal_con_recargos)
+                # Usar el subtotal tal como fue guardado en el detalle (ya incluye el
+                # redondeo aplicado al item al registrar la venta). Esto asegura que
+                # el reporte muestre exactamente lo registrado en la base.
+                subtotal_item_final_calculado = detalle.precio_total_item_ars or Decimal('0.0')
 
                 costo_total_prod, margen = Decimal('0.0'), Decimal('0.0')
                 try:
