@@ -219,35 +219,60 @@ const handlePrint = async (tipo: 'comprobante' | 'orden_de_trabajo') => {
 
       const boletasAImprimir: VentaData[] = boletasDetalladas.map((data: BoletaOriginal) => {
         const detalles = data.detalles || [];
-        const itemsNormalizados = detalles.map((item) => {
-          // Si viene subtotal bruto explícito lo usamos, de lo contrario lo inferimos si hay descuento
-          let subtotalBruto = item.subtotal_bruto_item_ars;
-          if (subtotalBruto === undefined && item.descuento_item_porcentaje && item.descuento_item_porcentaje > 0 && item.descuento_item_porcentaje < 100) {
-            subtotalBruto = item.precio_total_item_ars / (1 - item.descuento_item_porcentaje / 100);
-          }
+        
+        // Lógica de distribución de recargos igual que en registrar-pedido
+        const itemsFiltrados = detalles.filter(item => item.producto_id && item.cantidad > 0);
+        const totalesOriginales = itemsFiltrados.map(item => item.precio_total_item_ars || 0);
+        const sumaTotales = totalesOriginales.reduce((sum, val) => sum + val, 0);
+        const recargoTotal = (data.recargos?.transferencia || 0) + (data.recargos?.factura_iva || 0);
+        
+        const adjustedItems = itemsFiltrados.map((item, idx) => {
+          const totalOriginal = totalesOriginales[idx];
+          const proporcion = sumaTotales > 0 ? totalOriginal / sumaTotales : 0;
+          const recargoItem = recargoTotal * proporcion;
+          const totalFinalItem = totalOriginal + recargoItem;
+          
           return {
             producto_id: item.producto_id,
             producto_nombre: item.producto_nombre,
             cantidad: item.cantidad,
-            precio_total_item_ars: item.precio_total_item_ars || 0,
+            precio_total_item_ars: Math.round(totalFinalItem * 100) / 100,
             descuento_item_porcentaje: item.descuento_item_porcentaje,
-            subtotal_bruto_item_ars: subtotalBruto,
+            subtotal_bruto_item_ars: item.subtotal_bruto_item_ars,
             observacion_item: item.observacion_item,
           };
         });
+        
+        // Ajustar el último item para que la suma sea exacta al total final
         const totalPreferido = (typeof data.monto_final_con_descuento === 'number') ? data.monto_final_con_descuento : data.monto_final_con_recargos;
+        const sumAdjusted = adjustedItems.reduce((sum, item) => sum + item.precio_total_item_ars, 0);
+        const difference = Math.round((totalPreferido - sumAdjusted) * 100) / 100;
+        if (adjustedItems.length > 0 && Math.abs(difference) > 0.01) {
+          adjustedItems[adjustedItems.length - 1].precio_total_item_ars += difference;
+          adjustedItems[adjustedItems.length - 1].precio_total_item_ars = Math.round(adjustedItems[adjustedItems.length - 1].precio_total_item_ars * 100) / 100;
+        }
+        
+        // Calcular total_bruto_sin_descuento igual que en registrar-pedido
+        const totalBrutoSinDescuento = adjustedItems.reduce((sum, item) => {
+          const subtotalFinalParaTicket = item.precio_total_item_ars;
+          const descuentoPorc = item.descuento_item_porcentaje || 0;
+          const subtotalBruto = descuentoPorc > 0 ? (subtotalFinalParaTicket / (1 - descuentoPorc / 100)) : subtotalFinalParaTicket;
+          return sum + subtotalBruto;
+        }, 0);
+        
         return {
           venta_id: data.venta_id,
           fecha_emision: data.fecha_pedido || data.fecha_emision || '',
           cliente: { nombre: data.cliente_nombre, direccion: data.direccion_entrega, localidad: data.cliente_zona },
           nombre_vendedor: data.nombre_vendedor || '',
-            items: itemsNormalizados,
-            total_final: totalPreferido,
-            observaciones: data.observaciones,
-            forma_pago: data.forma_pago,
-            monto_pagado_cliente: data.monto_pagado_cliente,
-            vuelto_calculado: data.vuelto_calculado,
-            descuento_total_global_porcentaje: data.descuento_total_global_porcentaje,
+          items: adjustedItems,
+          total_final: totalPreferido,
+          observaciones: data.observaciones,
+          forma_pago: data.forma_pago,
+          monto_pagado_cliente: data.monto_pagado_cliente,
+          vuelto_calculado: data.vuelto_calculado,
+          descuento_total_global_porcentaje: data.descuento_total_global_porcentaje,
+          total_bruto_sin_descuento: totalBrutoSinDescuento,
         };
       });
       

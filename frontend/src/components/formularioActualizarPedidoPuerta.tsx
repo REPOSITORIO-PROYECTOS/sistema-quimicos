@@ -354,15 +354,45 @@ useEffect(() => {
 
   if (isLoading) { return <div className="flex items-center justify-center min-h-screen bg-indigo-900"><p className="text-white text-xl">Cargando datos...</p></div>; }
   
+  const itemsFinalesBase = productos.map(item => {
+    const pInfo = productosContext.productos.find(prod => prod.id === item.producto_id);
+    return {
+      producto_id: item.producto_id,
+      producto_nombre: pInfo?.nombre || `ID: ${item.producto_id}`,
+      cantidad: item.cantidad,
+      observacion_item: item.observacion_item || "",
+      precio_total_item_ars: item.total_linea || 0,
+      subtotal_bruto_item_ars: item.total_linea || 0,
+    };
+  });
+  
   const ventaDataParaTicket: VentaData = {
       venta_id: id, fecha_emision: formData.fecha_emision, cliente: { nombre: "CONSUMIDOR FINAL" },
       nombre_vendedor: formData.nombre_vendedor.trim(),
-      items: productos.map(p => ({
-        producto_id: p.producto_id,
-        producto_nombre: productosContext.productos.find(prod => prod.id === p.producto_id)?.nombre || `ID:${p.producto_id}`,
-        cantidad: p.cantidad,
-        precio_total_item_ars: (p.total_linea || 0)
-      })),
+      items: (() => {
+        const surchargeTotal = (totalCalculadoApi?.recargos?.transferencia || 0) + (totalCalculadoApi?.recargos?.factura_iva || 0);
+            const adjustedItems = itemsFinalesBase.map(item => {
+          const pInfo = productosContext.productos.find(prod => prod.id === item.producto_id);
+          const baseTotal = item.precio_total_item_ars;
+          const proportion = montoBaseProductos > 0 ? baseTotal / montoBaseProductos : 0;
+          const adjustedTotal = baseTotal + proportion * surchargeTotal;
+          return {
+            producto_id: item.producto_id,
+            producto_nombre: pInfo?.nombre || `ID:${item.producto_id}`,
+            cantidad: item.cantidad,
+            precio_total_item_ars: Math.round(adjustedTotal * 100) / 100,
+            observacion_item: item.observacion_item || "",
+          };
+        });
+        // Make the sum exact to displayTotal
+        const sumAdjusted = adjustedItems.reduce((sum, item) => sum + item.precio_total_item_ars, 0);
+        const difference = Math.round((displayTotal - sumAdjusted) * 100) / 100;
+        if (adjustedItems.length > 0 && Math.abs(difference) > 0.01) {
+          adjustedItems[adjustedItems.length - 1].precio_total_item_ars += difference;
+          adjustedItems[adjustedItems.length - 1].precio_total_item_ars = Math.round(adjustedItems[adjustedItems.length - 1].precio_total_item_ars * 100) / 100;
+        }
+        return adjustedItems;
+      })(),
       total_final: displayTotal,
       observaciones: formData.observaciones,
       forma_pago: formData.forma_pago,

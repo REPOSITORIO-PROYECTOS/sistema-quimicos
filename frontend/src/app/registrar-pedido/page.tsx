@@ -150,7 +150,7 @@ const displayTotal = useMemo(() => {
       }
   }, [formData.montoPagado, displayTotal, formData.formaPago]);
 
-  const recalculatePricesForProducts = useCallback(async (currentProducts: ProductoVenta[]) => {
+  const recalculatePricesForProducts = useCallback(async (currentProducts: ProductoVenta[], clienteId: number | null) => {
     const token = localStorage.getItem("token");
     if (!token) { 
         setErrorMessage("No autenticado."); 
@@ -173,7 +173,6 @@ const displayTotal = useMemo(() => {
             return { precioUnitario: 0, precioTotalCalculado: 0, indices };
         }
         try {
-            const clienteId = formData.clienteId ? parseInt(String(formData.clienteId)) : null;
             const precioRes = await fetch(`https://quimex.sistemataup.online/productos/calcular_precio/${productoId}`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
@@ -221,13 +220,13 @@ const displayTotal = useMemo(() => {
     // 5. Actualizar el estado del componente con los precios correctos.
     setProductos(newProducts);
 
-  }, [formData.clienteId, setErrorMessage]); // Las dependencias son correctas
+  }, [setErrorMessage]); // Las dependencias son correctas
   
   const handleProductSelectChange = (index: number, selectedOption: { value: number; label: string } | null) => {
     const nuevosProductos = [...productos];
     nuevosProductos[index].producto = selectedOption?.value || 0;
     nuevosProductos[index].qx = selectedOption ? 0 : 0;
-    recalculatePricesForProducts(nuevosProductos);
+    recalculatePricesForProducts(nuevosProductos, formData.clienteId);
   };
 
   // Debounce para evitar llamadas excesivas a la API
@@ -250,7 +249,7 @@ const displayTotal = useMemo(() => {
     if (name === 'qx' || name === 'descuento' || name === 'producto') {
       if (debounceTimeout.current) clearTimeout(debounceTimeout.current);
       debounceTimeout.current = setTimeout(() => {
-        recalculatePricesForProducts(nuevosProductos);
+        recalculatePricesForProducts(nuevosProductos, formData.clienteId);
       }, DEBOUNCE_DELAY);
     }
   };
@@ -258,7 +257,7 @@ const displayTotal = useMemo(() => {
   const agregarProducto = () => setProductos([...productos, { ...initialProductos[0] }]);
   const eliminarProducto = (index: number) => {
     const nuevosProductos = productos.filter((_, i) => i !== index);
-    recalculatePricesForProducts(nuevosProductos.length > 0 ? nuevosProductos : [{ ...initialProductos[0] }]);
+    recalculatePricesForProducts(nuevosProductos.length > 0 ? nuevosProductos : [{ ...initialProductos[0] }], formData.clienteId);
   };
 
   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -282,6 +281,10 @@ const displayTotal = useMemo(() => {
       direccion: selectedCliente?.direccion || "",
       localidad: selectedCliente?.localidad || "",
     }));
+    // Recalcular precios con el nuevo cliente para aplicar precios especiales
+    if (productos.some(p => p.producto > 0 && p.qx > 0)) {
+      recalculatePricesForProducts(productos, selectedCliente?.id || null);
+    }
   };
   
 const handleSubmit = async (e: React.FormEvent ) => {
@@ -399,7 +402,7 @@ const handleSubmit = async (e: React.FormEvent ) => {
       const sumaTotales = totalesOriginales.reduce((sum, val) => sum + val, 0);
       // Recargo total desde la API
       const recargoTotal = (totalCalculadoApi?.recargos.transferencia || 0) + (totalCalculadoApi?.recargos.factura_iva || 0);
-      return itemsFiltrados.map((item, idx) => {
+      const adjustedItems = itemsFiltrados.map((item, idx) => {
         const pInfo = productosContext?.productos.find(p => p.id === item.producto);
         const totalOriginal = totalesOriginales[idx];
         // Proporción del recargo para este ítem
@@ -411,10 +414,18 @@ const handleSubmit = async (e: React.FormEvent ) => {
           producto_id: item.producto,
           producto_nombre: pInfo?.nombre || `ID: ${item.producto}`,
           cantidad: item.qx,
-          precio_total_item_ars: totalFinalItem,
+          precio_total_item_ars: Math.round(totalFinalItem * 100) / 100, // round to 2 decimals
           observacion_item: item.observacion || ""
         };
       });
+      // Make the sum exact to displayTotal
+      const sumAdjusted = adjustedItems.reduce((sum, item) => sum + item.precio_total_item_ars, 0);
+      const difference = Math.round((displayTotal - sumAdjusted) * 100) / 100;
+      if (adjustedItems.length > 0 && Math.abs(difference) > 0.01) {
+        adjustedItems[adjustedItems.length - 1].precio_total_item_ars += difference;
+        adjustedItems[adjustedItems.length - 1].precio_total_item_ars = Math.round(adjustedItems[adjustedItems.length - 1].precio_total_item_ars * 100) / 100;
+      }
+      return adjustedItems;
     })(),
     total_final: displayTotal,
     observaciones: formData.observaciones,

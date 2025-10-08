@@ -367,7 +367,7 @@ const totalFinalCalculado = useMemo(() => {
 
   // Calcular el subtotal de todos los ítems con descuento particular
   const itemsFiltrados = productos.filter(p => p.producto && p.qx > 0);
-  const itemsFinales = itemsFiltrados.map(item => {
+  const itemsFinalesBase = itemsFiltrados.map(item => {
     const pInfo = productosContext?.productos.find(p => p.id === item.producto);
     return {
       id_detalle: item.id_detalle,
@@ -379,6 +379,26 @@ const totalFinalCalculado = useMemo(() => {
       subtotal_bruto_item_ars: item.total || 0,
     };
   });
+
+  // Redistribuir el sobrecargo proporcionalmente en los ítems para que la suma coincida con total_final
+  const base_total = totalCalculadoApi?.monto_base || 0;
+  const surcharge_total = (totalCalculadoApi?.recargos?.transferencia || 0) + (totalCalculadoApi?.recargos?.factura_iva || 0);
+  let itemsFinales = itemsFinalesBase;
+  if (base_total > 0 && surcharge_total > 0) {
+    const adjustedItems = itemsFinalesBase.map(item => {
+      const proportion = item.subtotal_bruto_item_ars / base_total;
+      const surcharge_for_item = proportion * surcharge_total;
+      const new_price = item.subtotal_bruto_item_ars + surcharge_for_item;
+      return { ...item, precio_total_item_ars: parseFloat(new_price.toFixed(2)) };
+    });
+    const sum_adjusted = adjustedItems.reduce((sum, item) => sum + item.precio_total_item_ars, 0);
+    const difference = totalFinalCalculado - sum_adjusted;
+    if (adjustedItems.length > 0) {
+      adjustedItems[adjustedItems.length - 1].precio_total_item_ars += difference;
+      adjustedItems[adjustedItems.length - 1].precio_total_item_ars = parseFloat(adjustedItems[adjustedItems.length - 1].precio_total_item_ars.toFixed(2));
+    }
+    itemsFinales = adjustedItems;
+  }
 
   const ventaDataParaTicket: VentaDataParaTicket = {
     venta_id: id,

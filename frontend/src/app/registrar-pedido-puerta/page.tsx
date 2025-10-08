@@ -281,19 +281,31 @@ export default function RegistrarPedidoPuertaPage() {
     fecha_emision: formData.fechaEmision,
     cliente: { nombre: "CONSUMIDOR FINAL" },
     nombre_vendedor: nombreVendedor.trim(),
-    items: productos
-        .filter(p => p.producto && p.qx > 0)
-        .map(item => {
+    items: (() => {
+        const filteredItems = productos.filter(p => p.producto && p.qx > 0);
+        const surchargeTotal = (totalCalculadoApi?.recargos?.transferencia || 0) + (totalCalculadoApi?.recargos?.factura_iva || 0);
+        const adjustedItems = filteredItems.map(item => {
             const pInfo = productosContext?.productos.find(p => p.id === item.producto);
-            const subtotalFinalParaTicket = item.total || 0; // Ahora el backend se encarga del redondeo final global
+            const baseTotal = item.total || 0;
+            const proportion = montoBaseProductos > 0 ? baseTotal / montoBaseProductos : 0;
+            const adjustedTotal = baseTotal + proportion * surchargeTotal;
             return {
                 producto_id: item.producto,
                 producto_nombre: pInfo?.nombre || `ID: ${item.producto}`,
                 cantidad: item.qx,
                 observacion_item: item.observacion || "",
-                precio_total_item_ars: subtotalFinalParaTicket,
+                precio_total_item_ars: Math.round(adjustedTotal * 100) / 100, // round to 2 decimals
             };
-        }),
+        });
+        // Make the sum exact to displayTotal
+        const sumAdjusted = adjustedItems.reduce((sum, item) => sum + item.precio_total_item_ars, 0);
+        const difference = Math.round((displayTotal - sumAdjusted) * 100) / 100;
+        if (adjustedItems.length > 0 && Math.abs(difference) > 0.01) {
+            adjustedItems[adjustedItems.length - 1].precio_total_item_ars += difference;
+            adjustedItems[adjustedItems.length - 1].precio_total_item_ars = Math.round(adjustedItems[adjustedItems.length - 1].precio_total_item_ars * 100) / 100;
+        }
+        return adjustedItems;
+    })(),
     total_final: displayTotal, // Esto ya es correcto (es el total final redondeado)
     observaciones: formData.observaciones,
     forma_pago: formData.formaPago,
