@@ -340,6 +340,7 @@ const totalFinalCalculado = useMemo(() => {
         id_detalle: item.id_detalle,
         producto_id: item.producto,
         cantidad: item.qx,
+        precio_unitario_ars: item.precio || 0, // Enviar precio calculado con precios especiales
         observacion_item: item.observacion || "",
         descuento_item_porcentaje: item.descuento || 0,
       })),

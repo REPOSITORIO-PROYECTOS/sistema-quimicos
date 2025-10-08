@@ -308,6 +308,7 @@ const handleSubmit = async (e: React.FormEvent ) => {
       items: productos.filter(item => item.producto > 0 && item.qx > 0).map(item => ({
         producto_id: item.producto,
         cantidad: item.qx,
+        precio_unitario_ars: item.precio || 0, // Enviar precio calculado con precios especiales
         descuento_item_porcentaje: item.descuento || 0,
         observacion_item: item.observacion || ""
       })),
