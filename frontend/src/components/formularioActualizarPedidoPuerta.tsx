@@ -1,6 +1,6 @@
 "use client";
 
-import { useProductsContext, Producto as ProductoType } from "@/context/ProductsContext"; 
+import { useProductsContext, Producto as ProductoType } from "@/context/ProductsContext";
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import BotonVolver from "./BotonVolver";
 import Ticket, { VentaData } from './Ticket';
@@ -53,13 +53,13 @@ interface FormularioProps {
   onVolver: () => void;
 }
 const VENDEDORES = ["martin", "moises", "sergio", "gabriel", "mauricio", "elias", "ardiles", "redonedo"];
-const initialProductoItem : ProductoPedido = { producto_id: 0, cantidad: 0, precio_unitario: 0, total_linea: 0, observacion_item: "" };
+const initialProductoItem: ProductoPedido = { producto_id: 0, cantidad: 0, precio_unitario: 0, total_linea: 0, observacion_item: "" };
 
 // --- Componente Principal ---
 export default function FormularioActualizarPedidoPuerta({ id, onVolver }: FormularioProps) {
   const [formData, setFormData] = useState<IFormData>({
     nombre_vendedor: "", fecha_emision: "", forma_pago: "efectivo",
-  monto_pagado: 0, vuelto: 0,
+    monto_pagado: 0, vuelto: 0,
     requiere_factura: false, observaciones: "",
   });
   const [productos, setProductos] = useState<ProductoPedido[]>([]);
@@ -74,17 +74,17 @@ export default function FormularioActualizarPedidoPuerta({ id, onVolver }: Formu
 
   const opcionesDeProductoParaSelect = useMemo(() =>
     productosContext.productos.map((prod: ProductoType) => ({ value: prod.id, label: prod.nombre })) || [],
-  [productosContext.productos]);
-  
+    [productosContext.productos]);
+
   const montoBaseProductos = useMemo(() => {
     return productos.reduce((sum, item) => sum + (item.total_linea || 0), 0);
   }, [productos]);
 
   const recalculatePricesForProducts = useCallback(async (currentProducts: ProductoPedido[]) => {
     const token = localStorage.getItem("token");
-    if (!token) { 
-        setErrorMensaje("No autenticado."); 
-        return; 
+    if (!token) {
+      setErrorMensaje("No autenticado.");
+      return;
     }
 
     // --- INICIO DE LA LÓGICA CORRECTA Y DEFINITIVA ---
@@ -92,61 +92,61 @@ export default function FormularioActualizarPedidoPuerta({ id, onVolver }: Formu
     // 1. Agrupar cantidades totales por cada ID de producto.
     const productQuantities = new Map<number, { totalQuantity: number; indices: number[] }>();
     currentProducts.forEach((p, index) => {
-        if (p.producto_id > 0) {
-            const existing = productQuantities.get(p.producto_id) || { totalQuantity: 0, indices: [] };
-            existing.totalQuantity += p.cantidad;
-            existing.indices.push(index);
-            productQuantities.set(p.producto_id, existing);
-        }
+      if (p.producto_id > 0) {
+        const existing = productQuantities.get(p.producto_id) || { totalQuantity: 0, indices: [] };
+        existing.totalQuantity += p.cantidad;
+        existing.indices.push(index);
+        productQuantities.set(p.producto_id, existing);
+      }
     });
 
     // 2. Crear una promesa por cada producto ÚNICO para obtener su precio unitario correcto.
     const pricePromises = Array.from(productQuantities.entries()).map(async ([productoId, { totalQuantity, indices }]) => {
-        if (totalQuantity <= 0) {
-            return { precioUnitario: 0, precioTotalCalculado: 0, indices };
+      if (totalQuantity <= 0) {
+        return { precioUnitario: 0, precioTotalCalculado: 0, indices };
+      }
+      try {
+        const precioRes = await fetch(`https://quimex.sistemataup.online/productos/calcular_precio/${productoId}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+          body: JSON.stringify({ producto_id: productoId, quantity: totalQuantity, cliente_id: null }),
+        });
+        if (!precioRes.ok) {
+          const errorData = await precioRes.json().catch(() => ({ message: 'API de precios falló' }));
+          throw new Error(errorData.message);
         }
-        try {
-            const precioRes = await fetch(`https://quimex.sistemataup.online/productos/calcular_precio/${productoId}`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-                body: JSON.stringify({ producto_id: productoId, quantity: totalQuantity, cliente_id: null }),
-            });
-            if (!precioRes.ok) {
-                const errorData = await precioRes.json().catch(() => ({ message: 'API de precios falló' }));
-                throw new Error(errorData.message);
-            }
-            const precioData = await precioRes.json();
-            // Se capturan los valores de la API en variables locales
-            return { 
-                precioUnitario: precioData.precio_venta_unitario_ars || 0,
-                precioTotalCalculado: precioData.precio_total_calculado_ars || 0,
-                indices 
-            };
-        } catch (error) {
-            if (error instanceof Error) setErrorMensaje(prev => `${prev}\nPrecio Prod ID ${productoId}: ${error.message}`);
-            return { precioUnitario: 0, precioTotalCalculado: 0, indices };
-        }
+        const precioData = await precioRes.json();
+        // Se capturan los valores de la API en variables locales
+        return {
+          precioUnitario: precioData.precio_venta_unitario_ars || 0,
+          precioTotalCalculado: precioData.precio_total_calculado_ars || 0,
+          indices
+        };
+      } catch (error) {
+        if (error instanceof Error) setErrorMensaje(prev => `${prev}\nPrecio Prod ID ${productoId}: ${error.message}`);
+        return { precioUnitario: 0, precioTotalCalculado: 0, indices };
+      }
     });
 
     const priceResults = await Promise.all(pricePromises);
     const newProducts = [...currentProducts];
 
     priceResults.forEach(({ precioUnitario, precioTotalCalculado, indices }) => {
-        const totalQuantityForProduct = indices.reduce((sum, index) => sum + (newProducts[index].cantidad || 0), 0);
-        indices.forEach(index => {
-            const item = newProducts[index];
-            if (item) {
-                // --- CORRECCIÓN FINAL ---
-                // Se usan los nombres de propiedad definidos en el tipo 'ProductoPedido'
-                item.precio_unitario = precioUnitario; // Asigna a 'precio_unitario'
-                
-                const totalBruto = totalQuantityForProduct > 0 
-                    ? (precioTotalCalculado / totalQuantityForProduct) * item.cantidad
-                    : 0;
-                
-                item.total_linea = totalBruto;
-            }
-        });
+      const totalQuantityForProduct = indices.reduce((sum, index) => sum + (newProducts[index].cantidad || 0), 0);
+      indices.forEach(index => {
+        const item = newProducts[index];
+        if (item) {
+          // --- CORRECCIÓN FINAL ---
+          // Se usan los nombres de propiedad definidos en el tipo 'ProductoPedido'
+          item.precio_unitario = precioUnitario; // Asigna a 'precio_unitario'
+
+          const totalBruto = totalQuantityForProduct > 0
+            ? (precioTotalCalculado / totalQuantityForProduct) * item.cantidad
+            : 0;
+
+          item.total_linea = totalBruto;
+        }
+      });
     });
     setProductos(newProducts);
 
@@ -154,54 +154,54 @@ export default function FormularioActualizarPedidoPuerta({ id, onVolver }: Formu
 
 
   const cargarFormulario = useCallback(async (pedidoId: number) => {
-      setIsLoading(true);
-      setErrorMensaje('');
-      const token = localStorage.getItem("token");
-      if (!token) { setErrorMensaje("No autenticado."); setIsLoading(false); return; }
+    setIsLoading(true);
+    setErrorMensaje('');
+    const token = localStorage.getItem("token");
+    if (!token) { setErrorMensaje("No autenticado."); setIsLoading(false); return; }
 
-      try {
-        const response = await fetch(`https://quimex.sistemataup.online/ventas/obtener/${pedidoId}`, {
-          headers: { "Authorization": `Bearer ${token}` }
-        });
-        if (!response.ok) throw new Error((await response.json()).message || "No se pudieron cargar los datos del pedido.");
-        
-        const datosAPI = await response.json();
-        
-        setFormData({
-          // ... (Tu lógica para setFormData se mantiene igual, cargando vendedor, forma de pago, etc.)
-          nombre_vendedor: datosAPI.nombre_vendedor || '',
-          fecha_emision: datosAPI.fecha_pedido || "",
-          forma_pago: datosAPI.forma_pago || "efectivo",
-          monto_pagado: datosAPI.monto_pagado_cliente || 0,
-          // Descuento global deshabilitado en puerta (forzado a 0)
-          vuelto: datosAPI.vuelto_calculado ?? 0,
-          requiere_factura: datosAPI.requiere_factura || false,
-          observaciones: datosAPI.observaciones || "",
-        });
+    try {
+      const response = await fetch(`https://quimex.sistemataup.online/ventas/obtener/${pedidoId}`, {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (!response.ok) throw new Error((await response.json()).message || "No se pudieron cargar los datos del pedido.");
 
-        // Paso 1: Mapeamos los datos básicos de la API (producto y cantidad).
-        // Los precios y totales los ignoramos, porque los vamos a recalcular.
-        const productosParaRecalcular: ProductoPedido[] = datosAPI.detalles?.map((detalle: DetalleAPI) => ({
-          producto_id: detalle.producto_id,
-          cantidad: detalle.cantidad,
-          observacion_item: detalle.observacion_item || "",
-          // Precios y totales se inicializan en 0, serán calculados ahora.
-          precio_unitario: 0,
-          total_linea: 0,
-        })) || [];
-        
-        // Paso 2: Si hay productos, forzamos el recálculo de precios inmediatamente.
-        if (productosParaRecalcular.length > 0) {
-          // La función recalculatePricesForProducts se encargará de llamar a la API
-          // y de hacer el setProductos con los datos frescos y correctos.
-          await recalculatePricesForProducts(productosParaRecalcular);
-        } else {
-          // Si no hay productos, nos aseguramos que el estado quede limpio.
-          setProductos([]);
-        }
-      
+      const datosAPI = await response.json();
+
+      setFormData({
+        // ... (Tu lógica para setFormData se mantiene igual, cargando vendedor, forma de pago, etc.)
+        nombre_vendedor: datosAPI.nombre_vendedor || '',
+        fecha_emision: datosAPI.fecha_pedido || "",
+        forma_pago: datosAPI.forma_pago || "efectivo",
+        monto_pagado: datosAPI.monto_pagado_cliente || 0,
+        // Descuento global deshabilitado en puerta (forzado a 0)
+        vuelto: datosAPI.vuelto_calculado ?? 0,
+        requiere_factura: datosAPI.requiere_factura || false,
+        observaciones: datosAPI.observaciones || "",
+      });
+
+      // Paso 1: Mapeamos los datos básicos de la API (producto y cantidad).
+      // Los precios y totales los ignoramos, porque los vamos a recalcular.
+      const productosParaRecalcular: ProductoPedido[] = datosAPI.detalles?.map((detalle: DetalleAPI) => ({
+        producto_id: detalle.producto_id,
+        cantidad: detalle.cantidad,
+        observacion_item: detalle.observacion_item || "",
+        // Precios y totales se inicializan en 0, serán calculados ahora.
+        precio_unitario: 0,
+        total_linea: 0,
+      })) || [];
+
+      // Paso 2: Si hay productos, forzamos el recálculo de precios inmediatamente.
+      if (productosParaRecalcular.length > 0) {
+        // La función recalculatePricesForProducts se encargará de llamar a la API
+        // y de hacer el setProductos con los datos frescos y correctos.
+        await recalculatePricesForProducts(productosParaRecalcular);
+      } else {
+        // Si no hay productos, nos aseguramos que el estado quede limpio.
+        setProductos([]);
+      }
+
     } catch (error) {
-      if(error instanceof Error) setErrorMensaje(error.message);
+      if (error instanceof Error) setErrorMensaje(error.message);
       else setErrorMensaje("Error desconocido al cargar el pedido.");
     } finally {
       setIsLoading(false);
@@ -212,11 +212,11 @@ export default function FormularioActualizarPedidoPuerta({ id, onVolver }: Formu
     if (id) cargarFormulario(id);
     else { setIsLoading(false); setErrorMensaje("ID de pedido no proporcionado."); }
   }, [id, cargarFormulario]);
-  
-useEffect(() => {
+
+  useEffect(() => {
     const recalcularTotalConAPI = async () => {
       if (isLoading || isSubmitting) return;
-  if (montoBaseProductos <= 0) { setTotalCalculadoApi(null); return; }
+      if (montoBaseProductos <= 0) { setTotalCalculadoApi(null); return; }
       setIsCalculatingTotal(true);
       const token = localStorage.getItem("token");
       if (!token) { setIsCalculatingTotal(false); return; }
@@ -224,8 +224,8 @@ useEffect(() => {
         const payload = {
           monto_base: montoBaseProductos,
           forma_pago: formData.forma_pago,
-            requiere_factura: formData.requiere_factura,
-            // descuento_total_global_porcentaje eliminado (puerta no usa descuento global)
+          requiere_factura: formData.requiere_factura,
+          // descuento_total_global_porcentaje eliminado (puerta no usa descuento global)
         };
         const response = await fetch("https://quimex.sistemataup.online/ventas/calcular_total", {
           method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }, body: JSON.stringify(payload)
@@ -250,7 +250,7 @@ useEffect(() => {
       } finally { setIsCalculatingTotal(false); }
     };
     recalcularTotalConAPI();
-  // CAMBIO CRÍTICO: Se añade la dependencia que faltaba
+    // CAMBIO CRÍTICO: Se añade la dependencia que faltaba
   }, [montoBaseProductos, formData.forma_pago, formData.requiere_factura, isLoading, isSubmitting]);
 
   const displayTotal = useMemo(() => {
@@ -263,35 +263,35 @@ useEffect(() => {
 
   useEffect(() => {
     if (formData.forma_pago !== 'efectivo') {
-        if (formData.monto_pagado !== 0 || formData.vuelto !== 0) {
-            setFormData(prev => ({...prev, monto_pagado: 0, vuelto: 0}));
-        }
+      if (formData.monto_pagado !== 0 || formData.vuelto !== 0) {
+        setFormData(prev => ({ ...prev, monto_pagado: 0, vuelto: 0 }));
+      }
     } else {
-        if (formData.monto_pagado >= displayTotal) {
-            const nuevoVuelto = formData.monto_pagado - displayTotal;
-            if (formData.vuelto !== nuevoVuelto) {
-                setFormData(prev => ({...prev, vuelto: parseFloat(nuevoVuelto.toFixed(2))}));
-            }
-        } else {
-            if (formData.vuelto !== 0) {
-                setFormData(prev => ({...prev, vuelto: 0}));
-            }
+      if (formData.monto_pagado >= displayTotal) {
+        const nuevoVuelto = formData.monto_pagado - displayTotal;
+        if (formData.vuelto !== nuevoVuelto) {
+          setFormData(prev => ({ ...prev, vuelto: parseFloat(nuevoVuelto.toFixed(2)) }));
         }
+      } else {
+        if (formData.vuelto !== 0) {
+          setFormData(prev => ({ ...prev, vuelto: 0 }));
+        }
+      }
     }
   }, [formData.monto_pagado, displayTotal, formData.forma_pago, formData.vuelto]);
 
   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
     let val: string | number | boolean = value;
-  if (type === 'checkbox') val = (e.target as HTMLInputElement).checked;
-  else if (type === 'number') { val = parseFloat(value) || 0; }
+    if (type === 'checkbox') val = (e.target as HTMLInputElement).checked;
+    else if (type === 'number') { val = parseFloat(value) || 0; }
     setFormData(prev => ({ ...prev, [name]: val, ...(name === 'forma_pago' && { requiere_factura: val === 'factura' }) }));
   };
 
   const handleProductRowChange = (index: number, field: keyof ProductoPedido, value: string | number) => {
     const nuevosProductos = productos.map((item, idx) => {
-        if (index !== idx) return item;
-  return { ...item, [field]: value };
+      if (index !== idx) return item;
+      return { ...item, [field]: value };
     });
     recalculatePricesForProducts(nuevosProductos);
   };
@@ -301,7 +301,7 @@ useEffect(() => {
     const nuevosProductos = productos.filter((_, i) => i !== index);
     recalculatePricesForProducts(nuevosProductos);
   };
-  
+
   const handleImprimir = useCallback((documentos: string[]) => {
     setDocumentosAImprimir(documentos);
   }, []);
@@ -314,7 +314,7 @@ useEffect(() => {
     }
   }, [documentosAImprimir, id]);
 
-  const handleSubmit = async (e: React.FormEvent ) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMensaje(''); setSuccessMensaje('');
     if (!id || !formData.nombre_vendedor.trim()) { setErrorMensaje("ID o Vendedor no válidos."); return; }
@@ -327,33 +327,36 @@ useEffect(() => {
       monto_pagado_cliente: formData.monto_pagado,
       requiere_factura: formData.requiere_factura,
       observaciones: formData.observaciones || "",
-  descuento_total_global_porcentaje: 0,
+      descuento_total_global_porcentaje: 0,
       items: productos.filter(item => item.producto_id > 0 && item.cantidad > 0).map(item => ({
         producto_id: item.producto_id,
         cantidad: item.cantidad,
+        precio_unitario_venta_ars: item.precio_unitario,
+        precio_total_item_ars: item.total_linea,
+        descuento_item_porcentaje: 0,
         observacion_item: item.observacion_item || "",
       })),
     };
     try {
       const response = await fetch(`https://quimex.sistemataup.online/ventas/actualizar/${id}`, {
-        method: "PUT", headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},
+        method: "PUT", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify(dataToUpdate),
       });
       const result = await response.json();
-      if(!response.ok) throw new Error(result?.message || 'Error al actualizar el pedido.');
+      if (!response.ok) throw new Error(result?.message || 'Error al actualizar el pedido.');
       setSuccessMensaje("¡Pedido actualizado con éxito!");
       handleImprimir(['comprobante', 'comprobante']); // IMPRIME 2 AL ACTUALIZAR
       setTimeout(() => onVolver(), 2000);
     } catch (err) {
-      if(err instanceof Error) setErrorMensaje(err.message);
+      if (err instanceof Error) setErrorMensaje(err.message);
       else setErrorMensaje("Error de red.");
     } finally {
-        setIsSubmitting(false);
+      setIsSubmitting(false);
     }
   };
 
   if (isLoading) { return <div className="flex items-center justify-center min-h-screen bg-indigo-900"><p className="text-white text-xl">Cargando datos...</p></div>; }
-  
+
   const itemsFinalesBase = productos.map(item => {
     const pInfo = productosContext.productos.find(prod => prod.id === item.producto_id);
     return {
@@ -365,39 +368,39 @@ useEffect(() => {
       subtotal_bruto_item_ars: item.total_linea || 0,
     };
   });
-  
+
   const ventaDataParaTicket: VentaData = {
-      venta_id: id, fecha_emision: formData.fecha_emision, cliente: { nombre: "CONSUMIDOR FINAL" },
-      nombre_vendedor: formData.nombre_vendedor.trim(),
-      items: (() => {
-        const surchargeTotal = (totalCalculadoApi?.recargos?.transferencia || 0) + (totalCalculadoApi?.recargos?.factura_iva || 0);
-            const adjustedItems = itemsFinalesBase.map(item => {
-          const pInfo = productosContext.productos.find(prod => prod.id === item.producto_id);
-          const baseTotal = item.precio_total_item_ars;
-          const proportion = montoBaseProductos > 0 ? baseTotal / montoBaseProductos : 0;
-          const adjustedTotal = baseTotal + proportion * surchargeTotal;
-          return {
-            producto_id: item.producto_id,
-            producto_nombre: pInfo?.nombre || `ID:${item.producto_id}`,
-            cantidad: item.cantidad,
-            precio_total_item_ars: Math.round(adjustedTotal * 100) / 100,
-            observacion_item: item.observacion_item || "",
-          };
-        });
-        // Make the sum exact to displayTotal
-        const sumAdjusted = adjustedItems.reduce((sum, item) => sum + item.precio_total_item_ars, 0);
-        const difference = Math.round((displayTotal - sumAdjusted) * 100) / 100;
-        if (adjustedItems.length > 0 && Math.abs(difference) > 0.01) {
-          adjustedItems[adjustedItems.length - 1].precio_total_item_ars += difference;
-          adjustedItems[adjustedItems.length - 1].precio_total_item_ars = Math.round(adjustedItems[adjustedItems.length - 1].precio_total_item_ars * 100) / 100;
-        }
-        return adjustedItems;
-      })(),
-      total_final: displayTotal,
-      observaciones: formData.observaciones,
-      forma_pago: formData.forma_pago,
-      monto_pagado_cliente: formData.monto_pagado,
-      vuelto_calculado: formData.vuelto,
+    venta_id: id, fecha_emision: formData.fecha_emision, cliente: { nombre: "CONSUMIDOR FINAL" },
+    nombre_vendedor: formData.nombre_vendedor.trim(),
+    items: (() => {
+      const surchargeTotal = (totalCalculadoApi?.recargos?.transferencia || 0) + (totalCalculadoApi?.recargos?.factura_iva || 0);
+      const adjustedItems = itemsFinalesBase.map(item => {
+        const pInfo = productosContext.productos.find(prod => prod.id === item.producto_id);
+        const baseTotal = item.precio_total_item_ars;
+        const proportion = montoBaseProductos > 0 ? baseTotal / montoBaseProductos : 0;
+        const adjustedTotal = baseTotal + proportion * surchargeTotal;
+        return {
+          producto_id: item.producto_id,
+          producto_nombre: pInfo?.nombre || `ID:${item.producto_id}`,
+          cantidad: item.cantidad,
+          precio_total_item_ars: Math.round(adjustedTotal * 100) / 100,
+          observacion_item: item.observacion_item || "",
+        };
+      });
+      // Make the sum exact to displayTotal
+      const sumAdjusted = adjustedItems.reduce((sum, item) => sum + item.precio_total_item_ars, 0);
+      const difference = Math.round((displayTotal - sumAdjusted) * 100) / 100;
+      if (adjustedItems.length > 0 && Math.abs(difference) > 0.01) {
+        adjustedItems[adjustedItems.length - 1].precio_total_item_ars += difference;
+        adjustedItems[adjustedItems.length - 1].precio_total_item_ars = Math.round(adjustedItems[adjustedItems.length - 1].precio_total_item_ars * 100) / 100;
+      }
+      return adjustedItems;
+    })(),
+    total_final: displayTotal,
+    observaciones: formData.observaciones,
+    forma_pago: formData.forma_pago,
+    monto_pagado_cliente: formData.monto_pagado,
+    vuelto_calculado: formData.vuelto,
   };
 
   return (
@@ -416,12 +419,12 @@ useEffect(() => {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div><label className="block text-sm font-medium text-gray-700 mb-1">Vendedor*</label>
                   <select name="nombre_vendedor" value={formData.nombre_vendedor} onChange={handleFormChange} required className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500">
-                      <option value="" disabled>-- Seleccione --</option>
-                      {VENDEDORES.map(v => <option key={v} value={v}>{v.charAt(0).toUpperCase() + v.slice(1)}</option>)}
+                    <option value="" disabled>-- Seleccione --</option>
+                    {VENDEDORES.map(v => <option key={v} value={v}>{v.charAt(0).toUpperCase() + v.slice(1)}</option>)}
                   </select>
                 </div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1">Fecha de Emisión</label><input type="datetime-local" value={formData.fecha_emision ? formData.fecha_emision.substring(0,16) : ''} readOnly disabled className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 bg-gray-100 cursor-not-allowed"/></div>
-                <div className="md:col-span-3"><label className="block text-sm font-medium text-gray-700 mb-1">Observaciones Generales</label><textarea name="observaciones" value={formData.observaciones || ''} onChange={handleFormChange} rows={2} className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"/></div>
+                <div><label className="block text-sm font-medium text-gray-700 mb-1">Fecha de Emisión</label><input type="datetime-local" value={formData.fecha_emision ? formData.fecha_emision.substring(0, 16) : ''} readOnly disabled className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 bg-gray-100 cursor-not-allowed" /></div>
+                <div className="md:col-span-3"><label className="block text-sm font-medium text-gray-700 mb-1">Observaciones Generales</label><textarea name="observaciones" value={formData.observaciones || ''} onChange={handleFormChange} rows={2} className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500" /></div>
               </div>
             </fieldset>
 
@@ -434,13 +437,13 @@ useEffect(() => {
                 {productos.map((item, index) => (
                   <div key={index} className="grid grid-cols-1 md:grid-cols-[1fr_80px_1fr_100px_100px_40px] items-center gap-2 border-b pb-2 last:border-b-0">
                     <Select options={opcionesDeProductoParaSelect} value={opcionesDeProductoParaSelect.find(opt => opt.value === item.producto_id) || null}
-                        onChange={(selectedOption) => handleProductRowChange(index, 'producto_id', selectedOption?.value || 0)}
-                        className="text-sm react-select-container" classNamePrefix="react-select"/>
+                      onChange={(selectedOption) => handleProductRowChange(index, 'producto_id', selectedOption?.value || 0)}
+                      className="text-sm react-select-container" classNamePrefix="react-select" />
                     <input type="number" value={item.cantidad} onChange={(e) => handleProductRowChange(index, 'cantidad', parseFloat(e.target.value) || 0)} onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                      className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 text-center focus:outline-none focus:ring-1 focus:ring-indigo-500 no-spinners" min="0" step="any"/>
-                    <input type="text" value={item.observacion_item || ''} onChange={(e) => handleProductRowChange(index, 'observacion_item', e.target.value)} className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"/>
-                    <input type="text" readOnly disabled value={`$ ${(item.precio_unitario || 0).toFixed(2)}`} className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 bg-gray-100 text-right"/>
-                    <input type="text" readOnly disabled value={`$ ${(item.total_linea || 0).toFixed(2)}`} className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 bg-gray-100 text-right"/>
+                      className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 text-center focus:outline-none focus:ring-1 focus:ring-indigo-500 no-spinners" min="0" step="any" />
+                    <input type="text" value={item.observacion_item || ''} onChange={(e) => handleProductRowChange(index, 'observacion_item', e.target.value)} className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                    <input type="text" readOnly disabled value={`$ ${(item.precio_unitario || 0).toFixed(2)}`} className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 bg-gray-100 text-right" />
+                    <input type="text" readOnly disabled value={`$ ${(item.total_linea || 0).toFixed(2)}`} className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 bg-gray-100 text-right" />
                     <button type="button" onClick={() => eliminarProducto(index)} title="Eliminar" className="text-red-500 hover:text-red-700 font-bold text-xl">×</button>
                   </div>
                 ))}
@@ -465,7 +468,7 @@ useEffect(() => {
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Vuelto</label>
-                      <input type="text" readOnly value={`$ ${formData.vuelto.toFixed(2)}`} className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 bg-gray-100 text-right"/>
+                      <input type="text" readOnly value={`$ ${formData.vuelto.toFixed(2)}`} className="shadow-sm border rounded w-full py-2 px-3 text-gray-700 bg-gray-100 text-right" />
                     </div>
                   </>
                 )}
@@ -484,10 +487,10 @@ useEffect(() => {
                   </div>
                 )}
                 <label className="block text-sm font-medium text-gray-500">Total Pedido</label>
-                <input type="text" value={`$ ${displayTotal.toFixed(2)}`} readOnly className="w-full md:w-auto md:max-w-xs inline-block bg-gray-100 shadow-sm border rounded py-2 px-3 text-gray-900 text-right font-bold text-lg"/>
+                <input type="text" value={`$ ${displayTotal.toFixed(2)}`} readOnly className="w-full md:w-auto md:max-w-xs inline-block bg-gray-100 shadow-sm border rounded py-2 px-3 text-gray-900 text-right font-bold text-lg" />
               </div>
             </fieldset>
-            
+
             <div className="flex justify-between items-center mt-8">
               <button type="button" onClick={() => handleImprimir(['comprobante', 'comprobante', 'orden_de_trabajo'])} className="bg-gray-500 text-white px-6 py-2 rounded-md hover:bg-gray-600 font-semibold">
                 Reimprimir Todo (3)
@@ -499,7 +502,7 @@ useEffect(() => {
           </form>
         </div>
       </div>
-      
+
       <div id="presupuesto-imprimible" className="hidden print:block">
         {documentosAImprimir.map((tipo, index) => (
           <React.Fragment key={index}>

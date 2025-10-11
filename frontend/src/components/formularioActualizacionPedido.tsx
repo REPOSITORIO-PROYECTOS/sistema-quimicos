@@ -19,9 +19,9 @@ interface TotalCalculadoAPI {
 }
 const initialProductoItem: ProductoVenta = { producto: 0, qx: 0, precio: 0, descuento: 0, total: 0, observacion: "" };
 const initialFormData: FormDataVenta = {
-    nombre: "", cuit: "", direccion: "", fechaEmision: "", fechaEntrega: "",
-    formaPago: "efectivo", montoPagado: 0, descuentoTotal: 0, vuelto: 0,
-    clienteId: null, requiereFactura: false, observaciones: "",localidad: "",
+  nombre: "", cuit: "", direccion: "", fechaEmision: "", fechaEntrega: "",
+  formaPago: "efectivo", montoPagado: 0, descuentoTotal: 0, vuelto: 0,
+  clienteId: null, requiereFactura: false, observaciones: "", localidad: "",
 };
 
 
@@ -44,13 +44,13 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
   const [isSubmitting, setIsSubmitting] = useState(false);
   const productosContext = useProductsContextActivos();
   const [documentosAImprimir, setDocumentosAImprimir] = useState<string[]>([]);
-  
+
   const opcionesDeProductoParaSelect = useMemo(() =>
     productosContext?.productos.map((prod: ProductoContextType) => ({
       value: prod.id,
       label: prod.nombre,
     })) || [],
-  [productosContext?.productos]);
+    [productosContext?.productos]);
 
   const montoBaseProductos = useMemo(() => {
     return productos.reduce((sum, item) => sum + (item.total || 0), 0);
@@ -72,53 +72,53 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
    */
   const recalculatePricesForProducts = useCallback(async (currentProducts: ProductoVenta[], clienteId: number | null) => {
     const token = localStorage.getItem("token");
-    if (!token) { 
-        setErrorMensaje("No autenticado."); 
-        return; 
+    if (!token) {
+      setErrorMensaje("No autenticado.");
+      return;
     }
 
     const productQuantities = new Map<number, { totalQuantity: number; indices: number[] }>();
     currentProducts.forEach((p, index) => {
-        if (p.producto > 0) {
-            const existing = productQuantities.get(p.producto) || { totalQuantity: 0, indices: [] };
-            existing.totalQuantity += p.qx;
-            existing.indices.push(index);
-            productQuantities.set(p.producto, existing);
-        }
+      if (p.producto > 0) {
+        const existing = productQuantities.get(p.producto) || { totalQuantity: 0, indices: [] };
+        existing.totalQuantity += p.qx;
+        existing.indices.push(index);
+        productQuantities.set(p.producto, existing);
+      }
     });
 
     const pricePromises = Array.from(productQuantities.entries()).map(async ([productoId, { totalQuantity, indices }]) => {
-        if (totalQuantity <= 0) {
-            return { precioUnitario: 0, precioTotalCalculado: 0, indices, esPrecioEspecial: false };
+      if (totalQuantity <= 0) {
+        return { precioUnitario: 0, precioTotalCalculado: 0, indices, esPrecioEspecial: false };
+      }
+      try {
+        const precioRes = await fetch(`https://quimex.sistemataup.online/productos/calcular_precio/${productoId}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+          body: JSON.stringify({
+            producto_id: productoId,
+            quantity: totalQuantity,
+            cliente_id: clienteId
+          }),
+        });
+        if (!precioRes.ok) {
+          const errorData = await precioRes.json().catch(() => ({ message: 'API de precios falló' }));
+          throw new Error(errorData.message);
         }
-        try {
-            const precioRes = await fetch(`https://quimex.sistemataup.online/productos/calcular_precio/${productoId}`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-                body: JSON.stringify({ 
-                    producto_id: productoId, 
-                    quantity: totalQuantity,
-                    cliente_id: clienteId      
-                }),
-            });
-            if (!precioRes.ok) {
-                const errorData = await precioRes.json().catch(() => ({ message: 'API de precios falló' }));
-                throw new Error(errorData.message);
-            }
-            const precioData = await precioRes.json();
-            
-            return { 
-                precioUnitario: precioData.precio_venta_unitario_ars || 0,
-                precioTotalCalculado: precioData.precio_total_calculado_ars || 0,
-                esPrecioEspecial: precioData.es_precio_especial || false,
-                indices 
-            };
-        } catch (error) {
-            if (error instanceof Error) {
-                setErrorMensaje(prev => `${prev}\nError al calcular precio para Prod ID ${productoId}: ${error.message}`);
-            }
-            return { precioUnitario: 0, precioTotalCalculado: 0, indices, esPrecioEspecial: false };
+        const precioData = await precioRes.json();
+
+        return {
+          precioUnitario: precioData.precio_venta_unitario_ars || 0,
+          precioTotalCalculado: precioData.precio_total_calculado_ars || 0,
+          esPrecioEspecial: precioData.es_precio_especial || false,
+          indices
+        };
+      } catch (error) {
+        if (error instanceof Error) {
+          setErrorMensaje(prev => `${prev}\nError al calcular precio para Prod ID ${productoId}: ${error.message}`);
         }
+        return { precioUnitario: 0, precioTotalCalculado: 0, indices, esPrecioEspecial: false };
+      }
     });
 
     const priceResults = await Promise.all(pricePromises);
@@ -156,7 +156,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
       });
       if (!response.ok) throw new Error((await response.json()).message || "No se pudieron cargar los datos.");
       const datosAPI = await response.json();
-      
+
       const clienteId = datosAPI.cliente_id || null;
 
       setFormData({
@@ -177,14 +177,14 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
 
 
       type DetalleFromAPI = {
-      detalle_id?: number;
-      producto_id: number;
-      cantidad: number;
-      precio_unitario_venta_ars: number;
-      descuento_item_porcentaje: number;
-      precio_total_item_ars: number;
-      observacion_item?: string;
-    };
+        detalle_id?: number;
+        producto_id: number;
+        cantidad: number;
+        precio_unitario_venta_ars: number;
+        descuento_item_porcentaje: number;
+        precio_total_item_ars: number;
+        observacion_item?: string;
+      };
       // Cargamos directamente los valores que YA vienen guardados (sin recálculo forzado inicial)
       // Esto evita diferencias con la boleta almacenada.
       const productosDesdeAPI: ProductoVenta[] = datosAPI.detalles?.map((detalle: DetalleFromAPI) => ({
@@ -212,49 +212,49 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     } finally {
       setIsLoading(false);
     }
-  }, []); 
+  }, []);
 
   useEffect(() => {
     if (id) cargarFormulario(id);
     else { setIsLoading(false); setErrorMensaje("ID de pedido no proporcionado."); }
   }, [id, cargarFormulario]);
 
-// Total final mostrado: preferir monto_final_con_descuento (si existe) sino monto_final_con_recargos
-const totalFinalCalculado = useMemo(() => {
-  if (totalCalculadoApi) {
-    if (typeof totalCalculadoApi.monto_final_con_descuento === 'number') {
-      return totalCalculadoApi.monto_final_con_descuento;
+  // Total final mostrado: preferir monto_final_con_descuento (si existe) sino monto_final_con_recargos
+  const totalFinalCalculado = useMemo(() => {
+    if (totalCalculadoApi) {
+      if (typeof totalCalculadoApi.monto_final_con_descuento === 'number') {
+        return totalCalculadoApi.monto_final_con_descuento;
+      }
+      return totalCalculadoApi.monto_final_con_recargos;
     }
-    return totalCalculadoApi.monto_final_con_recargos;
-  }
-  return montoBaseProductos; // fallback básico
-}, [totalCalculadoApi, montoBaseProductos]);
+    return montoBaseProductos; // fallback básico
+  }, [totalCalculadoApi, montoBaseProductos]);
 
   useEffect(() => {
     const recalcularTodo = async () => {
-        if (isLoading) return;
-        setIsCalculatingTotal(true);
-        const token = localStorage.getItem("token");
-        if (!token) { setIsCalculatingTotal(false); return; }
-        try {
-               // Log de body enviado para debug de descuento
-               console.log('Enviando calcular_total con payload:', JSON.stringify({ monto_base: montoBaseProductos, forma_pago: formData.formaPago, requiere_factura: formData.requiereFactura, descuento_total_global_porcentaje: formData.descuentoTotal }));
-            const resTotal = await fetch("https://quimex.sistemataup.online/ventas/calcular_total", {
-                method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-                body: JSON.stringify({ monto_base: montoBaseProductos, forma_pago: formData.formaPago, requiere_factura: formData.requiereFactura, descuento_total_global_porcentaje: formData.descuentoTotal }),
-            });
-            const dataTotal = await resTotal.json();
-               // Log de respuesta para debug de descuento
-               console.log('Respuesta calcular_total:', dataTotal);
-            if (!resTotal.ok) throw new Error(dataTotal.error || `Error calculando total.`);
-            setTotalCalculadoApi(dataTotal);
-        } catch (error) {
-            if (error instanceof Error) setErrorMensaje(error.message);
-            else setErrorMensaje("Error al recalcular totales.");
-            setTotalCalculadoApi(null);
-        } finally {
-            setIsCalculatingTotal(false);
-        }
+      if (isLoading) return;
+      setIsCalculatingTotal(true);
+      const token = localStorage.getItem("token");
+      if (!token) { setIsCalculatingTotal(false); return; }
+      try {
+        // Log de body enviado para debug de descuento
+        console.log('Enviando calcular_total con payload:', JSON.stringify({ monto_base: montoBaseProductos, forma_pago: formData.formaPago, requiere_factura: formData.requiereFactura, descuento_total_global_porcentaje: formData.descuentoTotal }));
+        const resTotal = await fetch("https://quimex.sistemataup.online/ventas/calcular_total", {
+          method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+          body: JSON.stringify({ monto_base: montoBaseProductos, forma_pago: formData.formaPago, requiere_factura: formData.requiereFactura, descuento_total_global_porcentaje: formData.descuentoTotal }),
+        });
+        const dataTotal = await resTotal.json();
+        // Log de respuesta para debug de descuento
+        console.log('Respuesta calcular_total:', dataTotal);
+        if (!resTotal.ok) throw new Error(dataTotal.error || `Error calculando total.`);
+        setTotalCalculadoApi(dataTotal);
+      } catch (error) {
+        if (error instanceof Error) setErrorMensaje(error.message);
+        else setErrorMensaje("Error al recalcular totales.");
+        setTotalCalculadoApi(null);
+      } finally {
+        setIsCalculatingTotal(false);
+      }
     };
     recalcularTodo();
   }, [montoBaseProductos, formData.formaPago, formData.requiereFactura, formData.descuentoTotal, isLoading]);
@@ -273,9 +273,9 @@ const totalFinalCalculado = useMemo(() => {
     let val: string | number | boolean = value;
     if (type === 'checkbox') val = (e.target as HTMLInputElement).checked;
     else if (type === 'number') {
-        val = value === '' ? 0 : parseFloat(value);
-        if (name === 'descuentoTotal' ) val = isNaN(val) ? 0 : Math.max(0, Math.min(100, val));
-        else if (isNaN(val)) val = 0;
+      val = value === '' ? 0 : parseFloat(value);
+      if (name === 'descuentoTotal') val = isNaN(val) ? 0 : Math.max(0, Math.min(100, val));
+      else if (isNaN(val)) val = 0;
     }
     setFormData(prev => ({ ...prev, [name]: val, ...(name === 'formaPago' && { requiereFactura: val === 'factura' }) }));
   };
@@ -283,17 +283,17 @@ const totalFinalCalculado = useMemo(() => {
   const handleProductRowChange = (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     const nuevosProductos = productos.map((item, idx) => {
-        if (index !== idx) return item;
-        let newValue: string | number = value;
-        if (name === 'qx' || name === 'descuento') {
-            newValue = value === '' ? 0 : parseFloat(value) || 0;
-            if (name === 'descuento') newValue = Math.max(0, Math.min(100, newValue));
-        }
-        return { ...item, [name]: newValue };
+      if (index !== idx) return item;
+      let newValue: string | number = value;
+      if (name === 'qx' || name === 'descuento') {
+        newValue = value === '' ? 0 : parseFloat(value) || 0;
+        if (name === 'descuento') newValue = Math.max(0, Math.min(100, newValue));
+      }
+      return { ...item, [name]: newValue };
     });
     recalculatePricesForProducts(nuevosProductos, formData.clienteId);
   };
-  
+
   const handleProductSelectChange = (index: number, selectedOption: { value: number; label: string } | null) => {
     const nuevosProductos = [...productos];
     nuevosProductos[index].producto = selectedOption?.value || 0;
@@ -318,7 +318,7 @@ const totalFinalCalculado = useMemo(() => {
     }
   }, [documentosAImprimir, id, formData.nombre]);
 
-  const handleSubmit = async (e: React.FormEvent ) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMensaje(''); setSuccessMensaje('');
     if (!id) { setErrorMensaje("ID de pedido no válido."); return; }
@@ -340,7 +340,8 @@ const totalFinalCalculado = useMemo(() => {
         id_detalle: item.id_detalle,
         producto_id: item.producto,
         cantidad: item.qx,
-        precio_unitario_ars: item.precio || 0, // Enviar precio calculado con precios especiales
+        precio_unitario_venta_ars: item.precio || 0,
+        precio_total_item_ars: item.total || 0,
         observacion_item: item.observacion || "",
         descuento_item_porcentaje: item.descuento || 0,
       })),
@@ -348,22 +349,22 @@ const totalFinalCalculado = useMemo(() => {
     };
     try {
       const response = await fetch(`https://quimex.sistemataup.online/ventas/actualizar/${id}`, {
-        method: "PUT", headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},
+        method: "PUT", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify(dataToUpdate),
       });
       const result = await response.json();
-      if(!response.ok) throw new Error(result?.message || 'Error al actualizar.');
+      if (!response.ok) throw new Error(result?.message || 'Error al actualizar.');
       setSuccessMensaje("¡Pedido actualizado con éxito!");
       handleImprimir(['comprobante', 'comprobante', 'orden_de_trabajo']);
       setTimeout(irAcciones, 2000);
     } catch (err) {
-      if(err instanceof Error) setErrorMensaje(err.message);
+      if (err instanceof Error) setErrorMensaje(err.message);
       else setErrorMensaje("Error de red.");
     } finally {
-        setIsSubmitting(false);
+      setIsSubmitting(false);
     }
   };
-  
+
   const getNumericInputValue = (value: number) => value === 0 ? '' : String(value);
 
   // Calcular el subtotal de todos los ítems con descuento particular
@@ -407,12 +408,12 @@ const totalFinalCalculado = useMemo(() => {
     cliente: { nombre: formData.nombre, direccion: formData.direccion },
     nombre_vendedor: "pedidos",
     items: itemsFinales,
-  total_final: totalFinalCalculado,
+    total_final: totalFinalCalculado,
     observaciones: formData.observaciones,
-    forma_pago: formData.formaPago, 
+    forma_pago: formData.formaPago,
     monto_pagado_cliente: formData.montoPagado,
     vuelto_calculado: formData.vuelto,
-  // total_bruto_sin_descuento removido: backend maneja cálculo global
+    // total_bruto_sin_descuento removido: backend maneja cálculo global
   };
 
   return (
@@ -427,12 +428,12 @@ const totalFinalCalculado = useMemo(() => {
             <fieldset className="border p-4 rounded-md">
               <legend className="text-lg font-medium text-gray-700 px-2">Datos Cliente/Pedido</legend>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                <div><label className={labelBaseClasses} htmlFor="nombre">Cliente</label><input type="text" id="nombre" value={formData.nombre} readOnly disabled className={inputReadOnlyClasses}/></div>
-                <div><label className={labelBaseClasses} htmlFor="cuit">CUIT</label><input type="text" id="cuit" value={formData.cuit} readOnly disabled className={inputReadOnlyClasses}/></div>
-                <div><label className={labelBaseClasses} htmlFor="direccion">Dirección</label><input type="text" name="direccion" id="direccion" value={formData.direccion} onChange={handleFormChange} className={inputBaseClasses}/></div>
-                <div><label className={labelBaseClasses} htmlFor="fechaEmision">Fecha Emisión</label><input type="datetime-local" id="fechaEmision" value={formData.fechaEmision ? formData.fechaEmision.substring(0,16) : ''} readOnly disabled className={inputReadOnlyClasses}/></div>
-                <div><label className={labelBaseClasses} htmlFor="fechaEntrega">Fecha Entrega</label><input type="datetime-local" name="fechaEntrega" id="fechaEntrega" value={formData.fechaEntrega ? formData.fechaEntrega.substring(0,16) : ''} onChange={handleFormChange} className={inputBaseClasses}/></div>
-                <div><label className={labelBaseClasses} htmlFor="observaciones">Observaciones</label><textarea name="observaciones" id="observaciones" value={formData.observaciones || ''} onChange={handleFormChange} rows={1} className={inputBaseClasses}/></div>
+                <div><label className={labelBaseClasses} htmlFor="nombre">Cliente</label><input type="text" id="nombre" value={formData.nombre} readOnly disabled className={inputReadOnlyClasses} /></div>
+                <div><label className={labelBaseClasses} htmlFor="cuit">CUIT</label><input type="text" id="cuit" value={formData.cuit} readOnly disabled className={inputReadOnlyClasses} /></div>
+                <div><label className={labelBaseClasses} htmlFor="direccion">Dirección</label><input type="text" name="direccion" id="direccion" value={formData.direccion} onChange={handleFormChange} className={inputBaseClasses} /></div>
+                <div><label className={labelBaseClasses} htmlFor="fechaEmision">Fecha Emisión</label><input type="datetime-local" id="fechaEmision" value={formData.fechaEmision ? formData.fechaEmision.substring(0, 16) : ''} readOnly disabled className={inputReadOnlyClasses} /></div>
+                <div><label className={labelBaseClasses} htmlFor="fechaEntrega">Fecha Entrega</label><input type="datetime-local" name="fechaEntrega" id="fechaEntrega" value={formData.fechaEntrega ? formData.fechaEntrega.substring(0, 16) : ''} onChange={handleFormChange} className={inputBaseClasses} /></div>
+                <div><label className={labelBaseClasses} htmlFor="observaciones">Observaciones</label><textarea name="observaciones" id="observaciones" value={formData.observaciones || ''} onChange={handleFormChange} rows={1} className={inputBaseClasses} /></div>
               </div>
             </fieldset>
             <fieldset className="border p-4 rounded-md">
@@ -443,12 +444,12 @@ const totalFinalCalculado = useMemo(() => {
               <div className="space-y-3">
                 {productos.map((item, index) => (
                   <div key={item.id_detalle || `new-${index}`} className="grid grid-cols-1 md:grid-cols-[1fr_80px_80px_1fr_100px_100px_40px] items-center gap-2 border-b pb-2 last:border-b-0">
-                    <Select options={opcionesDeProductoParaSelect} value={opcionesDeProductoParaSelect.find(opt => opt.value === item.producto) || null} onChange={(opt) => handleProductSelectChange(index, opt)} className="text-sm react-select-container" classNamePrefix="react-select"/>
-                    <input type="number" name="qx" value={item.qx === 0 ? '' : item.qx} onChange={(e) => handleProductRowChange(index, e)} className={`${inputBaseClasses} text-center no-spinners`} onWheel={(e) => (e.target as HTMLInputElement).blur()}/>
-                    <input type="number" name="descuento" value={item.descuento === 0 ? '' : item.descuento} onChange={(e) => handleProductRowChange(index, e)} className={`${inputBaseClasses} text-center no-spinners`} onWheel={(e) => (e.target as HTMLInputElement).blur()}/>
-                    <input type="text" name="observacion" value={item.observacion || ''} onChange={(e) => handleProductRowChange(index, e)} className={`${inputBaseClasses} text-sm`}/>
-                    <input type="text" readOnly value={`$ ${(item.precio || 0).toFixed(2)}`} className={`${inputReadOnlyClasses} text-sm text-right`}/>
-                    <input type="text" readOnly value={`$ ${(item.total || 0).toFixed(2)}`} className={`${inputReadOnlyClasses} text-sm text-right`}/>
+                    <Select options={opcionesDeProductoParaSelect} value={opcionesDeProductoParaSelect.find(opt => opt.value === item.producto) || null} onChange={(opt) => handleProductSelectChange(index, opt)} className="text-sm react-select-container" classNamePrefix="react-select" />
+                    <input type="number" name="qx" value={item.qx === 0 ? '' : item.qx} onChange={(e) => handleProductRowChange(index, e)} className={`${inputBaseClasses} text-center no-spinners`} onWheel={(e) => (e.target as HTMLInputElement).blur()} />
+                    <input type="number" name="descuento" value={item.descuento === 0 ? '' : item.descuento} onChange={(e) => handleProductRowChange(index, e)} className={`${inputBaseClasses} text-center no-spinners`} onWheel={(e) => (e.target as HTMLInputElement).blur()} />
+                    <input type="text" name="observacion" value={item.observacion || ''} onChange={(e) => handleProductRowChange(index, e)} className={`${inputBaseClasses} text-sm`} />
+                    <input type="text" readOnly value={`$ ${(item.precio || 0).toFixed(2)}`} className={`${inputReadOnlyClasses} text-sm text-right`} />
+                    <input type="text" readOnly value={`$ ${(item.total || 0).toFixed(2)}`} className={`${inputReadOnlyClasses} text-sm text-right`} />
                     <button type="button" onClick={() => eliminarProducto(index)} className="text-red-500 hover:text-red-700 font-bold text-xl">×</button>
                   </div>
                 ))}
@@ -459,9 +460,9 @@ const totalFinalCalculado = useMemo(() => {
               <legend className="text-lg font-medium text-gray-700 px-2">Pago y Totales</legend>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
                 <div><label className={labelBaseClasses}>Forma de Pago</label><select name="formaPago" value={formData.formaPago} onChange={handleFormChange} className={inputBaseClasses}><option value="efectivo">Efectivo</option><option value="transferencia">Transferencia</option><option value="factura">Factura</option></select></div>
-                <div><label className={labelBaseClasses}>Monto Pagado</label><input type="number" name="montoPagado" value={getNumericInputValue(formData.montoPagado)} onChange={handleFormChange} className={`${inputBaseClasses} no-spinners`}/></div>
-                <div><label className={labelBaseClasses}>Descuento Total (%)</label><input type="number" name="descuentoTotal" value={getNumericInputValue(formData.descuentoTotal)} onChange={handleFormChange} className={`${inputBaseClasses} no-spinners`}/></div>
-                <div><label className={labelBaseClasses}>Vuelto</label><input type="text" readOnly value={`$ ${formData.vuelto.toFixed(2)}`} className={`${inputReadOnlyClasses} text-right`}/></div>
+                <div><label className={labelBaseClasses}>Monto Pagado</label><input type="number" name="montoPagado" value={getNumericInputValue(formData.montoPagado)} onChange={handleFormChange} className={`${inputBaseClasses} no-spinners`} /></div>
+                <div><label className={labelBaseClasses}>Descuento Total (%)</label><input type="number" name="descuentoTotal" value={getNumericInputValue(formData.descuentoTotal)} onChange={handleFormChange} className={`${inputBaseClasses} no-spinners`} /></div>
+                <div><label className={labelBaseClasses}>Vuelto</label><input type="text" readOnly value={`$ ${formData.vuelto.toFixed(2)}`} className={`${inputReadOnlyClasses} text-right`} /></div>
               </div>
               <div className="mt-4 text-right">
                 {isCalculatingTotal && <p className="text-sm text-blue-600 italic">Calculando...</p>}
@@ -479,7 +480,7 @@ const totalFinalCalculado = useMemo(() => {
                   </div>
                 )}
                 <label className="block text-sm font-medium text-gray-500 mb-1">Total Pedido</label>
-                <input type="text" value={`$ ${totalFinalCalculado.toFixed(2)}`} readOnly className="w-full md:w-auto md:max-w-xs inline-block bg-gray-100 shadow-sm border rounded py-2 px-3 text-gray-900 text-right font-bold text-lg"/>
+                <input type="text" value={`$ ${totalFinalCalculado.toFixed(2)}`} readOnly className="w-full md:w-auto md:max-w-xs inline-block bg-gray-100 shadow-sm border rounded py-2 px-3 text-gray-900 text-right font-bold text-lg" />
               </div>
             </fieldset>
             {/* CAMBIO: Lógica de botones de impresión */}

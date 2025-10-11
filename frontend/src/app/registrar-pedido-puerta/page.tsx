@@ -9,22 +9,22 @@ import { ProductoVenta } from "@/types/ventas";
 
 
 // --- CAMBIO: Se actualizan los tipos para incluir descuentos ---
-interface IFormData { 
-    clienteId: string | null; 
-    cuit: string; 
-    fechaEmision: string; 
-    formaPago: string; 
-    montoPagado: number; 
-    vuelto: number; 
-    requiereFactura: boolean; 
-    observaciones?: string; 
+interface IFormData {
+    clienteId: string | null;
+    cuit: string;
+    fechaEmision: string;
+    formaPago: string;
+    montoPagado: number;
+    vuelto: number;
+    requiereFactura: boolean;
+    observaciones?: string;
 }
-interface TotalCalculadoAPI { 
-    monto_base: number; 
-    forma_pago_aplicada: string; 
-    requiere_factura_aplicada: boolean; 
-    recargos: { transferencia: number; factura_iva: number; }; 
-    monto_final_con_recargos: number; 
+interface TotalCalculadoAPI {
+    monto_base: number;
+    forma_pago_aplicada: string;
+    requiere_factura_aplicada: boolean;
+    recargos: { transferencia: number; factura_iva: number; };
+    monto_final_con_recargos: number;
     monto_final_con_descuento?: number; // Puede venir del backend si se pasa descuento_total_global_porcentaje
     tipo_redondeo_general?: string; // centena | decena
 }
@@ -61,7 +61,7 @@ export default function RegistrarPedidoPuertaPage() {
 
     const opcionesDeProductoParaSelect = useMemo(() =>
         productosContext?.productos.map((prod: ProductoContextType) => ({ value: prod.id, label: prod.nombre })) || [],
-    [productosContext?.productos]);
+        [productosContext?.productos]);
 
     const resetearFormulario = useCallback(() => {
         const now = new Date();
@@ -96,24 +96,24 @@ export default function RegistrarPedidoPuertaPage() {
                 });
                 if (!precioRes.ok) throw new Error((await precioRes.json()).message || "Error en API de precios.");
                 const precioData = await precioRes.json();
-                return { 
+                return {
                     precioUnitario: precioData.precio_venta_unitario_ars || 0,
                     // El total de la API se divide por la cantidad total para obtener el total por línea
                     precioTotalPorLinea: (precioData.precio_total_calculado_ars || 0) / totalQuantity,
-                    indices 
+                    indices
                 };
-          } catch (error) {
-              if (error instanceof Error) {
-                  setErrorMessage(prev => `${prev}\nError Prod ID ${productoId}: ${error.message}`);
-              } else {
-                  setErrorMessage(prev => `${prev}\nError Prod ID ${productoId}: Error desconocido.`);
-              }
-              return { precioUnitario: 0,  precioTotalPorLinea: 0, indices };
-          }
+            } catch (error) {
+                if (error instanceof Error) {
+                    setErrorMessage(prev => `${prev}\nError Prod ID ${productoId}: ${error.message}`);
+                } else {
+                    setErrorMessage(prev => `${prev}\nError Prod ID ${productoId}: Error desconocido.`);
+                }
+                return { precioUnitario: 0, precioTotalPorLinea: 0, indices };
+            }
         });
         const priceResults = await Promise.all(pricePromises);
         const updatedProducts = [...currentProducts];
-        priceResults.forEach(({ precioUnitario, precioTotalPorLinea,  indices }) => {
+        priceResults.forEach(({ precioUnitario, precioTotalPorLinea, indices }) => {
             indices.forEach(index => {
                 const item = updatedProducts[index];
                 item.precio = precioUnitario;
@@ -122,7 +122,7 @@ export default function RegistrarPedidoPuertaPage() {
                 item.total = totalBruto * (1 - (item.descuento / 100));
             });
         });
-        updatedProducts.forEach(item => { if (item.producto === 0 || item.qx === 0) { item.precio = 0; item.total = 0; }});
+        updatedProducts.forEach(item => { if (item.producto === 0 || item.qx === 0) { item.precio = 0; item.total = 0; } });
         setProductos(updatedProducts);
     }, [setErrorMessage]);
 
@@ -132,34 +132,34 @@ export default function RegistrarPedidoPuertaPage() {
             setIsCalculatingTotal(true); setErrorMessage('');
             const token = localStorage.getItem("token"); if (!token) { setErrorMessage("No autenticado."); setIsCalculatingTotal(false); return; }
             try {
-                const payload = { 
-                    monto_base: montoBaseProductos, 
-                    forma_pago: formData.formaPago, 
+                const payload = {
+                    monto_base: montoBaseProductos,
+                    forma_pago: formData.formaPago,
                     requiere_factura: formData.requiereFactura
                 };
                 const resTotal = await fetch("https://quimex.sistemataup.online/ventas/calcular_total", {
                     method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }, body: JSON.stringify(payload),
                 });
-                                const raw = await resTotal.json() as RawTotalCalculadoResponse;
-                                if (!resTotal.ok) throw new Error(raw?.error || "Error al calcular total.");
-                                const dataTotal: TotalCalculadoAPI = {
-                                        monto_base: Number(raw.monto_base) || 0,
-                                        forma_pago_aplicada: String(raw.forma_pago_aplicada || formData.formaPago),
-                                        requiere_factura_aplicada: Boolean(raw.requiere_factura_aplicada || formData.requiereFactura),
-                                        recargos: {
-                                                transferencia: Number(raw?.recargos?.transferencia) || 0,
-                                                factura_iva: Number(raw?.recargos?.factura_iva) || 0
-                                        },
-                                        monto_final_con_recargos: Number(raw.monto_final_con_recargos) || 0,
-                                        monto_final_con_descuento: typeof raw.monto_final_con_descuento === 'number' ? raw.monto_final_con_descuento : undefined,
-                                        tipo_redondeo_general: raw.tipo_redondeo_general
-                                };
-                                setTotalCalculadoApi(dataTotal);
+                const raw = await resTotal.json() as RawTotalCalculadoResponse;
+                if (!resTotal.ok) throw new Error(raw?.error || "Error al calcular total.");
+                const dataTotal: TotalCalculadoAPI = {
+                    monto_base: Number(raw.monto_base) || 0,
+                    forma_pago_aplicada: String(raw.forma_pago_aplicada || formData.formaPago),
+                    requiere_factura_aplicada: Boolean(raw.requiere_factura_aplicada || formData.requiereFactura),
+                    recargos: {
+                        transferencia: Number(raw?.recargos?.transferencia) || 0,
+                        factura_iva: Number(raw?.recargos?.factura_iva) || 0
+                    },
+                    monto_final_con_recargos: Number(raw.monto_final_con_recargos) || 0,
+                    monto_final_con_descuento: typeof raw.monto_final_con_descuento === 'number' ? raw.monto_final_con_descuento : undefined,
+                    tipo_redondeo_general: raw.tipo_redondeo_general
+                };
+                setTotalCalculadoApi(dataTotal);
 
-                                const totalParaVuelto: number = typeof dataTotal.monto_final_con_descuento === 'number'
-                                    ? dataTotal.monto_final_con_descuento
-                                    : dataTotal.monto_final_con_recargos;
-                                if (formData.formaPago === 'efectivo' && formData.montoPagado >= totalParaVuelto && totalParaVuelto > 0) {
+                const totalParaVuelto: number = typeof dataTotal.monto_final_con_descuento === 'number'
+                    ? dataTotal.monto_final_con_descuento
+                    : dataTotal.monto_final_con_recargos;
+                if (formData.formaPago === 'efectivo' && formData.montoPagado >= totalParaVuelto && totalParaVuelto > 0) {
                     const resVuelto = await fetch("https://quimex.sistemataup.online/ventas/calcular_vuelto", {
                         method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }, body: JSON.stringify({ monto_pagado: formData.montoPagado, monto_total_final: totalParaVuelto }),
                     });
@@ -174,7 +174,7 @@ export default function RegistrarPedidoPuertaPage() {
         };
         recalcularTodo();
     }, [montoBaseProductos, formData.formaPago, formData.requiereFactura, formData.montoPagado]);
-    
+
     const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value, type } = e.target;
         let val: string | number | boolean = value;
@@ -223,7 +223,7 @@ export default function RegistrarPedidoPuertaPage() {
         if (productos.every(p => p.producto === 0 || p.qx === 0)) { setErrorMessage("Añada al menos un producto."); setIsSubmitting(false); return; }
         const token = localStorage.getItem("token"); const usuarioId = localStorage.getItem("usuario_id");
         if (!token || !usuarioId) { setErrorMessage("Sesión inválida."); setIsSubmitting(false); return; }
-        
+
         // CAMBIO: Se calcula el total final para enviarlo a la API
         // El total final (con o sin descuento) lo determina el backend; evitamos recalcular lógica de redondeo o descuentos aquí.
         const totalFinalNeto = typeof totalCalculadoApi?.monto_final_con_descuento === 'number'
@@ -232,13 +232,15 @@ export default function RegistrarPedidoPuertaPage() {
 
         const dataPayload = {
             usuario_interno_id: parseInt(usuarioId), nombre_vendedor: nombreVendedor.trim(),
-            items: productos.filter(i => i.producto !== 0 && i.qx > 0).map(i => ({ 
-                producto_id: i.producto, cantidad: i.qx, 
+            items: productos.filter(i => i.producto !== 0 && i.qx > 0).map(i => ({
+                producto_id: i.producto, cantidad: i.qx,
+                precio_unitario_venta_ars: i.precio,
+                precio_total_item_ars: i.total,
                 observacion_item: i.observacion || "",
                 descuento_item_porcentaje: 0, // descuentos deshabilitados en puerta
             })),
-            cliente_id: null, fecha_pedido: formData.fechaEmision, direccion_entrega: "", cuit_cliente: "", 
-            monto_pagado_cliente: formData.montoPagado, forma_pago: formData.formaPago, 
+            cliente_id: null, fecha_pedido: formData.fechaEmision, direccion_entrega: "", cuit_cliente: "",
+            monto_pagado_cliente: formData.montoPagado, forma_pago: formData.formaPago,
             requiere_factura: formData.requiereFactura, observaciones: formData.observaciones || "",
             descuento_total_global_porcentaje: 0, // Forzado a 0 en puerta
             monto_final_con_recargos: totalFinalNeto, // <-- Se envía el total con todos los descuentos
@@ -252,17 +254,17 @@ export default function RegistrarPedidoPuertaPage() {
                 setSuccessMessage("¡Venta registrada exitosamente!"); setLastVentaId(result.venta_id);
                 setTimeout(() => { handleImprimirPresupuesto(result.venta_id); }, 100);
             } else { setErrorMessage(result.message || result.error || "Error al registrar."); }
-      } catch (err) {
-          if (err instanceof Error) {
-              setErrorMessage(err.message);
-          } else {
-              setErrorMessage("Error de red o un error desconocido ocurrió.");
-          }
-      } finally {
-          setIsSubmitting(false);
-      }
+        } catch (err) {
+            if (err instanceof Error) {
+                setErrorMessage(err.message);
+            } else {
+                setErrorMessage("Error de red o un error desconocido ocurrió.");
+            }
+        } finally {
+            setIsSubmitting(false);
+        }
     };
-    
+
     const handleImprimirPresupuesto = (ventaId: number) => {
         document.title = `Venta Puerta - #${ventaId}`;
         window.print();
@@ -277,158 +279,158 @@ export default function RegistrarPedidoPuertaPage() {
     }, [totalCalculadoApi, montoBaseProductos]);
 
     const ventaDataParaTicket: VentaData = {
-    venta_id: lastVentaId,
-    fecha_emision: formData.fechaEmision,
-    cliente: { nombre: "CONSUMIDOR FINAL" },
-    nombre_vendedor: nombreVendedor.trim(),
-    items: (() => {
-        const filteredItems = productos.filter(p => p.producto && p.qx > 0);
-        const surchargeTotal = (totalCalculadoApi?.recargos?.transferencia || 0) + (totalCalculadoApi?.recargos?.factura_iva || 0);
-        const adjustedItems = filteredItems.map(item => {
-            const pInfo = productosContext?.productos.find(p => p.id === item.producto);
-            const baseTotal = item.total || 0;
-            const proportion = montoBaseProductos > 0 ? baseTotal / montoBaseProductos : 0;
-            const adjustedTotal = baseTotal + proportion * surchargeTotal;
-            return {
-                producto_id: item.producto,
-                producto_nombre: pInfo?.nombre || `ID: ${item.producto}`,
-                cantidad: item.qx,
-                observacion_item: item.observacion || "",
-                precio_total_item_ars: Math.round(adjustedTotal * 100) / 100, // round to 2 decimals
-            };
-        });
-        // Make the sum exact to displayTotal
-        const sumAdjusted = adjustedItems.reduce((sum, item) => sum + item.precio_total_item_ars, 0);
-        const difference = Math.round((displayTotal - sumAdjusted) * 100) / 100;
-        if (adjustedItems.length > 0 && Math.abs(difference) > 0.01) {
-            adjustedItems[adjustedItems.length - 1].precio_total_item_ars += difference;
-            adjustedItems[adjustedItems.length - 1].precio_total_item_ars = Math.round(adjustedItems[adjustedItems.length - 1].precio_total_item_ars * 100) / 100;
-        }
-        return adjustedItems;
-    })(),
-    total_final: displayTotal, // Esto ya es correcto (es el total final redondeado)
-    observaciones: formData.observaciones,
-    forma_pago: formData.formaPago,
-    monto_pagado_cliente: formData.montoPagado,
-    vuelto_calculado: formData.vuelto,
-};
+        venta_id: lastVentaId,
+        fecha_emision: formData.fechaEmision,
+        cliente: { nombre: "CONSUMIDOR FINAL" },
+        nombre_vendedor: nombreVendedor.trim(),
+        items: (() => {
+            const filteredItems = productos.filter(p => p.producto && p.qx > 0);
+            const surchargeTotal = (totalCalculadoApi?.recargos?.transferencia || 0) + (totalCalculadoApi?.recargos?.factura_iva || 0);
+            const adjustedItems = filteredItems.map(item => {
+                const pInfo = productosContext?.productos.find(p => p.id === item.producto);
+                const baseTotal = item.total || 0;
+                const proportion = montoBaseProductos > 0 ? baseTotal / montoBaseProductos : 0;
+                const adjustedTotal = baseTotal + proportion * surchargeTotal;
+                return {
+                    producto_id: item.producto,
+                    producto_nombre: pInfo?.nombre || `ID: ${item.producto}`,
+                    cantidad: item.qx,
+                    observacion_item: item.observacion || "",
+                    precio_total_item_ars: Math.round(adjustedTotal * 100) / 100, // round to 2 decimals
+                };
+            });
+            // Make the sum exact to displayTotal
+            const sumAdjusted = adjustedItems.reduce((sum, item) => sum + item.precio_total_item_ars, 0);
+            const difference = Math.round((displayTotal - sumAdjusted) * 100) / 100;
+            if (adjustedItems.length > 0 && Math.abs(difference) > 0.01) {
+                adjustedItems[adjustedItems.length - 1].precio_total_item_ars += difference;
+                adjustedItems[adjustedItems.length - 1].precio_total_item_ars = Math.round(adjustedItems[adjustedItems.length - 1].precio_total_item_ars * 100) / 100;
+            }
+            return adjustedItems;
+        })(),
+        total_final: displayTotal, // Esto ya es correcto (es el total final redondeado)
+        observaciones: formData.observaciones,
+        forma_pago: formData.formaPago,
+        monto_pagado_cliente: formData.montoPagado,
+        vuelto_calculado: formData.vuelto,
+    };
 
-return (
-  <>
-    {/* Contenedor principal con fondo oscuro */}
-    <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-indigo-900 py-10 px-4 print:hidden">
-        {/* Panel del formulario con sombra realzada */}
-        <div className="bg-white p-6 md:p-8 rounded-xl shadow-2xl w-full max-w-5xl border border-gray-200">
-            <BotonVolver className="ml-0" />
-            <h2 className="text-3xl font-bold text-center text-indigo-800 mb-4">Registrar Venta en Local</h2>
-            
-            {/* --- SECCIÓN VENDEDOR --- */}
-            <div className="mb-6">
-                <label htmlFor="nombreVendedor" className="block text-sm font-medium text-gray-700 mb-1">Vendedor*</label>
-                <select id="nombreVendedor" value={nombreVendedor} onChange={(e) => setNombreVendedor(e.target.value)} required
-                    className="shadow-sm border border-gray-300 rounded-md w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                    <option value="" disabled>-- Seleccione un vendedor --</option>
-                    {VENDEDORES.map(v => <option key={v} value={v}>{v.charAt(0).toUpperCase() + v.slice(1)}</option>)}
-                </select>
-            </div>
-            
-            {/* --- MENSAJES DE ESTADO --- */}
-            {errorMessage && <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4 rounded-r-md" onClick={() => setErrorMessage('')}><p>{errorMessage}</p></div>}
-            {successMessage && <div className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4 rounded-r-md"><p>{successMessage}</p></div>}
-            
-            <form onSubmit={handleSubmit} className="space-y-6">
-                
-                {/* --- CAMBIO DE ESTILO: Fieldset con fondo y sombra sutil --- */}
-                <fieldset className="bg-gray-50 border border-gray-200 p-4 rounded-lg shadow-sm">
-                    <legend className="text-lg font-semibold text-gray-800 px-2">Productos</legend>
-                    {/* Encabezados de la tabla de productos */}
-                    <div className="mb-3 hidden md:grid md:grid-cols-[minmax(0,1fr)_80px_minmax(0,1fr)_100px_100px_32px] items-center gap-2 font-bold text-sm text-gray-600 px-3">
-                        <span>Producto*</span><span className="text-center">Cant*</span><span>Observación</span>
-                        <span className="text-right">Precio U.</span><span className="text-right">Total</span><span />
+    return (
+        <>
+            {/* Contenedor principal con fondo oscuro */}
+            <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-indigo-900 py-10 px-4 print:hidden">
+                {/* Panel del formulario con sombra realzada */}
+                <div className="bg-white p-6 md:p-8 rounded-xl shadow-2xl w-full max-w-5xl border border-gray-200">
+                    <BotonVolver className="ml-0" />
+                    <h2 className="text-3xl font-bold text-center text-indigo-800 mb-4">Registrar Venta en Local</h2>
+
+                    {/* --- SECCIÓN VENDEDOR --- */}
+                    <div className="mb-6">
+                        <label htmlFor="nombreVendedor" className="block text-sm font-medium text-gray-700 mb-1">Vendedor*</label>
+                        <select id="nombreVendedor" value={nombreVendedor} onChange={(e) => setNombreVendedor(e.target.value)} required
+                            className="shadow-sm border border-gray-300 rounded-md w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                            <option value="" disabled>-- Seleccione un vendedor --</option>
+                            {VENDEDORES.map(v => <option key={v} value={v}>{v.charAt(0).toUpperCase() + v.slice(1)}</option>)}
+                        </select>
                     </div>
-                    {/* Filas de productos */}
-                    <div className="space-y-3">
-                        {productos.map((item, index) => (
-                            <div key={index} className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_80px_minmax(0,1fr)_100px_100px_32px] items-center gap-2 border-b border-gray-200 pb-3 last:border-b-0">
-                                <Select name={`producto-${index}`} options={opcionesDeProductoParaSelect} value={opcionesDeProductoParaSelect.find(opt => opt.value === item.producto) || null}
-                                    onChange={(selectedOption) => handleProductSelectChange(index, selectedOption)} placeholder="Buscar producto..." isClearable isSearchable
-                                    isLoading={productosContext.loading} className="text-sm react-select-container" classNamePrefix="react-select" />
-                                <input type="number" name="qx" placeholder="Cant." value={item.qx === 0 ? '' : item.qx} onChange={(e) => handleProductRowInputChange(index, e)} min="0" step="any" required
-                                    className="shadow-sm border border-gray-300 rounded-md w-full py-2 px-2 text-gray-700 text-center focus:outline-none focus:ring-2 focus:ring-indigo-500 no-spinners" onWheel={(e) => (e.target as HTMLInputElement).blur()}/>
-                                <input type="text" name="observacion" placeholder="Obs. ítem" value={item.observacion || ''} onChange={(e) => handleProductRowInputChange(index, e)}
-                                    className="shadow-sm border border-gray-300 rounded-md w-full py-2 px-2 text-gray-700 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-                                <input type="text" value={`$ ${item.precio.toFixed(2)}`} readOnly className="shadow-sm border border-gray-300 rounded-md w-full py-2 px-2 text-gray-700 text-right bg-gray-100 cursor-not-allowed"/>
-                                <input type="text" value={`$ ${item.total.toFixed(2)}`} readOnly className="shadow-sm border border-gray-300 rounded-md w-full py-2 px-2 text-gray-700 text-right bg-gray-100 cursor-not-allowed"/>
-                                <div className="flex justify-end md:justify-center items-center">
-                                    {productos.length > 1 && <button type="button" onClick={() => eliminarProducto(index)} title="Eliminar producto" className="text-red-500 hover:text-red-700 font-bold text-2xl leading-none p-1 rounded-full flex items-center justify-center h-8 w-8 hover:bg-red-100 transition-colors">×</button>}
+
+                    {/* --- MENSAJES DE ESTADO --- */}
+                    {errorMessage && <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4 rounded-r-md" onClick={() => setErrorMessage('')}><p>{errorMessage}</p></div>}
+                    {successMessage && <div className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4 rounded-r-md"><p>{successMessage}</p></div>}
+
+                    <form onSubmit={handleSubmit} className="space-y-6">
+
+                        {/* --- CAMBIO DE ESTILO: Fieldset con fondo y sombra sutil --- */}
+                        <fieldset className="bg-gray-50 border border-gray-200 p-4 rounded-lg shadow-sm">
+                            <legend className="text-lg font-semibold text-gray-800 px-2">Productos</legend>
+                            {/* Encabezados de la tabla de productos */}
+                            <div className="mb-3 hidden md:grid md:grid-cols-[minmax(0,1fr)_80px_minmax(0,1fr)_100px_100px_32px] items-center gap-2 font-bold text-sm text-gray-600 px-3">
+                                <span>Producto*</span><span className="text-center">Cant*</span><span>Observación</span>
+                                <span className="text-right">Precio U.</span><span className="text-right">Total</span><span />
+                            </div>
+                            {/* Filas de productos */}
+                            <div className="space-y-3">
+                                {productos.map((item, index) => (
+                                    <div key={index} className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_80px_minmax(0,1fr)_100px_100px_32px] items-center gap-2 border-b border-gray-200 pb-3 last:border-b-0">
+                                        <Select name={`producto-${index}`} options={opcionesDeProductoParaSelect} value={opcionesDeProductoParaSelect.find(opt => opt.value === item.producto) || null}
+                                            onChange={(selectedOption) => handleProductSelectChange(index, selectedOption)} placeholder="Buscar producto..." isClearable isSearchable
+                                            isLoading={productosContext.loading} className="text-sm react-select-container" classNamePrefix="react-select" />
+                                        <input type="number" name="qx" placeholder="Cant." value={item.qx === 0 ? '' : item.qx} onChange={(e) => handleProductRowInputChange(index, e)} min="0" step="any" required
+                                            className="shadow-sm border border-gray-300 rounded-md w-full py-2 px-2 text-gray-700 text-center focus:outline-none focus:ring-2 focus:ring-indigo-500 no-spinners" onWheel={(e) => (e.target as HTMLInputElement).blur()} />
+                                        <input type="text" name="observacion" placeholder="Obs. ítem" value={item.observacion || ''} onChange={(e) => handleProductRowInputChange(index, e)}
+                                            className="shadow-sm border border-gray-300 rounded-md w-full py-2 px-2 text-gray-700 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                                        <input type="text" value={`$ ${item.precio.toFixed(2)}`} readOnly className="shadow-sm border border-gray-300 rounded-md w-full py-2 px-2 text-gray-700 text-right bg-gray-100 cursor-not-allowed" />
+                                        <input type="text" value={`$ ${item.total.toFixed(2)}`} readOnly className="shadow-sm border border-gray-300 rounded-md w-full py-2 px-2 text-gray-700 text-right bg-gray-100 cursor-not-allowed" />
+                                        <div className="flex justify-end md:justify-center items-center">
+                                            {productos.length > 1 && <button type="button" onClick={() => eliminarProducto(index)} title="Eliminar producto" className="text-red-500 hover:text-red-700 font-bold text-2xl leading-none p-1 rounded-full flex items-center justify-center h-8 w-8 hover:bg-red-100 transition-colors">×</button>}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            <button type="button" onClick={agregarProducto} className="mt-4 bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 transition-colors text-sm font-semibold">
+                                + Agregar Producto
+                            </button>
+                        </fieldset>
+
+                        {/* --- CAMBIO DE ESTILO: Fieldset con fondo y sombra sutil --- */}
+                        <fieldset className="bg-gray-50 border border-gray-200 p-4 rounded-lg shadow-sm">
+                            <legend className="text-lg font-semibold text-gray-800 px-2">Pago y Totales</legend>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="formaPago">Forma de Pago</label>
+                                    <select id="formaPago" name="formaPago" value={formData.formaPago} onChange={handleFormChange} className="w-full shadow-sm border border-gray-300 rounded-md py-2 px-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                                        <option value="efectivo">Efectivo</option><option value="transferencia">Transferencia</option><option value="factura">Factura</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="montoPagado">Monto Pagado</label>
+                                    <input id="montoPagado" type="number" name="montoPagado" value={formData.montoPagado === 0 ? '' : formData.montoPagado} onChange={handleFormChange}
+                                        className="w-full bg-white shadow-sm border border-gray-300 rounded-md py-2 px-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 no-spinners" placeholder="0.00" step="0.01" min="0" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="vuelto">Vuelto</label>
+                                    <input id="vuelto" type="text" name="vuelto" readOnly value={`$ ${formData.vuelto.toFixed(2)}`}
+                                        className="w-full bg-gray-200 shadow-sm border border-gray-300 rounded-md py-2 px-3 text-gray-800 focus:outline-none text-right font-medium cursor-not-allowed" />
                                 </div>
                             </div>
-                        ))}
-                    </div>
-                    <button type="button" onClick={agregarProducto} className="mt-4 bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 transition-colors text-sm font-semibold">
-                        + Agregar Producto
-                    </button>
-                </fieldset>
-
-                {/* --- CAMBIO DE ESTILO: Fieldset con fondo y sombra sutil --- */}
-                <fieldset className="bg-gray-50 border border-gray-200 p-4 rounded-lg shadow-sm">
-                    <legend className="text-lg font-semibold text-gray-800 px-2">Pago y Totales</legend>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="formaPago">Forma de Pago</label>
-                            <select id="formaPago" name="formaPago" value={formData.formaPago} onChange={handleFormChange} className="w-full shadow-sm border border-gray-300 rounded-md py-2 px-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                                <option value="efectivo">Efectivo</option><option value="transferencia">Transferencia</option><option value="factura">Factura</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="montoPagado">Monto Pagado</label>
-                            <input id="montoPagado" type="number" name="montoPagado" value={formData.montoPagado === 0 ? '' : formData.montoPagado} onChange={handleFormChange}
-                                className="w-full bg-white shadow-sm border border-gray-300 rounded-md py-2 px-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 no-spinners" placeholder="0.00" step="0.01" min="0" />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="vuelto">Vuelto</label>
-                            <input id="vuelto" type="text" name="vuelto" readOnly value={`$ ${formData.vuelto.toFixed(2)}`}
-                                className="w-full bg-gray-200 shadow-sm border border-gray-300 rounded-md py-2 px-3 text-gray-800 focus:outline-none text-right font-medium cursor-not-allowed"/>
-                        </div>
-                    </div>
-                    <div className="mt-6 text-right space-y-2">
-                        {isCalculatingTotal && <p className="text-sm text-blue-600 italic">Calculando total...</p>}
-                        {totalCalculadoApi && (
-                            <div className="text-xs text-gray-600 mb-1 p-2 bg-gray-200 rounded-md inline-block">
-                                <span>Base: ${totalCalculadoApi.monto_base.toFixed(2)}</span>
-                                {totalCalculadoApi.recargos.transferencia > 0 && <span className="ml-3">Rec. Transf: ${totalCalculadoApi.recargos.transferencia.toFixed(2)}</span>}
-                                {totalCalculadoApi.recargos.factura_iva > 0 && <span className="ml-3">IVA: ${totalCalculadoApi.recargos.factura_iva.toFixed(2)}</span>}
-                                {/* Descuento global deshabilitado en puerta */}
-                                {totalCalculadoApi.tipo_redondeo_general && (
-                                    <span className="ml-3 italic">Redondeo: {totalCalculadoApi.tipo_redondeo_general}</span>
+                            <div className="mt-6 text-right space-y-2">
+                                {isCalculatingTotal && <p className="text-sm text-blue-600 italic">Calculando total...</p>}
+                                {totalCalculadoApi && (
+                                    <div className="text-xs text-gray-600 mb-1 p-2 bg-gray-200 rounded-md inline-block">
+                                        <span>Base: ${totalCalculadoApi.monto_base.toFixed(2)}</span>
+                                        {totalCalculadoApi.recargos.transferencia > 0 && <span className="ml-3">Rec. Transf: ${totalCalculadoApi.recargos.transferencia.toFixed(2)}</span>}
+                                        {totalCalculadoApi.recargos.factura_iva > 0 && <span className="ml-3">IVA: ${totalCalculadoApi.recargos.factura_iva.toFixed(2)}</span>}
+                                        {/* Descuento global deshabilitado en puerta */}
+                                        {totalCalculadoApi.tipo_redondeo_general && (
+                                            <span className="ml-3 italic">Redondeo: {totalCalculadoApi.tipo_redondeo_general}</span>
+                                        )}
+                                    </div>
                                 )}
+                                <div className="flex justify-end items-center">
+                                    <label className="block text-base font-semibold text-gray-600 mr-4">Total Pedido</label>
+                                    <input type="text" value={`$ ${displayTotal.toFixed(2)}`} readOnly
+                                        className="w-full md:w-auto md:max-w-xs inline-block bg-gray-200 shadow-inner border border-gray-300 rounded-md py-2 px-4 text-gray-900 text-right font-bold text-xl cursor-not-allowed" />
+                                </div>
                             </div>
-                        )}
-                        <div className="flex justify-end items-center">
-                             <label className="block text-base font-semibold text-gray-600 mr-4">Total Pedido</label>
-                            <input type="text" value={`$ ${displayTotal.toFixed(2)}`} readOnly
-                                className="w-full md:w-auto md:max-w-xs inline-block bg-gray-200 shadow-inner border border-gray-300 rounded-md py-2 px-4 text-gray-900 text-right font-bold text-xl cursor-not-allowed"/>
+                        </fieldset>
+
+                        <div className="flex justify-end pt-4">
+                            <button type="submit" className="bg-green-600 text-white px-8 py-3 rounded-lg hover:bg-green-700 font-semibold text-lg disabled:opacity-50 transition-all transform hover:scale-105 shadow-lg" disabled={isSubmitting || isCalculatingTotal || !nombreVendedor.trim()}>
+                                {isSubmitting ? 'Registrando...' : 'Registrar Venta'}
+                            </button>
                         </div>
-                    </div>
-                </fieldset>
-
-                <div className="flex justify-end pt-4">
-                    <button type="submit" className="bg-green-600 text-white px-8 py-3 rounded-lg hover:bg-green-700 font-semibold text-lg disabled:opacity-50 transition-all transform hover:scale-105 shadow-lg" disabled={isSubmitting || isCalculatingTotal || !nombreVendedor.trim()}>
-                        {isSubmitting ? 'Registrando...' : 'Registrar Venta'}
-                    </button>
+                    </form>
                 </div>
-            </form>
-        </div>
-    </div>
+            </div>
 
-    {/* Contenedor para la impresión */}
-    <div id="presupuesto-imprimible" className="hidden print:block">
-        <Ticket tipo="comprobante" ventaData={ventaDataParaTicket} />
-        <div style={{ pageBreakBefore: 'always' }}></div>
-        <Ticket tipo="comprobante" ventaData={ventaDataParaTicket} />
-    </div>
-    
-    <style jsx global>{`
+            {/* Contenedor para la impresión */}
+            <div id="presupuesto-imprimible" className="hidden print:block">
+                <Ticket tipo="comprobante" ventaData={ventaDataParaTicket} />
+                <div style={{ pageBreakBefore: 'always' }}></div>
+                <Ticket tipo="comprobante" ventaData={ventaDataParaTicket} />
+            </div>
+
+            <style jsx global>{`
       .no-spinners::-webkit-outer-spin-button, .no-spinners::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
       .no-spinners { -moz-appearance: textfield; }
       .react-select__control { border-color: #d1d5db !important; box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05) !important; min-height: 42px !important; border-radius: 0.375rem !important;}
@@ -437,6 +439,6 @@ return (
       .react-select__option--is-focused { background-color: #e0e7ff !important; color: #1e1b4b !important; }
       .react-select__option--is-selected { background-color: #4f46e5 !important; color: white !important; }     
     `}</style>
-  </>
-);
+        </>
+    );
 }

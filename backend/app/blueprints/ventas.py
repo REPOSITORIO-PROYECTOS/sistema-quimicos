@@ -243,7 +243,7 @@ def calcular_monto_final_y_vuelto(monto_base, forma_pago=None, requiere_factura=
     return monto_final, recargo_t, recargo_f, vuelto, error # Devuelve error=None si todo ok
 
 
-# --- Endpoint: Registrar Nueva Venta (MODIFICADO para pasar cliente_id) ---
+# --- Endpoint: Registrar Nueva Venta (MODIFICADO para usar precios enviados sin recalcular) ---
 @ventas_bp.route('/registrar', methods=['POST'])
 @token_required
 @roles_required(ROLES['VENTAS_LOCAL'], ROLES['VENTAS_PEDIDOS'], ROLES['ADMIN'])
@@ -258,24 +258,9 @@ def registrar_venta(current_user):
         nombre_vendedor = data.get('nombre_vendedor')
         items_payload = data.get('items')
         forma_pago = data.get('forma_pago')
-        # Guardar el payload recibido en un archivo JSON para debugging
-        import json
-        try:
-            with open('/root/quimex_2.0/sistema_quimicos/registro_venta_debug.json', 'w') as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
-        except Exception as e:
-            pass
         requiere_factura = data.get('requiere_factura', False)
         monto_pagado_str = data.get('monto_pagado_cliente')
         descuento_total_global_porc = Decimal(str(data.get('descuento_total_global_porcentaje', '0.0')))
-
-        print("--- REGISTRO DE VENTA ---")
-        print(f"Usuario: {usuario_interno_id}, Cliente: {cliente_id}, Vendedor: {nombre_vendedor}")
-        print(f"Forma de pago: {forma_pago}, Requiere factura: {requiere_factura}")
-        print(f"Items recibidos: {len(items_payload) if items_payload else 0}")
-        if items_payload:
-            for idx, item_data in enumerate(items_payload):
-                print(f"  Item {idx+1}: producto_id={item_data.get('producto_id')}, cantidad={item_data.get('cantidad')}, precio_unitario_venta_ars={item_data.get('precio_unitario_venta_ars')}, precio_total_item_ars={item_data.get('precio_total_item_ars')}, descuento_item_porcentaje={item_data.get('descuento_item_porcentaje')}")
 
         if not all([usuario_interno_id, items_payload is not None, nombre_vendedor]):
             return jsonify({"error": "Faltan campos requeridos"}), 400
@@ -285,108 +270,51 @@ def registrar_venta(current_user):
         monto_total_base_neto = Decimal("0.00")
         detalles_venta_db = []
 
-        from .productos import redondear_a_siguiente_decena, redondear_a_siguiente_centena
         for item_data in items_payload:
             producto_id = item_data.get("producto_id")
             cantidad = Decimal(str(item_data.get("cantidad", "0")))
             descuento_item_porc = Decimal(str(item_data.get("descuento_item_porcentaje", "0.0")))
             if cantidad <= 0:
                 continue
-            # Detectar si existe precio especial activo para elegir regla de redondeo (decena vs centena)
-            es_precio_especial_item = False
-            if cliente_id and producto_id:
-                try:
-                    precio_especial_tmp = db.session.query(PrecioEspecialCliente).filter(
-                        PrecioEspecialCliente.cliente_id == cliente_id,
-                        PrecioEspecialCliente.producto_id == producto_id,
-                        PrecioEspecialCliente.activo == True
-                    ).first()
-                    es_precio_especial_item = precio_especial_tmp is not None
-                except Exception:
-                    es_precio_especial_item = False
-            precio_u_bruto = item_data.get("precio_unitario_venta_ars")
-            precio_t_bruto = item_data.get("precio_total_item_ars")
-            costo_u = None
-            error_msg = None
-            try:
-                if precio_u_bruto is not None and precio_t_bruto is not None:
-                    # El front envió ambos precios; convertir a Decimal
-                    precio_u_bruto = Decimal(str(precio_u_bruto))
-                    precio_t_bruto = Decimal(str(precio_t_bruto))
-                else:
-                    # Calcular en backend si faltan
-                    precio_u_bruto, precio_t_bruto, costo_u, _, error_msg, _ = calcular_precio_item_venta(producto_id, cantidad, cliente_id)
-                    if error_msg:
-                        return jsonify({"error": f"Error en Prod ID {producto_id}: {error_msg}"}), 400
-            except Exception:
-                return jsonify({"error": f"Precio unitario o total inválido para Prod ID {producto_id}"}), 400
-            # Nueva regla: el precio unitario SIEMPRE se redondea a la siguiente decena.
-            # El total se redondea: especial -> decena, normal -> centena.
-            try:
-                precio_unitario_base = Decimal(str(precio_u_bruto)) if precio_u_bruto is not None else Decimal('0.00')
-            except Exception:
-                precio_unitario_base = Decimal('0.00')
 
-            # Aplicar descuento a nivel unitario si corresponde
+            precio_unitario_venta_ars = Decimal(str(item_data.get("precio_unitario_venta_ars", "0")))
+            precio_total_item_ars = Decimal(str(item_data.get("precio_total_item_ars", "0")))
+
+            # Aplicar descuento al ítem si corresponde
             if descuento_item_porc > 0:
-                precio_unitario_desc = precio_unitario_base * (Decimal('1.0') - descuento_item_porc / Decimal('100'))
-            else:
-                precio_unitario_desc = precio_unitario_base
+                precio_total_item_ars = precio_total_item_ars * (Decimal('1.0') - descuento_item_porc / Decimal('100'))
 
-            # Redondeo unitario siempre a decena
-            precio_unitario_con_descuento = redondear_a_siguiente_decena(precio_unitario_desc)
-
-            # Subtotal previo a redondeo final
-            subtotal_tmp = (precio_unitario_con_descuento * cantidad)
-            if es_precio_especial_item:
-                precio_total_item = redondear_a_siguiente_decena(subtotal_tmp)
-            else:
-                precio_total_item = redondear_a_siguiente_centena(subtotal_tmp)
-
-            # NO recalculamos el unitario desde el total para preservar siempre el redondeo a decena exacto.
             detalle = DetalleVenta(
                 producto_id=producto_id, cantidad=cantidad,
-                precio_unitario_venta_ars=precio_unitario_con_descuento,
-                precio_total_item_ars=precio_total_item,
-                costo_unitario_momento_ars=costo_u,
+                precio_unitario_venta_ars=precio_unitario_venta_ars,
+                precio_total_item_ars=precio_total_item_ars,
                 descuento_item=descuento_item_porc,
                 observacion_item=item_data.get("observacion_item")
             )
             detalles_venta_db.append(detalle)
-            monto_total_base_neto += precio_total_item
-        print(f"Suma monto_total_base_neto antes de redondear: {monto_total_base_neto}")
-        monto_total_base_neto = monto_total_base_neto.quantize(Decimal("0.01"), ROUND_HALF_UP)
-        # Calcular recargos y luego aplicar descuento con redondeo adecuado
-        monto_con_recargos, recargo_t_calc, recargo_f_calc, _, _ = calcular_monto_final_y_vuelto(
-            monto_total_base_neto, forma_pago, requiere_factura
-        )
-        # Aplicar descuento global SOLO si es > 0; si es 0 evitamos segundo redondeo
-        if descuento_total_global_porc == 0:
-            monto_final_a_pagar = monto_con_recargos
-            tipo_redondeo = 'recargos_unico'
-        else:
-            from app.utils.precios_utils import aplicar_descuento
-            _, monto_final_a_pagar, tipo_redondeo = aplicar_descuento(
-                monto_con_recargos, descuento_total_global_porc, redondeo='centena'
-            )
-        print(f"Suma monto_total_base_neto después de redondear: {monto_total_base_neto}")
-        print(f"Recargos calculados: transferencia={recargo_t_calc}, factura={recargo_f_calc}")
-        print(f"Monto final a pagar (redondeado): {monto_final_a_pagar}")
+            monto_total_base_neto += precio_total_item_ars
 
-        # --- CORRECCIÓN LÓGICA DE VUELTO ---
+        # Aplicar descuento global
+        if descuento_total_global_porc > 0:
+            monto_total_base_neto = monto_total_base_neto * (Decimal('1.0') - descuento_total_global_porc / Decimal('100'))
+
+        # Calcular recargos simples
+        recargo_t_calc = Decimal(0)
+        recargo_f_calc = Decimal(0)
+        if forma_pago and forma_pago.strip().lower() == 'transferencia':
+            recargo_t_calc = (monto_total_base_neto * RECARGO_TRANSFERENCIA_PORC / Decimal(100)).quantize(Decimal("0.01"), ROUND_HALF_UP)
+        if requiere_factura:
+            recargo_f_calc = (monto_total_base_neto * RECARGO_FACTURA_PORC / Decimal(100)).quantize(Decimal("0.01"), ROUND_HALF_UP)
+
+        monto_final_a_pagar = monto_total_base_neto + recargo_t_calc + recargo_f_calc
+        monto_final_a_pagar = Decimal(math.ceil(monto_final_a_pagar / 100) * 100)
+
         vuelto_final_calc = Decimal('0.00')
         if monto_pagado_str is not None:
-            try:
-                monto_pagado_decimal = Decimal(str(monto_pagado_str))
-                if monto_pagado_decimal >= monto_final_a_pagar:
-                    vuelto_final_calc = monto_pagado_decimal - monto_final_a_pagar
-                # La validación estricta solo aplica si NO es un pedido y se paga en efectivo
-                # elif nombre_vendedor.lower() != 'pedidos' and forma_pago == 'efectivo':
-                #     return jsonify({"error": "Para pagos en efectivo en puerta, el monto pagado no puede ser menor al total."}), 400
-            except InvalidOperation:
-                return jsonify({"error": "Monto pagado inválido."}), 400
+            monto_pagado_decimal = Decimal(str(monto_pagado_str))
+            if monto_pagado_decimal >= monto_final_a_pagar:
+                vuelto_final_calc = monto_pagado_decimal - monto_final_a_pagar
 
-        print(f"Valores que se guardarán en Venta: monto_total={monto_total_base_neto}, monto_final_con_recargos={monto_final_a_pagar}, monto_pagado_cliente={monto_pagado_str}, vuelto_calculado={vuelto_final_calc}")
         nueva_venta = Venta(
             usuario_interno_id=usuario_interno_id,
             cliente_id=cliente_id,
@@ -403,21 +331,13 @@ def registrar_venta(current_user):
             monto_pagado_cliente=Decimal(str(monto_pagado_str)).quantize(Decimal("0.01")) if monto_pagado_str else None,
             vuelto_calculado=vuelto_final_calc.quantize(Decimal("0.01"), ROUND_HALF_UP),
             detalles=detalles_venta_db,
-            descuento_general=descuento_total_global_porc,  # Guardar el porcentaje real
+            descuento_general=descuento_total_global_porc,
             direccion_entrega=data.get('direccion_entrega', "")
         )
         db.session.add(nueva_venta)
         db.session.commit()
-        # Debug info para seguimiento
-        debug_info = [
-            f"Monto total base neto: {monto_total_base_neto}",
-            f"Recargo transferencia: {recargo_t_calc}",
-            f"Recargo factura: {recargo_f_calc}",
-            f"Descuento % aplicado: {descuento_total_global_porc}",
-            f"Monto final a pagar: {monto_final_a_pagar}",
-            f"Tipo redondeo aplicado: {tipo_redondeo}"
-        ]
-        return jsonify({"status": "success", "venta_id": nueva_venta.id, "debug_info": debug_info}), 201
+
+        return jsonify({"status": "success", "venta_id": nueva_venta.id}), 201
 
     except Exception as e:
         db.session.rollback()
@@ -591,14 +511,13 @@ def obtener_venta_por_id(current_user, venta_id):
         return jsonify({"error": "Error interno del servidor al obtener la venta."}), 500
 
 
-# --- Endpoint: Actualizar Venta (Lógica de Recálculo Completo) ---
+# --- Endpoint: Actualizar Venta (Simplificado para usar precios enviados) ---
 @ventas_bp.route('/actualizar/<int:venta_id>', methods=['PUT'])
 @token_required
 @roles_required(ROLES['ADMIN'], ROLES['VENTAS_PEDIDOS'], ROLES['VENTAS_LOCAL'])
 def actualizar_venta(current_user, venta_id):
     """
-    [CORREGIDO] Actualiza una venta existente. Siempre recalcula todos los precios
-    y totales desde el backend para garantizar la consistencia.
+    Actualiza una venta existente usando los precios enviados sin recalcular.
     """
     venta_db = db.session.get(Venta, venta_id)
     if not venta_db:
@@ -624,80 +543,60 @@ def actualizar_venta(current_user, venta_id):
         return jsonify({"error": "Payload JSON inválido o sin lista de 'items'"}), 400
         
     try:
-        # --- BLOQUE 1: RE-CÁLCULO DE ÍTEMS Y MONTO BASE ---
+        # --- RECÁLCULO SIMPLIFICADO: Usar precios enviados ---
         DetalleVenta.query.filter_by(venta_id=venta_id).delete()
         db.session.flush()
-
 
         monto_total_base_nuevo = Decimal("0.00")
         detalles_venta_nuevos = []
         cliente_id_nuevo = data.get('cliente_id', venta_db.cliente_id)
 
-        # 1. Calcular cada ítem con descuento particular
         for item_data in data.get('items', []):
             producto_id = item_data.get("producto_id")
             cantidad = Decimal(str(item_data.get("cantidad", "0")))
             descuento_item_porc = Decimal(str(item_data.get("descuento_item_porcentaje", "0.0")))
             if not producto_id or cantidad <= 0:
                 continue
-            precio_u_bruto, precio_t_bruto, costo_u, _, error_msg, _ = calcular_precio_item_venta(
-                producto_id, cantidad, cliente_id_nuevo
-            )
-            if error_msg:
-                db.session.rollback()
-                return jsonify({"error": f"Error al recalcular ítem (Prod ID {producto_id}): {error_msg}"}), 400
-            # Aplicar descuento SOLO al ítem y redondear hacia arriba a la centena
-            precio_t_descuento = precio_t_bruto * (Decimal(1) - descuento_item_porc / Decimal(100))
-            precio_t_descuento = Decimal(math.ceil(precio_t_descuento / 100) * 100)
-            if cantidad > 0:
-                precio_u_neto_item = (precio_t_descuento / cantidad).quantize(Decimal("0.01"), ROUND_HALF_UP)
-            else:
-                precio_u_neto_item = precio_u_bruto
+
+            precio_unitario_venta_ars = Decimal(str(item_data.get("precio_unitario_venta_ars", "0")))
+            precio_total_item_ars = Decimal(str(item_data.get("precio_total_item_ars", "0")))
+
+            # Aplicar descuento al ítem si corresponde
+            if descuento_item_porc > 0:
+                precio_total_item_ars = precio_total_item_ars * (Decimal('1.0') - descuento_item_porc / Decimal('100'))
+
             detalle_nuevo = DetalleVenta(
                 venta_id=venta_id,
                 producto_id=producto_id,
                 cantidad=cantidad,
-                precio_unitario_venta_ars=precio_u_neto_item,
-                precio_total_item_ars=precio_t_descuento,
-                costo_unitario_momento_ars=costo_u,
+                precio_unitario_venta_ars=precio_unitario_venta_ars,
+                precio_total_item_ars=precio_total_item_ars,
                 descuento_item=descuento_item_porc,
                 observacion_item=item_data.get("observacion_item")
             )
             detalles_venta_nuevos.append(detalle_nuevo)
-            monto_total_base_nuevo += precio_t_descuento
+            monto_total_base_nuevo += precio_total_item_ars
 
-        # 2. Aplicar recargos al monto base
-        forma_pago_nueva = data.get('forma_pago', venta_db.forma_pago)
-        requiere_factura_nueva = data.get('requiere_factura', venta_db.requiere_factura)
+        # Aplicar descuento global
         descuento_total_nuevo_porc = Decimal(str(data.get('descuento_total_global_porcentaje', '0.0')))
-        fecha_pedido = data.get('fecha_pedido', None)
+        if descuento_total_nuevo_porc > 0:
+            monto_total_base_nuevo = monto_total_base_nuevo * (Decimal('1.0') - descuento_total_nuevo_porc / Decimal('100'))
 
-        # Calcular recargos
-        monto_con_recargos, recargo_t_nuevo, recargo_f_nuevo, _, _ = calcular_monto_final_y_vuelto(
-            monto_total_base_nuevo, forma_pago_nueva, requiere_factura_nueva
-        )
-
-        # 3. Aplicar descuento global y redondeo usando util
-        from app.utils.precios_utils import aplicar_descuento
-        monto_sin_redondeo = monto_con_recargos
-        monto_con_descuento, monto_redondeado, tipo_redondeo = aplicar_descuento(
-            monto_sin_redondeo, descuento_total_nuevo_porc, redondeo='centena'
-        )
-        monto_final_a_pagar_nuevo = monto_redondeado
-
-        # --- BLOQUE 2: GUARDAR LOS MONTOS ENVIADOS POR EL FRONTEND SI ESTÁN PRESENTES ---
+        # Calcular recargos simples
         forma_pago_nueva = data.get('forma_pago', venta_db.forma_pago)
         requiere_factura_nueva = data.get('requiere_factura', venta_db.requiere_factura)
+        recargo_t_nuevo = Decimal(0)
+        recargo_f_nuevo = Decimal(0)
+        if forma_pago_nueva and forma_pago_nueva.strip().lower() == 'transferencia':
+            recargo_t_nuevo = (monto_total_base_nuevo * RECARGO_TRANSFERENCIA_PORC / Decimal(100)).quantize(Decimal("0.01"), ROUND_HALF_UP)
+        if requiere_factura_nueva:
+            recargo_f_nuevo = (monto_total_base_nuevo * RECARGO_FACTURA_PORC / Decimal(100)).quantize(Decimal("0.01"), ROUND_HALF_UP)
+
+        monto_final_a_pagar_nuevo = monto_total_base_nuevo + recargo_t_nuevo + recargo_f_nuevo
+        monto_final_a_pagar_nuevo = Decimal(math.ceil(monto_final_a_pagar_nuevo / 100) * 100)
+
+        # Calcular vuelto
         monto_pagado_nuevo_str = data.get('monto_pagado_cliente')
-        descuento_total_nuevo_porc = Decimal(str(data.get('descuento_total_global_porcentaje', '0.0')))
-        fecha_pedido = data.get('fecha_pedido', None)
-
-        # Siempre usar el monto calculado y redondeado por el backend
-
-        # Recargos: si el frontend los envía, los usamos; si no, los calculamos
-        recargo_t_nuevo = Decimal(str(data.get('recargo_transferencia', 0.0)))
-        recargo_f_nuevo = Decimal(str(data.get('recargo_factura', 0.0)))
-
         vuelto_final_nuevo = Decimal('0.00')
         if monto_pagado_nuevo_str is not None:
             try:
@@ -707,7 +606,7 @@ def actualizar_venta(current_user, venta_id):
             except InvalidOperation:
                 return jsonify({"error": "Monto pagado inválido."}), 400
 
-        # --- BLOQUE 3: ACTUALIZACIÓN DEL OBJETO VENTA EN LA BASE DE DATOS ---
+        # --- ACTUALIZACIÓN DEL OBJETO VENTA ---
         venta_db.cliente_id = cliente_id_nuevo
         venta_db.observaciones = data.get('observaciones', venta_db.observaciones)
         venta_db.monto_total = monto_total_base_nuevo
@@ -715,15 +614,14 @@ def actualizar_venta(current_user, venta_id):
         venta_db.requiere_factura = requiere_factura_nueva
         venta_db.recargo_transferencia = recargo_t_nuevo
         venta_db.recargo_factura = recargo_f_nuevo
-        # Asignar montos calculados y redondeados
         venta_db.monto_final_con_recargos = monto_final_a_pagar_nuevo
         venta_db.monto_final_redondeado = monto_final_a_pagar_nuevo
-        # Tipo de redondeo aplicado (si se desea almacenar)
-        # venta_db.tipo_redondeo_general = tipo_redondeo
         venta_db.monto_pagado_cliente = Decimal(str(monto_pagado_nuevo_str)).quantize(Decimal("0.01")) if monto_pagado_nuevo_str is not None else None
         venta_db.vuelto_calculado = vuelto_final_nuevo.quantize(Decimal("0.01"), ROUND_HALF_UP)
         venta_db.detalles = detalles_venta_nuevos
-        # Solo actualizar si viene un valor válido y no vacío
+        venta_db.descuento_general = descuento_total_nuevo_porc
+        venta_db.direccion_entrega = data.get('direccion_entrega', venta_db.direccion_entrega)
+        fecha_pedido = data.get('fecha_pedido', None)
         if fecha_pedido:
             try:
                 if isinstance(fecha_pedido, datetime):
@@ -732,13 +630,10 @@ def actualizar_venta(current_user, venta_id):
                     venta_db.fecha_pedido = datetime.fromisoformat(fecha_pedido)
             except Exception:
                 pass
-        venta_db.descuento_general = descuento_total_nuevo_porc  # Guardar el porcentaje real
-        venta_db.direccion_entrega = data.get('direccion_entrega', venta_db.direccion_entrega)
-        # Nota: El 'nombre_vendedor' y el 'estado' no se tocan aquí, se manejan en otro endpoint
 
         db.session.commit()
 
-        # --- FIX REFORZADO: Volver a consultar la venta desde cero para asegurar datos frescos ---
+        # --- Volver a consultar la venta ---
         venta_actualizada = db.session.query(Venta).options(
             selectinload(Venta.detalles).selectinload(DetalleVenta.producto),
             selectinload(Venta.cliente)
