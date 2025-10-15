@@ -21,17 +21,52 @@ type Pagination = {
 };
 
 export default function ListaOrdenesCompra() {
+  // Obtener usuario
+  const userItem = typeof window !== 'undefined' ? sessionStorage.getItem("user") : null;
+  const user = userItem ? JSON.parse(userItem) : null;
+  const esAlmacen = user && user.role && user.role.toUpperCase() === 'ALMACEN';
+
+  // Estado para el filtro: por defecto 'Aprobado' (Recepciones Pendientes)
+  const [filtroEstado, setFiltroEstado] = useState<'Aprobado' | 'Solicitado' | 'todos'>(esAlmacen ? 'Aprobado' : 'Aprobado');
+  // Sincronizar filtro con query param al montar
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const estadoParam = params.get('estado');
+      if (estadoParam === 'Solicitado' || estadoParam === 'Aprobado') {
+        setFiltroEstado(estadoParam as 'Solicitado' | 'Aprobado');
+      } else if (!estadoParam) {
+        setFiltroEstado(esAlmacen ? 'Aprobado' : 'Aprobado');
+      }
+    }
+  }, [esAlmacen]);
+
+  // Si el filtro es 'Aprobado' o 'Solicitado', filtrar solo las órdenes correspondientes
+  function filtrarPorEstado(ordenes: OrdenCompra[], estado: string) {
+    return ordenes.filter((o: OrdenCompra) => o.estado === estado);
+  }
   const [ordenes, setOrdenes] = useState<OrdenCompra[]>([]);
   const [pagination, setPagination] = useState<Pagination | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
+
+  // Cuando cambia el filtro, volver siempre a la página 1
+  useEffect(() => {
+    setPage(1);
+  }, [filtroEstado]);
+
+  // Si el filtro viene de la URL (?estado=Aprobado), forzar página 1 al montar y solo si filtroEstado es 'Aprobado'
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const estadoParam = params.get('estado');
+      if (estadoParam === 'Aprobado' && filtroEstado === 'Aprobado') {
+        setPage(1);
+      }
+    }
+  }, [filtroEstado]);
   const [idOrdenSeleccionada, setIdOrdenSeleccionada] = useState<number | null>(null);
-  const [filtroEstado, setFiltroEstado] = useState<string>('todos'); // Estado para el filtro
-  //eslint-disable-next-line
-  const userItem:any = sessionStorage.getItem("user");
-  const user = userItem ? JSON.parse(userItem) : null; 
-  
   const [processingId, setProcessingId] = useState<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
@@ -74,7 +109,7 @@ export default function ListaOrdenesCompra() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, filtroEstado]);
 
-  const handleFiltroChange = (nuevoFiltro: string) => {
+  const handleFiltroChange = (nuevoFiltro: 'Aprobado' | 'Solicitado' | 'todos') => {
     setFiltroEstado(nuevoFiltro);
     setPage(1);
   };
@@ -169,6 +204,14 @@ export default function ListaOrdenesCompra() {
     return <SolicitudIngresoPage id={idOrdenSeleccionada} />;
   }
 
+
+  // Solo permitir filtro 'Aprobado' para ALMACEN
+
+  // Si viene con filtro 'Solicitado' por query, solo mostrar ese filtro
+  const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+  const soloPendientesAprobacion = urlParams && urlParams.get('estado') === 'Solicitado';
+  const soloRecepcionesPendientes = urlParams && urlParams.get('estado') === 'Aprobado';
+
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-indigo-900 py-10 px-4">
       <div className="bg-white p-6 md:p-8 rounded-lg shadow-xl w-full max-w-4xl lg:max-w-5xl">
@@ -177,41 +220,78 @@ export default function ListaOrdenesCompra() {
           Lista de Órdenes de Compra
         </h2>
 
-        <div className="flex justify-center items-center gap-2 mb-6 border-b pb-4">
-            <span className="text-sm font-medium text-gray-600">Filtrar por estado:</span>
+        <div className="flex flex-col md:flex-row justify-center items-center gap-2 mb-6 border-b pb-4">
+          {soloPendientesAprobacion ? (
             <button
-                onClick={() => handleFiltroChange('todos')}
-                disabled={loading}
-                className={`px-4 py-2 text-sm font-semibold rounded-full transition-all duration-200 ${
-                    filtroEstado === 'todos'
-                    ? 'bg-indigo-600 text-white shadow-md'
-                    : 'bg-gray-200 text-gray-800 hover:bg-indigo-100'
-                }`}
+              disabled
+              className={`px-4 py-2 text-base font-bold rounded transition-all duration-200 shadow-md border-2 border-yellow-400 bg-yellow-100 text-yellow-900 ring-2 ring-yellow-500`}
             >
-                Todas
+              Solicitudes Pendientes de Aprobación
             </button>
+          ) : soloRecepcionesPendientes ? (
             <button
-                onClick={() => handleFiltroChange('Aprobado')}
-                disabled={loading}
-                className={`px-4 py-2 text-sm font-semibold rounded-full transition-all duration-200 ${
-                    filtroEstado === 'Aprobado'
-                    ? 'bg-green-600 text-white shadow-md'
-                    : 'bg-gray-200 text-gray-800 hover:bg-green-100'
-                }`}
+              disabled
+              className={`px-4 py-2 text-base font-bold rounded transition-all duration-200 shadow-md border-2 border-green-400 bg-green-100 text-green-900 ring-2 ring-green-500`}
             >
-                Aprobadas
+              Recepciones Pendientes
             </button>
+          ) : esAlmacen ? (
             <button
-                onClick={() => handleFiltroChange('Solicitado')}
-                disabled={loading}
-                className={`px-4 py-2 text-sm font-semibold rounded-full transition-all duration-200 ${
-                    filtroEstado === 'Solicitado'
-                    ? 'bg-yellow-500 text-white shadow-md'
-                    : 'bg-gray-200 text-gray-800 hover:bg-yellow-100'
-                }`}
+              disabled
+              className={`px-4 py-2 text-base font-bold rounded transition-all duration-200 shadow-md border-2 border-green-400 bg-green-100 text-green-900 ring-2 ring-green-500`}
             >
-                Solicitadas
+              Recepciones Pendientes
             </button>
+          ) : (
+            filtroEstado === 'Aprobado' ? (
+              <>
+                <button
+                  disabled
+                  className={`px-4 py-2 text-base font-bold rounded transition-all duration-200 shadow-md border-2 border-green-400 bg-green-100 text-green-900 ring-2 ring-green-500`}
+                >
+                  Recepciones Pendientes
+                </button>
+                <button
+                  onClick={() => handleFiltroChange('todos')}
+                  disabled={loading}
+                  className={`px-4 py-2 text-base font-bold rounded transition-all duration-200 shadow-md border-2 border-indigo-400 bg-indigo-100 text-indigo-900 hover:bg-indigo-200${(filtroEstado as string) === 'todos' ? ' ring-2 ring-indigo-500' : ''}`}
+                >
+                  Ver Todas
+                </button>
+              </>
+            ) : filtroEstado === 'Solicitado' ? (
+              <button
+                disabled
+                className={`px-4 py-2 text-base font-bold rounded transition-all duration-200 shadow-md border-2 border-yellow-400 bg-yellow-100 text-yellow-900 ring-2 ring-yellow-500`}
+              >
+                Solicitudes Pendientes de Aprobación
+              </button>
+            ) : (
+              <>
+                <button
+                  onClick={() => handleFiltroChange('Solicitado')}
+                  disabled={loading}
+                  className={`px-4 py-2 text-base font-bold rounded transition-all duration-200 shadow-md border-2 border-yellow-400 bg-yellow-100 text-yellow-900 hover:bg-yellow-200${(filtroEstado as string) === 'Solicitado' ? ' ring-2 ring-yellow-500' : ''}`}
+                >
+                  Solicitudes Pendientes de Aprobación
+                </button>
+                <button
+                  onClick={() => handleFiltroChange('Aprobado')}
+                  disabled={loading}
+                  className={`px-4 py-2 text-base font-bold rounded transition-all duration-200 shadow-md border-2 border-green-400 bg-green-100 text-green-900 hover:bg-green-200${(filtroEstado as string) === 'Aprobado' ? ' ring-2 ring-green-500' : ''}`}
+                >
+                  Recepciones Pendientes
+                </button>
+                <button
+                  onClick={() => handleFiltroChange('todos')}
+                  disabled={loading}
+                  className={`px-4 py-2 text-base font-bold rounded transition-all duration-200 shadow-md border-2 border-indigo-400 bg-indigo-100 text-indigo-900 hover:bg-indigo-200${filtroEstado === 'todos' ? ' ring-2 ring-indigo-500' : ''}`}
+                >
+                  Ver Todas
+                </button>
+              </>
+            )
+          )}
         </div>
 
         {loading && <p className="text-center text-gray-600 my-4 text-sm">Cargando órdenes...</p>}
@@ -230,7 +310,8 @@ export default function ListaOrdenesCompra() {
                   <span className="text-center">Acciones</span>
                 </li>
 
-                {ordenes.length > 0 ? ordenes.map((orden) => {
+                {(['Aprobado','Solicitado'].includes(filtroEstado) ? filtrarPorEstado(ordenes, filtroEstado) : ordenes).length > 0 ?
+                  (['Aprobado','Solicitado'].includes(filtroEstado) ? filtrarPorEstado(ordenes, filtroEstado) : ordenes).map((orden) => {
                   let fechaFormateada = 'N/A';
                   try {
                     fechaFormateada = new Date(orden.fecha_creacion).toLocaleDateString("es-AR", {
@@ -263,7 +344,7 @@ export default function ListaOrdenesCompra() {
                             <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                           </svg>
                         </button>
-                        {orden.estado === 'Solicitado' && (
+                        {!esAlmacen && orden.estado === 'Solicitado' && (
                           <>
                             <button
                               title="Aprobar Orden"
@@ -288,9 +369,7 @@ export default function ListaOrdenesCompra() {
                           </>
                         )}
                       </div>
-                       
                     </li>
-                    
                   );
                 }) : (
                   <li className="text-center py-8 text-gray-500 col-span-4">
