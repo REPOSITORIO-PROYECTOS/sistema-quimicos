@@ -1283,7 +1283,7 @@ const handleDeleteProduct = async (itemToDelete: DisplayItem) => {
       </div>
       {downloadFormulasError && <p className="text-center text-red-600 my-2 bg-red-50 p-2 rounded border text-sm">Error en descarga de fórmulas: {downloadFormulasError}</p>}
       {isDownloadingFormulas && <div className="fixed inset-0 bg-gray-600 bg-opacity-75 z-50 flex justify-center items-center"><div className="bg-white p-6 rounded shadow-lg">Generando reporte de fórmulas...</div></div>}
-      {isProductModalOpen && (<CreateProductModal onClose={handleCloseProductModal} onProductCreatedOrUpdated={handleProductCreatedOrUpdated} productIdToEdit={editingItemType === 'product' ? editingItemId : null} comboIdToEdit={editingItemType === 'combo' ? editingItemId : (editingItemType === 'product' && displayedItems.find(it => it.id === editingItemId && it.type === 'product')?.es_combo_proxy ? displayedItems.find(it => it.id === editingItemId && it.type === 'product')?.combo_id_original : null) } isInitiallyCombo={editingItemType === 'combo' || (editingItemType === 'product' && displayedItems.find(it => it.id === editingItemId && it.type === 'product')?.es_combo_proxy)} /> )}
+  {isProductModalOpen && (<CreateProductModal onClose={handleCloseProductModal} onProductCreatedOrUpdated={handleProductCreatedOrUpdated} productIdToEdit={editingItemType === 'product' ? editingItemId : null} /> )}
       {isUploadModalOpen && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-75 z-50 flex justify-center items-center px-4">
           <div className="relative mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
