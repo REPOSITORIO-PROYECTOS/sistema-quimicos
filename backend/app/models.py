@@ -393,3 +393,19 @@ class ComboComponente(db.Model):
             'cantidad': float(self.cantidad),
             'unidad_venta_componente': unidad_venta_componente,
         }
+
+# --- Modelo CostoHistorico ---
+class CostoHistorico(db.Model):
+    __tablename__ = 'costos_historico'
+    id = db.Column(db.Integer, primary_key=True)
+    fecha = db.Column(db.Date, nullable=False, index=True)
+    costo_total = db.Column(db.Numeric(15,2), nullable=False)
+    detalles = db.Column(db.Text, nullable=True)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'fecha': self.fecha.isoformat(),
+            'costo_total': float(self.costo_total),
+            'detalles': self.detalles
+        }

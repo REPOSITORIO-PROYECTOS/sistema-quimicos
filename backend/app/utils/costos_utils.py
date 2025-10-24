@@ -1,7 +1,7 @@
 # utils/cost_utils.py 
 from decimal import Decimal, ROUND_HALF_UP
-from ..models import Producto, RecetaItem, Receta # Asegúrate de la ruta correcta
-from .. import db # Si necesitas acceso a la sesión de DB
+from ..models import Producto, RecetaItem, Receta, CostoHistorico
+from .. import db
 
 # Helper para redondear consistentemente
 def redondear_decimal(valor: Decimal, decimales: int = 8) -> Decimal:
@@ -104,3 +104,38 @@ def calcular_costo_producto(producto_id: int, visitados: set = None, nivel: int 
     print(f"{indent}<-- Retornando costo para Producto ID {producto_id}: {costo_final}")
     
     return costo_final
+
+
+
+
+def guardar_costo_historico():
+    hoy = datetime.now().date()
+    costo, detalles = calcular_costos_del_dia()
+    registro = CostoHistorico(fecha=hoy, costo_total=costo, detalles=detalles)
+    db.session.add(registro)
+    db.session.commit()
+    return registro.to_dict()
+
+# Importar datetime para guardar el histórico
+from datetime import datetime
+# Ejemplo de función de reporte que guarda el costo del día en el histórico
+# Ejemplo de función de reporte que guarda el costo del día en el histórico
+def calcular_costos_del_dia():
+    costo_total = Decimal(0)
+    detalles = "Cálculo simulado. Implementa la lógica real aquí."
+    return costo_total, detalles
+
+def reporte_costo_del_dia():
+    # Calcula el costo del día (puedes adaptar la lógica según tu sistema)
+    resultado = guardar_costo_historico()
+    return resultado
+
+def guardar_costo_historico_automatico():
+    """
+    Guarda automáticamente el costo histórico al iniciar la app (ejemplo: se puede llamar desde un scheduler o al inicio).
+    """
+    try:
+        registro = guardar_costo_historico()
+        print(f"Guardado automático de costo histórico: {registro}")
+    except Exception as e:
+        print(f"Error al guardar costo histórico automáticamente: {e}")

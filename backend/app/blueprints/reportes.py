@@ -33,6 +33,7 @@ from .productos import calcular_costo_producto_referencia
 from .productos import redondear_a_siguiente_decena, redondear_a_siguiente_centena
 from ..utils.decorators import token_required, roles_required
 from ..utils.permissions import ROLES
+from ..utils.costos_utils import guardar_costo_historico
 
 # --- Blueprint ---
 reportes_bp = Blueprint('reportes', __name__, url_prefix='/reportes')
@@ -843,4 +844,19 @@ def obtener_tipo_de_cambio_actual() -> Decimal:
         raise ValueError("No se encontró un tipo de cambio configurado en la base de datos.")
         
     return tipo_cambio.valor
-    
+
+@reportes_bp.route('/guardar-costo-historico', methods=['POST'])
+@token_required
+@roles_required(ROLES['ADMIN'], ROLES['CONTABLE'])
+def guardar_costo_historico_endpoint(current_user):
+    """
+    Endpoint para guardar el costo del día en el histórico.
+    Retorna el registro guardado.
+    """
+    try:
+        registro = guardar_costo_historico()
+        return jsonify({"success": True, "registro": registro}), 201
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
