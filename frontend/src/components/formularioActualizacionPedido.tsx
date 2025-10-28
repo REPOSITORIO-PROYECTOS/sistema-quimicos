@@ -31,7 +31,13 @@ const labelBaseClasses = "block text-sm font-medium text-gray-700 mb-1";
 const inputBaseClasses = "w-full bg-white border border-gray-300 rounded px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
 const inputReadOnlyClasses = "w-full bg-gray-100 border border-gray-200 rounded px-3 py-2 text-gray-500 cursor-not-allowed";
 
+
+
+
 export default function DetalleActualizarPedidoPage({ id }: { id: number | undefined }) {
+  // Estado para detectar cambios (debe estar dentro del componente)
+  const [initialFormDataSnapshot, setInitialFormDataSnapshot] = useState<FormDataVenta | null>(null);
+  const [initialProductosSnapshot, setInitialProductosSnapshot] = useState<ProductoVenta[] | null>(null);
   const [formData, setFormData] = useState<FormDataVenta>(initialFormData);
   const router = useRouter();
   const irAcciones = () => router.push('/acciones');
@@ -70,11 +76,12 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
    * 4. Calcular total = (unitario_con_descuento * cantidad) y redondear a centena.
    * 5. Guardar unitario_con_descuento en campo precio (como hace backend) y total en campo total.
    */
+  // Solo recalcula y retorna los productos recibidos, no setea toda la lista
   const recalculatePricesForProducts = useCallback(async (currentProducts: ProductoVenta[], clienteId: number | null) => {
     const token = localStorage.getItem("token");
     if (!token) {
       setErrorMensaje("No autenticado.");
-      return;
+      return [];
     }
 
     const productQuantities = new Map<number, { totalQuantity: number; indices: number[] }>();
@@ -130,19 +137,15 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         if (!item) return;
         const cantidad = item.qx || 0;
         const descuento = item.descuento || 0; // %
-        // Solo cuantizar a 2 decimales, el backend se encarga del redondeo final
         const unitQuantized = quantizeToDecimals(precioUnitario);
-        // Aplicar descuento por ítem
         const unitWithDiscount = unitQuantized * (1 - (descuento / 100));
-        // Calcular total sin redondeo adicional (backend lo maneja)
         const totalBruto = unitWithDiscount * cantidad;
         const totalQuantized = quantizeToDecimals(totalBruto);
-        item.precio = quantizeToDecimals(unitWithDiscount); // Unitario con descuento cuantizado
-        item.total = totalQuantized;   // Total cuantizado, backend aplicará redondeo final
+        item.precio = quantizeToDecimals(unitWithDiscount);
+        item.total = totalQuantized;
       });
     });
-
-    setProductos(newProducts);
+    return newProducts;
   }, [setErrorMensaje]);
 
   const cargarFormulario = useCallback(async (pedidoId: number) => {
@@ -200,11 +203,26 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
 
       if (productosDesdeAPI.length > 0) {
         setProductos(productosDesdeAPI);
-        // NO recalcular inmediatamente - usar valores guardados para evitar diferencias
-        // Solo recalcular si el usuario cambia algo manualmente
+        setInitialProductosSnapshot(productosDesdeAPI.map(p => ({ ...p })));
       } else {
         setProductos([initialProductoItem]);
+        setInitialProductosSnapshot([{ ...initialProductoItem }]);
       }
+      setInitialFormDataSnapshot({ ...initialFormData, ...{
+        nombre: datosAPI.cliente_nombre || "Cliente",
+        cuit: datosAPI.cuit_cliente || "",
+        direccion: datosAPI.direccion_entrega || "",
+        fechaEmision: datosAPI.fecha_registro || "",
+        fechaEntrega: datosAPI.fecha_pedido || "",
+        formaPago: datosAPI.forma_pago || "efectivo",
+        montoPagado: datosAPI.monto_pagado_cliente || 0,
+        descuentoTotal: datosAPI.descuento_total_global_porcentaje || 0,
+        vuelto: datosAPI.vuelto_calculado ?? 0,
+        clienteId: clienteId,
+        requiereFactura: datosAPI.requiere_factura || false,
+        observaciones: datosAPI.observaciones || "",
+        localidad: datosAPI.localidad || "",
+      }});
 
     } catch (error) {
       if (error instanceof Error) setErrorMensaje(error.message);
@@ -291,13 +309,40 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
       }
       return { ...item, [name]: newValue };
     });
-    recalculatePricesForProducts(nuevosProductos, formData.clienteId);
+    // Solo recalcular productos con el mismo ID que el editado
+    const editedProductId = nuevosProductos[index].producto;
+    const indicesMismoProducto = nuevosProductos
+      .map((p, idx) => (p.producto === editedProductId ? idx : -1))
+      .filter(idx => idx !== -1);
+    const productosParaRecalcular = indicesMismoProducto.map(idx => nuevosProductos[idx]);
+    recalculatePricesForProducts(productosParaRecalcular, formData.clienteId).then((recalculados) => {
+      setProductos(prev => prev.map((item, idx) => {
+        const recalculadoIdx = indicesMismoProducto.indexOf(idx);
+        if (recalculadoIdx !== -1) {
+          return recalculados[recalculadoIdx];
+        }
+        return item;
+      }));
+    });
   };
 
   const handleProductSelectChange = (index: number, selectedOption: { value: number; label: string } | null) => {
     const nuevosProductos = [...productos];
     nuevosProductos[index].producto = selectedOption?.value || 0;
-    recalculatePricesForProducts(nuevosProductos, formData.clienteId);
+    const editedProductId = nuevosProductos[index].producto;
+    const indicesMismoProducto = nuevosProductos
+      .map((p, idx) => (p.producto === editedProductId ? idx : -1))
+      .filter(idx => idx !== -1);
+    const productosParaRecalcular = indicesMismoProducto.map(idx => nuevosProductos[idx]);
+    recalculatePricesForProducts(productosParaRecalcular, formData.clienteId).then((recalculados) => {
+      setProductos(prev => prev.map((item, idx) => {
+        const recalculadoIdx = indicesMismoProducto.indexOf(idx);
+        if (recalculadoIdx !== -1) {
+          return recalculados[recalculadoIdx];
+        }
+        return item;
+      }));
+    });
   };
 
   const agregarProducto = () => setProductos([...productos, { ...initialProductoItem }]);
@@ -318,14 +363,47 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     }
   }, [documentosAImprimir, id, formData.nombre]);
 
+  const isProductosIguales = (a: ProductoVenta[], b: ProductoVenta[]) => {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      const pa = a[i], pb = b[i];
+      if (pa.producto !== pb.producto || pa.qx !== pb.qx || pa.precio !== pb.precio || pa.descuento !== pb.descuento || pa.total !== pb.total || (pa.observacion || "") !== (pb.observacion || "")) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const isFormDataIgual = (a: FormDataVenta, b: FormDataVenta) => {
+    return (Object.keys(a) as (keyof FormDataVenta)[]).every(key => a[key] === b[key]);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMensaje(''); setSuccessMensaje('');
     if (!id) { setErrorMensaje("ID de pedido no válido."); return; }
+    // Si no hubo cambios, no guardar
+    if (initialFormDataSnapshot && initialProductosSnapshot && isFormDataIgual(formData, initialFormDataSnapshot) && isProductosIguales(productos, initialProductosSnapshot)) {
+      setSuccessMensaje("No hubo cambios, no se guardó nada.");
+      setTimeout(irAcciones, 1500);
+      return;
+    }
     setIsSubmitting(true);
     const token = localStorage.getItem("token");
     const usuarioId = localStorage.getItem("usuario_id");
     if (!token || !usuarioId) { setErrorMensaje("No autenticado."); setIsSubmitting(false); return; }
+
+    // Si solo se modificó un campo general (no los productos), recalcular todos los productos antes de guardar
+    if (initialFormDataSnapshot && initialProductosSnapshot && !isProductosIguales(productos, initialProductosSnapshot)) {
+      // Hubo cambios en los productos, guardar normalmente
+    } else if (initialFormDataSnapshot && initialProductosSnapshot && !isFormDataIgual(formData, initialFormDataSnapshot)) {
+      // Hubo cambios generales, pero no en los productos
+      // Recalcular todos los productos antes de guardar
+      const recalculados = await recalculatePricesForProducts(productos, formData.clienteId);
+      // Actualizar productos antes de guardar
+      setProductos(recalculados);
+    }
+
     const dataToUpdate = {
       cliente_id: formData.clienteId,
       fecha_pedido: formData.fechaEntrega || formData.fechaEmision,
