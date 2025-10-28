@@ -398,7 +398,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     try {
       productosParaGuardar = await recalculatePricesForProducts(productos, formData.clienteId);
       setProductos(productosParaGuardar); // opcional, para refrescar la UI
-    } catch (err) {
+    } catch {
       setErrorMensaje("Error al recalcular precios antes de guardar. Intente de nuevo.");
       setIsSubmitting(false);
       return;
