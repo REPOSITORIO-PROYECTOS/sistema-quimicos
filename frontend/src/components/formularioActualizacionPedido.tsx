@@ -393,15 +393,15 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     const usuarioId = localStorage.getItem("usuario_id");
     if (!token || !usuarioId) { setErrorMensaje("No autenticado."); setIsSubmitting(false); return; }
 
-    // Si solo se modificó un campo general (no los productos), recalcular todos los productos antes de guardar
-    if (initialFormDataSnapshot && initialProductosSnapshot && !isProductosIguales(productos, initialProductosSnapshot)) {
-      // Hubo cambios en los productos, guardar normalmente
-    } else if (initialFormDataSnapshot && initialProductosSnapshot && !isFormDataIgual(formData, initialFormDataSnapshot)) {
-      // Hubo cambios generales, pero no en los productos
-      // Recalcular todos los productos antes de guardar
-      const recalculados = await recalculatePricesForProducts(productos, formData.clienteId);
-      // Actualizar productos antes de guardar
-      setProductos(recalculados);
+    // SIEMPRE recalcular todos los productos antes de guardar para asegurar datos frescos de la API
+    let productosParaGuardar: ProductoVenta[] = [];
+    try {
+      productosParaGuardar = await recalculatePricesForProducts(productos, formData.clienteId);
+      setProductos(productosParaGuardar); // opcional, para refrescar la UI
+    } catch (err) {
+      setErrorMensaje("Error al recalcular precios antes de guardar. Intente de nuevo.");
+      setIsSubmitting(false);
+      return;
     }
 
     const dataToUpdate = {
@@ -414,7 +414,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
       observaciones: formData.observaciones || "",
       requiere_factura: formData.requiereFactura,
       usuario_interno_id: parseInt(usuarioId),
-      items: productos.filter(item => item.producto > 0 && item.qx > 0).map(item => ({
+      items: productosParaGuardar.filter(item => item.producto > 0 && item.qx > 0).map(item => ({
         id_detalle: item.id_detalle,
         producto_id: item.producto,
         cantidad: item.qx,
