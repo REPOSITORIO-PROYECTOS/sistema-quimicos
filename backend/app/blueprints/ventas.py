@@ -280,9 +280,8 @@ def registrar_venta(current_user):
             precio_unitario_venta_ars = Decimal(str(item_data.get("precio_unitario_venta_ars", "0")))
             precio_total_item_ars = Decimal(str(item_data.get("precio_total_item_ars", "0")))
 
-            # Aplicar descuento al ítem si corresponde
-            if descuento_item_porc > 0:
-                precio_total_item_ars = precio_total_item_ars * (Decimal('1.0') - descuento_item_porc / Decimal('100'))
+            # El precio_total_item_ars ya debe venir con el descuento aplicado desde el frontend
+            # No volver a aplicar el descuento aquí
 
             detalle = DetalleVenta(
                 producto_id=producto_id, cantidad=cantidad,
