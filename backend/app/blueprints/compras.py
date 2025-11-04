@@ -111,8 +111,8 @@ def formatear_orden_por_rol(orden_db, rol="almacen"):
             item_dict = {
                 "id_linea": item_db.id,
                 "producto_id": item_db.producto_id,
-                "producto_codigo": item_db.producto.id if item_db.producto else 'N/A', # Usando el nombre de campo correcto
-                #"producto_nombre": item_db.producto.nombre if item_db.producto else 'N/A',
+                "producto_codigo": item_db.producto.id if item_db.producto else 'N/A',
+                "producto_nombre": item_db.producto.nombre if item_db.producto else 'N/A',
                 "cantidad_solicitada": float(item_db.cantidad_solicitada) if item_db.cantidad_solicitada is not None else None,
                 "cantidad_recibida": float(item_db.cantidad_recibida) if item_db.cantidad_recibida is not None else None,
                 "notas_item_recepcion": item_db.notas_item_recepcion,
