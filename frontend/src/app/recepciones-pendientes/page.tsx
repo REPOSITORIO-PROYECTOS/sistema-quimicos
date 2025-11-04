@@ -1,0 +1,213 @@
+"use client";
+import { useEffect, useState } from "react";
+import RecepcionesPendientes from "@/components/RecepcionesPendientes";
+
+type OrdenCompra = {
+  id: number;
+  fecha_creacion: string;
+  proveedor_nombre?: string;
+  estado: string;
+};
+
+type ItemRecepcion = {
+  id: number;
+  nombre: string;
+  cantidadSolicitada: number;
+  cantidadRecibida: number;
+};
+
+export default function RecepcionesPendientesPage() {
+  const [ordenes, setOrdenes] = useState<OrdenCompra[]>([]);
+  const [itemsPorOrden, setItemsPorOrden] = useState<Record<number, {nombre: string, cantidad: number}[]>>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [ordenSeleccionada, setOrdenSeleccionada] = useState<OrdenCompra | null>(null);
+  const [items, setItems] = useState<ItemRecepcion[] | null>(null);
+  const [loadingItems, setLoadingItems] = useState(false);
+
+  useEffect(() => {
+    const fetchOrdenes = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const token = localStorage.getItem("token");
+        if (!token) throw new Error("Usuario no autenticado.");
+        const url = `https://quimex.sistemataup.online/ordenes_compra/obtener_todas?estado=Aprobado`;
+        const response = await fetch(url, {
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }
+        });
+        if (!response.ok) {
+          const errData = await response.json().catch(()=>({message:`Error ${response.status}`}));
+          throw new Error(errData.message || "Error al traer órdenes.");
+        }
+        const data = await response.json();
+        setOrdenes(data.ordenes || []);
+        // Mapear ítems por orden para mostrar en la lista
+        const itemsMap: Record<number, {nombre: string, cantidad: number}[]> = {};
+        (data.ordenes || []).forEach((orden: Record<string, unknown>) => {
+          if (orden.items && Array.isArray(orden.items)) {
+            itemsMap[Number(orden.id)] = (orden.items as Record<string, unknown>[]).map((item) => {
+              let nombre = '';
+              if (typeof item.producto_nombre === 'string') {
+                nombre = item.producto_nombre;
+              } else if (item.producto && typeof item.producto === 'object' && (item.producto as Record<string, unknown>).nombre) {
+                nombre = (item.producto as Record<string, unknown>).nombre as string;
+              } else if (item.producto_id) {
+                nombre = `ID: ${item.producto_id}`;
+              } else {
+                nombre = 'Producto';
+              }
+              return { nombre, cantidad: item.cantidad_solicitada as number };
+            });
+          }
+        });
+        setItemsPorOrden(itemsMap);
+      } catch (err: unknown) {
+        if (err instanceof Error) {
+          setError(err.message || 'Error desconocido.');
+        } else {
+          setError('Error desconocido.');
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchOrdenes();
+  }, []);
+
+  // Fetch items reales de la orden seleccionada
+  useEffect(() => {
+    if (!ordenSeleccionada) return;
+    setLoadingItems(true);
+    setItems(null);
+    const fetchItems = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        if (!token) throw new Error("Usuario no autenticado.");
+        const url = `https://quimex.sistemataup.online/ordenes_compra/obtener/${ordenSeleccionada.id}`;
+        const response = await fetch(url, {
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }
+        });
+        if (!response.ok) throw new Error("Error al obtener ítems de la orden");
+        const data = await response.json();
+        const itemsBackend = (data.items || []).map((item: Record<string, unknown>) => ({
+          id: item.id_linea as number,
+          nombre:
+            (typeof item.producto_nombre === 'string' && item.producto_nombre) ||
+            (item.producto && typeof (item.producto as Record<string, unknown>).nombre === 'string' && (item.producto as Record<string, unknown>).nombre) ||
+            (item.producto_id ? String(item.producto_id) : 'Producto'),
+          cantidadSolicitada: item.cantidad_solicitada as number,
+          cantidadRecibida: (item.cantidad_recibida as number) || 0,
+        }));
+        setItems(itemsBackend);
+      } catch (err: unknown) {
+        if (err instanceof Error) {
+          setError(err.message || 'Error obteniendo ítems.');
+        } else {
+          setError('Error obteniendo ítems.');
+        }
+      } finally {
+        setLoadingItems(false);
+      }
+    };
+    fetchItems();
+  }, [ordenSeleccionada]);
+
+  if (ordenSeleccionada) {
+    return (
+      <div className="min-h-screen bg-blue-900 p-4 sm:p-6 flex flex-col items-center justify-center">
+        <div className="w-full max-w-2xl">
+          <button className="mb-4 text-blue-100 underline flex items-center gap-1 hover:text-blue-300" onClick={() => setOrdenSeleccionada(null)}>
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 inline-block" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+            </svg>
+            Volver a la lista
+          </button>
+          <h2 className="text-xl font-bold mb-2 text-blue-100 text-center">Recepción de Orden Nº {ordenSeleccionada.id.toString().padStart(4, '0')}</h2>
+          <p className="mb-4 text-blue-200 text-center">Fecha: {new Date(ordenSeleccionada.fecha_creacion).toLocaleDateString("es-AR")}</p>
+          {loadingItems && <p className="text-blue-100">Cargando ítems...</p>}
+          {items && (
+            <RecepcionesPendientes
+              items={items}
+              onRegistrar={() => setOrdenSeleccionada(null)}
+              resumenOrden={{
+                nroOrden: ordenSeleccionada.id.toString().padStart(4, '0'),
+                proveedor: ordenSeleccionada.proveedor_nombre || '-',
+                fechaEntrega:
+                  typeof (ordenSeleccionada as Record<string, unknown>).fecha_entrega === 'string'
+                    ? new Date((ordenSeleccionada as Record<string, unknown>).fecha_entrega as string).toLocaleDateString('es-AR')
+                    : '-',
+                estado: ordenSeleccionada.estado,
+              }}
+            />
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-blue-900 py-10 px-4">
+      <div className="bg-white p-6 md:p-8 rounded-lg shadow-xl w-full max-w-4xl lg:max-w-5xl">
+        <h2 className="text-2xl md:text-3xl font-semibold mb-6 text-center text-blue-900">
+          Recepciones Pendientes
+        </h2>
+        {loading && <p className="text-center text-gray-600 my-4 text-sm">Cargando órdenes aprobadas...</p>}
+        {error && <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4" role="alert"><p>{error}</p></div>}
+        {!loading && !error && (
+          <div className="overflow-x-auto">
+            <ul className="space-y-2 divide-y divide-gray-200 min-w-[600px]">
+              <li className="grid grid-cols-[1fr_2fr_2fr_2fr_3fr] gap-x-3 items-center bg-gray-100 p-3 rounded-t-md font-semibold text-sm text-gray-700 uppercase tracking-wider">
+                <span>Nº Orden</span>
+                <span>Fecha Solicitud</span>
+                <span>Proveedor</span>
+                <span>Ítems</span>
+                <span className="text-center">Acción</span>
+              </li>
+              {ordenes.length === 0 ? (
+                <li className="text-center py-8 text-gray-500 col-span-4">
+                  No hay órdenes aprobadas pendientes de recepción.
+                </li>
+              ) : (
+                ordenes.map(orden => (
+                  <li key={orden.id} className="grid grid-cols-[1fr_2fr_2fr_2fr_3fr] gap-x-3 items-center bg-white hover:bg-gray-50 p-3 text-sm">
+                    <span className="font-semibold">{orden.id.toString().padStart(4, '0')}</span>
+                    <span>{new Date(orden.fecha_creacion).toLocaleDateString("es-AR")}</span>
+                    <span>{orden.proveedor_nombre || '-'}</span>
+                    <span>
+                      {Array.isArray(itemsPorOrden[orden.id]) && itemsPorOrden[orden.id].length > 0 ? (
+                        <ul className="list-disc ml-3">
+                          {itemsPorOrden[orden.id].map((item, idx) => (
+                            <li key={idx}>{item.nombre}</li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <span className="text-gray-400 italic">Sin ítems</span>
+                      )}
+                    </span>
+                    <div className="flex items-center justify-center gap-2">
+                      <button
+                        className="bg-green-600 text-white px-4 py-1 rounded hover:bg-green-700 flex items-center gap-1"
+                        onClick={() => setOrdenSeleccionada(orden)}
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 inline-block" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                        </svg>
+                        Ingresar Recepción
+                      </button>
+                    </div>
+                  </li>
+                ))
+              )}
+            </ul>
+          </div>
+        )}
+      </div>
+      <style jsx>{`
+        .btn-pag { @apply px-4 py-2 rounded bg-blue-700 text-white hover:bg-blue-800 disabled:opacity-50 text-sm transition-colors; }
+      `}</style>
+    </div>
+  );
+}
+
+

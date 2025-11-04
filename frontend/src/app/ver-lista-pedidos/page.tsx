@@ -28,21 +28,25 @@ export default function ListaOrdenesCompra() {
   const userItem = typeof window !== 'undefined' ? sessionStorage.getItem("user") : null;
   const user = userItem ? JSON.parse(userItem) : null;
   const esAlmacen = user && user.role && user.role.toUpperCase() === 'ALMACEN';
+  const esAdmin = user && user.role && user.role.toUpperCase() === 'ADMIN';
 
   // Estado para el filtro: por defecto 'Aprobado' (Recepciones Pendientes)
-  const [filtroEstado, setFiltroEstado] = useState<'Aprobado' | 'Solicitado' | 'todos'>(esAlmacen ? 'Aprobado' : 'Aprobado');
+  // Solo el admin puede ver 'Solicitado'.
+  const [filtroEstado, setFiltroEstado] = useState<'Aprobado' | 'Solicitado' | 'todos'>(esAlmacen || !esAdmin ? 'Aprobado' : 'Aprobado');
   // Sincronizar filtro con query param al montar
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       const estadoParam = params.get('estado');
-      if (estadoParam === 'Solicitado' || estadoParam === 'Aprobado') {
-        setFiltroEstado(estadoParam as 'Solicitado' | 'Aprobado');
+      if (estadoParam === 'Aprobado') {
+        setFiltroEstado('Aprobado');
+      } else if (estadoParam === 'Solicitado' && esAdmin) {
+        setFiltroEstado('Solicitado');
       } else if (!estadoParam) {
-        setFiltroEstado(esAlmacen ? 'Aprobado' : 'Aprobado');
+        setFiltroEstado(esAlmacen || !esAdmin ? 'Aprobado' : 'Aprobado');
       }
     }
-  }, [esAlmacen]);
+  }, [esAlmacen, esAdmin]);
 
   // Si el filtro es 'Aprobado' o 'Solicitado', filtrar solo las órdenes correspondientes
   function filtrarPorEstado(ordenes: OrdenCompra[], estado: string) {
@@ -211,9 +215,6 @@ export default function ListaOrdenesCompra() {
   // Solo permitir filtro 'Aprobado' para ALMACEN
 
   // Si viene con filtro 'Solicitado' por query, solo mostrar ese filtro
-  const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
-  const soloPendientesAprobacion = urlParams && urlParams.get('estado') === 'Solicitado';
-  const soloRecepcionesPendientes = urlParams && urlParams.get('estado') === 'Aprobado';
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-indigo-900 py-10 px-4">
@@ -224,28 +225,8 @@ export default function ListaOrdenesCompra() {
         </h2>
 
         <div className="flex flex-col md:flex-row justify-center items-center gap-2 mb-6 border-b pb-4">
-          {soloPendientesAprobacion ? (
-            <button
-              disabled
-              className={`px-4 py-2 text-base font-bold rounded transition-all duration-200 shadow-md border-2 border-yellow-400 bg-yellow-100 text-yellow-900 ring-2 ring-yellow-500`}
-            >
-              Solicitudes Pendientes de Aprobación
-            </button>
-          ) : soloRecepcionesPendientes ? (
-            <button
-              disabled
-              className={`px-4 py-2 text-base font-bold rounded transition-all duration-200 shadow-md border-2 border-green-400 bg-green-100 text-green-900 ring-2 ring-green-500`}
-            >
-              Recepciones Pendientes
-            </button>
-          ) : esAlmacen ? (
-            <button
-              disabled
-              className={`px-4 py-2 text-base font-bold rounded transition-all duration-200 shadow-md border-2 border-green-400 bg-green-100 text-green-900 ring-2 ring-green-500`}
-            >
-              Recepciones Pendientes
-            </button>
-          ) : (
+          {/* Solo el admin puede ver y filtrar por pendientes de aprobación */}
+          {esAdmin ? (
             filtroEstado === 'Aprobado' ? (
               <>
                 <button
@@ -253,6 +234,13 @@ export default function ListaOrdenesCompra() {
                   className={`px-4 py-2 text-base font-bold rounded transition-all duration-200 shadow-md border-2 border-green-400 bg-green-100 text-green-900 ring-2 ring-green-500`}
                 >
                   Recepciones Pendientes
+                </button>
+                <button
+                  onClick={() => handleFiltroChange('Solicitado')}
+                  disabled={loading}
+                  className={`px-4 py-2 text-base font-bold rounded transition-all duration-200 shadow-md border-2 border-yellow-400 bg-yellow-100 text-yellow-900 hover:bg-yellow-200${(filtroEstado as string) === 'Solicitado' ? ' ring-2 ring-yellow-500' : ''}`}
+                >
+                  Solicitudes Pendientes de Aprobación
                 </button>
                 <button
                   onClick={() => handleFiltroChange('todos')}
@@ -263,27 +251,43 @@ export default function ListaOrdenesCompra() {
                 </button>
               </>
             ) : filtroEstado === 'Solicitado' ? (
-              <button
-                disabled
-                className={`px-4 py-2 text-base font-bold rounded transition-all duration-200 shadow-md border-2 border-yellow-400 bg-yellow-100 text-yellow-900 ring-2 ring-yellow-500`}
-              >
-                Solicitudes Pendientes de Aprobación
-              </button>
-            ) : (
               <>
-                <button
-                  onClick={() => handleFiltroChange('Solicitado')}
-                  disabled={loading}
-                  className={`px-4 py-2 text-base font-bold rounded transition-all duration-200 shadow-md border-2 border-yellow-400 bg-yellow-100 text-yellow-900 hover:bg-yellow-200${(filtroEstado as string) === 'Solicitado' ? ' ring-2 ring-yellow-500' : ''}`}
-                >
-                  Solicitudes Pendientes de Aprobación
-                </button>
                 <button
                   onClick={() => handleFiltroChange('Aprobado')}
                   disabled={loading}
                   className={`px-4 py-2 text-base font-bold rounded transition-all duration-200 shadow-md border-2 border-green-400 bg-green-100 text-green-900 hover:bg-green-200${(filtroEstado as string) === 'Aprobado' ? ' ring-2 ring-green-500' : ''}`}
                 >
                   Recepciones Pendientes
+                </button>
+                <button
+                  disabled
+                  className={`px-4 py-2 text-base font-bold rounded transition-all duration-200 shadow-md border-2 border-yellow-400 bg-yellow-100 text-yellow-900 ring-2 ring-yellow-500`}
+                >
+                  Solicitudes Pendientes de Aprobación
+                </button>
+                <button
+                  onClick={() => handleFiltroChange('todos')}
+                  disabled={loading}
+                  className={`px-4 py-2 text-base font-bold rounded transition-all duration-200 shadow-md border-2 border-indigo-400 bg-indigo-100 text-indigo-900 hover:bg-indigo-200${(filtroEstado as string) === 'todos' ? ' ring-2 ring-indigo-500' : ''}`}
+                >
+                  Ver Todas
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => handleFiltroChange('Aprobado')}
+                  disabled={loading}
+                  className={`px-4 py-2 text-base font-bold rounded transition-all duration-200 shadow-md border-2 border-green-400 bg-green-100 text-green-900 hover:bg-green-200${(filtroEstado as string) === 'Aprobado' ? ' ring-2 ring-green-500' : ''}`}
+                >
+                  Recepciones Pendientes
+                </button>
+                <button
+                  onClick={() => handleFiltroChange('Solicitado')}
+                  disabled={loading}
+                  className={`px-4 py-2 text-base font-bold rounded transition-all duration-200 shadow-md border-2 border-yellow-400 bg-yellow-100 text-yellow-900 hover:bg-yellow-200${(filtroEstado as string) === 'Solicitado' ? ' ring-2 ring-yellow-500' : ''}`}
+                >
+                  Solicitudes Pendientes de Aprobación
                 </button>
                 <button
                   onClick={() => handleFiltroChange('todos')}
@@ -294,6 +298,23 @@ export default function ListaOrdenesCompra() {
                 </button>
               </>
             )
+          ) : (
+            // No admin: solo puede ver recepciones pendientes y todas
+            <>
+              <button
+                disabled
+                className={`px-4 py-2 text-base font-bold rounded transition-all duration-200 shadow-md border-2 border-green-400 bg-green-100 text-green-900 ring-2 ring-green-500`}
+              >
+                Recepciones Pendientes
+              </button>
+              <button
+                onClick={() => handleFiltroChange('todos')}
+                disabled={loading}
+                className={`px-4 py-2 text-base font-bold rounded transition-all duration-200 shadow-md border-2 border-indigo-400 bg-indigo-100 text-indigo-900 hover:bg-indigo-200${filtroEstado === 'todos' ? ' ring-2 ring-indigo-500' : ''}`}
+              >
+                Ver Todas
+              </button>
+            </>
           )}
         </div>
 
@@ -359,8 +380,7 @@ export default function ListaOrdenesCompra() {
                               disabled={!puedeActuar || isProcessingCurrent}
                               className={`p-1 rounded text-green-500 hover:text-green-700 disabled:text-gray-400 disabled:cursor-not-allowed ${isProcessingCurrent ? 'animate-pulse' : ''}`}
                             >
-                              Aprobar Orden
-                              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 ml-1 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                               </svg>
                             </button>

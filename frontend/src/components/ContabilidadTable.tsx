@@ -150,7 +150,7 @@ export default function ContabilidadTable() {
             if (comprasInfoData.length > 0) {
                 setLoadingStage(`Cargando detalles de ${comprasInfoData.length} órdenes de compra...`);
                 const compraDetailPromises = comprasInfoData.map(info => {
-                    if (info.id == null) return Promise.resolve<OrdenProcesada | null>(null);
+                    if (info.id == null) return Promise.resolve<OrdenProcesada | { error: true, id: string | number, proveedor?: string } | null>(null);
                     return fetch(`${compraDetailApiUrlBase}${info.id}`, { headers: commonHeaders })
                         .then(response => {
                             if (!response.ok) {
@@ -158,88 +158,97 @@ export default function ContabilidadTable() {
                                     const errorMsg = errorBody?.message || `HTTP ${response.status}`;
                                     console.error(`Error al obtener detalle de compra ID ${info.id}: ${errorMsg}`);
                                     fetchErrors.push(`Compra ID ${info.id}: Falló obtención de detalle (${errorMsg})`);
-                                    return null;
+                                    return { error: true, id: info.id, proveedor: info.proveedor_nombre };
                                 });
                             }
                             return response.json();
                         })
-                        .then((detalleCompra: CompraDetalleConItems | null): OrdenProcesada | null => {
+                        .then((detalleCompra: CompraDetalleConItems | { error: true, id: string | number, proveedor?: string } | null): OrdenProcesada | { error: true, id: string | number, proveedor?: string } | null => {
                             if (!detalleCompra) return null;
-                            
-                            const compraOriginalInfo = comprasInfoData.find(ci => ci.id === detalleCompra.id);
-                            if (!compraOriginalInfo) return null; // No debería pasar si el mapeo es correcto
-
+                                                        if (
+                                                            typeof detalleCompra === 'object' &&
+                                                            detalleCompra !== null &&
+                                                            'error' in detalleCompra &&
+                                                            (detalleCompra as Record<string, unknown>).error
+                                                        ) {
+                                                            return detalleCompra;
+                                                        }
+                            const compraOriginalInfo = comprasInfoData.find(ci => ci.id === (detalleCompra as CompraDetalleConItems).id);
+                            if (!compraOriginalInfo) return { error: true, id: (detalleCompra as CompraDetalleConItems).id };
                             let fechaCompra = parseDate(compraOriginalInfo.fecha_actualizacion);
-                            if (!fechaCompra) fechaCompra = parseDate(detalleCompra.fecha_actualizacion);
-
+                            if (!fechaCompra) fechaCompra = parseDate((detalleCompra as CompraDetalleConItems).fecha_actualizacion);
                             const estadoRecibido = "Recibido"; 
-                            const estadoEnDeuda = "Con Deuda"; // <-- NUEVO ESTADO A CONSIDERAR
-
-                            if (detalleCompra.estado !== estadoRecibido && detalleCompra.estado !== estadoEnDeuda) {
+                            const estadoEnDeuda = "Con Deuda";
+                            if ((detalleCompra as CompraDetalleConItems).estado !== estadoRecibido && (detalleCompra as CompraDetalleConItems).estado !== estadoEnDeuda) {
                                 return null; 
                             }
-                            
-                            const importeTotalOC = typeof detalleCompra.items[0].importe_linea_estimado === 'number' 
-                                                ? detalleCompra.items[0].importe_linea_estimado 
-                                                : 0;
-                            
-                          
-
-                            if (detalleCompra.estado === estadoEnDeuda) {
-                                const montoAbonado = typeof detalleCompra.importe_abonado === 'number' 
-                                                        ? detalleCompra.importe_abonado 
-                                                        : 0;
-                                const deuda = importeTotalOC - montoAbonado;
-
-                          
-                                
+                            const importeTotalOC = typeof (detalleCompra as CompraDetalleConItems).items?.[0]?.importe_linea_estimado === 'number'
+                                ? (detalleCompra as CompraDetalleConItems).items[0].importe_linea_estimado!
+                                : 0;
+                            if ((detalleCompra as CompraDetalleConItems).estado === estadoEnDeuda) {
+                                const montoAbonado = typeof (detalleCompra as CompraDetalleConItems).importe_abonado === 'number' 
+                                    ? (detalleCompra as CompraDetalleConItems).importe_abonado!
+                                    : 0;
+                                const deuda = (importeTotalOC ?? 0) - (montoAbonado ?? 0);
                                 return { 
                                     compraInfo: compraOriginalInfo, 
-                                    totalCalculado: importeTotalOC, // Mantenemos el total para referencia si es necesario
-                                    montoDeuda: deuda > 0 ? deuda : 0, // La deuda no puede ser negativa
-                                    montoAbonado: montoAbonado,
+                                    totalCalculado: importeTotalOC ?? 0, 
+                                    montoDeuda: deuda > 0 ? deuda : 0, 
+                                    montoAbonado: montoAbonado ?? 0,
                                     fecha: fechaCompra, 
-                                    estado: detalleCompra.estado 
+                                    estado: (detalleCompra as CompraDetalleConItems).estado 
                                 };
                             } else { // Es "Recibido"
                                 return { 
                                     compraInfo: compraOriginalInfo, 
-                                    totalCalculado: importeTotalOC, 
+                                    totalCalculado: importeTotalOC ?? 0, 
                                     fecha: fechaCompra, 
-                                    estado: detalleCompra.estado 
+                                    estado: (detalleCompra as CompraDetalleConItems).estado 
                                 };
                             }
                         })
                         .catch(err => {
                             console.error(`Error procesando detalle compra ID ${info.id}:`, err);
                             fetchErrors.push(`Compra ID ${info.id}: Error en procesamiento de detalle.`);
-                            return null;
+                            return { error: true, id: info.id, proveedor: info.proveedor_nombre };
                         });
                 });
-                
                 setLoadingStage("Procesando totales de órdenes de compra...");
                 const ordenesProcesadasResultados = await Promise.all(compraDetailPromises);
-                
-                const ordenesValidas = ordenesProcesadasResultados.filter(
-                    (resultado): resultado is OrdenProcesada => resultado !== null
-                );
-
-                ordenesValidas.forEach(orden => {
-                    const { compraInfo, totalCalculado, fecha, estado, montoDeuda, montoAbonado } = orden;
+                // Mostrar también las compras con error de detalle
+                ordenesProcesadasResultados.forEach(orden => {
+                    if (!orden) return;
+                                        if (
+                                            typeof orden === 'object' &&
+                                            orden !== null &&
+                                            'error' in orden &&
+                                            (orden as Record<string, unknown>).error
+                                        ) {
+                                                const idDisplay = (orden as Record<string, unknown>).id?.toString() ?? 'ERROR_ID';
+                                                const proveedorInfo = (orden as Record<string, unknown>).proveedor ? ` (${(orden as Record<string, unknown>).proveedor})` : '';
+                                                registrosTemporales.push({
+                                                        key: `compra-${idDisplay}-ERROR-${Date.now()}-${Math.random()}`,
+                                                        id_display: idDisplay,
+                                                        descripcion: `Compra OC-${idDisplay}${proveedorInfo} - ERROR EN DETALLE DE COMPRA`,
+                            debe: null,
+                            haber: null,
+                            fecha_actualizacion: undefined,
+                        });
+                        return;
+                    }
+                    const { compraInfo, totalCalculado, fecha, estado, montoDeuda, montoAbonado } = orden as OrdenProcesada;
                     const idDisplay = compraInfo?.id?.toString() ?? 'ERROR_ID';
                     const proveedorInfo = compraInfo?.proveedor_nombre ? ` (${compraInfo.proveedor_nombre})` : '';
                     let descripcion = `Compra OC-${idDisplay}${proveedorInfo}`;
                     let debe: number | null = null;
                     let haber: number | null = null;
-
                     if (estado === "Con Deuda") {
                         descripcion += ` (Con Deuda)`;
-                        debe = montoDeuda !== undefined && montoDeuda > 0 ? montoDeuda : null; // Solo si hay deuda > 0
-                        haber = montoAbonado !== undefined && montoAbonado > 0 ? montoAbonado : null; // Solo si hay algo abonado
+                        debe = montoDeuda !== undefined && montoDeuda > 0 ? montoDeuda : null;
+                        haber = montoAbonado !== undefined && montoAbonado > 0 ? montoAbonado : null;
                     } else if (estado === "Recibido") {
                         haber = totalCalculado;
                     }
-                    
                     registrosTemporales.push({
                         key: `compra-${idDisplay}-${estado}-${Date.now()}-${Math.random()}`,
                         id_display: idDisplay,

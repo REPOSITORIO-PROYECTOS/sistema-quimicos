@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { FaRegFileAlt, FaFileInvoice } from 'react-icons/fa';
+import { FaRegFileAlt, FaClipboardList, FaCheckCircle, FaHistory, FaMoneyCheckAlt } from 'react-icons/fa';
 
 export default function AccionesPedidos() {
   const router = useRouter();
@@ -14,8 +14,8 @@ export default function AccionesPedidos() {
   }
 
   const irARegistrarPedido = () => router.push('/registrar-pedido-compra');
-  const irAVerListaPedidos = () => router.push('/ver-lista-pedidos');
   const irAVerPendientesAprobacion = () => router.push('/ver-lista-pedidos?estado=Solicitado'); // Solo muestra pendientes de aprobar
+  const irAVerRecepcionesPendientes = () => router.push('/recepciones-pendientes');
   const irAVerDeudasProveedores = () => router.push('/deuda-proveedores');
   const irAVerHistorialCompras = () => router.push('/historial-compras');
 
@@ -40,17 +40,17 @@ export default function AccionesPedidos() {
             onClick={irAVerPendientesAprobacion}
             className="flex items-center justify-center gap-3 px-6 py-4 bg-white text-[#2c239d] rounded-lg shadow hover:scale-105 transition font-bold border-2 border-[#2c239d]"
           >
-            <FaFileInvoice className="text-xl" />
+            <FaClipboardList className="text-xl" />
             Pendientes de Aprobación
           </button>
         )}
 
         <button
-          onClick={irAVerListaPedidos}
+          onClick={irAVerRecepcionesPendientes}
           className="flex items-center justify-center gap-3 px-6 py-4 bg-white text-[#2c239d] rounded-lg shadow hover:scale-105 transition font-bold border-2 border-[#2c239d]"
         >
-          <FaFileInvoice className="text-xl" />
-         Recepciones Pendientes
+          <FaCheckCircle className="text-xl" />
+          Recepciones Pendientes
         </button>
 
         {!esAlmacen && (
@@ -59,14 +59,14 @@ export default function AccionesPedidos() {
               onClick={irAVerDeudasProveedores}
               className="flex items-center justify-center gap-3 px-6 py-4 bg-white text-[#2c239d] rounded-lg shadow hover:scale-105 transition font-bold border-2 border-[#2c239d]"
             >
-              <FaFileInvoice className="text-xl" />
+              <FaMoneyCheckAlt className="text-xl" />
               Resumen Deuda Proveedores
             </button>
             <button
               onClick={irAVerHistorialCompras}
               className="flex items-center justify-center gap-3 px-6 py-4 bg-white text-[#2c239d] rounded-lg shadow hover:scale-105 transition font-bold border-2 border-[#2c239d]"
             >
-              <FaFileInvoice className="text-xl" />
+              <FaHistory className="text-xl" />
               Historial Compras
             </button>
           </>
