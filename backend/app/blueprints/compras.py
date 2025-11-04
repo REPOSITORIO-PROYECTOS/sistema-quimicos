@@ -142,9 +142,8 @@ def crear_orden_compra(current_user):
     """Registra una nueva solicitud de orden de compra."""
     logger.info("Recibida solicitud POST en /ordenes_compra")
     data = request.get_json()
-    # Simular rol y usuario (reemplazar con autenticación real)
-    rol_usuario = request.headers.get("X-User-Role", "almacen")
-    usuario_solicitante_id = request.headers.get("X-User-Id", "0") # Quién solicita
+    # Obtener info real del usuario autenticado
+    usuario_solicitante_id, usuario_nombre, rol_usuario = _extract_user_info(current_user)
 
     if not data: return jsonify({"error": "Payload JSON vacío"}), 400
 
@@ -213,17 +212,29 @@ def crear_orden_compra(current_user):
         num_ordenes_hoy = OrdenCompra.query.filter(db.func.date(OrdenCompra.fecha_creacion) == datetime.date.today()).count()
         nro_interno_solicitud = f"OC-{datetime.date.today().strftime('%Y%m%d')}-{num_ordenes_hoy+1:04d}"
 
-        nueva_orden = OrdenCompra(
-            # id=nuevo_id_orden, # Si usas UUID string PK
-            nro_solicitud_interno=nro_interno_solicitud,
-            proveedor_id=proveedor_id,
-            forma_pago=data.get("forma_pago"),
-            importe_total_estimado=importe_total_estimado_calc,
-            observaciones_solicitud=data.get("observaciones_solicitud"),
-            estado="Solicitado", # Estado inicial
-            solicitado_por_id=usuario_solicitante_id # Guardar quién solicitó
-            # Otros campos se inicializan con default/None en el modelo
-        )
+        # Si el usuario es Admin, la OC se crea directamente como 'Aprobado' y se registra el aprobador
+        if rol_usuario and rol_usuario.upper() == "ADMIN":
+            nueva_orden = OrdenCompra(
+                nro_solicitud_interno=nro_interno_solicitud,
+                proveedor_id=proveedor_id,
+                forma_pago=data.get("forma_pago"),
+                importe_total_estimado=importe_total_estimado_calc,
+                observaciones_solicitud=data.get("observaciones_solicitud"),
+                estado="Aprobado",
+                solicitado_por_id=usuario_solicitante_id,
+                aprobado_por_id=usuario_solicitante_id,
+                fecha_aprobacion=datetime.datetime.now()
+            )
+        else:
+            nueva_orden = OrdenCompra(
+                nro_solicitud_interno=nro_interno_solicitud,
+                proveedor_id=proveedor_id,
+                forma_pago=data.get("forma_pago"),
+                importe_total_estimado=importe_total_estimado_calc,
+                observaciones_solicitud=data.get("observaciones_solicitud"),
+                estado="Solicitado",
+                solicitado_por_id=usuario_solicitante_id
+            )
 
         # Asociar detalles a la orden
         nueva_orden.items = detalles_db # SQLAlchemy maneja la FK
