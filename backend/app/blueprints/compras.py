@@ -394,8 +394,14 @@ def aprobar_orden_compra(current_user, orden_id):
     if rol_usuario != "ADMIN":
         return jsonify({"error": "Acción no permitida para este rol."}), 403 # Forbidden
 
+    data = request.json
+    if not data:
+        return jsonify({"error": "Payload JSON vacío"}), 400
+
     try:
-        orden_db = db.session.get(OrdenCompra, orden_id)
+        orden_db = db.session.query(OrdenCompra).options(
+            db.selectinload(OrdenCompra.items)
+        ).get(orden_id)
         if not orden_db:
             return jsonify({"error": "Orden de compra no encontrada"}), 404
 
@@ -403,7 +409,39 @@ def aprobar_orden_compra(current_user, orden_id):
         if orden_db.estado != 'Solicitado':
             return jsonify({"error": f"Solo se pueden aprobar órdenes en estado 'Solicitado'. Estado actual: {orden_db.estado}"}), 409 # Conflict
 
-        # --- Actualizar Orden ---
+        # --- Actualizar datos generales de la Orden de Compra ---
+        orden_db.proveedor_id = data.get('proveedor_id', orden_db.proveedor_id)
+        orden_db.cuenta = data.get('cuenta', orden_db.cuenta)
+        orden_db.iibb = data.get('iibb', orden_db.iibb)
+        orden_db.observaciones_solicitud = data.get('observaciones_solicitud', orden_db.observaciones_solicitud)
+        if 'ajuste_tc' in data:
+            ajuste_valor = data.get('ajuste_tc')
+            orden_db.ajuste_tc = str(ajuste_valor).lower() == 'true' or ajuste_valor is True
+
+        # --- Actualizar items (solo si vienen en el payload) ---
+        items_payload = data.get('items', [])
+        if items_payload and orden_db.items:
+            for item_data in items_payload:
+                id_linea = item_data.get('id_linea')
+                detalle = next((item for item in orden_db.items if item.id == id_linea), None)
+                if detalle:
+                    if 'cantidad_solicitada' in item_data:
+                        detalle.cantidad_solicitada = item_data['cantidad_solicitada']
+                    if 'precio_unitario_estimado' in item_data:
+                        detalle.precio_unitario_estimado = item_data['precio_unitario_estimado']
+                    # Recalcular importe línea si ambos presentes
+                    if 'cantidad_solicitada' in item_data and 'precio_unitario_estimado' in item_data:
+                        detalle.importe_linea_estimado = item_data['cantidad_solicitada'] * item_data['precio_unitario_estimado']
+
+        # Actualizar el importe total de la orden con el del payload o recalcular
+        if 'importe_total_estimado' in data:
+            orden_db.importe_total_estimado = data['importe_total_estimado']
+        else:
+            # Recalcular si no viene
+            total = sum([item.importe_linea_estimado or 0 for item in orden_db.items])
+            orden_db.importe_total_estimado = total
+
+        # --- Actualizar estado y aprobador ---
         orden_db.estado = 'Aprobado'
         orden_db.fecha_aprobacion = datetime.datetime.utcnow()
         orden_db.aprobado_por = usuario_aprobador
