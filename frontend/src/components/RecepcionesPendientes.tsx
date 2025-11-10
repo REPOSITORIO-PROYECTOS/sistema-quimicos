@@ -141,8 +141,8 @@ const RecepcionesPendientes: React.FC<RecepcionPendienteProps> = ({ items, onReg
                   <span className="text-sm font-medium text-blue-900">Estado</span>
                   <select
                     value={resultados[idx].incidencia}
-                    disabled
-                    className="w-full md:w-28 px-3 py-2 border border-blue-300 rounded-md bg-blue-100 text-blue-700 cursor-not-allowed shadow-sm"
+                    onChange={e => handleChange(idx, 'incidencia', e.target.value as ResultadoRecepcion['incidencia'])}
+                    className="w-full md:w-28 px-3 py-2 border border-blue-300 rounded-md bg-white text-blue-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   >
                     <option value="OK">OK</option>
                     <option value="Falta">Falta</option>

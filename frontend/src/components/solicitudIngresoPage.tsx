@@ -219,8 +219,10 @@ export default function SolicitudIngresoPage({ id }: any) {
       // Type guards for solicitud
       const proveedor_id = typeof solicitud.proveedor_id === 'string' || typeof solicitud.proveedor_id === 'number' ? Number(solicitud.proveedor_id) : 0;
       const cuenta = typeof solicitud.cuenta === 'string' ? solicitud.cuenta : '';
-      const iibb = showIibb && typeof solicitud.iibb === 'string' ? solicitud.iibb : '';
-      const ajuste_tc = showTc && typeof solicitud.tc === 'boolean' ? solicitud.tc : false;
+      const iibb_val = showIibb ? (typeof solicitud.iibb === 'string' ? solicitud.iibb : iibb) : '';
+      const iva_val = showIva ? (typeof solicitud.iva === 'string' ? solicitud.iva : iva) : '';
+      const tc_val = showTc ? (typeof solicitud.tc === 'string' ? solicitud.tc : tc) : '';
+      const ajuste_tc = showTc ? true : (ajusteTC === 'True');
       const observaciones_solicitud = typeof solicitud.observaciones_solicitud === 'string' ? solicitud.observaciones_solicitud : '';
       const tipo_caja = typeof solicitud.tipo_caja === 'string' ? solicitud.tipo_caja : '';
       // items_recibidos
@@ -240,7 +242,9 @@ export default function SolicitudIngresoPage({ id }: any) {
       const payload = {
         proveedor_id,
         cuenta,
-        iibb,
+        iibb: iibb_val,
+        iva: iva_val,
+        tc: tc_val,
         ajuste_tc,
         observaciones_solicitud,
         tipo_caja,

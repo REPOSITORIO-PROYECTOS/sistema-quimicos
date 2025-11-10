@@ -14,6 +14,8 @@ type ItemRecepcion = {
   nombre: string;
   cantidadSolicitada: number;
   cantidadRecibida: number;
+  productoCodigo?: string;
+  costoUnitarioARS?: number;
 };
 
 export default function RecepcionesPendientesPage() {
@@ -98,6 +100,8 @@ export default function RecepcionesPendientesPage() {
             (item.producto_id ? String(item.producto_id) : 'Producto'),
           cantidadSolicitada: item.cantidad_solicitada as number,
           cantidadRecibida: (item.cantidad_recibida as number) || 0,
+          productoCodigo: typeof (item.producto_codigo as unknown) === 'string' ? (item.producto_codigo as string) : undefined,
+          costoUnitarioARS: typeof (item.precio_unitario_estimado as unknown) === 'number' ? (item.precio_unitario_estimado as number) : undefined,
         }));
         setItems(itemsBackend);
       } catch (err: unknown) {
@@ -112,6 +116,71 @@ export default function RecepcionesPendientesPage() {
     };
     fetchItems();
   }, [ordenSeleccionada]);
+
+  // Registrar recepción en backend y actualizar UI
+  const registrarRecepcion = async (resultados: { id: number; cantidadRecibida: number; incidencia: 'Falta' | 'Sobra' | 'OK'; observaciones: string; }[]) => {
+    try {
+      const token = localStorage.getItem("token");
+      const userItem = sessionStorage.getItem("user");
+      const user = userItem ? JSON.parse(userItem) : null;
+      if (!token || !user) throw new Error("Usuario no autenticado.");
+
+      const itemsRecibidos = resultados.map((res) => {
+        const meta = items?.find(i => i.id === res.id);
+        return {
+          id_linea: res.id,
+          cantidad_recibida: Number(res.cantidadRecibida) || 0,
+          producto_codigo: meta?.productoCodigo || '',
+          costo_unitario_ars: typeof meta?.costoUnitarioARS === 'number' ? meta?.costoUnitarioARS : 0,
+          notas_item: res.observaciones || ''
+        };
+      });
+
+      // Calcular estado final
+      let estadoRecepcion: 'Completa' | 'Parcial' = 'Completa';
+      for (const r of resultados) {
+        const original = items?.find(i => i.id === r.id);
+        if (!original || r.incidencia !== 'OK' || Number(r.cantidadRecibida) !== Number(original.cantidadSolicitada)) {
+          estadoRecepcion = 'Parcial';
+          break;
+        }
+      }
+
+      const payload = {
+        estado_recepcion: estadoRecepcion,
+        items_recibidos: itemsRecibidos,
+      };
+
+      const response = await fetch(`https://quimex.sistemataup.online/ordenes_compra/recibir/${ordenSeleccionada?.id}` || '', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-User-Role' : user.role,
+          'X-User-Name' : user.usuario || user.name,
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.error || data?.mensaje || `Error ${response.status}`);
+
+      alert('Recepción registrada correctamente.');
+      setOrdenSeleccionada(null);
+
+      // Refrescar lista base
+      setLoading(true);
+      setError(null);
+      const url = `https://quimex.sistemataup.online/ordenes_compra/obtener_todas?estado=Aprobado`;
+      const refresco = await fetch(url, { headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` } });
+      const nuevo = await refresco.json();
+      setOrdenes(nuevo.ordenes || []);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error registrando recepción.';
+      alert(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   if (ordenSeleccionada) {
     return (
@@ -129,7 +198,7 @@ export default function RecepcionesPendientesPage() {
           {items && (
             <RecepcionesPendientes
               items={items}
-              onRegistrar={() => setOrdenSeleccionada(null)}
+              onRegistrar={registrarRecepcion}
               resumenOrden={{
                 nroOrden: ordenSeleccionada.id.toString().padStart(4, '0'),
                 proveedor: ordenSeleccionada.proveedor_nombre || '-',
