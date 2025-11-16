@@ -418,6 +418,18 @@ def aprobar_orden_compra(current_user, orden_id):
             ajuste_valor = data.get('ajuste_tc')
             orden_db.ajuste_tc = str(ajuste_valor).lower() == 'true' or ajuste_valor is True
 
+        # --- Actualizar datos de pago (si vienen) ---
+        if 'importe_abonado' in data:
+            try:
+                orden_db.importe_abonado = Decimal(str(data.get('importe_abonado')))
+            except (InvalidOperation, TypeError):
+                logger.warning("importe_abonado inválido en aprobación, se mantiene valor previo")
+        orden_db.forma_pago = data.get('forma_pago', orden_db.forma_pago)
+        if orden_db.forma_pago == 'Cheque':
+            orden_db.cheque_perteneciente_a = data.get('cheque_perteneciente_a', orden_db.cheque_perteneciente_a)
+        else:
+            orden_db.cheque_perteneciente_a = None
+
         # --- Actualizar items (solo si vienen en el payload) ---
         items_payload = data.get('items', [])
         if items_payload and orden_db.items:
