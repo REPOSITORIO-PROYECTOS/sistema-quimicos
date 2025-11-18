@@ -7,6 +7,11 @@ type OrdenCompra = {
   fecha_creacion: string;
   proveedor_nombre?: string;
   estado: string;
+  proveedor_id?: number;
+  iibb?: string;
+  forma_pago?: string;
+  cheque_perteneciente_a?: string;
+  items?: { precio_unitario_estimado?: number }[];
 };
 
 type ItemRecepcion = {
@@ -146,8 +151,32 @@ export default function RecepcionesPendientesPage() {
         }
       }
 
+      // Calcular importe total recibido para deuda
+      const importeTotal = itemsRecibidos.reduce((acc, it) => acc + (Number(it.cantidad_recibida) * Number(it.costo_unitario_ars)), 0);
+
+      // Determinar un precio unitario razonable para registrar
+      const precioUnitarioOC = Number(ordenSeleccionada?.items?.[0]?.precio_unitario_estimado ?? 0);
+      const precioUnitarioRecepcion = precioUnitarioOC || (itemsRecibidos.length > 0 ? Number(itemsRecibidos[0].costo_unitario_ars) || 0 : 0);
+
+      // Permitir ingresar monto abonado si tu UI lo soporta; por ahora usar total recibido
+      const montoAbonado = importeTotal; // Ajusta si tienes un input específico
+
       const payload = {
+        // Campos usados por backend para generar deuda y registrar recepción
+        proveedor_id: ordenSeleccionada?.proveedor_id,
+        cantidad: itemsRecibidos.reduce((acc, it) => acc + Number(it.cantidad_recibida), 0),
+        precio_unitario: precioUnitarioRecepcion,
+        importe_total: importeTotal,
+        cuenta: '',
+        iibb: ordenSeleccionada?.iibb || '',
+        iva: '', // El backend no persiste IVA explícito en OC; usar observaciones si se requiere
+        tc: '',
+        nro_remito_proveedor: '',
         estado_recepcion: estadoRecepcion,
+        importe_abonado: montoAbonado,
+        forma_pago: ordenSeleccionada?.forma_pago || '',
+        cheque_perteneciente_a: ordenSeleccionada?.cheque_perteneciente_a || '',
+        tipo_caja: '',
         items_recibidos: itemsRecibidos,
       };
 

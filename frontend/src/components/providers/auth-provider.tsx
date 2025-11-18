@@ -19,6 +19,15 @@ type User = {
     role: UserRole;
 } | null;
 
+type BackendUser = {
+    id?: number;
+    nombre_usuario?: string;
+    rol?: string;
+    nombre?: string;
+    apellido?: string;
+    email?: string;
+};
+
 type AuthContextType = {
     user: User;
     login: (
@@ -100,13 +109,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 return false;
             }
             
-            const { token, user_info: backendUser } = data;
+            const { token, user_info: backendUser } = data as { token?: string; user_info?: BackendUser };
             
-            localStorage.setItem("user",backendUser)
-            localStorage.setItem("token",token)
-            
-            if (!token || !backendUser || !backendUser.rol || !ROLES_DISPONIBLES_VALUES.includes(backendUser.rol as UserRole)) {
-                console.error("AuthProvider login: Respuesta incompleta o rol inválido del backend.", backendUser);
+            // Persistir token para compatibilidad con páginas que usan localStorage
+            if (token) {
+                try {
+                    localStorage.setItem("token", token);
+                } catch {}
+            }
+
+            // Intentar armar el usuario con rol del backend; si falta rol, buscarlo con un fallback
+            let resolvedRole: UserRole | null = null;
+            if (backendUser && backendUser.rol && ROLES_DISPONIBLES_VALUES.includes(backendUser.rol as UserRole)) {
+                resolvedRole = backendUser.rol as UserRole;
+            } else if (token && backendUser) {
+                // Fallback: consultar /auth/usuarios y resolver el rol por id o nombre_usuario
+                try {
+                    const resUsers = await fetch(`${API_BASE_URL}/auth/usuarios`, {
+                        headers: { Authorization: `Bearer ${token}` },
+                    });
+                    if (resUsers.ok) {
+                        const usersData = await resUsers.json();
+                        const list: BackendUser[] = (usersData.usuarios as BackendUser[]) || (usersData as BackendUser[]) || [];
+                        const found: BackendUser | undefined = Array.isArray(list)
+                            ? list.find((u: BackendUser) => (
+                                (backendUser?.id && u.id === backendUser.id) ||
+                                (backendUser?.nombre_usuario && u.nombre_usuario === backendUser.nombre_usuario)
+                              ))
+                            : undefined;
+                        if (found && typeof found.rol === 'string' && ROLES_DISPONIBLES_VALUES.includes(found.rol as UserRole)) {
+                            resolvedRole = found.rol as UserRole;
+                        }
+                    }
+                } catch (e) {
+                    console.warn("AuthProvider login: Fallback de rol falló", e);
+                }
+            }
+
+            if (!token || !backendUser || !resolvedRole) {
+                console.error("AuthProvider login: Respuesta incompleta, no se pudo determinar el rol.", backendUser);
                 sessionStorage.removeItem("user");
                 sessionStorage.removeItem("authToken");
                 setUser(null);
@@ -114,18 +155,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 return false;
             }
 
-            const loggedInUser: User = {
+            const loggedInUser: NonNullable<User> = {
                 id: backendUser.id,
-                usuario: backendUser.nombre_usuario,
-                name: `${backendUser.nombre} ${backendUser.apellido}`.trim(),
+                usuario: backendUser.nombre_usuario ?? usuario,
+                name: `${backendUser.nombre ?? ""} ${backendUser.apellido ?? ""}`.trim(),
                 email: backendUser.email,
-                role: backendUser.rol as UserRole,
+                role: resolvedRole,
             };
 
             sessionStorage.setItem("user", JSON.stringify(loggedInUser));
-            sessionStorage.setItem("authToken", token);
+            if (token) {
+                sessionStorage.setItem("authToken", token);
+            }
             localStorage.setItem("user_name", loggedInUser.name);
             localStorage.setItem("usuario_id", (loggedInUser.id ?? "").toString());
+            // Compatibilidad: guardar también en localStorage para componentes que lo leen
+            try {
+                localStorage.setItem("user", JSON.stringify(loggedInUser));
+                localStorage.setItem("rol", loggedInUser.role);
+                localStorage.setItem("isAdmin", String(loggedInUser.role === "ADMIN"));
+            } catch {}
             setUser(loggedInUser);
 
             // La redirección se maneja ahora. setIsLoading(false) se hará después o el componente se desmontará.

@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { FaRegFileAlt, FaClipboardList, FaCheckCircle, FaHistory, FaMoneyCheckAlt } from 'react-icons/fa';
+import { FaRegFileAlt, FaClipboardList, FaCheckCircle, FaHistory, FaMoneyCheckAlt, FaBolt } from 'react-icons/fa';
 
 export default function AccionesPedidos() {
   const router = useRouter();
@@ -18,22 +18,36 @@ export default function AccionesPedidos() {
   const irAVerRecepcionesPendientes = () => router.push('/recepciones-pendientes');
   const irAVerDeudasProveedores = () => router.push('/deuda-proveedores');
   const irAVerHistorialCompras = () => router.push('/historial-compras');
+  const irAPedidoRapido = () => router.push('/pedido-rapido');
 
   // Renderizado condicional según rol
   const esAlmacen = user && user.role && user.role.toUpperCase() === 'ALMACEN';
+  const esAdmin = user && user.role && user.role.toUpperCase() === 'ADMIN';
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-[#2c239d] px-4">
       <h1 className="text-white text-4xl md:text-5xl font-bold mb-10">Acciones Posibles Compras</h1>
 
       <div className="flex flex-col gap-5 w-full max-w-md">
-        <button
-          onClick={irARegistrarPedido}
-          className="flex items-center justify-center gap-3 px-6 py-4 bg-white text-[#2c239d] rounded-lg shadow hover:scale-105 transition font-bold border-2 border-[#2c239d]"
-        >
-          <FaRegFileAlt className="text-xl" />
-          Solicitar Compra
-        </button>
+        {!esAdmin && (
+          <button
+            onClick={irARegistrarPedido}
+            className="flex items-center justify-center gap-3 px-6 py-4 bg-white text-[#2c239d] rounded-lg shadow hover:scale-105 transition font-bold border-2 border-[#2c239d]"
+          >
+            <FaRegFileAlt className="text-xl" />
+            Solicitar Compra
+          </button>
+        )}
+
+        {esAdmin && (
+          <button
+            onClick={irAPedidoRapido}
+            className="flex items-center justify-center gap-3 px-6 py-4 bg-white text-[#2c239d] rounded-lg shadow hover:scale-105 transition font-bold border-2 border-[#2c239d]"
+          >
+            <FaBolt className="text-xl" />
+            Pedido Rápido (Admin)
+          </button>
+        )}
 
         {!esAlmacen && (
           <button
