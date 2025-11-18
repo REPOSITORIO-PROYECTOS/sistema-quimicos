@@ -57,6 +57,12 @@ export default function RegistrarPedidoPuertaPage() {
     const [nombreVendedor, setNombreVendedor] = useState<string>('');
     const router = useRouter();
     const [lastVentaId, setLastVentaId] = useState<number | undefined>();
+    // --- Modal de teléfono previo a impresión ---
+    const [showPhoneModal, setShowPhoneModal] = useState<boolean>(false);
+    const [phoneNumber, setPhoneNumber] = useState<string>('');
+    const [savingPhone, setSavingPhone] = useState<boolean>(false);
+    const [phoneError, setPhoneError] = useState<string>('');
+    const [ventaIdPendingPrint, setVentaIdPendingPrint] = useState<number | null>(null);
     const irAccionesPuerta = () => router.push('/acciones-puerta');
 
     const opcionesDeProductoParaSelect = useMemo(() =>
@@ -264,11 +270,91 @@ export default function RegistrarPedidoPuertaPage() {
             setIsSubmitting(false);
         }
     };
+    // --- Buscar o crear cliente por teléfono ---
+    const crearClienteRapidoConTelefono = async (telefono: string): Promise<{ cliente: any; existed: boolean }> => {
+        const token = localStorage.getItem("token");
+        if (!token) { throw new Error("No autenticado."); }
 
-    const handleImprimirPresupuesto = (ventaId: number) => {
+        // 1) Intentar obtener cliente existente por teléfono
+        try {
+            const resGet = await fetch(`https://quimex.sistemataup.online/clientes/obtener_por_telefono?telefono=${encodeURIComponent(telefono)}`, {
+                method: "GET",
+                headers: { "Authorization": `Bearer ${token}` }
+            });
+            if (resGet.ok) {
+                const data = await resGet.json();
+                if (data?.cliente?.id) {
+                    return { cliente: data.cliente, existed: true };
+                }
+            }
+        } catch (e) {
+            // Ignorar errores de búsqueda y continuar con creación
+        }
+
+        // 2) Crear nuevo cliente si no existe
+        const payload = {
+            nombre_razon_social: `cliente nuevo - ${telefono}`,
+            telefono: telefono,
+            direccion: 'Desconocida',
+            activo: true
+        };
+        const res = await fetch("https://quimex.sistemataup.online/clientes/crear", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+            body: JSON.stringify(payload)
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            throw new Error(json?.error || json?.message || "No se pudo crear el cliente.");
+        }
+        return { cliente: json, existed: false };
+    };
+
+    // --- Agregar observación a venta existente (sin cambiar cliente_id) ---
+    const agregarObservacionAVenta = async (ventaId: number, textoObservacion: string) => {
+        const token = localStorage.getItem("token");
+        if (!token) { throw new Error("No autenticado."); }
+        const payloadUpdate = {
+            items: productos.filter(i => i.producto !== 0 && i.qx > 0).map(i => ({
+                producto_id: i.producto,
+                cantidad: i.qx,
+                precio_unitario_venta_ars: i.precio,
+                precio_total_item_ars: i.total,
+                observacion_item: i.observacion || "",
+                descuento_item_porcentaje: 0,
+            })),
+            descuento_total_global_porcentaje: 0,
+            forma_pago: formData.formaPago,
+            requiere_factura: formData.requiereFactura,
+            monto_pagado_cliente: formData.montoPagado,
+            observaciones: [formData.observaciones || "", textoObservacion].filter(Boolean).join("\n"),
+        };
+        const resUpd = await fetch(`https://quimex.sistemataup.online/ventas/actualizar/${ventaId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+            body: JSON.stringify(payloadUpdate)
+        });
+        const j = await resUpd.json().catch(() => ({}));
+        if (!resUpd.ok) {
+            throw new Error(j?.error || j?.message || "No se pudo actualizar las observaciones de la venta.");
+        }
+        return j;
+    };
+
+    const doPrintAndRedirect = (ventaId: number) => {
         document.title = `Venta Puerta - #${ventaId}`;
         window.print();
         setTimeout(() => { resetearFormulario(); irAccionesPuerta(); }, 1500);
+    };
+
+    const handleImprimirPresupuesto = (ventaId: number) => {
+        const total = displayTotal;
+        if (total > 250000) {
+            setVentaIdPendingPrint(ventaId);
+            setShowPhoneModal(true);
+            return;
+        }
+        doPrintAndRedirect(ventaId);
     };
     const displayTotal = useMemo(() => {
         if (totalCalculadoApi) {
@@ -422,6 +508,72 @@ export default function RegistrarPedidoPuertaPage() {
                     </form>
                 </div>
             </div>
+
+            {/* Modal para capturar teléfono del cliente cuando el total supera $250.000 */}
+            {showPhoneModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 print:hidden">
+                    <div className="bg-white p-6 rounded-lg shadow-2xl w-full max-w-md border border-gray-200">
+                        <h3 className="text-xl font-semibold text-gray-800 mb-3">Registrar teléfono del cliente</h3>
+                        <p className="text-sm text-gray-600 mb-4">
+                            El importe de la boleta supera $250.000. Antes de imprimir, ingrese el número de teléfono para crear el cliente "cliente nuevo - nro".
+                        </p>
+                        {phoneError && (
+                            <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-3 mb-3 rounded-r-md">
+                                {phoneError}
+                            </div>
+                        )}
+                        <label htmlFor="telefonoCliente" className="block text-sm font-medium text-gray-700 mb-1">Teléfono del cliente</label>
+                        <input
+                            id="telefonoCliente"
+                            type="tel"
+                            value={phoneNumber}
+                            onChange={(e) => setPhoneNumber(e.target.value)}
+                            placeholder="Ej. 3511234567"
+                            className="shadow-sm border border-gray-300 rounded-md w-full py-2 px-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 mb-4"
+                        />
+                        <div className="flex justify-end gap-3">
+                            <button
+                                type="button"
+                                onClick={() => { setShowPhoneModal(false); setPhoneNumber(''); setPhoneError(''); setVentaIdPendingPrint(null); }}
+                                className="px-4 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-100"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                type="button"
+                                disabled={savingPhone}
+                                onClick={async () => {
+                                    setPhoneError('');
+                                    const tel = phoneNumber.trim();
+                                    if (!tel) { setPhoneError('Ingrese un número de teléfono.'); return; }
+                                    try {
+                                        setSavingPhone(true);
+                                        const { cliente, existed } = await crearClienteRapidoConTelefono(tel);
+                                        const ventaId = ventaIdPendingPrint ?? lastVentaId ?? undefined;
+                                        if (ventaId !== undefined) {
+                                            const fechaStr = new Date(formData.fechaEmision || new Date()).toISOString();
+                                            const montoStr = `$ ${displayTotal.toFixed(2)}`;
+                                            const texto = `Cliente por teléfono ${tel} ${existed ? '(existente)' : '(creado)'} ID ${cliente?.id ?? 'N/A'} | Monto ${montoStr} | Fecha ${fechaStr}`;
+                                            await agregarObservacionAVenta(ventaId, texto);
+                                        }
+                                        setShowPhoneModal(false);
+                                        setVentaIdPendingPrint(null);
+                                        setPhoneNumber('');
+                                        if (ventaId !== undefined) doPrintAndRedirect(ventaId);
+                                    } catch (error) {
+                                        if (error instanceof Error) setPhoneError(error.message); else setPhoneError('No se pudo registrar el teléfono.');
+                                    } finally {
+                                        setSavingPhone(false);
+                                    }
+                                }}
+                                className="px-4 py-2 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
+                            >
+                                {savingPhone ? 'Guardando...' : 'Guardar y imprimir'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Contenedor para la impresión */}
             <div id="presupuesto-imprimible" className="hidden print:block">

@@ -223,7 +223,7 @@ def reactivar_cliente(cliente_id):
         db.session.rollback()
         # Considera loggear el error 'e' aquí
         return jsonify({"error": "Error al reactivar el cliente.", "detalle": str(e)}), 500
-
+#quimex.sistemataup.online/cargar_cvs
 @clientes_bp.route('/cargar_csv', methods=['POST'])
 def cargar_clientes_desde_csv():
     """
@@ -426,5 +426,40 @@ def obtener_clientes_con_precios():
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": "Error interno al obtener clientes con precios", "detalle": str(e)}), 500
+    
+    
+@clientes_bp.route('/obtener_por_telefono', methods=['GET'])
+def obtener_cliente_por_telefono():
+    """
+    Devuelve el primer cliente activo que coincide por teléfono (búsqueda flexible).
+    Parámetros:
+      - telefono (query string): número de teléfono a buscar.
+    Respuestas:
+      - 200 con { cliente: {...} } si se encuentra al menos uno
+      - 404 si no hay coincidencias
+      - 400 si falta el parámetro
+    """
+    telefono = request.args.get('telefono')
+    if not telefono or not telefono.strip():
+        return jsonify({"error": "Parámetro 'telefono' es requerido"}), 400
+
+    telefono = telefono.strip()
+    try:
+        cliente = (
+            db.session.query(Cliente)
+            .filter(Cliente.activo == True)
+            .filter(Cliente.telefono.ilike(f"%{telefono}%"))
+            .order_by(Cliente.id.asc())
+            .first()
+        )
+        if not cliente:
+            return jsonify({"error": "Cliente no encontrado"}), 404
+
+        return jsonify({
+            "cliente": cliente_a_diccionario(cliente)
+        }), 200
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": "Error interno del servidor"}), 500
     
     

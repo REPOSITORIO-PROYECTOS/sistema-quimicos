@@ -2,6 +2,9 @@
 
 from operator import or_
 from flask import Blueprint, request, jsonify, render_template, make_response
+import io
+import csv
+import re
 from sqlalchemy.orm import selectinload
 from sqlalchemy import func
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP, ROUND_UP
@@ -1202,3 +1205,132 @@ def recalcular_montos_por_dolar(current_user):
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": "Error interno al recalcular los montos.", "detalle": str(e)}), 500
+
+
+# --- Endpoint: CSV de Clientes Nuevos (Ventas Puerta) con conteo y compras ---
+@ventas_bp.route('/clientes_nuevos_puerta_csv', methods=['GET'])
+@token_required
+@roles_required(ROLES['ADMIN'], ROLES['VENTAS_PEDIDOS'], ROLES['VENTAS_LOCAL'])
+def clientes_nuevos_puerta_csv(current_user):
+    """
+    Genera un CSV con clientes considerados "nuevos" (detectados por observación "(creado)"
+    en la venta o por dirección "Desconocida" en el cliente) y lista sus compras:
+    - cliente_id, nombre, telefono, direccion
+    - cant_compras, total_compras
+    - compras_detalle: "YYYY-MM-DD|$monto;YYYY-MM-DD|$monto;..."
+    """
+    try:
+        # Buscar ventas que puedan ser de clientes nuevos:
+        # 1) Ventas con observaciones que incluyen "(creado)" (cliente creado vía teléfono)
+        # 2) Ventas asociadas a clientes cuya dirección contiene "Desconocida"
+        ventas_posibles = (
+            db.session.query(Venta, Cliente)
+            .outerjoin(Cliente, Venta.cliente_id == Cliente.id)
+            .filter(
+                (Venta.observaciones.ilike('%(creado)%')) |
+                ((Cliente.direccion != None) & (Cliente.direccion.ilike('%Desconocida%')))
+            )
+            .all()
+        )
+
+        # Acumuladores por cliente_id
+        por_cliente = {}
+
+        def extraer_cliente_id_y_compra(obs_text, venta_obj):
+            cid = None
+            fecha_compra = None
+            monto_compra = None
+            if obs_text:
+                # Buscar "ID <n>" en el texto
+                m_id = re.search(r'\bID\s+(\d+)\b', obs_text)
+                if m_id:
+                    try:
+                        cid = int(m_id.group(1))
+                    except Exception:
+                        cid = None
+                # Buscar Fecha ISO (luego se formatea YYYY-MM-DD)
+                m_fecha = re.search(r'Fecha\s+([0-9T:\-\.Z]+)', obs_text)
+                if m_fecha:
+                    try:
+                        fecha_compra = datetime.fromisoformat(m_fecha.group(1).replace('Z', '+00:00'))
+                    except Exception:
+                        fecha_compra = None
+                # Buscar Monto con "$"
+                m_monto = re.search(r'Monto\s+\$\s*([0-9]+(?:\.[0-9]{1,2})?)', obs_text)
+                if m_monto:
+                    try:
+                        monto_compra = Decimal(m_monto.group(1))
+                    except Exception:
+                        monto_compra = None
+
+            # Fallbacks si no se pudieron extraer
+            if cid is None:
+                cid = venta_obj.cliente_id
+            if fecha_compra is None:
+                fecha_compra = venta_obj.fecha_pedido or datetime.now(timezone.utc)
+            if monto_compra is None:
+                # Preferir monto final redondeado si existe, si no el con recargos
+                monto_compra = venta_obj.monto_final_redondeado or venta_obj.monto_final_con_recargos or venta_obj.monto_total
+                try:
+                    monto_compra = Decimal(str(monto_compra)) if monto_compra is not None else Decimal('0')
+                except Exception:
+                    monto_compra = Decimal('0')
+            return cid, fecha_compra, monto_compra
+
+        for venta, cliente in ventas_posibles:
+            cid, fecha_compra, monto_compra = extraer_cliente_id_y_compra(venta.observaciones or '', venta)
+            if not cid:
+                # Si no hay cliente identificable, omitir
+                continue
+            # Buscar datos del cliente (usar el join si coincide, sino cargar de DB)
+            cli = cliente if (cliente and cliente.id == cid) else db.session.get(Cliente, cid)
+            if not cli:
+                # Si el cliente no existe ya (fue borrado o inconsistencia), omitir
+                continue
+
+            entry = por_cliente.get(cid)
+            if not entry:
+                por_cliente[cid] = {
+                    'cliente_id': cid,
+                    'nombre': getattr(cli, 'nombre_razon_social', '') or getattr(cli, 'nombre', '') or '',
+                    'telefono': getattr(cli, 'telefono', '') or '',
+                    'direccion': getattr(cli, 'direccion', '') or '',
+                    'compras': []
+                }
+                entry = por_cliente[cid]
+            entry['compras'].append({'fecha': fecha_compra, 'monto': monto_compra})
+
+        # Generar CSV
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(['cliente_id', 'nombre', 'telefono', 'direccion', 'cant_compras', 'total_compras', 'compras_detalle'])
+
+        for cid, data in por_cliente.items():
+            compras = data['compras']
+            cant = len(compras)
+            total = sum([c['monto'] for c in compras], Decimal('0'))
+            detalle_str = ';'.join([
+                f"{(c['fecha'].date() if isinstance(c['fecha'], datetime) else c['fecha'])}|${str(c['monto'])}"
+                for c in compras
+            ])
+            writer.writerow([
+                data['cliente_id'],
+                data['nombre'],
+                data['telefono'],
+                data['direccion'],
+                cant,
+                str(total),
+                detalle_str
+            ])
+
+        csv_bytes = output.getvalue().encode('utf-8')
+        resp = make_response(csv_bytes)
+        resp.headers['Content-Type'] = 'text/csv; charset=utf-8'
+        hoy = datetime.now().strftime('%Y-%m-%d')
+        resp.headers['Content-Disposition'] = f'attachment; filename="clientes_nuevos_puerta_{hoy}.csv"'
+        return resp, 200
+
+    except Exception as e:
+        print("ERROR [clientes_nuevos_puerta_csv]:", e)
+        traceback.print_exc()
+        return jsonify({"error": "Error generando CSV de clientes nuevos.", "detalle": str(e)}), 500
