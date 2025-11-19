@@ -41,6 +41,15 @@ interface RawTotalCalculadoResponse {
     error?: string;
 }
 
+// Tipo mínimo del cliente recibido desde la API
+interface ClienteApi {
+    id?: number;
+    nombre_razon_social?: string;
+    telefono?: string;
+    direccion?: string;
+    activo?: boolean;
+}
+
 const initialFormData: IFormData = { clienteId: null, cuit: "", fechaEmision: "", formaPago: "efectivo", montoPagado: 0, vuelto: 0, requiereFactura: false, observaciones: "" };
 const initialProductos: ProductoVenta[] = [{ producto: 0, qx: 0, precio: 0, descuento: 0, total: 0, observacion: "" }];
 const VENDEDORES = ["martin", "moises", "sergio", "gabriel", "mauricio", "elias", "ardiles", "redonedo"];
@@ -271,7 +280,7 @@ export default function RegistrarPedidoPuertaPage() {
         }
     };
     // --- Buscar o crear cliente por teléfono ---
-    const crearClienteRapidoConTelefono = async (telefono: string): Promise<{ cliente: any; existed: boolean }> => {
+    const crearClienteRapidoConTelefono = async (telefono: string): Promise<{ cliente: ClienteApi | null; existed: boolean }> => {
         const token = localStorage.getItem("token");
         if (!token) { throw new Error("No autenticado."); }
 
@@ -287,7 +296,7 @@ export default function RegistrarPedidoPuertaPage() {
                     return { cliente: data.cliente, existed: true };
                 }
             }
-        } catch (e) {
+        } catch {
             // Ignorar errores de búsqueda y continuar con creación
         }
 
@@ -307,7 +316,7 @@ export default function RegistrarPedidoPuertaPage() {
         if (!res.ok) {
             throw new Error(json?.error || json?.message || "No se pudo crear el cliente.");
         }
-        return { cliente: json, existed: false };
+        return { cliente: json as ClienteApi, existed: false };
     };
 
     // --- Agregar observación a venta existente (sin cambiar cliente_id) ---
@@ -349,7 +358,7 @@ export default function RegistrarPedidoPuertaPage() {
 
     const handleImprimirPresupuesto = (ventaId: number) => {
         const total = displayTotal;
-        if (total > 250000) {
+        if (total > 20000) {
             setVentaIdPendingPrint(ventaId);
             setShowPhoneModal(true);
             return;
@@ -515,7 +524,7 @@ export default function RegistrarPedidoPuertaPage() {
                     <div className="bg-white p-6 rounded-lg shadow-2xl w-full max-w-md border border-gray-200">
                         <h3 className="text-xl font-semibold text-gray-800 mb-3">Registrar teléfono del cliente</h3>
                         <p className="text-sm text-gray-600 mb-4">
-                            El importe de la boleta supera $250.000. Antes de imprimir, ingrese el número de teléfono para crear el cliente "cliente nuevo - nro".
+                            El importe de la boleta supera $20.000. Antes de imprimir, ingrese el número de teléfono para registrarlo como cliente.
                         </p>
                         {phoneError && (
                             <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-3 mb-3 rounded-r-md">
