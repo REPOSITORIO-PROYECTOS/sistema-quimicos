@@ -1213,115 +1213,76 @@ def recalcular_montos_por_dolar(current_user):
 @roles_required(ROLES['ADMIN'], ROLES['VENTAS_PEDIDOS'], ROLES['VENTAS_LOCAL'])
 def clientes_nuevos_puerta_csv(current_user):
     """
-    Genera un CSV con clientes considerados "nuevos" (detectados por observación "(creado)"
-    en la venta o por dirección "Desconocida" en el cliente) y lista sus compras:
-    - cliente_id, nombre, telefono, direccion
-    - cant_compras, total_compras
-    - compras_detalle: "YYYY-MM-DD|$monto;YYYY-MM-DD|$monto;..."
+    Genera un CSV con registros de compras detectados en observaciones,
+    mostrando: telefono, fecha (YYYY-MM-DD) y vendedor (si se puede determinar).
+
+    Se buscan coincidencias en:
+    - Cliente.observaciones: líneas que contengan "Cliente por teléfono <numero> ... Fecha <ISO>"
+    - Venta.observaciones: líneas que contengan "Cliente por teléfono <numero> ... Fecha <ISO>" (compatibilidad)
     """
     try:
-        # Buscar ventas que puedan ser de clientes nuevos:
-        # 1) Ventas con observaciones que incluyen "(creado)" (cliente creado vía teléfono)
-        # 2) Ventas asociadas a clientes cuya dirección contiene "Desconocida"
-        ventas_posibles = (
-            db.session.query(Venta, Cliente)
-            .outerjoin(Cliente, Venta.cliente_id == Cliente.id)
-            .filter(
-                (Venta.observaciones.ilike('%(creado)%')) |
-                ((Cliente.direccion != None) & (Cliente.direccion.ilike('%Desconocida%')))
-            )
+        # Mapa acumulador: (telefono, fecha_str) -> vendedor
+        rows_map = {}
+
+        # --- Helper para parsear una línea de observación ---
+        def parse_tel_fecha_from_text(text):
+            tel = None
+            fecha_dt = None
+            if not text:
+                return None, None
+            # Teléfono
+            m_tel = re.search(r'Cliente\s+por\s+teléfono\s+(\d+)', text)
+            if m_tel:
+                tel = m_tel.group(1)
+            # Fecha ISO
+            m_fecha = re.search(r'Fecha\s+([0-9T:\-\.Z\+]+)', text)
+            if m_fecha:
+                try:
+                    fecha_dt = datetime.fromisoformat(m_fecha.group(1).replace('Z', '+00:00'))
+                except Exception:
+                    fecha_dt = None
+            return tel, fecha_dt
+
+        # --- 1) Buscar en observaciones de Cliente ---
+        clientes = (
+            db.session.query(Cliente)
+            .filter((Cliente.observaciones != None) & (Cliente.observaciones.ilike('%Cliente por teléfono%')))
             .all()
         )
+        for cli in clientes:
+            obs = cli.observaciones or ''
+            for line in obs.splitlines():
+                tel, fecha_dt = parse_tel_fecha_from_text(line)
+                if tel and fecha_dt:
+                    key = (tel, fecha_dt.date().isoformat())
+                    # No se conoce vendedor desde observaciones de Cliente; dejar vacío si no existe
+                    rows_map.setdefault(key, '')
 
-        # Acumuladores por cliente_id
-        por_cliente = {}
+        # --- 2) Compatibilidad: Buscar en observaciones de Venta ---
+        ventas = (
+            db.session.query(Venta)
+            .filter((Venta.observaciones != None) & (Venta.observaciones.ilike('%Cliente por teléfono%')))
+            .all()
+        )
+        for v in ventas:
+            tel, fecha_dt = parse_tel_fecha_from_text(v.observaciones or '')
+            if tel and fecha_dt:
+                key = (tel, fecha_dt.date().isoformat())
+                vendedor = (v.nombre_vendedor or '').strip()
+                # Preferir el vendedor si viene de la Venta
+                if key not in rows_map or not rows_map[key]:
+                    rows_map[key] = vendedor
 
-        def extraer_cliente_id_y_compra(obs_text, venta_obj):
-            cid = None
-            fecha_compra = None
-            monto_compra = None
-            if obs_text:
-                # Buscar "ID <n>" en el texto
-                m_id = re.search(r'\bID\s+(\d+)\b', obs_text)
-                if m_id:
-                    try:
-                        cid = int(m_id.group(1))
-                    except Exception:
-                        cid = None
-                # Buscar Fecha ISO (luego se formatea YYYY-MM-DD)
-                m_fecha = re.search(r'Fecha\s+([0-9T:\-\.Z]+)', obs_text)
-                if m_fecha:
-                    try:
-                        fecha_compra = datetime.fromisoformat(m_fecha.group(1).replace('Z', '+00:00'))
-                    except Exception:
-                        fecha_compra = None
-                # Buscar Monto con "$"
-                m_monto = re.search(r'Monto\s+\$\s*([0-9]+(?:\.[0-9]{1,2})?)', obs_text)
-                if m_monto:
-                    try:
-                        monto_compra = Decimal(m_monto.group(1))
-                    except Exception:
-                        monto_compra = None
+        # --- Construir filas finales y ordenar ---
+        rows = [ (tel, fecha, rows_map[(tel, fecha)]) for (tel, fecha) in rows_map.keys() ]
+        rows.sort(key=lambda x: (x[1], x[0], x[2] or ''))  # ordenar por fecha, tel, vendedor
 
-            # Fallbacks si no se pudieron extraer
-            if cid is None:
-                cid = venta_obj.cliente_id
-            if fecha_compra is None:
-                fecha_compra = venta_obj.fecha_pedido or datetime.now(timezone.utc)
-            if monto_compra is None:
-                # Preferir monto final redondeado si existe, si no el con recargos
-                monto_compra = venta_obj.monto_final_redondeado or venta_obj.monto_final_con_recargos or venta_obj.monto_total
-                try:
-                    monto_compra = Decimal(str(monto_compra)) if monto_compra is not None else Decimal('0')
-                except Exception:
-                    monto_compra = Decimal('0')
-            return cid, fecha_compra, monto_compra
-
-        for venta, cliente in ventas_posibles:
-            cid, fecha_compra, monto_compra = extraer_cliente_id_y_compra(venta.observaciones or '', venta)
-            if not cid:
-                # Si no hay cliente identificable, omitir
-                continue
-            # Buscar datos del cliente (usar el join si coincide, sino cargar de DB)
-            cli = cliente if (cliente and cliente.id == cid) else db.session.get(Cliente, cid)
-            if not cli:
-                # Si el cliente no existe ya (fue borrado o inconsistencia), omitir
-                continue
-
-            entry = por_cliente.get(cid)
-            if not entry:
-                por_cliente[cid] = {
-                    'cliente_id': cid,
-                    'nombre': getattr(cli, 'nombre_razon_social', '') or getattr(cli, 'nombre', '') or '',
-                    'telefono': getattr(cli, 'telefono', '') or '',
-                    'direccion': getattr(cli, 'direccion', '') or '',
-                    'compras': []
-                }
-                entry = por_cliente[cid]
-            entry['compras'].append({'fecha': fecha_compra, 'monto': monto_compra})
-
-        # Generar CSV
+        # Generar CSV: columnas telefono, fecha, vendedor
         output = io.StringIO()
         writer = csv.writer(output)
-        writer.writerow(['cliente_id', 'nombre', 'telefono', 'direccion', 'cant_compras', 'total_compras', 'compras_detalle'])
-
-        for cid, data in por_cliente.items():
-            compras = data['compras']
-            cant = len(compras)
-            total = sum([c['monto'] for c in compras], Decimal('0'))
-            detalle_str = ';'.join([
-                f"{(c['fecha'].date() if isinstance(c['fecha'], datetime) else c['fecha'])}|${str(c['monto'])}"
-                for c in compras
-            ])
-            writer.writerow([
-                data['cliente_id'],
-                data['nombre'],
-                data['telefono'],
-                data['direccion'],
-                cant,
-                str(total),
-                detalle_str
-            ])
+        writer.writerow(['telefono', 'fecha', 'vendedor'])
+        for tel, fecha_str, vendedor in rows:
+            writer.writerow([tel, fecha_str, vendedor])
 
         csv_bytes = output.getvalue().encode('utf-8')
         resp = make_response(csv_bytes)

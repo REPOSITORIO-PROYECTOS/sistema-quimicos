@@ -48,6 +48,33 @@ interface ClienteApi {
     telefono?: string;
     direccion?: string;
     activo?: boolean;
+    observaciones?: string;
+}
+
+// Payload de registro de venta enviado al backend
+interface VentaItemPayload {
+    producto_id: number;
+    cantidad: number;
+    precio_unitario_venta_ars: number;
+    precio_total_item_ars: number;
+    observacion_item: string;
+    descuento_item_porcentaje: number;
+}
+
+interface VentaRegistroPayload {
+    usuario_interno_id: number;
+    nombre_vendedor: string;
+    items: VentaItemPayload[];
+    cliente_id: number | null;
+    fecha_pedido: string;
+    direccion_entrega: string;
+    cuit_cliente: string;
+    monto_pagado_cliente: number;
+    forma_pago: string;
+    requiere_factura: boolean;
+    observaciones: string;
+    descuento_total_global_porcentaje: number;
+    monto_final_con_recargos: number;
 }
 
 const initialFormData: IFormData = { clienteId: null, cuit: "", fechaEmision: "", formaPago: "efectivo", montoPagado: 0, vuelto: 0, requiereFactura: false, observaciones: "" };
@@ -72,6 +99,8 @@ export default function RegistrarPedidoPuertaPage() {
     const [savingPhone, setSavingPhone] = useState<boolean>(false);
     const [phoneError, setPhoneError] = useState<string>('');
     const [ventaIdPendingPrint, setVentaIdPendingPrint] = useState<number | null>(null);
+    // Venta pendiente de confirmación antes de registrar (cuando total > $20.000)
+    const [pendingSalePayload, setPendingSalePayload] = useState<VentaRegistroPayload | null>(null);
     const irAccionesPuerta = () => router.push('/acciones-puerta');
 
     const opcionesDeProductoParaSelect = useMemo(() =>
@@ -261,14 +290,22 @@ export default function RegistrarPedidoPuertaPage() {
             monto_final_con_recargos: totalFinalNeto, // <-- Se envía el total con todos los descuentos
         };
         try {
-            const response = await fetch("https://quimex.sistemataup.online/ventas/registrar", {
-                method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }, body: JSON.stringify(dataPayload),
-            });
-            const result = await response.json();
-            if (response.ok) {
-                setSuccessMessage("¡Venta registrada exitosamente!"); setLastVentaId(result.venta_id);
-                setTimeout(() => { handleImprimirPresupuesto(result.venta_id); }, 100);
-            } else { setErrorMessage(result.message || result.error || "Error al registrar."); }
+            const totalDisplay = displayTotal;
+            if (totalDisplay > 20000) {
+                // No registrar aún: mostrar modal y guardar payload pendiente
+                setPendingSalePayload(dataPayload);
+                setShowPhoneModal(true);
+            } else {
+                // Registrar de inmediato cuando el total es bajo
+                const response = await fetch("https://quimex.sistemataup.online/ventas/registrar", {
+                    method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }, body: JSON.stringify(dataPayload),
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    setSuccessMessage("¡Venta registrada exitosamente!"); setLastVentaId(result.venta_id);
+                    setTimeout(() => { handleImprimirPresupuesto(result.venta_id); }, 100);
+                } else { setErrorMessage(result.message || result.error || "Error al registrar."); }
+            }
         } catch (err) {
             if (err instanceof Error) {
                 setErrorMessage(err.message);
@@ -319,33 +356,22 @@ export default function RegistrarPedidoPuertaPage() {
         return { cliente: json as ClienteApi, existed: false };
     };
 
-    // --- Agregar observación a venta existente (sin cambiar cliente_id) ---
-    const agregarObservacionAVenta = async (ventaId: number, textoObservacion: string) => {
+    // --- Agregar observación al cliente (información privada, no en ticket) ---
+    const agregarObservacionACliente = async (cliente: ClienteApi | null, textoObservacion: string) => {
+        if (!cliente || !cliente.id) return;
         const token = localStorage.getItem("token");
         if (!token) { throw new Error("No autenticado."); }
-        const payloadUpdate = {
-            items: productos.filter(i => i.producto !== 0 && i.qx > 0).map(i => ({
-                producto_id: i.producto,
-                cantidad: i.qx,
-                precio_unitario_venta_ars: i.precio,
-                precio_total_item_ars: i.total,
-                observacion_item: i.observacion || "",
-                descuento_item_porcentaje: 0,
-            })),
-            descuento_total_global_porcentaje: 0,
-            forma_pago: formData.formaPago,
-            requiere_factura: formData.requiereFactura,
-            monto_pagado_cliente: formData.montoPagado,
-            observaciones: [formData.observaciones || "", textoObservacion].filter(Boolean).join("\n"),
-        };
-        const resUpd = await fetch(`https://quimex.sistemataup.online/ventas/actualizar/${ventaId}`, {
+        const observacionesPrevias = (cliente.observaciones || "").trim();
+        const nuevasObservaciones = [observacionesPrevias, textoObservacion].filter(Boolean).join("\n");
+        const payloadCliente = { observaciones: nuevasObservaciones };
+        const res = await fetch(`https://quimex.sistemataup.online/clientes/actualizar/${cliente.id}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-            body: JSON.stringify(payloadUpdate)
+            body: JSON.stringify(payloadCliente)
         });
-        const j = await resUpd.json().catch(() => ({}));
-        if (!resUpd.ok) {
-            throw new Error(j?.error || j?.message || "No se pudo actualizar las observaciones de la venta.");
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            throw new Error(j?.error || j?.message || "No se pudo guardar observaciones del cliente.");
         }
         return j;
     };
@@ -359,8 +385,9 @@ export default function RegistrarPedidoPuertaPage() {
     const handleImprimirPresupuesto = (ventaId: number) => {
         const total = displayTotal;
         if (total > 20000) {
-            setVentaIdPendingPrint(ventaId);
-            setShowPhoneModal(true);
+            // Con el nuevo flujo, el modal ya se mostró antes de registrar.
+            // Si igualmente llegáramos aquí (por totales que cambian), imprimimos directo.
+            doPrintAndRedirect(ventaId);
             return;
         }
         doPrintAndRedirect(ventaId);
@@ -543,10 +570,55 @@ export default function RegistrarPedidoPuertaPage() {
                         <div className="flex justify-end gap-3">
                             <button
                                 type="button"
-                                onClick={() => { setShowPhoneModal(false); setPhoneNumber(''); setPhoneError(''); setVentaIdPendingPrint(null); }}
+                                onClick={() => {
+                                    // Cancelar: cerrar modal y permanecer en la boleta sin registrar
+                                    setShowPhoneModal(false);
+                                    setPhoneNumber('');
+                                    setPhoneError('');
+                                    setVentaIdPendingPrint(null);
+                                    setPendingSalePayload(null);
+                                }}
                                 className="px-4 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-100"
                             >
                                 Cancelar
+                            </button>
+                            <button
+                                type="button"
+                                onClick={async () => {
+                                    // Imprimir sin registrar teléfono: REGISTRAR venta y luego imprimir
+                                    setPhoneError('');
+                                    const token = localStorage.getItem("token");
+                                    if (!token) { setPhoneError('Sesión inválida.'); return; }
+                                    const payload = pendingSalePayload;
+                                    if (!payload) {
+                                        const ventaId = ventaIdPendingPrint ?? lastVentaId ?? undefined;
+                                        setShowPhoneModal(false);
+                                        setVentaIdPendingPrint(null);
+                                        setPhoneNumber('');
+                                        if (ventaId !== undefined) { doPrintAndRedirect(ventaId); }
+                                        return;
+                                    }
+                                    try {
+                                        const res = await fetch("https://quimex.sistemataup.online/ventas/registrar", {
+                                            method: "POST",
+                                            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+                                            body: JSON.stringify(payload)
+                                        });
+                                        const result = await res.json();
+                                        if (!res.ok) { throw new Error(result?.error || result?.message || 'Error al registrar venta.'); }
+                                        setLastVentaId(result.venta_id);
+                                        setShowPhoneModal(false);
+                                        setPendingSalePayload(null);
+                                        setVentaIdPendingPrint(null);
+                                        setPhoneNumber('');
+                                        doPrintAndRedirect(result.venta_id);
+                                    } catch (err) {
+                                        if (err instanceof Error) setPhoneError(err.message); else setPhoneError('No se pudo registrar la venta.');
+                                    }
+                                }}
+                                className="px-4 py-2 rounded-md bg-orange-500 text-white hover:bg-orange-600"
+                            >
+                                Imprimir sin registrar
                             </button>
                             <button
                                 type="button"
@@ -558,17 +630,28 @@ export default function RegistrarPedidoPuertaPage() {
                                     try {
                                         setSavingPhone(true);
                                         const { cliente, existed } = await crearClienteRapidoConTelefono(tel);
-                                        const ventaId = ventaIdPendingPrint ?? lastVentaId ?? undefined;
-                                        if (ventaId !== undefined) {
-                                            const fechaStr = new Date(formData.fechaEmision || new Date()).toISOString();
-                                            const montoStr = `$ ${displayTotal.toFixed(2)}`;
-                                            const texto = `Cliente por teléfono ${tel} ${existed ? '(existente)' : '(creado)'} ID ${cliente?.id ?? 'N/A'} | Monto ${montoStr} | Fecha ${fechaStr}`;
-                                            await agregarObservacionAVenta(ventaId, texto);
-                                        }
+                                        const fechaStr = new Date(formData.fechaEmision || new Date()).toISOString();
+                                        const montoStr = `$ ${displayTotal.toFixed(2)}`;
+                                        const texto = `Cliente por teléfono ${tel} ${existed ? '(existente)' : '(creado)'} ID ${cliente?.id ?? 'N/A'} | Monto ${montoStr} | Fecha ${fechaStr}`;
+                                        await agregarObservacionACliente(cliente, texto);
+                                        // Registrar venta y luego imprimir
+                                        const token = localStorage.getItem("token");
+                                        if (!token) { throw new Error('Sesión inválida.'); }
+                                        const payload = pendingSalePayload ? pendingSalePayload : null;
+                                        if (!payload) { throw new Error('No hay venta pendiente para registrar.'); }
+                                        const res = await fetch("https://quimex.sistemataup.online/ventas/registrar", {
+                                            method: "POST",
+                                            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+                                            body: JSON.stringify(payload)
+                                        });
+                                        const result = await res.json();
+                                        if (!res.ok) { throw new Error(result?.error || result?.message || 'Error al registrar venta.'); }
+                                        setLastVentaId(result.venta_id);
                                         setShowPhoneModal(false);
+                                        setPendingSalePayload(null);
                                         setVentaIdPendingPrint(null);
                                         setPhoneNumber('');
-                                        if (ventaId !== undefined) doPrintAndRedirect(ventaId);
+                                        doPrintAndRedirect(result.venta_id);
                                     } catch (error) {
                                         if (error instanceof Error) setPhoneError(error.message); else setPhoneError('No se pudo registrar el teléfono.');
                                     } finally {
