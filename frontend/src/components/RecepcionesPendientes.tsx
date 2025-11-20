@@ -57,9 +57,8 @@ const RecepcionesPendientes: React.FC<RecepcionPendienteProps> = ({ items, onReg
           // Limitar cantidad recibida a rango válido [0, cantidadSolicitada]
           if (campo === 'cantidadRecibida') {
             const original = items[idx];
-            const max = Number(original.cantidadSolicitada) || 0;
             const numVal = typeof valor === 'number' ? valor : Number(valor);
-            const clamped = Math.max(0, Math.min(numVal, max));
+            const clamped = Math.max(0, numVal);
             return { ...r, cantidadRecibida: clamped };
           }
           return { ...r, [campo]: valor };
@@ -79,6 +78,8 @@ const RecepcionesPendientes: React.FC<RecepcionPendienteProps> = ({ items, onReg
           nuevaIncidencia = 'Falta';
         } else if (cantidadRecibidaNum === cantidadSolicitada) {
           nuevaIncidencia = 'OK';
+        } else if (cantidadRecibidaNum > cantidadSolicitada) {
+          nuevaIncidencia = 'Sobra';
         }
         itemModificado.incidencia = nuevaIncidencia;
       }

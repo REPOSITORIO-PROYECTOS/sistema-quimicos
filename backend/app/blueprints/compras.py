@@ -523,7 +523,7 @@ def rechazar_orden_compra(current_user, orden_id):
 # --- Endpoint: Recibir Mercadería de Orden de Compra ---
 @compras_bp.route('/recibir/<int:orden_id>', methods=['PUT'])
 @token_required
-@roles_required(ROLES['ADMIN'])
+@roles_required(ROLES['ADMIN'], ROLES['ALMACEN'])
 def recibir_orden_compra(current_user, orden_id):
     logger.info("Recibida solicitud PUT en /ordenes_compra/%s/recibir", orden_id)
     rol_usuario = request.headers.get("X-User-Role", "almacen")
