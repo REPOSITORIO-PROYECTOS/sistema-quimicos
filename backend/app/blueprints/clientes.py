@@ -46,7 +46,9 @@ def cliente_a_diccionario(cliente):
 
 # CREATE - Crear un nuevo cliente
 @clientes_bp.route('/crear', methods=['POST'])
-def crear_cliente():
+@token_required
+@roles_required(ROLES['ADMIN'], ROLES['VENTAS_PEDIDOS'], ROLES['VENTAS_LOCAL'])
+def crear_cliente(current_user):
     """Crea un nuevo cliente."""
     data = request.get_json()
 
@@ -156,7 +158,7 @@ def obtener_cliente(cliente_id):
 # UPDATE - Actualizar un cliente existente por ID
 @clientes_bp.route('/actualizar/<int:cliente_id>', methods=['PUT', 'PATCH']) 
 @token_required
-@roles_required(ROLES['ADMIN'], ROLES['CONTABLE'], ROLES['VENTAS_PEDIDOS'])
+@roles_required(ROLES['ADMIN'], ROLES['CONTABLE'], ROLES['VENTAS_PEDIDOS'],ROLES['VENTAS_LOCAL'] )
 def actualizar_cliente(current_user, cliente_id):
     """Actualiza un cliente existente."""
     cliente = Cliente.query.get_or_404(cliente_id)

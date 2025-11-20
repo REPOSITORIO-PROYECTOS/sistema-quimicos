@@ -1210,7 +1210,7 @@ def recalcular_montos_por_dolar(current_user):
 # --- Endpoint: CSV de Clientes Nuevos (Ventas Puerta) con conteo y compras ---
 @ventas_bp.route('/clientes_nuevos_puerta_csv', methods=['GET'])
 @token_required
-@roles_required(ROLES['ADMIN'], ROLES['VENTAS_PEDIDOS'], ROLES['VENTAS_LOCAL'])
+@roles_required(ROLES['ADMIN'], ROLES['VENTAS_PEDIDOS'])
 def clientes_nuevos_puerta_csv(current_user):
     """
     Genera un CSV con registros de compras detectados en observaciones,
