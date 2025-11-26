@@ -3,6 +3,7 @@
 import BotonVolver from '@/components/BotonVolver';
 import SolicitudIngresoPage from '@/components/solicitudIngresoPage';
 import { useState, useEffect } from 'react';
+import { useProductsContext } from '@/context/ProductsContext';
 
 type OrdenCompra = {
   id: number;
@@ -57,6 +58,9 @@ export default function ListaOrdenesCompra() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
+  // Resumen de primer ítem por orden (para mostrar producto y cantidad solicitada)
+  const [resumenItems, setResumenItems] = useState<Record<number, { productoId: number; codigo: string; cantidad: number }>>({});
+  const { productos: productosDelContexto } = useProductsContext();
 
   // Cuando cambia el filtro, volver siempre a la página 1
   useEffect(() => {
@@ -115,6 +119,44 @@ export default function ListaOrdenesCompra() {
     fetchOrdenes(page, filtroEstado);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, filtroEstado]);
+
+  // Cargar resumen del primer ítem (producto y cantidad) por orden mostrada
+  useEffect(() => {
+    const cargarResumen = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        if (!token) return;
+        const lista = (['Aprobado','Solicitado'].includes(filtroEstado) ? filtrarPorEstado(ordenes, filtroEstado) : ordenes);
+        const idsAConsultar = lista.map(o => o.id).filter(id => !(id in resumenItems));
+        if (idsAConsultar.length === 0) return;
+        const resultados = await Promise.all(idsAConsultar.map(async (ordenId) => {
+          try {
+            const resp = await fetch(`https://quimex.sistemataup.online/ordenes_compra/obtener/${ordenId}`, {
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
+            });
+            if (!resp.ok) return { id: ordenId, codigo: '', cantidad: 0 };
+            const data = await resp.json();
+            const item = Array.isArray(data.items) && data.items.length ? data.items[0] : null;
+            const codigo = item?.producto_codigo || '';
+            const cantidad = Number(item?.cantidad_solicitada || 0);
+            const productoId = Number(item?.producto_id || 0);
+            return { id: ordenId, codigo, cantidad, productoId };
+          } catch (e) {
+            console.error('Error obteniendo resumen de ítem para orden', ordenId, e);
+            return { id: ordenId, codigo: '', cantidad: 0, productoId: 0 };
+          }
+        }));
+        setResumenItems(prev => {
+          const next = { ...prev };
+          resultados.forEach(r => { next[r.id] = { productoId: r.productoId ?? 0, codigo: r.codigo, cantidad: r.cantidad }; });
+          return next;
+        });
+      } catch (e) {
+        console.error('Error cargando resumen de ítems:', e);
+      }
+    };
+    cargarResumen();
+  }, [ordenes, filtroEstado, resumenItems]);
 
   const handleFiltroChange = (nuevoFiltro: 'Aprobado' | 'Solicitado' | 'todos') => {
     setFiltroEstado(nuevoFiltro);
@@ -326,11 +368,13 @@ export default function ListaOrdenesCompra() {
         {!loading && !error && (
           <>
             <div className="overflow-x-auto">
-              <ul className="space-y-2 divide-y divide-gray-200 min-w-[600px]">
-                <li className="grid grid-cols-[1fr_2fr_2fr_2fr] gap-x-3 items-center bg-gray-100 p-3 rounded-t-md font-semibold text-sm text-gray-700 uppercase tracking-wider">
+              <ul className="space-y-2 divide-y divide-gray-200 min-w-[900px]">
+                <li className="grid grid-cols-[1fr_1.5fr_1fr_2fr_1fr_1fr] gap-x-3 items-center bg-gray-100 p-3 rounded-t-md font-semibold text-sm text-gray-700 uppercase tracking-wider">
                   <span>Nº Orden</span>
                   <span>Fecha Creación</span>
                   <span>Estado</span>
+                  <span>Producto (Principal)</span>
+                  <span>Cant. Solicitada</span>
                   <span className="text-center">Acciones</span>
                 </li>
 
@@ -347,7 +391,7 @@ export default function ListaOrdenesCompra() {
                   const puedeActuar = orden.estado === 'Solicitado' && !processingId;
 
                   return (
-                    <li key={orden.id} className="grid grid-cols-[1fr_2fr_2fr_2fr_2fr] gap-x-3 items-center bg-white hover:bg-gray-50 p-3 text-sm">
+                    <li key={orden.id} className="grid grid-cols-[1fr_1.5fr_1fr_2fr_1fr_1fr] gap-x-3 items-center bg-white hover:bg-gray-50 p-3 text-sm">
                       <span>{`Nº ${orden.id.toString().padStart(4, '0')}`}</span>
                       <span>{fechaFormateada}</span>
                       <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full 
@@ -357,10 +401,15 @@ export default function ListaOrdenesCompra() {
                           orden.estado === 'Con Deuda' ? 'bg-orange-100 text-orange-800' : 'bg-gray-100 text-gray-800'}`}>
                         {orden.estado}
                       </span>
-                      <span>
-                        {orden.importe_total_estimado ? `$${orden.importe_total_estimado} ${orden.moneda || ''}` : 'Sin monto'}
-                        {orden.condicion_iva ? ` (${orden.condicion_iva})` : ''}
-                      </span>
+                      <span>{
+                        (() => {
+                          const resumen = resumenItems[orden.id];
+                          const pid = resumen?.productoId;
+                          const nombre = productosDelContexto.find(p => String(p.id) === String(pid))?.nombre;
+                          return nombre || resumen?.codigo || '—';
+                        })()
+                      }</span>
+                      <span>{Number(resumenItems[orden.id]?.cantidad || 0).toLocaleString('es-AR', { maximumFractionDigits: 2 })}</span>
                       <div className="flex items-center justify-center gap-2">
                         <button
                           title="Ver/Procesar Orden"
