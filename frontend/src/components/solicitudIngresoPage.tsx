@@ -150,52 +150,69 @@ export default function SolicitudIngresoPage({ id }: any) {
         return '';
     }
   };
-  //eslint-disable-next-line
-  const enviarSolicitudAPI = async (solicitud: any) => {
+  // Tipos para payload de recepción
+  interface ItemRecibidoInput {
+    id_linea: number | string;
+    cantidad_recibida: number | string;
+    producto_codigo?: string;
+  }
+  interface SolicitudIngresoPayload {
+    proveedor_id: string | number;
+    cantidad: string | number;
+    precioUnitario: string | number;
+    importeTotal: string | number;
+    cuenta?: string;
+    iibb?: string;
+    iva?: string;
+    tc?: string;
+    nro_remito_proveedor?: string;
+    estado_recepcion?: string;
+    importeAbonado?: string | number;
+    formaPago?: string;
+    chequePerteneceA?: string;
+    tipo_caja?: string;
+    items_recibidos: ItemRecibidoInput[];
+  }
+  const enviarSolicitudAPI = async (solicitud: SolicitudIngresoPayload) => {
     try {
       problema = false;
       setErrorMensaje('');
-      const nuevoAbonoFloat = parseFloat(solicitud.importeAbonado) || 0;
+      const nuevoAbonoFloat = parseFloat(String(solicitud.importeAbonado ?? '')) || 0;
       
       const payload = {
         proveedor_id: Number(solicitud.proveedor_id),
         cantidad: Number(solicitud.cantidad),
-        precio_unitario: parseFloat(solicitud.precioUnitario),
-        importe_total: parseFloat(solicitud.importeTotal),
+        precio_unitario: parseFloat(String(solicitud.precioUnitario)),
+        importe_total: parseFloat(String(solicitud.importeTotal)),
         cuenta: solicitud.cuenta,
-  iibb: showIibb ? solicitud.iibb : '',
-  iva: showIva ? solicitud.iva : '',
-  tc: showTc ? solicitud.tc : '',
+        iibb: showIibb ? solicitud.iibb : '',
+        iva: showIva ? solicitud.iva : '',
+        tc: showTc ? solicitud.tc : '',
+        ajuste_tc: showTc ? true : (ajusteTC === 'True'),
         nro_remito_proveedor: solicitud.nro_remito_proveedor,
         estado_recepcion: solicitud.estado_recepcion,
         importe_abonado: nuevoAbonoFloat,
         forma_pago: solicitud.formaPago,
         cheque_perteneciente_a: solicitud.chequePerteneceA,
         tipo_caja: solicitud.tipo_caja,
-        //eslint-disable-next-line
-        items_recibidos: solicitud.items_recibidos.map((item: any) => ({
-            id_linea: Number(item.id_linea),
-            cantidad_recibida: parseFloat(item.cantidad_recibida) || 0,
-            producto_codigo: String(item.producto_codigo),
-            costo_unitario_ars: parseFloat(solicitud.precioUnitario) || 0
+        items_recibidos: solicitud.items_recibidos.map((item) => ({
+          id_linea: Number(item.id_linea),
+          cantidad_recibida: parseFloat(String(item.cantidad_recibida)) || 0,
         })),
       };
 
-      const userItem = sessionStorage.getItem("user");
-      const user = userItem ? JSON.parse(userItem) : null;
+      const userText = sessionStorage.getItem("user");
+      const user = userText ? (JSON.parse(userText) as { role?: string; usuario?: string; name?: string }) : null;
       if (!user || !token) throw new Error("Error de autenticación.");
       
       const response = await fetch(`https://quimex.sistemataup.online/ordenes_compra/recibir/${id}`, {
         method: 'PUT',
         headers: {
-            'Content-Type': 'application/json',
-            'X-User-Role' : user.role || 'USER',
-            'X-User-Name' : user.usuario || user.name,
-            "Authorization": `Bearer ${token}`
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify(payload),
       });
-
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data?.error || data?.mensaje || `Error ${response.status}`);
 
@@ -299,8 +316,9 @@ export default function SolicitudIngresoPage({ id }: any) {
       tipo, importeTotal,
       estado_recepcion,
       items_recibidos: [{
-         "id_linea": idLineaOCOriginal, "cantidad_recibida": 0,
-         "costo_unitario_ars": 0, "notas_item": "", "producto_codigo": codigo,
+         "id_linea": idLineaOCOriginal,
+         "cantidad_recibida": Number(cantidad_recepcionada || '0'),
+         "producto_codigo": codigo,
       }],
       ajusteTC, importeAbonado, formaPago, chequePerteneceA,
       tipo_caja: tipoCaja,

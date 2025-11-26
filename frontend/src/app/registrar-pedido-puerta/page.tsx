@@ -291,7 +291,7 @@ export default function RegistrarPedidoPuertaPage() {
         };
         try {
             const totalDisplay = displayTotal;
-            if (totalDisplay > 20000) {
+            if (totalDisplay > 15000) {
                 // No registrar aún: mostrar modal y guardar payload pendiente
                 setPendingSalePayload(dataPayload);
                 setShowPhoneModal(true);
@@ -384,7 +384,7 @@ export default function RegistrarPedidoPuertaPage() {
 
     const handleImprimirPresupuesto = (ventaId: number) => {
         const total = displayTotal;
-        if (total > 20000) {
+        if (total > 15000) {
             // Con el nuevo flujo, el modal ya se mostró antes de registrar.
             // Si igualmente llegáramos aquí (por totales que cambian), imprimimos directo.
             doPrintAndRedirect(ventaId);
@@ -545,13 +545,13 @@ export default function RegistrarPedidoPuertaPage() {
                 </div>
             </div>
 
-            {/* Modal para capturar teléfono del cliente cuando el total supera $250.000 */}
+            {/* Modal para capturar teléfono del cliente cuando el total supera $15.000 */}
             {showPhoneModal && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 print:hidden">
                     <div className="bg-white p-6 rounded-lg shadow-2xl w-full max-w-md border border-gray-200">
                         <h3 className="text-xl font-semibold text-gray-800 mb-3">Registrar teléfono del cliente</h3>
                         <p className="text-sm text-gray-600 mb-4">
-                            El importe de la boleta supera $20.000. Antes de imprimir, ingrese el número de teléfono para registrarlo como cliente.
+                            El importe de la boleta supera $15.000. Antes de imprimir, ingrese el número de teléfono para registrarlo como cliente.
                         </p>
                         {phoneError && (
                             <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-3 mb-3 rounded-r-md">

@@ -22,7 +22,8 @@ export default function RegistrarIngreso() {
   const [fechaLimite, setFechaLimite] = useState('');
   const [producto, setProducto] = useState('');
   const [cantidad, setCantidad] = useState('');
-  // Se eliminaron los estados de proveedor, precioSinIva, cuenta, iibb
+  // Estados para cálculo de deuda/importe
+  const [precioEstimado, setPrecioEstimado] = useState('');
   const [importeTotal, setImporteTotal] = useState('');
   const [importeAbonado, setImporteAbonado] = useState('');
   const [chequePerteneciente, setChequePerteneciente] = useState('');
@@ -36,6 +37,7 @@ export default function RegistrarIngreso() {
   const [errorApi, setErrorApi] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const token = typeof window !== 'undefined' ? localStorage.getItem("token") : null;
+  const LAST_PAYLOAD_KEY = 'ultimoPedidoCompraPayload';
 
   useEffect(() => {
     const obtenerFechaActual = () => {
@@ -48,16 +50,47 @@ export default function RegistrarIngreso() {
     setFecha(obtenerFechaActual());
   }, []);
 
+  // Actualizar importe total estimado cuando cambia cantidad o precio
+  useEffect(() => {
+    const c = Number(String(cantidad).replace(',', '.'));
+    const p = Number(String(precioEstimado).replace(',', '.'));
+    if (!isNaN(c) && !isNaN(p) && c > 0 && p >= 0) {
+      setImporteTotal((c * p).toFixed(2));
+    } else {
+      setImporteTotal('');
+    }
+  }, [cantidad, precioEstimado]);
+
   const handleAgregar = async () => {
-    // Se elimina proveedor_id de la validación
-    if (!fecha || !producto || !cantidad) {
-        setErrorApi("Por favor, completa los campos obligatorios: Fecha, Producto, Cantidad.");
+    // Validaciones de campos obligatorios
+    if (!fecha || !producto || !cantidad || !precioEstimado) {
+        setErrorApi("Completa: Fecha, Producto, Cantidad y Precio Estimado.");
         return;
     }
 
     setIsLoading(true);
     setErrorApi(null);
     console.log("Agregando pedido...");
+
+    // Validaciones numéricas
+    const cantidadNum = Number(String(cantidad).replace(',', '.'));
+    const precioNum = Number(String(precioEstimado).replace(',', '.'));
+    const importeAbonadoNum = Number(String(importeAbonado).replace(',', '.'));
+    if (isNaN(cantidadNum) || cantidadNum <= 0) {
+      setIsLoading(false);
+      setErrorApi("La cantidad debe ser un número positivo.");
+      return;
+    }
+    if (isNaN(precioNum) || precioNum < 0) {
+      setIsLoading(false);
+      setErrorApi("El precio estimado no puede ser negativo.");
+      return;
+    }
+    if (!isNaN(importeAbonadoNum) && importeTotal && importeAbonadoNum > Number(importeTotal)) {
+      setIsLoading(false);
+      setErrorApi("El importe abonado no puede superar el total estimado.");
+      return;
+    }
 
     // Objeto local para la lista de la UI, ya no contiene los campos eliminados
     const nuevoPedido: IPedido = {
@@ -81,16 +114,16 @@ export default function RegistrarIngreso() {
       forma_pago: "",
       observaciones_solicitud: observaciones_solicitud,
       items: [ {
-          codigo_interno: parseInt(producto),
-          cantidad: parseInt(cantidad),
-          precio_unitario_estimado: 0 // Se envía 0 como valor por defecto
+          codigo_interno: Number(producto),
+          cantidad: cantidadNum,
+          precio_unitario_estimado: precioNum
       } ],
-      fecha_pedido: fecha,
       proveedor_id: 1, // Se envía un ID de proveedor fijo (Ej: 1 para "Varios" o "Interno"). ¡Ajustar si es necesario!
-      iibb: '', // Se envía un string vacío
       fecha_limite: fechaLimite,
     };
     console.log("Payload enviado a la API:", ventaPayload);
+    // Guardar último intento para recuperación
+    try { sessionStorage.setItem(LAST_PAYLOAD_KEY, JSON.stringify({ payload: ventaPayload, ts: Date.now() })); } catch {}
 
     try {
       const response = await fetch('https://quimex.sistemataup.online/ordenes_compra/crear', {
@@ -112,6 +145,12 @@ export default function RegistrarIngreso() {
             const errorData = await response.json();
             console.error('Error en la respuesta:', errorData);
             errorMsg = errorData?.mensaje || errorData?.detail || errorData?.error || errorMsg;
+            if (String(errorMsg).includes("Proveedor") && String(errorMsg).includes("no encontrado")) {
+              errorMsg = `${errorMsg}. Verifica el ID de proveedor predeterminado (actual: 1).`;
+            }
+            if (String(errorMsg).toLowerCase().includes("precio") || String(errorMsg).toLowerCase().includes("cantidad")) {
+              errorMsg += " Revisa la cantidad y el precio estimado.";
+            }
         } catch (jsonError) {
             console.error("No se pudo parsear JSON del error:", jsonError);
         }
@@ -127,10 +166,12 @@ export default function RegistrarIngreso() {
       // Se limpia el estado de los campos restantes
       setProducto('');
       setCantidad('');
+      setPrecioEstimado('');
       setImporteTotal('');
       setImporteAbonado('');
       setChequePerteneciente('');
       setFechaLimite('');
+      try { sessionStorage.removeItem(LAST_PAYLOAD_KEY); } catch {}
       irAccionesPuerta();
       // eslint-disable-next-line
     } catch (error: any) {
@@ -163,6 +204,67 @@ export default function RegistrarIngreso() {
             <div className="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
                 <strong className="font-bold">Error: </strong>
                 <span className="block sm:inline">{errorApi}</span>
+                <div className="mt-2 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const last = sessionStorage.getItem(LAST_PAYLOAD_KEY);
+                      if (!last) {
+                        setErrorApi("No hay intento previo para reintentar.");
+                        return;
+                      }
+                      try {
+                        const parsed = JSON.parse(last);
+                        (async () => {
+                          setIsLoading(true);
+                          try {
+                            const userText = sessionStorage.getItem("user");
+                            const user = userText ? (JSON.parse(userText) as { role?: string; id?: number | string }) : null;
+                            const response = await fetch('https://quimex.sistemataup.online/ordenes_compra/crear', {
+                              method: 'POST',
+                              headers: {
+                                'Content-Type': 'application/json',
+                                'X-User-Role': user?.role ?? '',
+                                'X-User-Id': String(user?.id ?? ''),
+                                "Authorization": `Bearer ${token}`,
+                              },
+                              body: JSON.stringify(parsed.payload),
+                            });
+                            const data = await response.json().catch(()=>({}));
+                            if (!response.ok) {
+                              throw new Error(data?.mensaje || data?.detail || data?.error || `Error ${response.status}`);
+                            }
+                            alert('Pedido agregado con éxito!');
+                            setErrorApi(null);
+                            try { sessionStorage.removeItem(LAST_PAYLOAD_KEY); } catch {}
+                            irAccionesPuerta();
+                          } catch (e: unknown) {
+                            setErrorApi(e instanceof Error ? e.message : 'Error al reintentar.');
+                          } finally {
+                            setIsLoading(false);
+                          }
+                        })();
+                      } catch {
+                        setErrorApi("No se pudo recuperar el intento previo.");
+                      }
+                    }}
+                    className="bg-indigo-500 text-white px-3 py-1 rounded hover:bg-indigo-600"
+                  >Reintentar</button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setProducto('');
+                      setCantidad('');
+                      setPrecioEstimado('');
+                      setImporteTotal('');
+                      setImporteAbonado('');
+                      setChequePerteneciente('');
+                      setFechaLimite('');
+                      setErrorApi(null);
+                    }}
+                    className="bg-gray-300 text-gray-800 px-3 py-1 rounded hover:bg-gray-400"
+                  >Restablecer formulario</button>
+                </div>
             </div>
         )}
 
@@ -225,7 +327,45 @@ export default function RegistrarIngreso() {
             type="number"
             required
             min="0"
+            step="0.01"
             placeholder="Ej: 10"
+            className={baseInputClass}
+          />
+        </div>
+        <div className="mb-4">
+          <label htmlFor="precioEstimado" className={labelClass}>Precio Unitario Estimado *</label>
+          <input
+            id="precioEstimado"
+            value={precioEstimado}
+            onChange={(e) => setPrecioEstimado(e.target.value)}
+            type="number"
+            required
+            min="0"
+            step="0.01"
+            placeholder="Ej: 150.50"
+            className={baseInputClass}
+          />
+        </div>
+        <div className="mb-4">
+          <label htmlFor="importeTotal" className={labelClass}>Importe Total (estimado)</label>
+          <input
+            id="importeTotal"
+            value={importeTotal}
+            readOnly
+            type="text"
+            className={`${baseInputClass} ${disabledInputClass}`}
+          />
+        </div>
+        <div className="mb-4">
+          <label htmlFor="importeAbonado" className={labelClass}>Importe Abonado (opcional)</label>
+          <input
+            id="importeAbonado"
+            value={importeAbonado}
+            onChange={(e) => setImporteAbonado(e.target.value)}
+            type="number"
+            min="0"
+            step="0.01"
+            placeholder="Ej: 0.00"
             className={baseInputClass}
           />
         </div>

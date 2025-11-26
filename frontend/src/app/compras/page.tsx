@@ -49,7 +49,7 @@ export default function AccionesPedidos() {
           </button>
         )}
 
-        {!esAlmacen && (
+        {esAdmin && (
           <button
             onClick={irAVerPendientesAprobacion}
             className="flex items-center justify-center gap-3 px-6 py-4 bg-white text-[#2c239d] rounded-lg shadow hover:scale-105 transition font-bold border-2 border-[#2c239d]"
