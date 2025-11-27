@@ -7,7 +7,8 @@ export type Producto = {
   codigo: string;
   nombre: string;
   familia: string;
-  unidad_medida: string;
+  unidad_venta?: string;
+  unidad_medida?: string;
   costo_unitario: number;
   coeficiente: number;
 };

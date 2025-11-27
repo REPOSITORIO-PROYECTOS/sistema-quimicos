@@ -117,7 +117,8 @@ def formatear_orden_por_rol(orden_db, rol="almacen"):
                 "cantidad_recibida": float(item_db.cantidad_recibida) if item_db.cantidad_recibida is not None else None,
                 "notas_item_recepcion": item_db.notas_item_recepcion,
                 "precio_unitario_estimado": float(item_db.precio_unitario_estimado) if item_db.precio_unitario_estimado is not None else None,
-                "importe_linea_estimado": float(item_db.importe_linea_estimado) if item_db.importe_linea_estimado is not None else None
+                "importe_linea_estimado": float(item_db.importe_linea_estimado) if item_db.importe_linea_estimado is not None else None,
+                "unidad_medida": item_db.unidad_medida
             }
             items_list.append(item_dict)
     orden_dict["items"] = items_list
@@ -171,6 +172,7 @@ def crear_orden_compra(current_user):
             cantidad_str = str(item_data.get("cantidad", "0")).replace(',', '.')
             # Precio estimado opcional que podría venir del front o calcularse
             precio_estimado_str = str(item_data.get("precio_unitario_estimado", "0")).replace(',', '.')
+            unidad_medida = item_data.get("unidad_medida")
 
             if not codigo_interno_prod:
                 return jsonify({"error": f"Falta 'codigo_interno' en item #{idx+1}"}), 400
@@ -197,7 +199,8 @@ def crear_orden_compra(current_user):
                 producto_id=producto.id,
                 cantidad_solicitada=cantidad,
                 precio_unitario_estimado=precio_estimado,
-                importe_linea_estimado=importe_linea_estimado
+                importe_linea_estimado=importe_linea_estimado,
+                unidad_medida=unidad_medida
                 # cantidad_recibida se inicializa en None/0 por defecto en el modelo
             )
             detalles_db.append(detalle)

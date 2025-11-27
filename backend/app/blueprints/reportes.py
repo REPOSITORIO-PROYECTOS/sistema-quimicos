@@ -221,6 +221,14 @@ def reporte_movimientos_excel_limitado(current_user):
         for row_idx_c, compra in enumerate(compras_periodo, 2):
             monto_total = compra.importe_total_estimado or Decimal("0.0")
             monto_pagado = compra.importe_abonado or Decimal("0.0")
+            try:
+                # Evitar mostrar pagos superiores al total y valores negativos
+                if monto_pagado < 0:
+                    monto_pagado = Decimal("0.0")
+                if monto_total > 0 and monto_pagado > monto_total:
+                    monto_pagado = monto_total
+            except Exception:
+                pass
             estado_pago = "Pagada" if (monto_total - monto_pagado <= 0 and monto_total > 0) else ("Parcial" if monto_pagado > 0 else "Pendiente")
             ws_compras.cell(row=row_idx_c, column=1, value=compra.nro_solicitud_interno or compra.id)
             ws_compras.cell(row=row_idx_c, column=2, value=compra.fecha_creacion.strftime('%Y-%m-%d %H:%M'))

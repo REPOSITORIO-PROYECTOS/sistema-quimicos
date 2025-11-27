@@ -138,7 +138,7 @@ export default function ListaOrdenesCompra() {
             const data = await resp.json();
             const item = Array.isArray(data.items) && data.items.length ? data.items[0] : null;
             const codigo = item?.producto_codigo || '';
-            const cantidad = Number(item?.cantidad_solicitada || 0);
+            const cantidad = Number(item?.cantidad_solicitada ?? item?.cantidad ?? 0);
             const productoId = Number(item?.producto_id || 0);
             return { id: ordenId, codigo, cantidad, productoId };
           } catch (e) {

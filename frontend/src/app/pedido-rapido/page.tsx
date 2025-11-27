@@ -14,6 +14,7 @@ export default function PedidoRapidoAdmin() {
   const [productoId, setProductoId] = useState<string>("0");
   const [cantidad, setCantidad] = useState<string>("");
   const [precioUnitario, setPrecioUnitario] = useState<string>("");
+  const [unidadMedida, setUnidadMedida] = useState<string>("");
   const [cuenta, setCuenta] = useState<string>("");
   const [observaciones, setObservaciones] = useState<string>("");
   const [iibb, setIibb] = useState<string>("");
@@ -99,6 +100,17 @@ export default function PedidoRapidoAdmin() {
     fetchTC();
   }, []);
 
+  useEffect(() => {
+    try {
+      if (!productoId || productoId === '0') return;
+      const prod = productos.find(p => String(p.id) === String(productoId));
+      const uv = (prod?.unidad_venta || prod?.unidad_medida || '').toUpperCase();
+      if (uv === 'LT' || uv === 'LITROS') setUnidadMedida('Litros');
+      else if (uv === 'KG' || uv === 'KILOS') setUnidadMedida('Kilos');
+      else setUnidadMedida('Unidades');
+    } catch {}
+  }, [productoId, productos]);
+
   const esAdmin = useMemo(() => {
     const userItem = typeof window !== 'undefined' ? sessionStorage.getItem('user') : null;
     const user = userItem ? JSON.parse(userItem) : null;
@@ -179,6 +191,7 @@ export default function PedidoRapidoAdmin() {
             codigo_interno: Number(productoId),
             cantidad: Number(cantidad),
             precio_unitario_estimado: parseFloat(precioUnitario) || 0,
+            unidad_medida: unidadMedida || 'Unidades',
           },
         ],
         fecha_pedido: new Date().toISOString().split('T')[0],
@@ -314,6 +327,15 @@ export default function PedidoRapidoAdmin() {
           <div>
             <label htmlFor="cantidad" className={label}>Cantidad</label>
             <input id="cantidad" type="number" min={0} value={cantidad} onChange={(e) => setCantidad(e.target.value)} className={baseInput} placeholder="Ej: 10" />
+          </div>
+          <div>
+            <label htmlFor="unidadMedida" className={label}>Unidad de Medida</label>
+            <select id="unidadMedida" value={unidadMedida} onChange={(e) => setUnidadMedida(e.target.value)} className={baseInput}>
+              <option value="">Seleccionar</option>
+              <option value="Litros">Litros</option>
+              <option value="Kilos">Kilos</option>
+              <option value="Unidades">Unidades</option>
+            </select>
           </div>
           <div>
             <label htmlFor="precioUnitario" className={label}>Precio Unitario</label>

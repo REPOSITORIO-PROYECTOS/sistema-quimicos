@@ -53,9 +53,9 @@ export default function SolicitudIngresoPage({ id }: any) {
       if (!response.ok) return;
       const dataProd = await response.json();
       const unidad = dataProd.unidad_venta;
-      if (unidad === 'LT') setTipo('Litro');
-      else if (unidad === 'KG') setTipo('Kilo');
-      else setTipo('Unidad');
+      if (unidad === 'LT') setTipo('Litros');
+      else if (unidad === 'KG') setTipo('Kilos');
+      else setTipo('Unidades');
     } catch (err) {
       console.error("Error cargando tipo de producto:", err);
     }
@@ -96,7 +96,9 @@ export default function SolicitudIngresoPage({ id }: any) {
       setImporteAbonado('');
       setFormaPago(data.forma_pago || 'Efectivo');
       
-      if (itemPrincipal.producto_id) {
+      if (itemPrincipal.unidad_medida) {
+        setTipo(String(itemPrincipal.unidad_medida));
+      } else if (itemPrincipal.producto_id) {
         await cargarCamposProducto(itemPrincipal.producto_id);
       }
       

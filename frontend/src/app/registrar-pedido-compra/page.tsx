@@ -27,11 +27,13 @@ export default function RegistrarIngreso() {
   const [importeTotal, setImporteTotal] = useState('');
   const [importeAbonado, setImporteAbonado] = useState('');
   const [chequePerteneciente, setChequePerteneciente] = useState('');
+  const [unidadMedida, setUnidadMedida] = useState('');
   const irAccionesPuerta = () => router.push('/compras');
   const { productos, loading: productsLoading, error: productsError } = useProductsContext();
   // Se eliminó el contexto de proveedores
   const router = useRouter();
   const [observaciones_solicitud, setObservacionesSolicitud] = useState('');
+  const [esAlmacen, setEsAlmacen] = useState(false);
   
   const [pedidos, setPedidos] = useState<IPedido[]>([]);
   const [errorApi, setErrorApi] = useState<string | null>(null);
@@ -50,6 +52,25 @@ export default function RegistrarIngreso() {
     setFecha(obtenerFechaActual());
   }, []);
 
+  useEffect(() => {
+    try {
+      const userText = typeof window !== 'undefined' ? sessionStorage.getItem('user') : null;
+      const user = userText ? JSON.parse(userText) : null;
+      setEsAlmacen(Boolean(user && user.role && String(user.role).toUpperCase() === 'ALMACEN'));
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    try {
+      if (!producto) return;
+      const prod = productos.find(p => String(p.id) === String(producto));
+      const uv = (prod?.unidad_venta || prod?.unidad_medida || '').toUpperCase();
+      if (uv === 'LT' || uv === 'LITROS') setUnidadMedida('Litros');
+      else if (uv === 'KG' || uv === 'KILOS') setUnidadMedida('Kilos');
+      else setUnidadMedida('Unidades');
+    } catch {}
+  }, [producto, productos]);
+
   // Actualizar importe total estimado cuando cambia cantidad o precio
   useEffect(() => {
     const c = Number(String(cantidad).replace(',', '.'));
@@ -63,8 +84,8 @@ export default function RegistrarIngreso() {
 
   const handleAgregar = async () => {
     // Validaciones de campos obligatorios
-    if (!fecha || !producto || !cantidad || !precioEstimado) {
-        setErrorApi("Completa: Fecha, Producto, Cantidad y Precio Estimado.");
+    if (!fecha || !producto || !cantidad || (!esAlmacen && !precioEstimado)) {
+        setErrorApi(esAlmacen ? "Completa: Fecha, Producto y Cantidad." : "Completa: Fecha, Producto, Cantidad y Precio Estimado.");
         return;
     }
 
@@ -81,7 +102,7 @@ export default function RegistrarIngreso() {
       setErrorApi("La cantidad debe ser un número positivo.");
       return;
     }
-    if (isNaN(precioNum) || precioNum < 0) {
+    if (!esAlmacen && (isNaN(precioNum) || precioNum < 0)) {
       setIsLoading(false);
       setErrorApi("El precio estimado no puede ser negativo.");
       return;
@@ -116,7 +137,8 @@ export default function RegistrarIngreso() {
       items: [ {
           codigo_interno: Number(producto),
           cantidad: cantidadNum,
-          precio_unitario_estimado: precioNum
+          precio_unitario_estimado: esAlmacen ? 0 : precioNum,
+          unidad_medida: unidadMedida || 'Unidades'
       } ],
       proveedor_id: 1, // Se envía un ID de proveedor fijo (Ej: 1 para "Varios" o "Interno"). ¡Ajustar si es necesario!
       fecha_limite: fechaLimite,
@@ -333,55 +355,77 @@ export default function RegistrarIngreso() {
           />
         </div>
         <div className="mb-4">
-          <label htmlFor="precioEstimado" className={labelClass}>Precio Unitario Estimado *</label>
-          <input
-            id="precioEstimado"
-            value={precioEstimado}
-            onChange={(e) => setPrecioEstimado(e.target.value)}
-            type="number"
-            required
-            min="0"
-            step="0.01"
-            placeholder="Ej: 150.50"
+          <label htmlFor="unidadMedida" className={labelClass}>Unidad de Medida *</label>
+          <select
+            id="unidadMedida"
+            value={unidadMedida}
+            onChange={(e) => setUnidadMedida(e.target.value)}
             className={baseInputClass}
-          />
+          >
+            <option value="">Seleccionar</option>
+            <option value="Litros">Litros</option>
+            <option value="Kilos">Kilos</option>
+            <option value="Unidades">Unidades</option>
+          </select>
         </div>
-        <div className="mb-4">
-          <label htmlFor="importeTotal" className={labelClass}>Importe Total (estimado)</label>
-          <input
-            id="importeTotal"
-            value={importeTotal}
-            readOnly
-            type="text"
-            className={`${baseInputClass} ${disabledInputClass}`}
-          />
-        </div>
-        <div className="mb-4">
-          <label htmlFor="importeAbonado" className={labelClass}>Importe Abonado (opcional)</label>
-          <input
-            id="importeAbonado"
-            value={importeAbonado}
-            onChange={(e) => setImporteAbonado(e.target.value)}
-            type="number"
-            min="0"
-            step="0.01"
-            placeholder="Ej: 0.00"
-            className={baseInputClass}
-          />
-        </div>
+        {!esAlmacen && (
+          <div className="mb-4">
+            <label htmlFor="precioEstimado" className={labelClass}>Precio Unitario Estimado *</label>
+            <input
+              id="precioEstimado"
+              value={precioEstimado}
+              onChange={(e) => setPrecioEstimado(e.target.value)}
+              type="number"
+              required
+              min="0"
+              step="0.01"
+              placeholder="Ej: 150.50"
+              className={baseInputClass}
+            />
+          </div>
+        )}
+        {!esAlmacen && (
+          <div className="mb-4">
+            <label htmlFor="importeTotal" className={labelClass}>Importe Total (estimado)</label>
+            <input
+              id="importeTotal"
+              value={importeTotal}
+              readOnly
+              type="text"
+              className={`${baseInputClass} ${disabledInputClass}`}
+            />
+          </div>
+        )}
+        {!esAlmacen && (
+          <div className="mb-4">
+            <label htmlFor="importeAbonado" className={labelClass}>Importe Abonado (opcional)</label>
+            <input
+              id="importeAbonado"
+              value={importeAbonado}
+              onChange={(e) => setImporteAbonado(e.target.value)}
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="Ej: 0.00"
+              className={baseInputClass}
+            />
+          </div>
+        )}
         
 
-        <div className="mb-4">
-          <label htmlFor="clasificacion" className={labelClass}>Clasificacion *</label>
-          <input
-            id="clasificacion"
-            value={observaciones_solicitud}
-            onChange={(e) => setObservacionesSolicitud(e.target.value)}
-            type="text"
-            required
-            className={baseInputClass}
-          />
-        </div>
+        {!esAlmacen && (
+          <div className="mb-4">
+            <label htmlFor="clasificacion" className={labelClass}>Clasificacion *</label>
+            <input
+              id="clasificacion"
+              value={observaciones_solicitud}
+              onChange={(e) => setObservacionesSolicitud(e.target.value)}
+              type="text"
+              required
+              className={baseInputClass}
+            />
+          </div>
+        )}
 
 
         <div className="flex flex-col sm:flex-row gap-4 justify-center mt-6">

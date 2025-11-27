@@ -32,7 +32,7 @@ export default function OrdenesConDeudaPage() {
       const token = localStorage.getItem("token");
       if (!token) throw new Error("Usuario no autenticado.");
       
-      const response = await fetch(`https://quimex.sistemataup.online/ordenes_compra/obtener_todas?page=${currentPage}&per_page=20`, {
+      const response = await fetch(`https://quimex.sistemataup.online/ordenes_compra/obtener_todas?page=${currentPage}&per_page=20&estado=Con%20Deuda`, {
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }
       });
       if (!response.ok) {
@@ -42,17 +42,15 @@ export default function OrdenesConDeudaPage() {
       
       const data = await response.json();
       
-      // Filtrar las órdenes para mostrar solo las que están "Con Dueda"
-      const ordenesConDeuda = data.ordenes.filter((o: OrdenCompra) => o.estado === 'Con Deuda');
+      const ordenesConDeuda = data.ordenes || [];
 
-      // Si no encontramos órdenes con deuda en esta página y hay más páginas, buscamos en la siguiente
-      if (ordenesConDeuda.length === 0 && data.pagination.has_next) {
+      if (ordenesConDeuda.length === 0 && data.pagination?.has_next) {
         await fetchOrdenesConDeuda(currentPage + 1);
       } else {
         // Si encontramos órdenes o es la última página, actualizamos el estado
         setOrdenes(ordenesConDeuda);
         // Actualizamos la paginación para reflejar la página actual que estamos mostrando
-        setPagination({ ...data.pagination, current_page: currentPage });
+        setPagination(data.pagination ? { ...data.pagination, current_page: currentPage } : null);
         setPage(currentPage); // Sincronizamos el estado de la página principal
         setLoading(false);
       }

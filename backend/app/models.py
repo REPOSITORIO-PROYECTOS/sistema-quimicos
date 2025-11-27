@@ -255,6 +255,7 @@ class DetalleOrdenCompra(db.Model):
     cantidad_recibida = db.Column(db.Numeric(15, 4), nullable=True)
     costo_unitario_recepcion_ars = db.Column(db.Numeric(15, 4), nullable=True)
     notas_item_recepcion = db.Column(db.String(255), nullable=True)
+    unidad_medida = db.Column(db.String(20), nullable=True)
     orden = db.relationship('OrdenCompra', back_populates='items')
     producto = db.relationship('Producto', back_populates='detalles_orden_compra')
 
