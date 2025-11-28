@@ -3,7 +3,7 @@
 from flask import Blueprint, request, jsonify
 from .. import db # Importar db desde app/__init__.py
 # Importar TODOS los modelos necesarios desde app/models.py
-from ..models import OrdenCompra, DetalleOrdenCompra, Producto, Proveedor, TipoCambio
+from ..models import OrdenCompra, DetalleOrdenCompra, Producto, Proveedor, TipoCambio, AuditLog, MovimientoProveedor
 # Importar funciones de cálculo si son necesarias (aunque actualizar costo se llama via endpoint)
 # from .productos import actualizar_costo_desde_compra # Podría llamarse directo si se refactoriza
 from decimal import Decimal, InvalidOperation, DivisionByZero
@@ -14,6 +14,7 @@ import datetime
 import uuid # Sigue siendo útil si usas UUIDs para IDs de OrdenCompra
 import traceback
 import requests # Necesario para llamar al endpoint de actualizar costo
+import json
 
 #hola
 
@@ -242,8 +243,45 @@ def crear_orden_compra(current_user):
         # Asociar detalles a la orden
         nueva_orden.items = detalles_db # SQLAlchemy maneja la FK
 
+        # Campos adicionales de cabecera si vienen en el payload
+        nueva_orden.cuenta = data.get('cuenta', nueva_orden.cuenta)
+        nueva_orden.iibb = data.get('iibb', nueva_orden.iibb)
+        nueva_orden.tipo_caja = data.get('tipo_caja', nueva_orden.tipo_caja)
+        # Registrar pago inicial si viene
+        importe_abonado_payload = data.get('importe_abonado')
+        if importe_abonado_payload is not None:
+            try:
+                abonado = Decimal(str(importe_abonado_payload))
+                if abonado < 0:
+                    return jsonify({"error": "'importe_abonado' no puede ser negativo"}), 400
+                if abonado > importe_total_estimado_calc:
+                    return jsonify({"error": "'importe_abonado' no puede superar el total estimado"}), 400
+                nueva_orden.importe_abonado = abonado
+            except (InvalidOperation, TypeError):
+                return jsonify({"error": "'importe_abonado' inválido"}), 400
+
+        if nueva_orden.forma_pago == 'Cheque':
+            nueva_orden.cheque_perteneciente_a = data.get('cheque_perteneciente_a')
+        else:
+            nueva_orden.cheque_perteneciente_a = None
+
         db.session.add(nueva_orden)
         db.session.commit()
+
+        try:
+            log = AuditLog(
+                entidad='OrdenCompra',
+                entidad_id=nueva_orden.id,
+                accion='CREAR',
+                usuario=usuario_nombre
+            )
+            log.set_nuevos({
+                'orden': formatear_orden_por_rol(nueva_orden, rol="ADMIN")
+            })
+            db.session.add(log)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
 
         logger.info("Orden de compra creada: ID %s, Nro Interno %s", nueva_orden.id, nro_interno_solicitud)
         # Devolver la orden completa (formateada por rol, ADMIN ve todo al crear)
@@ -424,7 +462,14 @@ def aprobar_orden_compra(current_user, orden_id):
         # --- Actualizar datos de pago (si vienen) ---
         if 'importe_abonado' in data:
             try:
-                orden_db.importe_abonado = Decimal(str(data.get('importe_abonado')))
+                importe_abonado_val = Decimal(str(data.get('importe_abonado')))
+                if importe_abonado_val < 0:
+                    return jsonify({"error": "'importe_abonado' no puede ser negativo"}), 400
+                # Validar contra el total estimado (recalcular antes por si actualizamos items)
+                total_estimado = sum([(item.importe_linea_estimado or 0) for item in orden_db.items])
+                if total_estimado and importe_abonado_val > total_estimado:
+                    return jsonify({"error": "'importe_abonado' no puede superar el total estimado"}), 400
+                orden_db.importe_abonado = importe_abonado_val
             except (InvalidOperation, TypeError):
                 logger.warning("importe_abonado inválido en aprobación, se mantiene valor previo")
         orden_db.forma_pago = data.get('forma_pago', orden_db.forma_pago)
@@ -462,7 +507,35 @@ def aprobar_orden_compra(current_user, orden_id):
         orden_db.aprobado_por = usuario_aprobador
         # fecha_actualizacion se actualiza via onupdate
 
+        prev = formatear_orden_por_rol(orden_db, rol_usuario)
         db.session.commit()
+        try:
+            if orden_db.importe_abonado and orden_db.importe_abonado > 0:
+                mov_credito_aprob = MovimientoProveedor(
+                    proveedor_id=orden_db.proveedor_id,
+                    orden_id=orden_db.id,
+                    tipo='CREDITO',
+                    monto=orden_db.importe_abonado,
+                    descripcion=f"OC {orden_db.id} - Pago al aprobar",
+                    usuario=usuario_aprobador
+                )
+                db.session.add(mov_credito_aprob)
+                db.session.commit()
+        except Exception:
+            logger.warning("No se pudo registrar movimiento de proveedor (aprobación) para OC %s", orden_id)
+        try:
+            log = AuditLog(
+                entidad='OrdenCompra',
+                entidad_id=orden_id,
+                accion='APROBAR',
+                usuario=usuario_aprobador
+            )
+            log.set_previos(prev)
+            log.set_nuevos(formatear_orden_por_rol(orden_db, rol_usuario))
+            db.session.add(log)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
         logger.info("Orden %s aprobada por %s", orden_id, usuario_aprobador)
 
         return jsonify({
@@ -611,7 +684,51 @@ def recibir_orden_compra(current_user, orden_id):
         else:
             orden_db.cheque_perteneciente_a = None # Limpiar si no es cheque
         orden_db.tipo_caja = data.get('tipo_caja', orden_db.tipo_caja)
+        prev = formatear_orden_por_rol(orden_db, rol_usuario)
+        # 7. Registrar movimientos de proveedor (DEBITO una vez por OC, CREDITO por pagos)
+        try:
+            debito_existente = db.session.query(MovimientoProveedor).filter(
+                MovimientoProveedor.orden_id == orden_db.id,
+                MovimientoProveedor.tipo == 'DEBITO'
+            ).first()
+            if not debito_existente:
+                mov_debito = MovimientoProveedor(
+                    proveedor_id=orden_db.proveedor_id,
+                    orden_id=orden_db.id,
+                    tipo='DEBITO',
+                    monto=orden_db.importe_total_estimado or Decimal('0'),
+                    descripcion=f"OC {orden_db.id} - Deuda por recepción",
+                    usuario=usuario_receptor
+                )
+                db.session.add(mov_debito)
+            # Registrar crédito si se abonó
+            if nuevo_abono > 0:
+                mov_credito = MovimientoProveedor(
+                    proveedor_id=orden_db.proveedor_id,
+                    orden_id=orden_db.id,
+                    tipo='CREDITO',
+                    monto=nuevo_abono,
+                    descripcion=f"OC {orden_db.id} - Pago en recepción",
+                    usuario=usuario_receptor
+                )
+                db.session.add(mov_credito)
+        except Exception:
+            logger.warning("No se pudo registrar movimiento de proveedor para OC %s", orden_db.id)
+
         db.session.commit()
+        try:
+            log = AuditLog(
+                entidad='OrdenCompra',
+                entidad_id=orden_id,
+                accion='RECIBIR',
+                usuario=usuario_receptor
+            )
+            log.set_previos(prev)
+            log.set_nuevos(formatear_orden_por_rol(orden_db, rol_usuario))
+            db.session.add(log)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
         
         return jsonify({
             "status": "success",

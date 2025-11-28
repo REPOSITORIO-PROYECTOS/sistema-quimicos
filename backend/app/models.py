@@ -7,6 +7,7 @@ from sqlalchemy.orm import validates, relationship
 from datetime import datetime, timezone
 from decimal import Decimal
 from flask_login import UserMixin
+import json
 
 # Importa la instancia 'db' creada en app/__init__.py
 from . import db
@@ -258,6 +259,45 @@ class DetalleOrdenCompra(db.Model):
     unidad_medida = db.Column(db.String(20), nullable=True)
     orden = db.relationship('OrdenCompra', back_populates='items')
     producto = db.relationship('Producto', back_populates='detalles_orden_compra')
+
+# --- Modelo AuditLog ---
+class AuditLog(db.Model):
+    __tablename__ = 'audit_logs'
+    id = db.Column(db.Integer, primary_key=True)
+    entidad = db.Column(db.String(100), nullable=False)  # p.ej. 'OrdenCompra'
+    entidad_id = db.Column(db.Integer, nullable=False)
+    accion = db.Column(db.String(100), nullable=False)   # 'CREAR', 'APROBAR', 'RECIBIR'
+    usuario = db.Column(db.String(100), nullable=True)
+    fecha = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    datos_previos = db.Column(db.Text, nullable=True)
+    datos_nuevos = db.Column(db.Text, nullable=True)
+
+    def set_previos(self, data: dict):
+        try:
+            self.datos_previos = json.dumps(data, ensure_ascii=False)
+        except Exception:
+            self.datos_previos = str(data)
+
+    def set_nuevos(self, data: dict):
+        try:
+            self.datos_nuevos = json.dumps(data, ensure_ascii=False)
+        except Exception:
+            self.datos_nuevos = str(data)
+
+# --- Modelo MovimientoProveedor ---
+class MovimientoProveedor(db.Model):
+    __tablename__ = 'movimientos_proveedor'
+    id = db.Column(db.Integer, primary_key=True)
+    proveedor_id = db.Column(db.Integer, db.ForeignKey('proveedores.id'), nullable=False, index=True)
+    orden_id = db.Column(db.Integer, db.ForeignKey('ordenes_compra.id'), nullable=False, index=True)
+    tipo = db.Column(db.String(10), nullable=False)  # 'DEBITO' o 'CREDITO'
+    monto = db.Column(db.Numeric(15, 2), nullable=False)
+    fecha = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    descripcion = db.Column(db.String(255), nullable=True)
+    usuario = db.Column(db.String(100), nullable=True)
+
+    proveedor = db.relationship('Proveedor')
+    orden = db.relationship('OrdenCompra')
 
 class Cliente(db.Model):
     __tablename__ = 'clientes'

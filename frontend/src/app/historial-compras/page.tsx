@@ -8,6 +8,8 @@ type OrdenCompra = {
   id: number;
   fecha_creacion: string;
   estado: string;
+  importe_total_estimado?: number | string;
+  importe_abonado?: number | string;
 };
 
 type Pagination = {
@@ -43,7 +45,7 @@ export default function OrdenesRecibidasPage() {
       const data = await response.json();
       
       // Filtrar las órdenes para mostrar solo las que tienen estado "Recibido"
-      const ordenesRecibidas = data.ordenes.filter((o: OrdenCompra) => o.estado === 'Recibido');
+      const ordenesRecibidas = (data.ordenes || []).filter((o: OrdenCompra) => o.estado === 'Recibido');
 
       // Si no encontramos órdenes recibidas en esta página y hay más páginas, buscamos en la siguiente
       if (ordenesRecibidas.length === 0 && data.pagination.has_next) {
@@ -52,7 +54,7 @@ export default function OrdenesRecibidasPage() {
         // Si encontramos órdenes o es la última página, actualizamos el estado
         setOrdenes(ordenesRecibidas);
         // Actualizamos la paginación para reflejar la página actual que estamos mostrando
-        setPagination({ ...data.pagination, current_page: currentPage });
+        setPagination(data.pagination ? { ...data.pagination, current_page: currentPage } : null);
         setPage(currentPage); // Sincronizamos el estado de la página principal
         setLoading(false);
       }
@@ -90,11 +92,12 @@ export default function OrdenesRecibidasPage() {
           <>
             <div className="overflow-x-auto">
               <ul className="space-y-2 divide-y divide-gray-200 min-w-[600px]">
-                <li className="grid grid-cols-[1fr_2fr_2fr_1fr] gap-x-3 items-center bg-gray-100 p-3 rounded-t-md font-semibold text-sm text-gray-700 uppercase tracking-wider">
+                <li className="grid grid-cols-[1fr_1.5fr_1fr_1fr_1fr] gap-x-3 items-center bg-gray-100 p-3 rounded-t-md font-semibold text-sm text-gray-700 uppercase tracking-wider">
                   <span>Nº Orden</span>
                   <span>Fecha Creación</span>
                   <span>Estado</span>
-                  <span className="text-center">Acción</span>
+                  <span>Monto Total</span>
+                  <span className="text-center">Pagado</span>
                 </li>
 
                 {ordenes.length > 0 ? ordenes.map((orden) => {
@@ -106,12 +109,14 @@ export default function OrdenesRecibidasPage() {
                   } catch (e) { console.error("Error formateando fecha:", orden.fecha_creacion, e); }
 
                   return (
-                    <li key={orden.id} className="grid grid-cols-[1fr_2fr_2fr_1fr] gap-x-3 items-center bg-white hover:bg-gray-50 p-3 text-sm">
+                    <li key={orden.id} className="grid grid-cols-[1fr_1.5fr_1fr_1fr_1fr] gap-x-3 items-center bg-white hover:bg-gray-50 p-3 text-sm">
                       <span>{`Nº ${orden.id.toString().padStart(4, '0')}`}</span>
                       <span>{fechaFormateada}</span>
                       <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800`}>
                         {orden.estado}
                       </span>
+                      <span>{Number(orden.importe_total_estimado || 0).toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+                      <span className="text-center">{Number(orden.importe_abonado || 0).toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
                       <div className="flex items-center justify-center">
                         <button
                           title="Ver Detalles de la Orden"

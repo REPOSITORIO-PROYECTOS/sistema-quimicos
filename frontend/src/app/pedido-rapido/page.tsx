@@ -199,6 +199,9 @@ export default function PedidoRapidoAdmin() {
         iibb: showIibb ? iibb : '',
         fecha_limite: new Date().toISOString().split('T')[0],
         cuenta,
+        tipo_caja: tipoCaja,
+        importe_abonado: importeAbonadoCrear,
+        cheque_perteneciente_a: formaPago === 'Cheque' ? chequeEmisor : undefined,
       };
 
       const crearResp = await fetch('https://quimex.sistemataup.online/ordenes_compra/crear', {

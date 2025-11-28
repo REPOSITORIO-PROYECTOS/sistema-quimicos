@@ -124,6 +124,7 @@ def reporte_movimientos_excel_limitado(current_user):
         style_header(ws_ventas, headers_ventas)
 
         row_idx = 2
+        clientes_nuevos_rows = []
 
         for venta in ventas_periodo:
             tipo_venta = "Pedido" if venta.cliente_id is not None else "Puerta"
@@ -210,11 +211,36 @@ def reporte_movimientos_excel_limitado(current_user):
                 ingresos_efectivo += monto_final_real
             elif forma == 'transferencia':
                 ingresos_transferencia += monto_final_real
+
+            try:
+                if venta.cliente and venta.cliente.fecha_alta and (start_datetime <= venta.cliente.fecha_alta <= end_datetime):
+                    clientes_nuevos_rows.append({
+                        'cliente': venta.cliente.nombre_razon_social,
+                        'fecha_alta': venta.cliente.fecha_alta,
+                        'fecha_venta': fecha_ar.date(),
+                        'vendedor': venta.nombre_vendedor or "N/A",
+                        'importe': float(monto_final_real)
+                    })
+            except Exception:
+                pass
             else:
                 # Otros medios (cheque, cuenta corriente, factura) se contabilizan en 'ingresos_transferencia' para resumen
                 ingresos_transferencia += monto_final_real
 
         # === HOJA 2: COMPRAS DETALLADAS ===
+        ws_clientes = workbook.create_sheet("Clientes Nuevos")
+        headers_clientes = ["Cliente", "Fecha Alta", "Fecha Primera Venta", "Vendedor", "Importe Venta (ARS)"]
+        style_header(ws_clientes, headers_clientes)
+        for r_idx, row in enumerate(clientes_nuevos_rows, 2):
+            ws_clientes.cell(row=r_idx, column=1, value=row['cliente'])
+            fa = ws_clientes.cell(row=r_idx, column=2, value=row['fecha_alta'].date())
+            fa.number_format = 'DD-MM-YYYY'
+            fv = ws_clientes.cell(row=r_idx, column=3, value=row['fecha_venta'])
+            fv.number_format = 'DD-MM-YYYY'
+            ws_clientes.cell(row=r_idx, column=4, value=row['vendedor'])
+            imp = ws_clientes.cell(row=r_idx, column=5, value=row['importe'])
+            imp.number_format = '"$"#,##0.00'
+
         ws_compras = workbook.create_sheet("Compras Detalladas")
         headers_compras = ["N° Orden", "Fecha Creación", "Proveedor", "Estado Pago", "Monto Total (ARS)", "Monto Pagado (ARS)", "Deuda Pendiente (ARS)", "Forma de Pago"]
         style_header(ws_compras, headers_compras)
