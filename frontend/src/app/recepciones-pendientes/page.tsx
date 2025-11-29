@@ -48,7 +48,7 @@ export default function RecepcionesPendientesPage() {
           throw new Error(errData.message || "Error al traer órdenes.");
         }
         const data = await response.json();
-        setOrdenes(data.ordenes || []);
+        setOrdenes((data.ordenes || []).filter((o: OrdenCompra) => ['Aprobado','Con Deuda'].includes(String(o.estado))));
         // Mapear ítems por orden para mostrar en la lista
         const itemsMap: Record<number, {nombre: string, cantidad: number}[]> = {};
         (data.ordenes || []).forEach((orden: Record<string, unknown>) => {
@@ -276,7 +276,7 @@ export default function RecepcionesPendientesPage() {
                       {Array.isArray(itemsPorOrden[orden.id]) && itemsPorOrden[orden.id].length > 0 ? (
                         <ul className="list-disc ml-3">
                           {itemsPorOrden[orden.id].map((item, idx) => (
-                            <li key={idx}>{item.nombre}</li>
+                            <li key={idx}>{item.nombre} — Cantidad: {item.cantidad}</li>
                           ))}
                         </ul>
                       ) : (
