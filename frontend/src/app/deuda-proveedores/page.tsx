@@ -18,6 +18,7 @@ export default function DeudaProveedoresPage() {
   const [error, setError] = useState<string|null>(null);
   const [ordenes, setOrdenes] = useState<OrdenResumen[]>([]);
   const [itemsPorOrden, setItemsPorOrden] = useState<Record<number, ItemDetalle[]>>({});
+  const [proveedorPorOrden, setProveedorPorOrden] = useState<Record<number, string>>({});
   const [movimientos, setMovimientos] = useState<Movimiento[]>([]);
   const [filtroDesde, setFiltroDesde] = useState('');
   const [filtroHasta, setFiltroHasta] = useState('');
@@ -35,8 +36,11 @@ export default function DeudaProveedoresPage() {
       const rd = await fetch(`${API}/ordenes_compra/obtener/${oc.id}`, { headers: { Authorization: `Bearer ${token}` } });
       const dd = await rd.json();
       detalles[oc.id] = (dd.items || []).map((raw: ItemAPI) => ({ id_linea: typeof raw.id_linea === 'number' ? raw.id_linea : Number(raw.id_linea), producto_id: typeof raw.producto_id === 'number' ? raw.producto_id : Number(raw.producto_id), producto_nombre: raw.producto_nombre, cantidad_solicitada: typeof raw.cantidad_solicitada === 'number' ? raw.cantidad_solicitada : Number(raw.cantidad_solicitada || 0), precio_unitario_estimado: typeof raw.precio_unitario_estimado === 'number' ? raw.precio_unitario_estimado : Number(raw.precio_unitario_estimado || 0), importe_linea_estimado: typeof raw.importe_linea_estimado === 'number' ? raw.importe_linea_estimado : Number(raw.importe_linea_estimado || 0) }));
+      const provNombre = (dd.proveedor_nombre as string) || (dd.proveedor && typeof dd.proveedor.nombre === 'string' ? dd.proveedor.nombre : '') || '';
+      proveedorPorOrden[oc.id] = provNombre;
     }
     setItemsPorOrden(detalles);
+    setProveedorPorOrden({...proveedorPorOrden});
   };
 
   const fetchMovs = async () => {
@@ -67,7 +71,7 @@ export default function DeudaProveedoresPage() {
   }, [filtroDesde, filtroHasta]);
 
   const filasOrdenes = useMemo(() => {
-    const rows: { ocId:number; total:number; abonado:number; pendiente:number; ultimoPago?:string; fecha:string }[] = [];
+    const rows: { ocId:number; total:number; abonado:number; pendiente:number; ultimoPago?:string; fecha:string; proveedor:string; items: ItemDetalle[] }[] = [];
     for (const oc of ordenes) {
       const items = itemsPorOrden[oc.id] || [];
       const totalOC = Number(oc.importe_total_estimado||0) || items.reduce((acc,it)=> acc + (it.importe_linea_estimado|| (it.cantidad_solicitada*it.precio_unitario_estimado)), 0);
@@ -79,7 +83,7 @@ export default function DeudaProveedoresPage() {
       const okDesde = filtroDesde ? d >= new Date(filtroDesde) : true;
       const okHasta = filtroHasta ? d <= new Date(filtroHasta) : true;
       if (!(okDesde && okHasta)) continue;
-      rows.push({ ocId: oc.id, total: totalOC, abonado: abonadoOC, pendiente: pendienteOC, ultimoPago, fecha: d.toLocaleDateString('es-AR') });
+      rows.push({ ocId: oc.id, total: totalOC, abonado: abonadoOC, pendiente: pendienteOC, ultimoPago, fecha: d.toLocaleDateString('es-AR'), proveedor: proveedorPorOrden[oc.id] || String(oc.proveedor_id), items });
     }
     if (ordenarPor==='pendiente') rows.sort((a,b)=> b.pendiente - a.pendiente);
     if (ordenarPor==='orden') rows.sort((a,b)=> a.ocId - b.ocId);
@@ -140,11 +144,13 @@ export default function DeudaProveedoresPage() {
             <thead>
               <tr className="bg-gray-100">
                 <th className="px-3 py-2 text-left">Nº Orden</th>
+                <th className="px-3 py-2 text-left">Proveedor</th>
                 <th className="px-3 py-2 text-right">Monto Total</th>
                 <th className="px-3 py-2 text-right">Monto Abonado</th>
                 <th className="px-3 py-2 text-right">Monto Pendiente</th>
                 <th className="px-3 py-2 text-left">Último Pago</th>
                 <th className="px-3 py-2 text-left">Fecha</th>
+                <th className="px-3 py-2 text-left">Ítems Solicitados</th>
               </tr>
             </thead>
             <tbody>
@@ -158,15 +164,26 @@ export default function DeudaProveedoresPage() {
                   aria-label={`Ver detalle de OC ${String(r.ocId).padStart(4,'0')}`}
                 >
                   <td className="px-3 py-2">OC {String(r.ocId).padStart(4,'0')}</td>
+                  <td className="px-3 py-2">{r.proveedor || '-'}</td>
                   <td className="px-3 py-2 text-right">${r.total.toFixed(2)}</td>
                   <td className="px-3 py-2 text-right">${r.abonado.toFixed(2)}</td>
                   <td className={`px-3 py-2 text-right ${r.pendiente>0 ? 'text-red-700' : 'text-green-700'}`}>${r.pendiente.toFixed(2)}</td>
                   <td className="px-3 py-2">{r.ultimoPago || '-'}</td>
                   <td className="px-3 py-2">{r.fecha}</td>
+                  <td className="px-3 py-2">
+                    {r.items.length>0 ? (
+                      <ul className="list-disc ml-4">
+                        {r.items.slice(0,3).map(it=> (
+                          <li key={it.id_linea}>{it.producto_nombre || `ID ${it.producto_id}`} ({it.cantidad_solicitada})</li>
+                        ))}
+                        {r.items.length>3 && <li className="text-xs text-gray-500">+{r.items.length-3} más</li>}
+                      </ul>
+                    ) : (<span className="text-gray-400">Sin ítems</span>)}
+                  </td>
                 </tr>
               ))}
               {filasOrdenes.length===0 && (
-                <tr><td className="px-3 py-2" colSpan={6}>Sin órdenes en deuda para el período seleccionado.</td></tr>
+                <tr><td className="px-3 py-2" colSpan={7}>Sin órdenes en deuda para el período seleccionado.</td></tr>
               )}
             </tbody>
           </table>

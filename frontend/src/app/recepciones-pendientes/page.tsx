@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import RecepcionesPendientes from "@/components/RecepcionesPendientes";
 
 type OrdenCompra = {
@@ -317,6 +318,9 @@ export default function RecepcionesPendientesPage() {
         <h2 className="text-2xl md:text-3xl font-semibold mb-6 text-center text-blue-900">
           Recepciones Pendientes
         </h2>
+        <div className="flex justify-center mb-4">
+          <Link href="/compras" className="px-4 py-2 rounded bg-indigo-600 text-white font-semibold hover:bg-indigo-700">Volver a Compras</Link>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
           <div className="flex items-center gap-2">
             <label className="text-sm text-gray-700">Ordenar por</label>
@@ -369,7 +373,15 @@ export default function RecepcionesPendientesPage() {
                   <li key={orden.id} className="grid grid-cols-[1fr_2fr_2fr_2fr_3fr] gap-x-3 items-center bg-white hover:bg-gray-50 p-3 text-sm">
                     <span className="font-semibold">{orden.id.toString().padStart(4, '0')}</span>
                     <span>{new Date(orden.fecha_creacion).toLocaleDateString("es-AR")}</span>
-                    <span>{orden.proveedor_nombre || '-'}</span>
+                    <span className="flex items-center gap-2">
+                      <span>{orden.proveedor_nombre || '-'}</span>
+                      {orden.estado && (
+                        <span className="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-800">{String(orden.estado)}</span>
+                      )}
+                      {orden.estado_recepcion && (
+                        <span className="text-xs px-2 py-0.5 rounded bg-orange-100 text-orange-800">Recepción: {String(orden.estado_recepcion)}</span>
+                      )}
+                    </span>
                     <span>
                       {Array.isArray(itemsPorOrden[orden.id]) && itemsPorOrden[orden.id].length > 0 ? (
                         <ul className="list-disc ml-3">
