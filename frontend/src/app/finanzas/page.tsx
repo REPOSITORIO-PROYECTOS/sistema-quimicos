@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 type ResumenProveedor = { proveedor_id: number; proveedor_nombre: string; deuda: number; estado: 'VERDE'|'ROJO' };
 type Movimiento = { id:number; proveedor_id:number; orden_id:number|null; tipo:'DEBITO'|'CREDITO'; monto:number; fecha:string; descripcion?:string; usuario?:string };
@@ -18,7 +18,7 @@ export default function FinanzasDashboard() {
   const [hasta, setHasta] = useState<string>('');
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
 
-  const fetchDashboard = async () => {
+  const fetchDashboard = useCallback(async () => {
     if (!token) return;
     const res = await fetch(`${API_BASE}/finanzas/dashboard`, { headers: { Authorization: `Bearer ${token}` } });
     const data = await res.json();
@@ -27,8 +27,8 @@ export default function FinanzasDashboard() {
     setPagosTotal(data.pagos_total || 0);
     setPendientes(data.pendientes_destacados || []);
     setResumen(data.resumen_proveedores || []);
-  };
-  const fetchMovimientos = async () => {
+  }, [token]);
+  const fetchMovimientos = useCallback(async () => {
     if (!token) return;
     const params = new URLSearchParams();
     if (tipoFiltro) params.set('tipo', tipoFiltro);
@@ -37,10 +37,10 @@ export default function FinanzasDashboard() {
     const res = await fetch(`${API_BASE}/finanzas/movimientos?${params.toString()}`, { headers: { Authorization: `Bearer ${token}` } });
     const data = await res.json();
     setMovimientos(data.movimientos || []);
-  };
+  }, [token, tipoFiltro, desde, hasta]);
 
-  useEffect(() => { fetchDashboard(); }, [token]);
-  useEffect(() => { fetchMovimientos(); }, [token, tipoFiltro, desde, hasta]);
+  useEffect(() => { fetchDashboard(); }, [fetchDashboard]);
+  useEffect(() => { fetchMovimientos(); }, [fetchMovimientos]);
 
   return (
     <div className="min-h-screen bg-indigo-900 px-4 py-8">
@@ -139,4 +139,3 @@ export default function FinanzasDashboard() {
     </div>
   );
 }
-

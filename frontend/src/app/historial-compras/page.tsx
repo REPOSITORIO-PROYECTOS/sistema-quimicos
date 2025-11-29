@@ -2,7 +2,12 @@
 
 import BotonVolver from '@/components/BotonVolver';
 import SolicitudIngresoPage from '@/components/solicitudIngresoPage'; // Se usa para ver los detalles
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+
+type ItemOrden = {
+  producto_id: number;
+  producto_nombre?: string;
+};
 
 type OrdenCompra = {
   id: number;
@@ -10,6 +15,7 @@ type OrdenCompra = {
   estado: string;
   importe_total_estimado?: number | string;
   importe_abonado?: number | string;
+  items?: ItemOrden[];
 };
 
 type Pagination = {
@@ -28,8 +34,12 @@ export default function OrdenesRecibidasPage() {
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [idOrdenSeleccionada, setIdOrdenSeleccionada] = useState<number | null>(null);
+  const [estadoFiltro, setEstadoFiltro] = useState<string>('Todos');
+  const [estadosDisponibles, setEstadosDisponibles] = useState<string[]>(['Todos']);
+  const [filtroDesde, setFiltroDesde] = useState<string>('');
+  const [filtroHasta, setFiltroHasta] = useState<string>('');
 
-  const fetchOrdenesRecibidas = async (currentPage: number) => {
+  const fetchOrdenesRecibidas = useCallback(async (currentPage: number) => {
     try {
       const token = localStorage.getItem("token");
       if (!token) throw new Error("Usuario no autenticado.");
@@ -44,34 +54,42 @@ export default function OrdenesRecibidasPage() {
       
       const data = await response.json();
       
-      // Filtrar las órdenes para mostrar solo las que tienen estado "Recibido"
-      const ordenesRecibidas = (data.ordenes || []).filter((o: OrdenCompra) => o.estado === 'Recibido');
+      const baseOrdenes: OrdenCompra[] = (data.ordenes || []);
+      const uniqEstados = Array.from(new Set(baseOrdenes.map(o => String(o.estado))))
+        .filter(e => !!e && e.trim().length > 0);
+      setEstadosDisponibles(['Todos', ...uniqEstados]);
+      const porEstado = estadoFiltro === 'Todos' ? baseOrdenes : baseOrdenes.filter(o => String(o.estado) === estadoFiltro);
+      const porFecha = porEstado.filter(o => {
+        const d = new Date(o.fecha_creacion);
+        const okDesde = filtroDesde ? d >= new Date(filtroDesde) : true;
+        const okHasta = filtroHasta ? d <= new Date(filtroHasta) : true;
+        return okDesde && okHasta;
+      });
 
       // Si no encontramos órdenes recibidas en esta página y hay más páginas, buscamos en la siguiente
-      if (ordenesRecibidas.length === 0 && data.pagination.has_next) {
+      if (porFecha.length === 0 && data.pagination.has_next) {
         await fetchOrdenesRecibidas(currentPage + 1);
       } else {
         // Si encontramos órdenes o es la última página, actualizamos el estado
-        setOrdenes(ordenesRecibidas);
+        setOrdenes(porFecha);
         // Actualizamos la paginación para reflejar la página actual que estamos mostrando
         setPagination(data.pagination ? { ...data.pagination, current_page: currentPage } : null);
         setPage(currentPage); // Sincronizamos el estado de la página principal
         setLoading(false);
       }
-      // eslint-disable-next-line
-    } catch (err: any) {
-      setError(err.message || 'Error desconocido.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error desconocido.';
+      setError(msg);
       console.error("FetchOrdenesRecibidas Error:", err);
       setLoading(false);
     }
-  };
+  }, [estadoFiltro, filtroDesde, filtroHasta]);
 
   useEffect(() => {
     setLoading(true); // Iniciar la carga
     setError(null);
     fetchOrdenesRecibidas(page);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page]); // Se ejecuta solo cuando el usuario cambia de página manualmente
+  }, [page, fetchOrdenesRecibidas]);
 
   if (idOrdenSeleccionada) {
     return <SolicitudIngresoPage id={idOrdenSeleccionada} />;
@@ -81,9 +99,28 @@ export default function OrdenesRecibidasPage() {
     <div className="flex flex-col items-center justify-center min-h-screen bg-indigo-900 py-10 px-4">
       <div className="bg-white p-6 md:p-8 rounded-lg shadow-xl w-full max-w-4xl lg:max-w-5xl">
         <BotonVolver />
-        <h2 className="text-2xl md:text-3xl font-semibold mb-8 text-center text-indigo-800">
-          Órdenes de Compra Recibidas
-        </h2>
+      <h2 className="text-2xl md:text-3xl font-semibold mb-8 text-center text-indigo-800">
+        Órdenes de Compra Recibidas
+      </h2>
+
+        <div className="mb-4 flex flex-wrap items-end justify-end gap-3">
+          <div>
+            <label className="text-sm text-gray-700">Desde</label>
+            <input type="date" value={filtroDesde} onChange={(e)=> setFiltroDesde(e.target.value)} className="ml-2 px-3 py-2 border rounded"/>
+          </div>
+          <div>
+            <label className="text-sm text-gray-700">Hasta</label>
+            <input type="date" value={filtroHasta} onChange={(e)=> setFiltroHasta(e.target.value)} className="ml-2 px-3 py-2 border rounded"/>
+          </div>
+          <div>
+            <label className="text-sm text-gray-700">Estado</label>
+            <select value={estadoFiltro} onChange={(e)=> setEstadoFiltro(e.target.value)} className="ml-2 px-3 py-2 border rounded">
+              {estadosDisponibles.map(est => (
+                <option key={est} value={est}>{est}</option>
+              ))}
+            </select>
+          </div>
+        </div>
 
         {loading && <p className="text-center text-gray-600 my-4 text-sm">Buscando órdenes recibidas...</p>}
         {error && <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4" role="alert"><p>{error}</p></div>}
@@ -92,12 +129,11 @@ export default function OrdenesRecibidasPage() {
           <>
             <div className="overflow-x-auto">
               <ul className="space-y-2 divide-y divide-gray-200 min-w-[600px]">
-                <li className="grid grid-cols-[1fr_1.5fr_1fr_1fr_1fr] gap-x-3 items-center bg-gray-100 p-3 rounded-t-md font-semibold text-sm text-gray-700 uppercase tracking-wider">
+                <li className="grid grid-cols-[1fr_1.5fr_1fr_2fr] gap-x-3 items-center bg-gray-100 p-3 rounded-t-md font-semibold text-sm text-gray-700 uppercase tracking-wider">
                   <span>Nº Orden</span>
-                  <span>Fecha Creación</span>
+                  <span>Fecha</span>
                   <span>Estado</span>
-                  <span>Monto Total</span>
-                  <span className="text-center">Pagado</span>
+                  <span>Artículo(s)</span>
                 </li>
 
                 {ordenes.length > 0 ? ordenes.map((orden) => {
@@ -109,25 +145,31 @@ export default function OrdenesRecibidasPage() {
                   } catch (e) { console.error("Error formateando fecha:", orden.fecha_creacion, e); }
 
                   return (
-                    <li key={orden.id} className="grid grid-cols-[1fr_1.5fr_1fr_1fr_1fr] gap-x-3 items-center bg-white hover:bg-gray-50 p-3 text-sm">
+                    <li
+                      key={orden.id}
+                      className="grid grid-cols-[1fr_1.5fr_1fr_2fr] gap-x-3 items-center bg-white hover:bg-gray-50 p-3 text-sm cursor-pointer"
+                      onClick={() => setIdOrdenSeleccionada(orden.id)}
+                      tabIndex={0}
+                      onKeyDown={(e)=> { if (e.key === 'Enter') setIdOrdenSeleccionada(orden.id); }}
+                      aria-label={`Ver detalles de la orden ${orden.id.toString().padStart(4,'0')}`}
+                    >
                       <span>{`Nº ${orden.id.toString().padStart(4, '0')}`}</span>
                       <span>{fechaFormateada}</span>
-                      <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800`}>
+                      <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${badgeClass(String(orden.estado))}`}>
                         {orden.estado}
                       </span>
-                      <span>{Number(orden.importe_total_estimado || 0).toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
-                      <span className="text-center">{Number(orden.importe_abonado || 0).toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
-                      <div className="flex items-center justify-center">
-                        <button
-                          title="Ver Detalles de la Orden"
-                          className="text-blue-600 hover:text-blue-800 p-1 rounded focus:outline-none"
-                          onClick={() => setIdOrdenSeleccionada(orden.id)}
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                          </svg>
-                        </button>
-                      </div>
+                      <span>
+                        {Array.isArray(orden.items) && orden.items.length > 0 ? (
+                          <>
+                            {orden.items.slice(0,3).map((it, idx) => (
+                              <span key={idx} className="inline-block mr-2 text-gray-700">{it.producto_nombre || `ID: ${it.producto_id}`}</span>
+                            ))}
+                            {orden.items.length > 3 && <span className="text-gray-500">…</span>}
+                          </>
+                        ) : (
+                          <span className="text-gray-400 italic">Sin ítems</span>
+                        )}
+                      </span>
                     </li>
                   );
                 }) : (
@@ -140,17 +182,24 @@ export default function OrdenesRecibidasPage() {
                 
             {pagination && pagination.total_pages > 1 && (
               <div className="flex justify-center mt-6 gap-4">
-                <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1 || loading} className="btn-pag">Anterior</button>
+                <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1 || loading} className="px-4 py-2 rounded bg-indigo-600 text-white font-semibold shadow hover:bg-indigo-700 disabled:opacity-50">Anterior</button>
                 <span className="text-indigo-700 font-medium text-sm self-center">Página {pagination.current_page} de {pagination.total_pages}</span>
-                <button onClick={() => setPage(p => p + 1)} disabled={!pagination.has_next || loading} className="btn-pag">Siguiente</button>
+                <button onClick={() => setPage(p => p + 1)} disabled={!pagination.has_next || loading} className="px-4 py-2 rounded bg-indigo-600 text-white font-semibold shadow hover:bg-indigo-700 disabled:opacity-50">Siguiente</button>
               </div>
             )}
           </>
         )}
       </div>
-      <style jsx>{`
-        .btn-pag { @apply px-4 py-2 rounded bg-indigo-700 text-white hover:bg-indigo-800 disabled:opacity-50 text-sm transition-colors; }
-      `}</style>
+      
     </div>
   );
 }
+  const badgeClass = (estado: string) => {
+    const e = estado.toLowerCase();
+    if (e.includes('recib') || e === 'recibido') return 'bg-blue-100 text-blue-800';
+    if (e.includes('aprob') || e === 'aprobado') return 'bg-green-100 text-green-800';
+    if (e.includes('deuda') || e === 'con deuda') return 'bg-orange-100 text-orange-800';
+    if (e.includes('rechaz') || e === 'rechazado') return 'bg-red-100 text-red-800';
+    if (e.includes('pend') || e === 'pendiente' || e === 'solicitado') return 'bg-gray-100 text-gray-800';
+    return 'bg-gray-100 text-gray-800';
+  };

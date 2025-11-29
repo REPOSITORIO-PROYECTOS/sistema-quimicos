@@ -25,6 +25,7 @@ interface CompraDetalleConItems {
     items: CompraItem[]; // Aunque el total venga aparte, los items pueden ser útiles para la descripción
     // El total de la OC
     importe_abonado?: number;      
+    importe_total_estimado?: number;
     //eslint-disable-next-line 
     aprobado_por?: any;
     //eslint-disable-next-line
@@ -182,7 +183,7 @@ export default function ContabilidadTable() {
                             if ((detalleCompra as CompraDetalleConItems).estado !== estadoRecibido && (detalleCompra as CompraDetalleConItems).estado !== estadoEnDeuda) {
                                 return null; 
                             }
-                            const importeTotalOCHeader = (detalleCompra as any).importe_total_estimado;
+                            const importeTotalOCHeader = (detalleCompra as CompraDetalleConItems).importe_total_estimado;
                             const importeTotalOC = typeof importeTotalOCHeader === 'number' ? importeTotalOCHeader : 0;
                             if ((detalleCompra as CompraDetalleConItems).estado === estadoEnDeuda) {
                                 const montoAbonado = typeof (detalleCompra as CompraDetalleConItems).importe_abonado === 'number' 
@@ -292,10 +293,10 @@ export default function ContabilidadTable() {
             setTotalDebe(finalTotalDebe);
             setTotalHaber(finalTotalHaber);
             setBalance(finalTotalDebe - finalTotalHaber);
-            //eslint-disable-next-line
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error("Error general no capturado en fetchRegistrosContables:", err);
-            setError(err.message || 'Ocurrió un error inesperado durante la carga de datos.');
+            const msg = err instanceof Error ? err.message : 'Ocurrió un error inesperado durante la carga de datos.';
+            setError(msg);
             setRegistros([]); setTotalDebe(0); setTotalHaber(0); setBalance(0);
         } finally {
             setIsLoading(false);
