@@ -266,6 +266,20 @@ def crear_orden_compra(current_user):
         else:
             nueva_orden.cheque_perteneciente_a = None
 
+        try:
+            from ..models import TipoCambio
+            o = TipoCambio.query.filter_by(nombre='Oficial').first()
+            snap = {
+                'TC_Oficial': float(o.valor) if o and o.valor else None,
+                'fecha': datetime.datetime.utcnow().isoformat()
+            }
+            s = "__TC_SNAPSHOT__:" + json.dumps(snap, ensure_ascii=False)
+            obs = nueva_orden.observaciones_solicitud or ''
+            if '__TC_SNAPSHOT__' not in obs:
+                nueva_orden.observaciones_solicitud = (obs + ('\n' if obs else '') + s)
+        except Exception:
+            pass
+
         db.session.add(nueva_orden)
         db.session.commit()
         try:
@@ -502,6 +516,20 @@ def aprobar_orden_compra(current_user, orden_id):
         else:
             orden_db.cheque_perteneciente_a = None
 
+        try:
+            from ..models import TipoCambio
+            o = TipoCambio.query.filter_by(nombre='Oficial').first()
+            snap = {
+                'TC_Oficial': float(o.valor) if o and o.valor else None,
+                'fecha': datetime.datetime.utcnow().isoformat()
+            }
+            s = "__TC_SNAPSHOT__:" + json.dumps(snap, ensure_ascii=False)
+            obs = orden_db.observaciones_solicitud or ''
+            if '__TC_SNAPSHOT__' not in obs:
+                orden_db.observaciones_solicitud = (obs + ('\n' if obs else '') + s)
+        except Exception:
+            pass
+
         # --- Actualizar items (solo si vienen en el payload) ---
         items_payload = data.get('items', [])
         if items_payload and orden_db.items:
@@ -528,8 +556,9 @@ def aprobar_orden_compra(current_user, orden_id):
         # --- Actualizar estado y aprobador ---
         total_aprob = orden_db.importe_total_estimado or Decimal('0')
         abonado_aprob = orden_db.importe_abonado or Decimal('0')
-        # Al aprobar, generar pendiente de recepción explícito
-        orden_db.estado = 'EN_ESPERA_RECEPCION'
+        # Estados multidimensionales: recepción pendiente y deuda
+        orden_db.estado_recepcion = 'Pendiente'
+        orden_db.estado = 'Con Deuda' if total_aprob > abonado_aprob else 'Aprobado'
         orden_db.fecha_aprobacion = datetime.datetime.utcnow()
         orden_db.aprobado_por = usuario_aprobador
         # fecha_actualizacion se actualiza via onupdate
@@ -727,6 +756,19 @@ def recibir_orden_compra(current_user, orden_id):
         else:
             orden_db.cheque_perteneciente_a = None # Limpiar si no es cheque
         orden_db.tipo_caja = data.get('tipo_caja', orden_db.tipo_caja)
+        try:
+            from ..models import TipoCambio
+            o = TipoCambio.query.filter_by(nombre='Oficial').first()
+            snap = {
+                'TC_Oficial': float(o.valor) if o and o.valor else None,
+                'fecha': datetime.datetime.utcnow().isoformat()
+            }
+            s = "__TC_SNAPSHOT__:" + json.dumps(snap, ensure_ascii=False)
+            notas = orden_db.notas_recepcion or ''
+            if '__TC_SNAPSHOT__' not in notas:
+                orden_db.notas_recepcion = (notas + ('\n' if notas else '') + s)
+        except Exception:
+            pass
         prev = formatear_orden_por_rol(orden_db, rol_usuario)
         # 7. Registrar movimientos de proveedor (DEBITO una vez por OC, CREDITO por pagos)
         try:

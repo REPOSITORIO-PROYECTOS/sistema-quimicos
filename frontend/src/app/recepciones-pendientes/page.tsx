@@ -31,6 +31,12 @@ export default function RecepcionesPendientesPage() {
   const [ordenSeleccionada, setOrdenSeleccionada] = useState<OrdenCompra | null>(null);
   const [items, setItems] = useState<ItemRecepcion[] | null>(null);
   const [loadingItems, setLoadingItems] = useState(false);
+  const [sortBy, setSortBy] = useState<'id'|'fecha'|'proveedor'>('fecha');
+  const [sortDir, setSortDir] = useState<'asc'|'desc'>('asc');
+  const [filtroTipo, setFiltroTipo] = useState<'todos'|'mes'|'rango'>('todos');
+  const [filtroMes, setFiltroMes] = useState<string>(''); // YYYY-MM
+  const [filtroDesde, setFiltroDesde] = useState<string>('');
+  const [filtroHasta, setFiltroHasta] = useState<string>('');
 
   useEffect(() => {
     const fetchOrdenes = async () => {
@@ -242,6 +248,36 @@ export default function RecepcionesPendientesPage() {
     }
   };
 
+  const ordenesFiltradas = (() => {
+    let base = [...ordenes];
+    // Filtrado temporal
+    if (filtroTipo === 'mes' && filtroMes) {
+      base = base.filter(o => {
+        const d = new Date(o.fecha_creacion);
+        const y = d.getFullYear();
+        const m = String(d.getMonth()+1).padStart(2,'0');
+        return `${y}-${m}` === filtroMes;
+      });
+    } else if (filtroTipo === 'rango' && (filtroDesde || filtroHasta)) {
+      const from = filtroDesde ? new Date(filtroDesde) : null;
+      const to = filtroHasta ? new Date(filtroHasta) : null;
+      base = base.filter(o => {
+        const d = new Date(o.fecha_creacion);
+        return (!from || d >= from) && (!to || d <= to);
+      });
+    }
+    // Ordenamiento
+    base.sort((a,b)=>{
+      let va: string|number = 0; let vb: string|number = 0;
+      if (sortBy === 'id') { va = a.id; vb = b.id; }
+      else if (sortBy === 'proveedor') { va = a.proveedor_nombre || ''; vb = b.proveedor_nombre || ''; }
+      else { va = new Date(a.fecha_creacion).getTime(); vb = new Date(b.fecha_creacion).getTime(); }
+      const cmp = (typeof va === 'number' && typeof vb === 'number') ? (va - vb) : String(va).localeCompare(String(vb));
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+    return base;
+  })();
+
   if (ordenSeleccionada) {
     return (
       <div className="min-h-screen bg-blue-900 p-4 sm:p-6 flex flex-col items-center justify-center">
@@ -281,6 +317,37 @@ export default function RecepcionesPendientesPage() {
         <h2 className="text-2xl md:text-3xl font-semibold mb-6 text-center text-blue-900">
           Recepciones Pendientes
         </h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-gray-700">Ordenar por</label>
+            <select value={sortBy} onChange={e=> setSortBy(e.target.value as any)} className="px-2 py-1 border rounded">
+              <option value="fecha">Fecha</option>
+              <option value="id">ID</option>
+              <option value="proveedor">Proveedor</option>
+            </select>
+            <select value={sortDir} onChange={e=> setSortDir(e.target.value as any)} className="px-2 py-1 border rounded">
+              <option value="asc">Asc</option>
+              <option value="desc">Desc</option>
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-gray-700">Tiempo</label>
+            <select value={filtroTipo} onChange={e=> setFiltroTipo(e.target.value as any)} className="px-2 py-1 border rounded">
+              <option value="todos">Todos</option>
+              <option value="mes">Mensual</option>
+              <option value="rango">Rango</option>
+            </select>
+            {filtroTipo === 'mes' && (
+              <input type="month" value={filtroMes} onChange={e=> setFiltroMes(e.target.value)} className="px-2 py-1 border rounded" />
+            )}
+            {filtroTipo === 'rango' && (
+              <>
+                <input type="date" value={filtroDesde} onChange={e=> setFiltroDesde(e.target.value)} className="px-2 py-1 border rounded" />
+                <input type="date" value={filtroHasta} onChange={e=> setFiltroHasta(e.target.value)} className="px-2 py-1 border rounded" />
+              </>
+            )}
+          </div>
+        </div>
         {loading && <p className="text-center text-gray-600 my-4 text-sm">Cargando órdenes aprobadas...</p>}
         {error && <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4" role="alert"><p>{error}</p></div>}
         {!loading && !error && (
@@ -293,12 +360,12 @@ export default function RecepcionesPendientesPage() {
                 <span>Ítems</span>
                 <span className="text-center">Acción</span>
               </li>
-              {ordenes.length === 0 ? (
+              {ordenesFiltradas.length === 0 ? (
                 <li className="text-center py-8 text-gray-500 col-span-4">
                   No hay órdenes aprobadas pendientes de recepción.
                 </li>
               ) : (
-                ordenes.map(orden => (
+                ordenesFiltradas.map(orden => (
                   <li key={orden.id} className="grid grid-cols-[1fr_2fr_2fr_2fr_3fr] gap-x-3 items-center bg-white hover:bg-gray-50 p-3 text-sm">
                     <span className="font-semibold">{orden.id.toString().padStart(4, '0')}</span>
                     <span>{new Date(orden.fecha_creacion).toLocaleDateString("es-AR")}</span>

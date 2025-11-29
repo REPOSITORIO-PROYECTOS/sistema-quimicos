@@ -13,6 +13,8 @@ interface IPedido {
   importeAbonado: string;
   chequePerteneciente: string;
   fecha_limite: string;
+  estado?: string;
+  estado_recepcion?: string;
 }
 
 export default function RegistrarIngreso() {
@@ -135,7 +137,7 @@ export default function RegistrarIngreso() {
 
     // --- Payload para la API (Clave) ---
     // Se mantienen los campos que la API espera, pero con valores por defecto/fijos.
-    const ventaPayload = {
+    const ventaPayload: Record<string, any> = {
       usuario_interno_id: user.id,
       forma_pago: "",
       observaciones_solicitud: observaciones_solicitud,
@@ -148,6 +150,7 @@ export default function RegistrarIngreso() {
       proveedor_id: 1, // Se envía un ID de proveedor fijo (Ej: 1 para "Varios" o "Interno"). ¡Ajustar si es necesario!
       fecha_limite: fechaLimite,
     };
+    if (!isNaN(importeAbonadoNum)) ventaPayload.importe_abonado = importeAbonadoNum;
     console.log("Payload enviado a la API:", ventaPayload);
     // Guardar último intento para recuperación
     try { sessionStorage.setItem(LAST_PAYLOAD_KEY, JSON.stringify({ payload: ventaPayload, ts: Date.now() })); } catch {}
@@ -188,7 +191,9 @@ export default function RegistrarIngreso() {
       console.log('Compra registrada con éxito:', data);
       alert('Pedido agregado con éxito!');
 
-      setPedidos((prev) => [...prev, nuevoPedido]);
+      const estadoServidor = String(data?.orden?.estado ?? '');
+      const estadoRecepServidor = String(data?.orden?.estado_recepcion ?? '');
+      setPedidos((prev) => [...prev, { ...nuevoPedido, estado: estadoServidor, estado_recepcion: estadoRecepServidor }]);
 
       // Se limpia el estado de los campos restantes
       setProducto('');
@@ -458,6 +463,12 @@ export default function RegistrarIngreso() {
               return (
                 <li key={idx} className="py-2">
                    <strong>{nombreProducto}</strong> - Cant: {pedido.cantidad} ({pedido.fecha})
+                   {pedido.estado && (
+                     <span className="ml-2 text-xs px-2 py-1 rounded bg-blue-100 text-blue-800">Estado: {pedido.estado}</span>
+                   )}
+                   {pedido.estado_recepcion && (
+                     <span className="ml-2 text-xs px-2 py-1 rounded bg-orange-100 text-orange-800">Recepción: {pedido.estado_recepcion}</span>
+                   )}
                 </li>
               );
             })}

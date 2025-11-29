@@ -1,7 +1,8 @@
 from types import SimpleNamespace
 from decimal import Decimal
 
-from app import create_app
+from types import SimpleNamespace as SN
+
 from app.blueprints import compras as compras_module
 from app.models import OrdenCompra
 
@@ -48,25 +49,18 @@ class FakeSession:
 
 
 def run_test():
-    app = create_app()
-    with app.app_context():
-        compras_module.db.session = FakeSession()
-        with app.test_request_context(
-            '/ordenes_compra/aprobar/1',
-            method='PUT',
-            json={'importe_total_estimado': 1000},
-            headers={'X-User-Role': 'ADMIN', 'X-User-Name': 'Tester'}
-        ):
-            fn = compras_module.aprobar_orden_compra.__wrapped__.__wrapped__
-            fake_user = SimpleNamespace(id=1, username='tester', role='ADMIN')
-            resp = fn(fake_user, 1)
-            try:
-                status = getattr(resp, 'status_code', None)
-            except Exception:
-                status = None
-            estado = compras_module.db.session.query(OrdenCompra)._fake_orden.estado
-            print(f"status={status} estado={estado}")
-            assert estado == 'EN_ESPERA_RECEPCION', 'La orden no quedó pendiente de recepción'
+    compras_module.db.session = FakeSession()
+
+    # Monkeypatch request used inside the view
+    compras_module.request = SN(json={'importe_total_estimado': 1000}, headers={'X-User-Role': 'ADMIN', 'X-User-Name': 'Tester'})
+
+    fn = compras_module.aprobar_orden_compra.__wrapped__.__wrapped__
+    fake_user = SN(id=1, username='tester', role='ADMIN')
+    resp = fn(fake_user, 1)
+    status = getattr(resp, 'status_code', None)
+    estado = compras_module.db.session.query(OrdenCompra)._fake_orden.estado
+    print(f"status={status} estado={estado}")
+    assert estado == 'EN_ESPERA_RECEPCION', 'La orden no quedó pendiente de recepción'
 
 
 if __name__ == '__main__':
