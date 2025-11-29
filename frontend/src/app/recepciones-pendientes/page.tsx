@@ -320,19 +320,19 @@ export default function RecepcionesPendientesPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
           <div className="flex items-center gap-2">
             <label className="text-sm text-gray-700">Ordenar por</label>
-            <select value={sortBy} onChange={e=> setSortBy(e.target.value as any)} className="px-2 py-1 border rounded">
+            <select value={sortBy} onChange={e=> setSortBy(e.target.value as 'id'|'fecha'|'proveedor')} className="px-2 py-1 border rounded">
               <option value="fecha">Fecha</option>
               <option value="id">ID</option>
               <option value="proveedor">Proveedor</option>
             </select>
-            <select value={sortDir} onChange={e=> setSortDir(e.target.value as any)} className="px-2 py-1 border rounded">
+            <select value={sortDir} onChange={e=> setSortDir(e.target.value as 'asc'|'desc')} className="px-2 py-1 border rounded">
               <option value="asc">Asc</option>
               <option value="desc">Desc</option>
             </select>
           </div>
           <div className="flex items-center gap-2">
             <label className="text-sm text-gray-700">Tiempo</label>
-            <select value={filtroTipo} onChange={e=> setFiltroTipo(e.target.value as any)} className="px-2 py-1 border rounded">
+            <select value={filtroTipo} onChange={e=> setFiltroTipo(e.target.value as 'todos'|'mes'|'rango')} className="px-2 py-1 border rounded">
               <option value="todos">Todos</option>
               <option value="mes">Mensual</option>
               <option value="rango">Rango</option>

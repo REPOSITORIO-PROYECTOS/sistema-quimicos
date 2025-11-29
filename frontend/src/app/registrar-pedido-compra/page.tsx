@@ -137,7 +137,16 @@ export default function RegistrarIngreso() {
 
     // --- Payload para la API (Clave) ---
     // Se mantienen los campos que la API espera, pero con valores por defecto/fijos.
-    const ventaPayload: Record<string, any> = {
+    interface VentaPayload {
+      usuario_interno_id: number | string;
+      forma_pago: string;
+      observaciones_solicitud: string;
+      items: { codigo_interno: number; cantidad: number; precio_unitario_estimado: number; unidad_medida: string }[];
+      proveedor_id: number;
+      fecha_limite: string;
+      importe_abonado?: number;
+    }
+    const ventaPayload: VentaPayload = {
       usuario_interno_id: user.id,
       forma_pago: "",
       observaciones_solicitud: observaciones_solicitud,
