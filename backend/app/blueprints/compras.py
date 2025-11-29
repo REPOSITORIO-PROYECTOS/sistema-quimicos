@@ -528,7 +528,8 @@ def aprobar_orden_compra(current_user, orden_id):
         # --- Actualizar estado y aprobador ---
         total_aprob = orden_db.importe_total_estimado or Decimal('0')
         abonado_aprob = orden_db.importe_abonado or Decimal('0')
-        orden_db.estado = 'Con Deuda' if total_aprob > abonado_aprob else 'Aprobado'
+        # Al aprobar, generar pendiente de recepción explícito
+        orden_db.estado = 'EN_ESPERA_RECEPCION'
         orden_db.fecha_aprobacion = datetime.datetime.utcnow()
         orden_db.aprobado_por = usuario_aprobador
         # fecha_actualizacion se actualiza via onupdate
