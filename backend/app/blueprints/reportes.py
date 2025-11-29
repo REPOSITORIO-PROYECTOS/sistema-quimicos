@@ -975,3 +975,55 @@ def reporte_faltantes_por_orden(current_user, orden_id: int):
         traceback.print_exc()
         return jsonify({"error": "Error al generar reporte de faltantes", "detalle": str(e)}), 500
 
+@reportes_bp.route('/ordenes-pendientes-vencimientos', methods=['GET'])
+@token_required
+@roles_required(ROLES['ADMIN'], ROLES['ALMACEN'], ROLES['CONTABLE'])
+def ordenes_pendientes_vencimientos(current_user):
+    try:
+        hoy = date.today()
+        estados_pendientes = ['APROBADO', 'EN_ESPERA_RECEPCION', 'RECIBIDA_PARCIAL', 'CON DEUDA']
+        ordenes = db.session.query(OrdenCompra).options(selectinload(OrdenCompra.proveedor)).filter(OrdenCompra.estado.in_(estados_pendientes)).all()
+
+        resultados = []
+        for oc in ordenes:
+            proveedor_nombre = oc.proveedor.nombre if oc.proveedor else ''
+            condiciones = oc.proveedor.condiciones_pago if oc.proveedor else None
+            dias_str = ''
+            if condiciones:
+                for ch in condiciones:
+                    if ch.isdigit():
+                        dias_str += ch
+            dias_plazo = int(dias_str) if dias_str else 30
+            base_fecha = oc.fecha_aprobacion or oc.fecha_creacion
+            if not base_fecha:
+                base_fecha = datetime.combine(hoy, time.min)
+            fecha_venc = (base_fecha + timedelta(days=dias_plazo)).date()
+            dias_restantes = (fecha_venc - hoy).days
+            prioridad = 'critico' if dias_restantes <= 0 else ('alto' if dias_restantes <= 3 else ('medio' if dias_restantes <= 7 else 'bajo'))
+
+            monto_total = oc.importe_total_estimado or Decimal('0.0')
+            monto_pagado = oc.importe_abonado or Decimal('0.0')
+            deuda = monto_total - monto_pagado
+
+            resultados.append({
+                'id': oc.id,
+                'nro': oc.nro_solicitud_interno or str(oc.id),
+                'proveedor': proveedor_nombre,
+                'estado': oc.estado or '',
+                'fecha_creacion': oc.fecha_creacion.strftime('%Y-%m-%d %H:%M') if oc.fecha_creacion else '',
+                'fecha_aprobacion': oc.fecha_aprobacion.strftime('%Y-%m-%d %H:%M') if oc.fecha_aprobacion else '',
+                'fecha_vencimiento': fecha_venc.isoformat(),
+                'dias_restantes': dias_restantes,
+                'prioridad': prioridad,
+                'importe_total_estimado': float(monto_total),
+                'importe_abonado': float(monto_pagado),
+                'deuda': float(deuda),
+                'forma_pago': oc.forma_pago or ''
+            })
+
+        resultados.sort(key=lambda r: r['fecha_vencimiento'])
+        return jsonify({'ordenes_pendientes': resultados})
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": "Error al obtener órdenes pendientes", "detalle": str(e)}), 500
+
