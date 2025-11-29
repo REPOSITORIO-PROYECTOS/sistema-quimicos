@@ -69,6 +69,37 @@ export default function RecepcionesPendientesPage() {
           }
         });
         setItemsPorOrden(itemsMap);
+
+        // Cargar también órdenes en estado 'Con Deuda' como pendientes de recepción
+        try {
+          const urlD = `https://quimex.sistemataup.online/ordenes_compra/obtener_todas?estado=Con%20Deuda`;
+          const responseD = await fetch(urlD, {
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }
+          });
+          if (responseD.ok) {
+            const dataD = await responseD.json().catch(()=>({ordenes:[]}));
+            setOrdenes(prev => [...prev, ...(dataD.ordenes || [])]);
+            const itemsMapD: Record<number, {nombre: string, cantidad: number}[]> = {};
+            (dataD.ordenes || []).forEach((orden: Record<string, unknown>) => {
+              if (orden.items && Array.isArray(orden.items)) {
+                itemsMapD[Number(orden.id)] = (orden.items as Record<string, unknown>[]).map((item) => {
+                  let nombre = '';
+                  if (typeof item.producto_nombre === 'string') {
+                    nombre = item.producto_nombre;
+                  } else if (item.producto && typeof item.producto === 'object' && (item.producto as Record<string, unknown>).nombre) {
+                    nombre = (item.producto as Record<string, unknown>).nombre as string;
+                  } else if (item.producto_id) {
+                    nombre = `ID: ${item.producto_id}`;
+                  } else {
+                    nombre = 'Producto';
+                  }
+                  return { nombre, cantidad: item.cantidad_solicitada as number };
+                });
+              }
+            });
+            setItemsPorOrden(prev => ({...prev, ...itemsMapD}));
+          }
+        } catch {}
       } catch (err: unknown) {
         if (err instanceof Error) {
           setError(err.message || 'Error desconocido.');
@@ -202,7 +233,7 @@ export default function RecepcionesPendientesPage() {
       const url = `https://quimex.sistemataup.online/ordenes_compra/obtener_todas?estado=Aprobado`;
       const refresco = await fetch(url, { headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` } });
       const nuevo = await refresco.json();
-      setOrdenes(nuevo.ordenes || []);
+      setOrdenes((nuevo.ordenes || []).filter((o: OrdenCompra) => ['Aprobado','Con Deuda'].includes(String(o.estado))));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error registrando recepción.';
       alert(msg);
