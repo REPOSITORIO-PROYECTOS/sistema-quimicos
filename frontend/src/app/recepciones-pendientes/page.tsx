@@ -48,7 +48,7 @@ export default function RecepcionesPendientesPage() {
           throw new Error(errData.message || "Error al traer órdenes.");
         }
         const data = await response.json();
-        setOrdenes((data.ordenes || []).filter((o: OrdenCompra) => ['Aprobado','Con Deuda'].includes(String(o.estado))));
+        setOrdenes((data.ordenes || []).filter((o: OrdenCompra) => ['Aprobado','Con Deuda','EN_ESPERA_RECEPCION'].includes(String(o.estado))));
         // Mapear ítems por orden para mostrar en la lista
         const itemsMap: Record<number, {nombre: string, cantidad: number}[]> = {};
         (data.ordenes || []).forEach((orden: Record<string, unknown>) => {
@@ -233,7 +233,7 @@ export default function RecepcionesPendientesPage() {
       const url = `https://quimex.sistemataup.online/ordenes_compra/obtener_todas?estado=Aprobado`;
       const refresco = await fetch(url, { headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` } });
       const nuevo = await refresco.json();
-      setOrdenes((nuevo.ordenes || []).filter((o: OrdenCompra) => ['Aprobado','Con Deuda'].includes(String(o.estado))));
+      setOrdenes((nuevo.ordenes || []).filter((o: OrdenCompra) => ['Aprobado','Con Deuda','EN_ESPERA_RECEPCION'].includes(String(o.estado))));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error registrando recepción.';
       alert(msg);
