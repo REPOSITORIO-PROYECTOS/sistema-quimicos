@@ -59,6 +59,10 @@ export default function PedidoRapidoAdmin() {
         total += subtotal * (parseFloat(iibb) / 100);
       }
       setImporteTotal(total.toFixed(2));
+      if (pagoCompleto) {
+        setImporteAbonado(total.toFixed(2));
+        setPagoError("");
+      }
       // Si hay TC activo, calcular también en USD
       if (showTc && !isNaN(tcNum) && tcNum > 0) {
         const totalUsd = total / tcNum;
@@ -69,8 +73,9 @@ export default function PedidoRapidoAdmin() {
     } else {
       setImporteTotal("0");
       setImporteTotalUsd("");
+      if (pagoCompleto) setImporteAbonado("0");
     }
-  }, [cantidad, precioUnitario, tc, showTc, showIva, iva, showIibb, iibb]);
+  }, [cantidad, precioUnitario, tc, showTc, showIva, iva, showIibb, iibb, pagoCompleto]);
 
   // Autocompletar TC, IVA e IIBB y otros defaults
 
@@ -295,6 +300,76 @@ export default function PedidoRapidoAdmin() {
     }
   };
 
+  const handleSubmitRecepcionar = async () => {
+    setError("");
+    setPagoError("");
+    try {
+      const token = localStorage.getItem("token");
+      const userItem = sessionStorage.getItem("user");
+      const user = userItem ? JSON.parse(userItem) : null;
+      if (!token || !user) throw new Error("Autenticación requerida.");
+      if (!proveedorId || !productoId || !cantidad || !precioUnitario) throw new Error("Complete proveedor, producto, cantidad y precio.");
+      const cantNum = parseFloat(cantidad);
+      const precioNum = parseFloat(precioUnitario);
+      const tcNum = parseFloat(tc);
+      let subtotal = 0;
+      if (!isNaN(cantNum) && !isNaN(precioNum) && cantNum > 0 && precioNum >= 0) {
+        subtotal = (showTc && !isNaN(tcNum) && tcNum > 0) ? (cantNum * precioNum * tcNum) : (cantNum * precioNum);
+        let total = subtotal;
+        if (showIva && iva && !isNaN(parseFloat(iva))) total += subtotal * (parseFloat(iva) / 100);
+        if (showIibb && iibb && !isNaN(parseFloat(iibb))) total += subtotal * (parseFloat(iibb) / 100);
+        const importeAbonadoCrear = pagoCompleto ? total : (parseFloat(importeAbonado || '0') || 0);
+        const observacionesPagoCrear = pagoCompleto ? 'Pago completo' : `Pago parcial: abonado=${importeAbonadoCrear.toFixed(2)}`;
+        const observacionesChequeCrear = formaPago === 'Cheque' ? ` | Cheque: Emisor=${chequeEmisor}; Banco=${chequeBanco}; N°=${chequeNumero}; Fecha=${chequeFecha}` : '';
+        const observacionesFinalCrear = `${observaciones || ''}${observaciones ? ' | ' : ''}${observacionesPagoCrear}${observacionesChequeCrear}`.trim();
+        const crearPayload = {
+          usuario_interno_id: user.id || undefined,
+          forma_pago: formaPago,
+          observaciones_solicitud: observacionesFinalCrear,
+          items: [{ codigo_interno: Number(productoId), cantidad: Number(cantidad), precio_unitario_estimado: parseFloat(precioUnitario) || 0, unidad_medida: unidadMedida || 'Unidades' }],
+          fecha_pedido: new Date().toISOString().split('T')[0],
+          proveedor_id: Number(proveedorId),
+          iibb: showIibb ? iibb : '',
+          fecha_limite: new Date().toISOString().split('T')[0],
+          cuenta,
+          tipo_caja: tipoCaja,
+          importe_abonado: importeAbonadoCrear,
+          cheque_perteneciente_a: formaPago === 'Cheque' ? chequeEmisor : undefined,
+        };
+        const crearResp = await fetch('https://quimex.sistemataup.online/ordenes_compra/crear', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-User-Role': user.role, 'X-User-Name': user.usuario || user.name, 'Authorization': `Bearer ${token}` }, body: JSON.stringify(crearPayload) });
+        const crearData = await crearResp.json().catch(() => ({}));
+        if (!crearResp.ok) throw new Error(crearData?.error || crearData?.mensaje || 'Error creando OC');
+        const nuevaOCId = crearData?.orden?.id || crearData?.id || crearData?.orden_id;
+        if (!nuevaOCId) throw new Error('No se pudo obtener ID de la OC creada.');
+        const obtenerResp = await fetch(`https://quimex.sistemataup.online/ordenes_compra/obtener/${nuevaOCId}`, { headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` } });
+        const obtenerData = await obtenerResp.json();
+        const itemPrincipal = Array.isArray(obtenerData.items) ? obtenerData.items[0] : null;
+        const id_linea = itemPrincipal?.id_linea ? Number(itemPrincipal.id_linea) : 0;
+        const cantidad_solicitada = itemPrincipal?.cantidad_solicitada ? Number(itemPrincipal.cantidad_solicitada) : Number(cantidad);
+        const precio_unitario_estimado = itemPrincipal?.precio_unitario_estimado ? Number(itemPrincipal.precio_unitario_estimado) : parseFloat(precioUnitario) || 0;
+        const importe_total_estimado = total;
+        if (String(user.role).toUpperCase() === 'ADMIN') {
+          const aprobarPayload = { proveedor_id: Number(proveedorId), cuenta, iibb: showIibb ? iibb : '', iva: showIva ? iva : '', tc: showTc ? tc : '', ajuste_tc: showTc ? true : false, observaciones_solicitud: observacionesFinalCrear, tipo_caja: tipoCaja, forma_pago: formaPago, items: [{ id_linea, cantidad_solicitada, precio_unitario_estimado }], importe_total_estimado, importe_abonado: importeAbonadoCrear, cheque_perteneciente_a: formaPago === 'Cheque' ? chequeEmisor : undefined };
+          const aprobarResp = await fetch(`https://quimex.sistemataup.online/ordenes_compra/aprobar/${nuevaOCId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-User-Role': user.role, 'X-User-Name': user.usuario || user.name, 'Authorization': `Bearer ${token}` }, body: JSON.stringify(aprobarPayload) });
+          const aprobarData = await aprobarResp.json().catch(() => ({}));
+          if (!aprobarResp.ok) throw new Error(aprobarData?.error || aprobarData?.mensaje || 'Error aprobando OC');
+        }
+        const itemsRecibidos = [{ id_linea, cantidad_recibida: Number(cantidad_solicitada), producto_codigo: String(itemPrincipal?.producto_codigo || ''), costo_unitario_ars: precio_unitario_estimado, notas_item: '' }];
+        const estadoRecepcion = 'Completa';
+        const recibirPayload = { proveedor_id: Number(proveedorId), cantidad: Number(cantidad_solicitada), precio_unitario: precio_unitario_estimado, importe_total: importe_total_estimado, cuenta, iibb: showIibb ? iibb : '', iva: showIva ? iva : '', tc: showTc ? tc : '', nro_remito_proveedor: '', estado_recepcion: estadoRecepcion, importe_abonado: pagoCompleto ? importe_total_estimado : (parseFloat(importeAbonado || '0') || 0), forma_pago: formaPago, cheque_perteneciente_a: formaPago === 'Cheque' ? chequeEmisor : '', tipo_caja: tipoCaja, items_recibidos: itemsRecibidos };
+        const recibirResp = await fetch(`https://quimex.sistemataup.online/ordenes_compra/recibir/${nuevaOCId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-User-Role': user.role, 'X-User-Name': user.usuario || user.name, 'Authorization': `Bearer ${token}` }, body: JSON.stringify(recibirPayload) });
+        const recibirData = await recibirResp.json().catch(() => ({}));
+        if (!recibirResp.ok) throw new Error(recibirData?.error || recibirData?.mensaje || 'Error registrando recepción');
+        alert('Pedido Rápido creado, aprobado y recepcionado.');
+        router.push('/recepciones-pendientes');
+      } else {
+        throw new Error('Datos inválidos');
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Error al crear y recepcionar');
+    }
+  };
+
   const baseInput = "w-full px-3 py-2 rounded bg-white text-black border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500";
   const label = "block text-sm font-medium mb-1 text-white";
 
@@ -409,7 +484,14 @@ export default function PedidoRapidoAdmin() {
                 id="pagoCompleto"
                 type="checkbox"
                 checked={pagoCompleto}
-                onChange={() => setPagoCompleto(!pagoCompleto)}
+                onChange={() => {
+                  const next = !pagoCompleto;
+                  setPagoCompleto(next);
+                  if (next) {
+                    setImporteAbonado(importeTotal);
+                    setPagoError("");
+                  }
+                }}
                 className="accent-green-500 w-5 h-5"
               />
               <label htmlFor="pagoCompleto" className="text-white text-sm">Marcar si se abona el total</label>
@@ -459,6 +541,21 @@ export default function PedidoRapidoAdmin() {
               </div>
             )}
           </div>
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
+            <div className="text-center">
+              <div className="text-xs text-gray-500">Abonado</div>
+              <div className="text-xl font-bold text-green-700">$ {(pagoCompleto ? importeTotal : (importeAbonado || '0'))}</div>
+            </div>
+            <div className="text-center">
+              <div className="text-xs text-gray-500">Deuda</div>
+              <div className="text-xl font-bold text-red-700">$ {(() => {
+                const tot = parseFloat(importeTotal || '0') || 0;
+                const ab = parseFloat(pagoCompleto ? importeTotal : (importeAbonado || '0')) || 0;
+                const deuda = Math.max(0, tot - ab);
+                return deuda.toFixed(2);
+              })()}</div>
+            </div>
+          </div>
         </div>
 
         {/* Modal Cheque */}
@@ -498,6 +595,7 @@ export default function PedidoRapidoAdmin() {
 
         <div className="flex gap-3 justify-center">
           <button type="submit" className="px-6 py-3 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700">Crear y Aprobar</button>
+          <button type="button" className="px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700" onClick={handleSubmitRecepcionar}>Crear, Aprobar y Recepcionar</button>
           <button type="button" className="px-6 py-3 bg-gray-200 rounded-lg font-semibold hover:bg-gray-300" onClick={() => router.push('/compras')}>Cancelar</button>
         </div>
       </form>

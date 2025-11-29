@@ -81,6 +81,12 @@ export default function ListaOrdenesCompra() {
   const [processingId, setProcessingId] = useState<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [aprobacionOpen, setAprobacionOpen] = useState<boolean>(false);
+  const [aprobacionOrdenId, setAprobacionOrdenId] = useState<number | null>(null);
+  const [aprobacionPagoCompleto, setAprobacionPagoCompleto] = useState<boolean>(true);
+  const [aprobacionImporteAbonado, setAprobacionImporteAbonado] = useState<string>("");
+  const [aprobacionFormaPago, setAprobacionFormaPago] = useState<string>("Efectivo");
+  const [aprobacionError, setAprobacionError] = useState<string | null>(null);
 
   const fetchOrdenes = async (currentPage = page, filtro = filtroEstado) => {
     setLoading(true); 
@@ -166,23 +172,36 @@ export default function ListaOrdenesCompra() {
   const handleAprobarOrden = async (ordenId: number) => {
     if (processingId) return;
 
-    const confirmacion = window.confirm(`¿Está seguro de que desea APROBAR la orden de compra Nº ${ordenId.toString().padStart(4, '0')}?`);
-    if (!confirmacion) return;
+    if (!aprobacionOpen) {
+      const o = ordenes.find(x => x.id === ordenId);
+      const total = Number(o?.importe_total_estimado ?? 0) || 0;
+      setAprobacionOrdenId(ordenId);
+      setAprobacionPagoCompleto(true);
+      setAprobacionImporteAbonado(total.toFixed(2));
+      setAprobacionFormaPago('Efectivo');
+      setAprobacionError(null);
+      setAprobacionOpen(true);
+      return;
+    }
 
     setProcessingId(ordenId); setActionError(null); setActionSuccess(null);
     try {
       const token = localStorage.getItem("token");
       if (!token) throw new Error("Usuario no autenticado.");
       
+      const ordenRef = ordenes.find(o => o.id === ordenId);
+      const totalRef = Number(ordenRef?.importe_total_estimado ?? 0) || 0;
+      const abonadoRef = aprobacionPagoCompleto ? totalRef : (parseFloat(aprobacionImporteAbonado || '0') || 0);
+      const payload = { importe_abonado: abonadoRef, forma_pago: aprobacionFormaPago };
       const response = await fetch(`https://quimex.sistemataup.online/ordenes_compra/aprobar/${ordenId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           'X-User-Role' : user.role,
           'X-User-Name' : user.name,
-          "Authorization": `Bearer ${token}`,
+          'Authorization': `Bearer ${token}`,
         },
-        body: JSON.stringify({})
+        body: JSON.stringify(payload),
       });
       let result: unknown = {};
       try { result = await response.json(); }
@@ -205,9 +224,10 @@ export default function ListaOrdenesCompra() {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Ocurrió un error al aprobar la orden.';
       setActionError(msg);
-      console.error("Error aprobando orden:", err);
     } finally {
       setProcessingId(null);
+      setAprobacionOpen(false);
+      setAprobacionOrdenId(null);
       setTimeout(() => { setActionSuccess(null); setActionError(null); }, 5000);
     }
   };
@@ -432,16 +452,16 @@ export default function ListaOrdenesCompra() {
                         </button>
                         {user && user.role && user.role.toUpperCase() === 'ADMIN' && orden.estado === 'Solicitado' && (
                           <>
-                            <button
-                              title="Aprobar Orden"
-                              onClick={() => handleAprobarOrden(orden.id)}
-                              disabled={!puedeActuar || isProcessingCurrent}
-                              className={`p-1 rounded text-green-500 hover:text-green-700 disabled:text-gray-400 disabled:cursor-not-allowed ${isProcessingCurrent ? 'animate-pulse' : ''}`}
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                              </svg>
-                            </button>
+                        <button
+                          title="Aprobar Orden"
+                          onClick={() => handleAprobarOrden(orden.id)}
+                          disabled={!puedeActuar || isProcessingCurrent}
+                          className={`p-1 rounded text-green-500 hover:text-green-700 disabled:text-gray-400 disabled:cursor-not-allowed ${isProcessingCurrent ? 'animate-pulse' : ''}`}
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          </svg>
+                        </button>
                             <button
                               title="Rechazar Orden"
                               onClick={() => handleRechazarOrden(orden.id)}
@@ -478,6 +498,46 @@ export default function ListaOrdenesCompra() {
       <style jsx>{`
         .btn-pag { @apply px-4 py-2 rounded bg-indigo-700 text-white hover:bg-indigo-800 disabled:opacity-50 text-sm transition-colors; }
       `}</style>
+      {aprobacionOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
+            <h2 className="text-lg font-semibold mb-4">Aprobar Orden</h2>
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <input type="checkbox" checked={aprobacionPagoCompleto} onChange={() => {
+                  const next = !aprobacionPagoCompleto;
+                  setAprobacionPagoCompleto(next);
+                  if (next) {
+                    const o = ordenes.find(x => x.id === aprobacionOrdenId);
+                    const t = Number(o?.importe_total_estimado ?? 0) || 0;
+                    setAprobacionImporteAbonado(t.toFixed(2));
+                    setAprobacionError(null);
+                  }
+                }} className="w-4 h-4" />
+                <span className="text-sm">Pago completo</span>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Importe abonado</label>
+                <input type="number" step="0.01" min={0} value={aprobacionImporteAbonado} onChange={(e)=> setAprobacionImporteAbonado(e.target.value)} disabled={aprobacionPagoCompleto} className="w-full px-3 py-2 rounded border" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Forma de Pago</label>
+                <select value={aprobacionFormaPago} onChange={(e)=> setAprobacionFormaPago(e.target.value)} className="w-full px-3 py-2 rounded border">
+                  <option value="Efectivo">Efectivo</option>
+                  <option value="Transferencia">Transferencia</option>
+                  <option value="Cheque">Cheque</option>
+                  <option value="Cuenta Corriente">Cuenta Corriente</option>
+                </select>
+              </div>
+              {aprobacionError && <div className="text-sm text-red-600">{aprobacionError}</div>}
+            </div>
+            <div className="mt-5 flex justify-end gap-3">
+              <button type="button" className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300" onClick={() => { setAprobacionOpen(false); setAprobacionOrdenId(null); }}>Cancelar</button>
+              <button type="button" className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700" onClick={() => handleAprobarOrden(aprobacionOrdenId!)}>Aprobar</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
