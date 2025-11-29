@@ -88,7 +88,7 @@ export default function DeudaProveedoresPage() {
     if (ordenarPor==='pendiente') rows.sort((a,b)=> b.pendiente - a.pendiente);
     if (ordenarPor==='orden') rows.sort((a,b)=> a.ocId - b.ocId);
     return rows;
-  }, [ordenes, itemsPorOrden, movimientos, ordenarPor, filtroDesde, filtroHasta]);
+  }, [ordenes, itemsPorOrden, movimientos, ordenarPor, filtroDesde, filtroHasta, proveedorPorOrden]);
 
   const exportCSV = () => {
     const header = ['OC','Total','Abonado','Pendiente','Último Pago','Fecha'];

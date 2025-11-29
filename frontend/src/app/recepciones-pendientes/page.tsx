@@ -12,6 +12,7 @@ type OrdenCompra = {
   iibb?: string;
   forma_pago?: string;
   cheque_perteneciente_a?: string;
+  estado_recepcion?: string;
   items?: { precio_unitario_estimado?: number }[];
 };
 

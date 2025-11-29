@@ -106,9 +106,9 @@ export default function ListaOrdenesCompra() {
       const data = await response.json();
       setOrdenes(data.ordenes || []);
       setPagination(data.pagination || null);
-      //eslint-disable-next-line
-    } catch (err: any) {
-      setError(err.message || 'Error desconocido.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error desconocido.';
+      setError(msg);
       console.error("FetchOrdenes Error:", err);
     } finally {
       setLoading(false);
@@ -182,20 +182,29 @@ export default function ListaOrdenesCompra() {
           'X-User-Name' : user.name,
           "Authorization": `Bearer ${token}`,
         },
+        body: JSON.stringify({})
       });
-
-      const result = await response.json();
+      let result: unknown = {};
+      try { result = await response.json(); }
+      catch { result = await response.text(); }
       if (!response.ok) {
-        throw new Error(result.error || `Error ${response.status} al aprobar la orden.`);
+        const msg = typeof result === 'string'
+          ? result
+          : (result && typeof result === 'object' && 'error' in result ? (result as { error?: string }).error || `Error ${response.status}` : `Error ${response.status} al aprobar la orden.`);
+        throw new Error(msg);
       }
       
-      setActionSuccess(result.message || `Orden Nº ${ordenId} aprobada con éxito.`);
+      const message = (result && typeof result === 'object' && 'message' in result) ? (result as { message?: string }).message : undefined;
+      const ordenEstado = (result && typeof result === 'object' && 'orden' in result && typeof (result as { orden?: { estado?: string } }).orden?.estado === 'string')
+        ? (result as { orden?: { estado?: string } }).orden!.estado
+        : undefined;
+      setActionSuccess(message || `Orden Nº ${ordenId} aprobada con éxito.`);
       setOrdenes(prevOrdenes => prevOrdenes.map(o => 
-        o.id === ordenId ? { ...o, estado: result.orden?.estado || 'Aprobado' } : o
+        o.id === ordenId ? { ...o, estado: ordenEstado || 'Aprobado' } : o
       ).filter(o => filtroEstado === 'todos' || o.estado === filtroEstado));
-      //eslint-disable-next-line
-    } catch (err: any) {
-      setActionError(err.message || "Ocurrió un error al aprobar la orden.");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Ocurrió un error al aprobar la orden.';
+      setActionError(msg);
       console.error("Error aprobando orden:", err);
     } finally {
       setProcessingId(null);
@@ -238,9 +247,9 @@ export default function ListaOrdenesCompra() {
       setOrdenes(prevOrdenes => prevOrdenes.map(o => 
         o.id === ordenId ? { ...o, estado: result.orden?.estado || 'Rechazado', motivo_rechazo: motivoRechazo } : o
       ).filter(o => filtroEstado === 'todos' || o.estado === filtroEstado));
-      //eslint-disable-next-line
-    } catch (err: any) {
-      setActionError(err.message || "Ocurrió un error al rechazar la orden.");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Ocurrió un error al rechazar la orden.';
+      setActionError(msg);
       console.error("Error rechazando orden:", err);
     } finally {
       setProcessingId(null);
