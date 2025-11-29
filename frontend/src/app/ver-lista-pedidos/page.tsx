@@ -15,6 +15,8 @@ type OrdenCompra = {
   condicion_iva?: string;
 };
 
+type DetalleItem = { id_linea?: number|string; cantidad_solicitada?: number|string; precio_unitario_estimado?: number|string };
+
 type Pagination = {
   total_items: number;
   total_pages: number;
@@ -33,7 +35,7 @@ export default function ListaOrdenesCompra() {
 
   // Estado para el filtro: por defecto 'Aprobado' (Recepciones Pendientes)
   // Solo el admin puede ver 'Solicitado'.
-  const [filtroEstado, setFiltroEstado] = useState<'Aprobado' | 'Solicitado' | 'todos'>(esAlmacen || !esAdmin ? 'Aprobado' : 'Aprobado');
+  const [filtroEstado, setFiltroEstado] = useState<'Aprobado' | 'Solicitado' | 'todos'>(esAdmin ? 'Solicitado' : 'Aprobado');
   // Sincronizar filtro con query param al montar
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -87,6 +89,9 @@ export default function ListaOrdenesCompra() {
   const [aprobacionImporteAbonado, setAprobacionImporteAbonado] = useState<string>("");
   const [aprobacionFormaPago, setAprobacionFormaPago] = useState<string>("Efectivo");
   const [aprobacionError, setAprobacionError] = useState<string | null>(null);
+  const [filtroId, setFiltroId] = useState<string>("");
+  const [filtroDesde, setFiltroDesde] = useState<string>("");
+  const [filtroHasta, setFiltroHasta] = useState<string>("");
 
   const fetchOrdenes = async (currentPage = page, filtro = filtroEstado) => {
     setLoading(true); 
@@ -164,10 +169,7 @@ export default function ListaOrdenesCompra() {
     cargarResumen();
   }, [ordenes, filtroEstado, resumenItems]);
 
-  const handleFiltroChange = (nuevoFiltro: 'Aprobado' | 'Solicitado' | 'todos') => {
-    setFiltroEstado(nuevoFiltro);
-    setPage(1);
-  };
+  // Eliminado control de botones de filtro para vista de pendientes
 
   const handleAprobarOrden = async (ordenId: number) => {
     if (processingId) return;
@@ -192,7 +194,32 @@ export default function ListaOrdenesCompra() {
       const ordenRef = ordenes.find(o => o.id === ordenId);
       const totalRef = Number(ordenRef?.importe_total_estimado ?? 0) || 0;
       const abonadoRef = aprobacionPagoCompleto ? totalRef : (parseFloat(aprobacionImporteAbonado || '0') || 0);
-      const payload = { importe_abonado: abonadoRef, forma_pago: aprobacionFormaPago };
+      const detalleResp = await fetch(`https://quimex.sistemataup.online/ordenes_compra/obtener/${ordenId}`, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        }
+      });
+      const detalleData = await detalleResp.json().catch(()=>({}));
+      const proveedor_id = Number((detalleData?.proveedor_id) ?? (detalleData?.proveedor?.id) ?? 0);
+      const itemsFull = Array.isArray(detalleData?.items) ? detalleData.items : [];
+      const itemsPayload = (itemsFull as DetalleItem[]).map((it) => ({ id_linea: typeof it.id_linea === 'number' ? it.id_linea : Number(it.id_linea ?? 0), cantidad_solicitada: typeof it.cantidad_solicitada === 'number' ? it.cantidad_solicitada : Number(it.cantidad_solicitada ?? 0), precio_unitario_estimado: typeof it.precio_unitario_estimado === 'number' ? it.precio_unitario_estimado : Number(it.precio_unitario_estimado ?? 0) }));
+      const importe_total_estimado = Number(detalleData?.importe_total_estimado ?? totalRef ?? 0);
+      const payload = {
+        proveedor_id,
+        cuenta: '',
+        iibb: '',
+        iva: '',
+        tc: '',
+        ajuste_tc: false,
+        observaciones_solicitud: 'Aprobada desde Lista',
+        tipo_caja: '',
+        forma_pago: aprobacionFormaPago,
+        items: itemsPayload.length>0 ? itemsPayload : [{ id_linea: 0, cantidad_solicitada: 0, precio_unitario_estimado: 0 }],
+        importe_total_estimado,
+        importe_abonado: abonadoRef,
+        cheque_perteneciente_a: undefined,
+      };
       const response = await fetch(`https://quimex.sistemataup.online/ordenes_compra/aprobar/${ordenId}`, {
         method: 'PUT',
         headers: {
@@ -287,6 +314,19 @@ export default function ListaOrdenesCompra() {
 
   // Si viene con filtro 'Solicitado' por query, solo mostrar ese filtro
 
+  const ordenesFiltradas = (() => {
+    const base = (['Aprobado','Solicitado'].includes(filtroEstado) ? filtrarPorEstado(ordenes, filtroEstado) : ordenes);
+    const soloSolicitado = esAdmin ? base.filter(o=> o.estado==='Solicitado') : base;
+    const porId = filtroId ? soloSolicitado.filter(o=> String(o.id).includes(filtroId.trim())) : soloSolicitado;
+    const porFecha = porId.filter(o=> {
+      const d = new Date(o.fecha_creacion);
+      const okD = filtroDesde ? d >= new Date(filtroDesde) : true;
+      const okH = filtroHasta ? d <= new Date(filtroHasta) : true;
+      return okD && okH;
+    });
+    return porFecha;
+  })();
+
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-indigo-900 py-10 px-4">
       <div className="bg-white p-6 md:p-8 rounded-lg shadow-xl w-full max-w-4xl lg:max-w-5xl">
@@ -295,96 +335,21 @@ export default function ListaOrdenesCompra() {
           Lista de Órdenes de Compra
         </h2>
 
-        <div className="flex flex-col md:flex-row justify-center items-center gap-2 mb-6 border-b pb-4">
-          {/* Solo el admin puede ver y filtrar por pendientes de aprobación */}
-          {esAdmin ? (
-            filtroEstado === 'Aprobado' ? (
-              <>
-                <button
-                  disabled
-                  className={`px-4 py-2 text-base font-bold rounded transition-all duration-200 shadow-md border-2 border-green-400 bg-green-100 text-green-900 ring-2 ring-green-500`}
-                >
-                  Recepciones Pendientes
-                </button>
-                <button
-                  onClick={() => handleFiltroChange('Solicitado')}
-                  disabled={loading}
-                  className={`px-4 py-2 text-base font-bold rounded transition-all duration-200 shadow-md border-2 border-yellow-400 bg-yellow-100 text-yellow-900 hover:bg-yellow-200${(filtroEstado as string) === 'Solicitado' ? ' ring-2 ring-yellow-500' : ''}`}
-                >
-                  Solicitudes Pendientes de Aprobación
-                </button>
-                <button
-                  onClick={() => handleFiltroChange('todos')}
-                  disabled={loading}
-                  className={`px-4 py-2 text-base font-bold rounded transition-all duration-200 shadow-md border-2 border-indigo-400 bg-indigo-100 text-indigo-900 hover:bg-indigo-200${(filtroEstado as string) === 'todos' ? ' ring-2 ring-indigo-500' : ''}`}
-                >
-                  Ver Todas
-                </button>
-              </>
-            ) : filtroEstado === 'Solicitado' ? (
-              <>
-                <button
-                  onClick={() => handleFiltroChange('Aprobado')}
-                  disabled={loading}
-                  className={`px-4 py-2 text-base font-bold rounded transition-all duration-200 shadow-md border-2 border-green-400 bg-green-100 text-green-900 hover:bg-green-200${(filtroEstado as string) === 'Aprobado' ? ' ring-2 ring-green-500' : ''}`}
-                >
-                  Recepciones Pendientes
-                </button>
-                <button
-                  disabled
-                  className={`px-4 py-2 text-base font-bold rounded transition-all duration-200 shadow-md border-2 border-yellow-400 bg-yellow-100 text-yellow-900 ring-2 ring-yellow-500`}
-                >
-                  Solicitudes Pendientes de Aprobación
-                </button>
-                <button
-                  onClick={() => handleFiltroChange('todos')}
-                  disabled={loading}
-                  className={`px-4 py-2 text-base font-bold rounded transition-all duration-200 shadow-md border-2 border-indigo-400 bg-indigo-100 text-indigo-900 hover:bg-indigo-200${(filtroEstado as string) === 'todos' ? ' ring-2 ring-indigo-500' : ''}`}
-                >
-                  Ver Todas
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  onClick={() => handleFiltroChange('Aprobado')}
-                  disabled={loading}
-                  className={`px-4 py-2 text-base font-bold rounded transition-all duration-200 shadow-md border-2 border-green-400 bg-green-100 text-green-900 hover:bg-green-200${(filtroEstado as string) === 'Aprobado' ? ' ring-2 ring-green-500' : ''}`}
-                >
-                  Recepciones Pendientes
-                </button>
-                <button
-                  onClick={() => handleFiltroChange('Solicitado')}
-                  disabled={loading}
-                  className={`px-4 py-2 text-base font-bold rounded transition-all duration-200 shadow-md border-2 border-yellow-400 bg-yellow-100 text-yellow-900 hover:bg-yellow-200${(filtroEstado as string) === 'Solicitado' ? ' ring-2 ring-yellow-500' : ''}`}
-                >
-                  Solicitudes Pendientes de Aprobación
-                </button>
-                <button
-                  onClick={() => handleFiltroChange('todos')}
-                  disabled={loading}
-                  className={`px-4 py-2 text-base font-bold rounded transition-all duration-200 shadow-md border-2 border-indigo-400 bg-indigo-100 text-indigo-900 hover:bg-indigo-200${filtroEstado === 'todos' ? ' ring-2 ring-indigo-500' : ''}`}
-                >
-                  Ver Todas
-                </button>
-              </>
-            )
-          ) : (
-            // No admin: solo puede ver recepciones pendientes y todas
+        <div className="flex flex-col md:flex-row justify-center items-end gap-3 mb-6 border-b pb-4">
+          {esAdmin && (
             <>
-              <button
-                disabled
-                className={`px-4 py-2 text-base font-bold rounded transition-all duration-200 shadow-md border-2 border-green-400 bg-green-100 text-green-900 ring-2 ring-green-500`}
-              >
-                Recepciones Pendientes
-              </button>
-              <button
-                onClick={() => handleFiltroChange('todos')}
-                disabled={loading}
-                className={`px-4 py-2 text-base font-bold rounded transition-all duration-200 shadow-md border-2 border-indigo-400 bg-indigo-100 text-indigo-900 hover:bg-indigo-200${filtroEstado === 'todos' ? ' ring-2 ring-indigo-500' : ''}`}
-              >
-                Ver Todas
-              </button>
+              <div>
+                <label className="text-sm text-gray-700">ID</label>
+                <input type="text" value={filtroId} onChange={(e)=> setFiltroId(e.target.value)} className="ml-2 px-2 py-1 border rounded" placeholder="Ej: 118" />
+              </div>
+              <div>
+                <label className="text-sm text-gray-700">Desde</label>
+                <input type="date" value={filtroDesde} onChange={(e)=> setFiltroDesde(e.target.value)} className="ml-2 px-2 py-1 border rounded" />
+              </div>
+              <div>
+                <label className="text-sm text-gray-700">Hasta</label>
+                <input type="date" value={filtroHasta} onChange={(e)=> setFiltroHasta(e.target.value)} className="ml-2 px-2 py-1 border rounded" />
+              </div>
             </>
           )}
         </div>
@@ -407,8 +372,7 @@ export default function ListaOrdenesCompra() {
                   <span className="text-center">Acciones</span>
                 </li>
 
-                {(['Aprobado','Solicitado'].includes(filtroEstado) ? filtrarPorEstado(ordenes, filtroEstado) : ordenes).length > 0 ?
-                  (['Aprobado','Solicitado'].includes(filtroEstado) ? filtrarPorEstado(ordenes, filtroEstado) : ordenes).map((orden) => {
+                {ordenesFiltradas.length > 0 ? ordenesFiltradas.map((orden) => {
                   let fechaFormateada = 'N/A';
                   try {
                     fechaFormateada = new Date(orden.fecha_creacion).toLocaleDateString("es-AR", {
