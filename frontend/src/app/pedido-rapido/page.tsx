@@ -159,8 +159,8 @@ export default function PedidoRapidoAdmin() {
       })();
       if (!pagoCompleto) {
         const abonadoNum = parseFloat(importeAbonado || '0');
-        if (isNaN(abonadoNum) || abonadoNum <= 0) {
-          setPagoError("Ingrese el importe abonado (mayor a 0).");
+        if (isNaN(abonadoNum) || abonadoNum < 0) {
+          setPagoError("Ingrese un importe abonado válido (0 o mayor).");
           return;
         }
         if (abonadoNum > totalCalculadoForm) {

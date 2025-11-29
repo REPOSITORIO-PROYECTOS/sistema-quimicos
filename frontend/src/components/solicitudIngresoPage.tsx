@@ -79,10 +79,13 @@ export default function SolicitudIngresoPage({ id }: any) {
       setCantidad(itemPrincipal.cantidad_solicitada?.toString() ?? '');
       setPrecioUnitario(itemPrincipal.precio_unitario_estimado?.toString() ?? '0');
       setCuenta(data.cuenta?.toString() ?? '');
-  setIibb(data.iibb?.toString() ?? '');
-  setIva(data.iva?.toString() ?? '');
-  setTc(data.tc?.toString() ?? '');
-      setImporteTotal(itemPrincipal.importe_linea_estimado?.toString() ?? '0');
+      setIibb(data.iibb?.toString() ?? '');
+      setIva(data.iva?.toString() ?? '');
+      setTc(data.tc?.toString() ?? '');
+      const totalOC = typeof data.importe_total_estimado === 'number'
+        ? data.importe_total_estimado
+        : (typeof itemPrincipal.importe_linea_estimado === 'number' ? itemPrincipal.importe_linea_estimado : 0);
+      setImporteTotal(totalOC.toFixed(2));
       setEstadoOC(data.estado || '');
       setIdLineaOCOriginal(itemPrincipal.id_linea || '');
       setAjusteTC(data.ajuste_tc === true ? 'True' : 'False');
@@ -180,6 +183,9 @@ export default function SolicitudIngresoPage({ id }: any) {
       problema = false;
       setErrorMensaje('');
       const nuevoAbonoFloat = parseFloat(String(solicitud.importeAbonado ?? '')) || 0;
+      if (nuevoAbonoFloat < 0) {
+        throw new Error('El importe abonado no puede ser negativo.');
+      }
       
       const payload = {
         proveedor_id: Number(solicitud.proveedor_id),

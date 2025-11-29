@@ -894,3 +894,84 @@ def guardar_costo_historico_endpoint(current_user):
         traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
 
+# --- Reporte de Faltantes por Orden (Excel) ---
+@reportes_bp.route('/orden/<int:orden_id>/faltantes-excel', methods=['GET'])
+@token_required
+@roles_required(ROLES['ADMIN'], ROLES['ALMACEN'], ROLES['CONTABLE'])
+def reporte_faltantes_por_orden(current_user, orden_id: int):
+    try:
+        fecha_estimada = request.args.get('fecha_estimada')  # opcional
+        responsable = request.args.get('responsable')  # opcional
+        orden = db.session.get(OrdenCompra, orden_id)
+        if not orden:
+            return jsonify({"error": "Orden de compra no encontrada"}), 404
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Faltantes"
+
+        # Encabezado profesional
+        ws.merge_cells('A1:F1')
+        ws['A1'] = f"Reporte de Faltantes - OC {orden.nro_solicitud_interno or orden.id}"
+        ws['A1'].font = Font(bold=True, size=14)
+        ws['A1'].alignment = Alignment(horizontal='center')
+
+        ws['A3'] = "Número de Orden"; ws['B3'] = orden.nro_solicitud_interno or orden.id
+        ws['A4'] = "Fecha de Solicitud"; ws['B4'] = orden.fecha_creacion.strftime('%Y-%m-%d %H:%M') if orden.fecha_creacion else ''
+        ws['A5'] = "Responsable Seguimiento"; ws['B5'] = responsable or (orden.aprobado_por if hasattr(orden, 'aprobado_por') else '')
+        ws['A6'] = "Fecha Estimada"; ws['B6'] = fecha_estimada or ''
+        ws['A7'] = "Observaciones"; ws['B7'] = orden.observaciones_solicitud or ''
+
+        # Encabezados de tabla
+        headers = ["Producto", "ID", "Cantidad Requerida", "Precio Unitario", "Subtotal", "Notas"]
+        for col, h in enumerate(headers, start=1):
+            cell = ws.cell(row=9, column=col, value=h)
+            cell.font = Font(bold=True)
+            cell.fill = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
+
+        # Faltantes
+        row_idx = 10
+        total_general = Decimal('0')
+        for item in orden.items or []:
+            cant_sol = Decimal(str(item.cantidad_solicitada or 0))
+            cant_rec = Decimal(str(item.cantidad_recibida or 0))
+            faltante = cant_sol - cant_rec
+            if faltante <= 0:
+                continue
+            precio_unit = Decimal(str(item.precio_unitario_estimado or 0))
+            subtotal = (faltante * precio_unit)
+            total_general += subtotal
+            prod_nombre = item.producto.nombre if item.producto else 'N/A'
+            prod_id = item.producto_id
+            ws.cell(row=row_idx, column=1, value=prod_nombre)
+            ws.cell(row=row_idx, column=2, value=prod_id)
+            ws.cell(row=row_idx, column=3, value=float(faltante)).number_format = '#,##0.00'
+            ws.cell(row=row_idx, column=4, value=float(precio_unit)).number_format = '"$"#,##0.00'
+            ws.cell(row=row_idx, column=5, value=float(subtotal)).number_format = '"$"#,##0.00'
+            ws.cell(row=row_idx, column=6, value=item.notas_item_recepcion or '')
+            row_idx += 1
+
+        # Total general
+        ws.cell(row=row_idx + 1, column=4, value="TOTAL")
+        total_cell = ws.cell(row=row_idx + 1, column=5, value=float(total_general))
+        total_cell.font = Font(bold=True)
+        total_cell.number_format = '"$"#,##0.00'
+
+        # Ajustes de ancho
+        widths = [30, 10, 18, 18, 18, 30]
+        for col, w in enumerate(widths, start=1):
+            ws.column_dimensions[get_column_letter(col)].width = w
+
+        from io import BytesIO
+        buffer = BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+        nombre_archivo = f"OC_{orden.nro_solicitud_interno or orden.id}_Faltantes.xlsx"
+        response = make_response(buffer.read())
+        response.headers['Content-Disposition'] = f'attachment; filename="{nombre_archivo}"'
+        response.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        return response
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": "Error al generar reporte de faltantes", "detalle": str(e)}), 500
+

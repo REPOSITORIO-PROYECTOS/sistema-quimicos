@@ -107,6 +107,11 @@ export default function RegistrarIngreso() {
       setErrorApi("El precio estimado no puede ser negativo.");
       return;
     }
+    if (!isNaN(importeAbonadoNum) && importeAbonadoNum < 0) {
+      setIsLoading(false);
+      setErrorApi("El importe abonado no puede ser negativo.");
+      return;
+    }
     if (!isNaN(importeAbonadoNum) && importeTotal && importeAbonadoNum > Number(importeTotal)) {
       setIsLoading(false);
       setErrorApi("El importe abonado no puede superar el total estimado.");

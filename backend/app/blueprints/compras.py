@@ -77,6 +77,7 @@ def formatear_orden_por_rol(orden_db, rol="almacen"):
         "estado": orden_db.estado,
         "proveedor_id": orden_db.proveedor_id,
         "proveedor_nombre": orden_db.proveedor.nombre if orden_db.proveedor else None,
+        "importe_total_estimado": float(orden_db.importe_total_estimado) if orden_db.importe_total_estimado is not None else None,
         "cuenta": orden_db.cuenta,
         "iibb": orden_db.iibb,
         "observaciones_solicitud": orden_db.observaciones_solicitud,
@@ -267,6 +268,29 @@ def crear_orden_compra(current_user):
 
         db.session.add(nueva_orden)
         db.session.commit()
+        try:
+            total_crear = nueva_orden.importe_total_estimado or Decimal('0')
+            abonado_crear = nueva_orden.importe_abonado or Decimal('0')
+            if rol_usuario and rol_usuario.upper() == "ADMIN" and total_crear > 0 and abonado_crear < total_crear:
+                nueva_orden.estado = 'Con Deuda'
+                db.session.commit()
+                debito_existente = db.session.query(MovimientoProveedor).filter(
+                    MovimientoProveedor.orden_id == nueva_orden.id,
+                    MovimientoProveedor.tipo == 'DEBITO'
+                ).first()
+                if not debito_existente:
+                    mov_debito_crear = MovimientoProveedor(
+                        proveedor_id=nueva_orden.proveedor_id,
+                        orden_id=nueva_orden.id,
+                        tipo='DEBITO',
+                        monto=total_crear - abonado_crear,
+                        descripcion=f"OC {nueva_orden.id} - Deuda al crear",
+                        usuario=usuario_nombre
+                    )
+                    db.session.add(mov_debito_crear)
+                    db.session.commit()
+        except Exception:
+            logger.warning("No se pudo registrar deuda al crear OC %s", nueva_orden.id)
 
         try:
             log = AuditLog(
@@ -502,7 +526,9 @@ def aprobar_orden_compra(current_user, orden_id):
             orden_db.importe_total_estimado = total
 
         # --- Actualizar estado y aprobador ---
-        orden_db.estado = 'Aprobado'
+        total_aprob = orden_db.importe_total_estimado or Decimal('0')
+        abonado_aprob = orden_db.importe_abonado or Decimal('0')
+        orden_db.estado = 'Con Deuda' if total_aprob > abonado_aprob else 'Aprobado'
         orden_db.fecha_aprobacion = datetime.datetime.utcnow()
         orden_db.aprobado_por = usuario_aprobador
         # fecha_actualizacion se actualiza via onupdate
@@ -521,6 +547,22 @@ def aprobar_orden_compra(current_user, orden_id):
                 )
                 db.session.add(mov_credito_aprob)
                 db.session.commit()
+            if total_aprob > abonado_aprob:
+                debito_existente = db.session.query(MovimientoProveedor).filter(
+                    MovimientoProveedor.orden_id == orden_id,
+                    MovimientoProveedor.tipo == 'DEBITO'
+                ).first()
+                if not debito_existente:
+                    mov_debito_aprob = MovimientoProveedor(
+                        proveedor_id=orden_db.proveedor_id,
+                        orden_id=orden_id,
+                        tipo='DEBITO',
+                        monto=total_aprob - abonado_aprob,
+                        descripcion=f"OC {orden_id} - Deuda al aprobar",
+                        usuario=usuario_aprobador
+                    )
+                    db.session.add(mov_debito_aprob)
+                    db.session.commit()
         except Exception:
             logger.warning("No se pudo registrar movimiento de proveedor (aprobación) para OC %s", orden_id)
         try:

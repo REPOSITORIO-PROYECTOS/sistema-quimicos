@@ -307,4 +307,24 @@ def buscar_proveedor_por_cuit():
     except Exception as e:
         print(f"Error inesperado al buscar proveedor por CUIT: {traceback.format_exc()}")
         return jsonify({'error': 'Ocurrió un error inesperado al buscar el proveedor por CUIT'}), 500
+
+# Historial de movimientos del proveedor (deuda/pagos)
+@proveedores_bp.route('/movimientos/<int:proveedor_id>', methods=['GET'])
+def movimientos_proveedor(proveedor_id):
+    from ..models import MovimientoProveedor
+    prov = Proveedor.query.get(proveedor_id)
+    if not prov:
+        return jsonify({'error': 'Proveedor no encontrado'}), 404
+    ms = MovimientoProveedor.query.filter_by(proveedor_id=proveedor_id).order_by(MovimientoProveedor.fecha.desc()).all()
+    return jsonify([
+        {
+            'id': m.id,
+            'orden_id': m.orden_id,
+            'tipo': m.tipo,
+            'monto': float(m.monto),
+            'fecha': m.fecha.isoformat() if m.fecha else None,
+            'descripcion': m.descripcion,
+            'usuario': m.usuario
+        } for m in ms
+    ])
     

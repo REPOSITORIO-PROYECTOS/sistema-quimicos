@@ -182,9 +182,8 @@ export default function ContabilidadTable() {
                             if ((detalleCompra as CompraDetalleConItems).estado !== estadoRecibido && (detalleCompra as CompraDetalleConItems).estado !== estadoEnDeuda) {
                                 return null; 
                             }
-                            const importeTotalOC = typeof (detalleCompra as CompraDetalleConItems).items?.[0]?.importe_linea_estimado === 'number'
-                                ? (detalleCompra as CompraDetalleConItems).items[0].importe_linea_estimado!
-                                : 0;
+                            const importeTotalOCHeader = (detalleCompra as any).importe_total_estimado;
+                            const importeTotalOC = typeof importeTotalOCHeader === 'number' ? importeTotalOCHeader : 0;
                             if ((detalleCompra as CompraDetalleConItems).estado === estadoEnDeuda) {
                                 const montoAbonado = typeof (detalleCompra as CompraDetalleConItems).importe_abonado === 'number' 
                                     ? (detalleCompra as CompraDetalleConItems).importe_abonado!
