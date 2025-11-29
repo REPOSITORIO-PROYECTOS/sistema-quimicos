@@ -44,8 +44,8 @@ export default function AlertasVencimientos() {
       }
       const json = await res.json();
       setData(json.ordenes_pendientes || []);
-    } catch (e: any) {
-      setError(e.message || "Error");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Error");
     } finally {
       setIsLoading(false);
     }
@@ -195,4 +195,3 @@ export default function AlertasVencimientos() {
     </div>
   );
 }
-
