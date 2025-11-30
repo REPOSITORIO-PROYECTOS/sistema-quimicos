@@ -642,11 +642,11 @@ export default function SolicitudIngresoPage({ id }: any) {
                 });
                 if (!problema) {
                   alert("Orden aprobada correctamente.");
-                  router.back();
+                  router.push('/compras');
                 }
               } else {
                 await handleAgregar();
-                router.back();
+                router.push('/compras');
               }
             }} className="bg-green-500 text-white px-6 py-3 rounded-lg font-semibold hover:bg-green-600">Aprobar Orden</button>
             <button
@@ -667,14 +667,14 @@ export default function SolicitudIngresoPage({ id }: any) {
               onClick={() => {
                 setErrorMensaje('');
                 alert('No se aprobó la orden. La orden sigue pendiente.');
-                router.push('/ordenes/pendientes');
+                router.push('/compras');
               }}
               className="bg-red-500 text-white px-6 py-3 rounded-lg font-semibold hover:bg-red-600"
               type="button"
             >
               No aprobar
             </button>
-            <button onClick={() => router.back()} type="button" className="bg-gray-500 text-white px-6 py-3 rounded-lg font-semibold hover:bg-gray-600 transition">Volver</button>
+            <button onClick={() => router.push('/compras')} type="button" className="bg-gray-500 text-white px-6 py-3 rounded-lg font-semibold hover:bg-gray-600 transition">Volver</button>
           </div>
         </div>
       </div>
