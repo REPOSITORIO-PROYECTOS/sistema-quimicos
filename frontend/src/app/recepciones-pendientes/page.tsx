@@ -1,11 +1,13 @@
 "use client";
 import { useEffect, useState } from "react";
-import Link from "next/link";
+// import Link from "next/link";
+import BotonVolver from "@/components/BotonVolver";
 import RecepcionesPendientes from "@/components/RecepcionesPendientes";
 
 type OrdenCompra = {
   id: number;
   fecha_creacion: string;
+  fecha_actualizacion?: string;
   proveedor_nombre?: string;
   estado: string;
   proveedor_id?: number;
@@ -255,7 +257,7 @@ export default function RecepcionesPendientesPage() {
     // Filtrado temporal
     if (filtroTipo === 'mes' && filtroMes) {
       base = base.filter(o => {
-        const d = new Date(o.fecha_creacion);
+        const d = new Date(o.fecha_actualizacion || o.fecha_creacion);
         const y = d.getFullYear();
         const m = String(d.getMonth()+1).padStart(2,'0');
         return `${y}-${m}` === filtroMes;
@@ -264,7 +266,7 @@ export default function RecepcionesPendientesPage() {
       const from = filtroDesde ? new Date(filtroDesde) : null;
       const to = filtroHasta ? new Date(filtroHasta) : null;
       base = base.filter(o => {
-        const d = new Date(o.fecha_creacion);
+        const d = new Date(o.fecha_actualizacion || o.fecha_creacion);
         return (!from || d >= from) && (!to || d <= to);
       });
     }
@@ -316,11 +318,9 @@ export default function RecepcionesPendientesPage() {
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-blue-900 py-10 px-4">
       <div className="bg-white p-6 md:p-8 rounded-lg shadow-xl w-full max-w-4xl lg:max-w-5xl">
-        <h2 className="text-2xl md:text-3xl font-semibold mb-6 text-center text-blue-900">
-          Recepciones Pendientes
-        </h2>
-        <div className="flex justify-center mb-4">
-          <Link href="/compras" className="px-4 py-2 rounded bg-indigo-600 text-white font-semibold hover:bg-indigo-700">Volver a Compras</Link>
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-2xl md:text-3xl font-semibold text-blue-900">Recepciones Pendientes</h2>
+          <BotonVolver />
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
           <div className="flex items-center gap-2">

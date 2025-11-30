@@ -245,8 +245,9 @@ export default function ListaOrdenesCompra() {
         ? (result as { orden?: { estado?: string } }).orden!.estado
         : undefined;
       setActionSuccess(message || `Orden Nº ${ordenId} aprobada con éxito.`);
+      const nowIso = new Date().toISOString();
       setOrdenes(prevOrdenes => prevOrdenes.map(o => 
-        o.id === ordenId ? { ...o, estado: ordenEstado || 'Aprobado' } : o
+        o.id === ordenId ? { ...o, estado: ordenEstado || 'Aprobado', fecha_creacion: nowIso } : o
       ).filter(o => filtroEstado === 'todos' || o.estado === filtroEstado));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Ocurrió un error al aprobar la orden.';
@@ -291,8 +292,9 @@ export default function ListaOrdenesCompra() {
       }
 
       setActionSuccess(result.message || `Orden Nº ${ordenId} rechazada con éxito.`);
+      const nowIso = new Date().toISOString();
       setOrdenes(prevOrdenes => prevOrdenes.map(o => 
-        o.id === ordenId ? { ...o, estado: result.orden?.estado || 'Rechazado', motivo_rechazo: motivoRechazo } : o
+        o.id === ordenId ? { ...o, estado: result.orden?.estado || 'Rechazado', motivo_rechazo: motivoRechazo, fecha_creacion: nowIso } : o
       ).filter(o => filtroEstado === 'todos' || o.estado === filtroEstado));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Ocurrió un error al rechazar la orden.';
@@ -373,12 +375,7 @@ export default function ListaOrdenesCompra() {
                 </li>
 
                 {ordenesFiltradas.length > 0 ? ordenesFiltradas.map((orden) => {
-                  let fechaFormateada = 'N/A';
-                  try {
-                    fechaFormateada = new Date(orden.fecha_creacion).toLocaleDateString("es-AR", {
-                      day: "2-digit", month: "2-digit", year: "numeric",
-                    });
-                  } catch (e) { console.error("Error formateando fecha:", orden.fecha_creacion, e); }
+                  // Fecha se muestra directamente más abajo
 
                   const isProcessingCurrent = processingId === orden.id;
                   const puedeActuar = orden.estado === 'Solicitado' && !processingId;
@@ -386,7 +383,7 @@ export default function ListaOrdenesCompra() {
                   return (
                     <li key={orden.id} className="grid grid-cols-[1fr_1.5fr_1fr_2fr_1fr_1fr] gap-x-3 items-center bg-white hover:bg-gray-50 p-3 text-sm">
                       <span>{`Nº ${orden.id.toString().padStart(4, '0')}`}</span>
-                      <span>{fechaFormateada}</span>
+                      <span>{new Date(orden.fecha_creacion).toLocaleDateString("es-AR")}</span>
                       <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full 
                         ${orden.estado === 'Aprobado' ? 'bg-green-100 text-green-800' : 
                           orden.estado === 'Rechazado' ? 'bg-red-100 text-red-800' : 
