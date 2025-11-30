@@ -41,6 +41,9 @@ export default function RecepcionesPendientesPage() {
   const [filtroMes, setFiltroMes] = useState<string>(''); // YYYY-MM
   const [filtroDesde, setFiltroDesde] = useState<string>('');
   const [filtroHasta, setFiltroHasta] = useState<string>('');
+  const [pagoCompletoRecep, setPagoCompletoRecep] = useState<boolean>(false);
+  const [importeAbonadoRecep, setImporteAbonadoRecep] = useState<string>('');
+  const [pagoErrorRecep, setPagoErrorRecep] = useState<string>('');
 
   useEffect(() => {
     const fetchOrdenes = async () => {
@@ -58,7 +61,7 @@ export default function RecepcionesPendientesPage() {
           throw new Error(errData.message || "Error al traer órdenes.");
         }
         const data = await response.json();
-        setOrdenes((data.ordenes || []).filter((o: OrdenCompra) => ['Aprobado','Con Deuda','EN_ESPERA_RECEPCION'].includes(String(o.estado))));
+        setOrdenes((data.ordenes || []).filter((o: OrdenCompra) => ['Aprobado','EN_ESPERA_RECEPCION'].includes(String(o.estado))));
         // Mapear ítems por orden para mostrar en la lista
         const itemsMap: Record<number, {nombre: string, cantidad: number}[]> = {};
         (data.ordenes || []).forEach((orden: Record<string, unknown>) => {
@@ -80,36 +83,7 @@ export default function RecepcionesPendientesPage() {
         });
         setItemsPorOrden(itemsMap);
 
-        // Cargar también órdenes en estado 'Con Deuda' como pendientes de recepción
-        try {
-          const urlD = `https://quimex.sistemataup.online/ordenes_compra/obtener_todas?estado=Con%20Deuda`;
-          const responseD = await fetch(urlD, {
-            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }
-          });
-          if (responseD.ok) {
-            const dataD = await responseD.json().catch(()=>({ordenes:[]}));
-            setOrdenes(prev => [...prev, ...(dataD.ordenes || [])]);
-            const itemsMapD: Record<number, {nombre: string, cantidad: number}[]> = {};
-            (dataD.ordenes || []).forEach((orden: Record<string, unknown>) => {
-              if (orden.items && Array.isArray(orden.items)) {
-                itemsMapD[Number(orden.id)] = (orden.items as Record<string, unknown>[]).map((item) => {
-                  let nombre = '';
-                  if (typeof item.producto_nombre === 'string') {
-                    nombre = item.producto_nombre;
-                  } else if (item.producto && typeof item.producto === 'object' && (item.producto as Record<string, unknown>).nombre) {
-                    nombre = (item.producto as Record<string, unknown>).nombre as string;
-                  } else if (item.producto_id) {
-                    nombre = `ID: ${item.producto_id}`;
-                  } else {
-                    nombre = 'Producto';
-                  }
-                  return { nombre, cantidad: item.cantidad_solicitada as number };
-                });
-              }
-            });
-            setItemsPorOrden(prev => ({...prev, ...itemsMapD}));
-          }
-        } catch {}
+        // No incluir 'Con Deuda' en pendientes de recepción
       } catch (err: unknown) {
         if (err instanceof Error) {
           setError(err.message || 'Error desconocido.');
@@ -199,8 +173,23 @@ export default function RecepcionesPendientesPage() {
       const precioUnitarioOC = Number(ordenSeleccionada?.items?.[0]?.precio_unitario_estimado ?? 0);
       const precioUnitarioRecepcion = precioUnitarioOC || (itemsRecibidos.length > 0 ? Number(itemsRecibidos[0].costo_unitario_ars) || 0 : 0);
 
-      // Permitir ingresar monto abonado si tu UI lo soporta; por ahora usar total recibido
-      const montoAbonado = importeTotal; // Ajusta si tienes un input específico
+      // Abono: si pago completo, usar total; si no, usar el valor ingresado (validado)
+      let montoAbonado = 0;
+      if (pagoCompletoRecep) {
+        montoAbonado = importeTotal;
+      } else {
+        const abonadoNum = parseFloat(importeAbonadoRecep || '0');
+        if (isNaN(abonadoNum) || abonadoNum < 0) {
+          setPagoErrorRecep('Ingrese un importe abonado válido.');
+          return;
+        }
+        if (abonadoNum > importeTotal) {
+          setPagoErrorRecep('El importe abonado no puede superar el total recibido.');
+          return;
+        }
+        setPagoErrorRecep('');
+        montoAbonado = abonadoNum;
+      }
 
       const payload = {
         // Campos usados por backend para generar deuda y registrar recepción
@@ -236,6 +225,9 @@ export default function RecepcionesPendientesPage() {
 
       alert('Recepción registrada correctamente.');
       setOrdenSeleccionada(null);
+      setPagoCompletoRecep(false);
+      setImporteAbonadoRecep('');
+      setPagoErrorRecep('');
 
       // Refrescar lista base
       setLoading(true);
@@ -243,7 +235,7 @@ export default function RecepcionesPendientesPage() {
       const url = `https://quimex.sistemataup.online/ordenes_compra/obtener_todas?estado=Aprobado`;
       const refresco = await fetch(url, { headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` } });
       const nuevo = await refresco.json();
-      setOrdenes((nuevo.ordenes || []).filter((o: OrdenCompra) => ['Aprobado','Con Deuda','EN_ESPERA_RECEPCION'].includes(String(o.estado))));
+      setOrdenes((nuevo.ordenes || []).filter((o: OrdenCompra) => ['Aprobado','EN_ESPERA_RECEPCION'].includes(String(o.estado))));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error registrando recepción.';
       alert(msg);
@@ -295,6 +287,21 @@ export default function RecepcionesPendientesPage() {
           <h2 className="text-xl font-bold mb-2 text-blue-100 text-center">Recepción de Orden Nº {ordenSeleccionada.id.toString().padStart(4, '0')}</h2>
           <p className="mb-4 text-blue-200 text-center">Fecha: {new Date(ordenSeleccionada.fecha_creacion).toLocaleDateString("es-AR")}</p>
           {loadingItems && <p className="text-blue-100">Cargando ítems...</p>}
+          {!loadingItems && (
+            <div className="mb-4 bg-white/10 rounded p-3">
+              <div className="flex items-center gap-3">
+                <input id="pagoCompletoRecep" type="checkbox" className="w-4 h-4" checked={pagoCompletoRecep} onChange={()=> setPagoCompletoRecep(!pagoCompletoRecep)} />
+                <label htmlFor="pagoCompletoRecep" className="text-blue-100 text-sm">Pago completo en recepción</label>
+              </div>
+              {!pagoCompletoRecep && (
+                <div className="mt-2">
+                  <label className="text-blue-100 text-sm">Importe abonado</label>
+                  <input type="number" step="0.01" min={0} value={importeAbonadoRecep} onChange={(e)=> setImporteAbonadoRecep(e.target.value)} className="w-full px-3 py-2 rounded bg-white text-black border border-gray-300 mt-1" placeholder="Ej: 100.00" />
+                  {pagoErrorRecep && <p className="mt-1 text-sm text-red-300">{pagoErrorRecep}</p>}
+                </div>
+              )}
+            </div>
+          )}
           {items && (
             <RecepcionesPendientes
               items={items}

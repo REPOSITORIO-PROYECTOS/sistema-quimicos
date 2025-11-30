@@ -495,6 +495,12 @@ export default function PedidoRapidoAdmin() {
                 className="accent-green-500 w-5 h-5"
               />
               <label htmlFor="pagoCompleto" className="text-white text-sm">Marcar si se abona el total</label>
+              <button
+                type="button"
+                className="ml-2 px-2 py-1 text-xs rounded bg-green-600 text-white hover:bg-green-700"
+                onClick={() => { setPagoCompleto(true); setImporteAbonado(importeTotal); setPagoError(""); }}
+                aria-label="Usar total como importe abonado"
+              >Usar total</button>
             </div>
           </div>
           <div className="md:col-span-2">
