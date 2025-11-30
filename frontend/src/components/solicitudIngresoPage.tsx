@@ -31,6 +31,7 @@ export default function SolicitudIngresoPage({ id }: any) {
   const [formaPago, setFormaPago] = useState('Efectivo');
   const [chequePerteneceA, setChequePerteneceA] = useState('');
   const [tipoCaja, setTipoCaja] = useState('caja diaria');
+  const [pagoCompletoUI, setPagoCompletoUI] = useState(false);
   
   const { productos: productosDelContexto } = useProductsContext();
   const { proveedores, loading: proveedoresLoading } = useProveedoresContext();
@@ -145,6 +146,13 @@ export default function SolicitudIngresoPage({ id }: any) {
       setImporteTotal(total.toFixed(2));
     }
   }, [cantidad, precioUnitario, tc, showTc, showIva, iva, showIibb, iibb]);
+
+  useEffect(() => {
+    if (pagoCompletoUI) {
+      const tot = parseFloat(importeTotal || '0') || 0;
+      setImporteAbonado(tot.toFixed(2));
+    }
+  }, [pagoCompletoUI, importeTotal]);
 
   const formatearFecha = (fechaOriginal: string | Date | undefined): string => {
     if (!fechaOriginal) return '';
@@ -281,6 +289,7 @@ export default function SolicitudIngresoPage({ id }: any) {
           }
         ],
         importe_total_estimado,
+        importe_abonado: parseFloat(importeAbonado || '0') || 0,
       };
       const userItem = sessionStorage.getItem("user");
       const user = userItem ? JSON.parse(userItem) : null;
@@ -605,6 +614,11 @@ export default function SolicitudIngresoPage({ id }: any) {
               <label htmlFor="importeAbonado" className={labelClass}>A Abonar Ahora</label>
               <input id="importeAbonado" type="number" step="0.01" min="0" value={importeAbonado} onChange={(e) => setImporteAbonado(e.target.value)} className={baseInputClass + ' mt-2'} placeholder={placeholderParaImporteAbonado}/>
               {estadoOC === "Con Deuda" && montoYaAbonadoOC > 0 && (<p className="text-xs text-gray-300 mt-1">Ya abonado: ${montoYaAbonadoOC.toFixed(2)}</p>)}
+              <div className="mt-2 flex items-center gap-2">
+                <input id="pagoCompletoUI" type="checkbox" className="w-4 h-4" checked={pagoCompletoUI} onChange={()=> setPagoCompletoUI(!pagoCompletoUI)} />
+                <label htmlFor="pagoCompletoUI" className="text-white text-sm">Pago completo (usar total)</label>
+                <button type="button" className="px-2 py-1 text-xs rounded bg-green-600 text-white hover:bg-green-700" onClick={()=> { setPagoCompletoUI(true); }}>Usar total</button>
+              </div>
             </div>
             <div>
               <label htmlFor="formaPago" className={labelClass}>Forma de Pago</label>
