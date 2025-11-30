@@ -309,6 +309,62 @@ export default function SolicitudIngresoPage({ id }: any) {
     }
   };
 
+  const guardarCambiosOrdenAPI = async () => {
+    try {
+      problema = false;
+      setErrorMensaje('');
+      const proveedor_id = Number(proveedorId);
+      const cuenta_val = cuenta;
+      const iibb_val = showIibb ? iibb : '';
+      const iva_val = showIva ? iva : '';
+      const tc_val = showTc ? tc : '';
+      const ajuste_tc_val = showTc ? true : (ajusteTC === 'True');
+      const tipo_caja_val = tipoCaja;
+      const id_linea = Number(idLineaOCOriginal || 0);
+      const cantidad_solicitada_val = Number(cantidad || 0);
+      const precio_unitario_est_val = parseFloat(precioUnitario || '0');
+      const importe_total_est_val = parseFloat(importeTotal || '0');
+      const importe_abonado_val = parseFloat(importeAbonado || '0') || 0;
+
+      const payload = {
+        proveedor_id,
+        cuenta: cuenta_val,
+        iibb: iibb_val,
+        iva: iva_val,
+        tc: tc_val,
+        ajuste_tc: ajuste_tc_val,
+        tipo_caja: tipo_caja_val,
+        items: [
+          {
+            id_linea,
+            cantidad_solicitada: cantidad_solicitada_val,
+            precio_unitario_estimado: precio_unitario_est_val,
+          }
+        ],
+        importe_total_estimado: importe_total_est_val,
+        importe_abonado: importe_abonado_val,
+      };
+      const userItem = sessionStorage.getItem("user");
+      const user = userItem ? JSON.parse(userItem) : null;
+      if (!user || !token) throw new Error("Error de autenticación.");
+      const response = await fetch(`https://quimex.sistemataup.online/ordenes_compra/editar/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-User-Role' : user.role || 'USER',
+          'X-User-Name' : user.usuario || user.name,
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify(payload),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result?.error || result?.mensaje || `Error ${response.status}`);
+    } catch (error: unknown) {
+      problema = true;
+      setErrorMensaje(error instanceof Error ? error.message : 'Error guardando cambios.');
+    }
+  };
+
   const handleAgregar = async () => {
     setErrorMensaje('');
     // Validaciones mínimas (puedes agregar más si es necesario)
@@ -594,10 +650,13 @@ export default function SolicitudIngresoPage({ id }: any) {
               }
             }} className="bg-green-500 text-white px-6 py-3 rounded-lg font-semibold hover:bg-green-600">Aprobar Orden</button>
             <button
-              onClick={() => {
+              onClick={async () => {
                 setErrorMensaje('');
-                alert('Cambios guardados. La orden sigue pendiente de aprobación.');
-                router.push('/ordenes/pendientes');
+                await guardarCambiosOrdenAPI();
+                if (!problema) {
+                  alert('Cambios guardados en la orden (montos actualizados).');
+                  router.push('/compras');
+                }
               }}
               className="bg-yellow-500 text-white px-6 py-3 rounded-lg font-semibold hover:bg-yellow-600"
               type="button"
