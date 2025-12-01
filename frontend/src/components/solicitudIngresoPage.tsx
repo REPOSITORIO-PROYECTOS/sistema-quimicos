@@ -81,8 +81,11 @@ export default function SolicitudIngresoPage({ id }: any) {
       setPrecioUnitario(itemPrincipal.precio_unitario_estimado?.toString() ?? '0');
       setCuenta(data.cuenta?.toString() ?? '');
       setIibb(data.iibb?.toString() ?? '');
+      setShowIibb(Boolean(data.iibb));
       setIva(data.iva?.toString() ?? '');
+      setShowIva(Boolean(data.iva));
       setTc(data.tc?.toString() ?? '');
+      setShowTc(Boolean(data.tc));
       const totalOC = typeof data.importe_total_estimado === 'number'
         ? data.importe_total_estimado
         : (typeof itemPrincipal.importe_linea_estimado === 'number' ? itemPrincipal.importe_linea_estimado : 0);
@@ -150,9 +153,10 @@ export default function SolicitudIngresoPage({ id }: any) {
   useEffect(() => {
     if (pagoCompletoUI) {
       const tot = parseFloat(importeTotal || '0') || 0;
-      setImporteAbonado(tot.toFixed(2));
+      const restante = Math.max(0, tot - (montoYaAbonadoOC || 0));
+      setImporteAbonado(restante.toFixed(2));
     }
-  }, [pagoCompletoUI, importeTotal]);
+  }, [pagoCompletoUI, importeTotal, montoYaAbonadoOC]);
 
   const formatearFecha = (fechaOriginal: string | Date | undefined): string => {
     if (!fechaOriginal) return '';
