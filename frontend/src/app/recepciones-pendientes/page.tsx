@@ -315,7 +315,20 @@ export default function RecepcionesPendientesPage() {
               <option value="rango">Rango</option>
             </select>
             {filtroTipo === 'mes' && (
-              <input type="month" value={filtroMes} onChange={e=> setFiltroMes(e.target.value)} className="px-2 py-1 border rounded" />
+              <input
+                type="date"
+                value={filtroMes ? `${filtroMes}-01` : ''}
+                onChange={(e) => {
+                  const fullDate = e.target.value;
+                  if (fullDate) {
+                    const [year, month] = fullDate.split('-');
+                    setFiltroMes(`${year}-${month}`);
+                  } else {
+                    setFiltroMes('');
+                  }
+                }}
+                className="px-2 py-1 border rounded"
+              />
             )}
             {filtroTipo === 'rango' && (
               <>
