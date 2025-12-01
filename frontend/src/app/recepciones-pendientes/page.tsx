@@ -228,16 +228,16 @@ export default function RecepcionesPendientesPage() {
     // Filtrado temporal
     if (filtroTipo === 'mes' && filtroMes) {
       base = base.filter(o => {
-        const d = new Date(o.fecha_actualizacion || o.fecha_creacion);
+        const d = new Date(String(o.fecha_actualizacion || o.fecha_creacion));
         const y = d.getFullYear();
         const m = String(d.getMonth()+1).padStart(2,'0');
         return `${y}-${m}` === filtroMes;
       });
     } else if (filtroTipo === 'rango' && (filtroDesde || filtroHasta)) {
-      const from = filtroDesde ? new Date(filtroDesde) : null;
-      const to = filtroHasta ? new Date(filtroHasta) : null;
+      const from = filtroDesde ? new Date(filtroDesde + 'T00:00:00') : null;
+      const to = filtroHasta ? new Date(filtroHasta + 'T23:59:59') : null;
       base = base.filter(o => {
-        const d = new Date(o.fecha_actualizacion || o.fecha_creacion);
+        const d = new Date(String(o.fecha_actualizacion || o.fecha_creacion));
         return (!from || d >= from) && (!to || d <= to);
       });
     }
@@ -316,24 +316,34 @@ export default function RecepcionesPendientesPage() {
             </select>
             {filtroTipo === 'mes' && (
               <input
-                type="date"
-                value={filtroMes ? `${filtroMes}-01` : ''}
+                type="month"
+                value={filtroMes}
                 onChange={(e) => {
-                  const fullDate = e.target.value;
-                  if (fullDate) {
-                    const [year, month] = fullDate.split('-');
-                    setFiltroMes(`${year}-${month}`);
-                  } else {
-                    setFiltroMes('');
-                  }
+                  const v = e.target.value;
+                  setFiltroMes(v);
                 }}
+                aria-label="Seleccionar mes"
                 className="px-2 py-1 border rounded"
               />
             )}
             {filtroTipo === 'rango' && (
               <>
-                <input type="date" value={filtroDesde} onChange={e=> setFiltroDesde(e.target.value)} className="px-2 py-1 border rounded" />
-                <input type="date" value={filtroHasta} onChange={e=> setFiltroHasta(e.target.value)} className="px-2 py-1 border rounded" />
+                <input
+                  type="date"
+                  value={filtroDesde}
+                  onChange={e=> setFiltroDesde(e.target.value)}
+                  aria-label="Fecha desde"
+                  className="px-2 py-1 border rounded"
+                  max={filtroHasta || undefined}
+                />
+                <input
+                  type="date"
+                  value={filtroHasta}
+                  onChange={e=> setFiltroHasta(e.target.value)}
+                  aria-label="Fecha hasta"
+                  className="px-2 py-1 border rounded"
+                  min={filtroDesde || undefined}
+                />
               </>
             )}
           </div>
