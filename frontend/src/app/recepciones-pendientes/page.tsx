@@ -37,10 +37,8 @@ export default function RecepcionesPendientesPage() {
   const [loadingItems, setLoadingItems] = useState(false);
   const [sortBy, setSortBy] = useState<'id'|'fecha'|'proveedor'>('fecha');
   const [sortDir, setSortDir] = useState<'asc'|'desc'>('asc');
-  const [filtroTipo, setFiltroTipo] = useState<'todos'|'mes'|'rango'>('todos');
-  const [filtroMes, setFiltroMes] = useState<string>(''); // YYYY-MM
-  const [filtroDesde, setFiltroDesde] = useState<string>('');
-  const [filtroHasta, setFiltroHasta] = useState<string>('');
+  const [filtroTipo, setFiltroTipo] = useState<'todos'|'mes'>('mes');
+  const [filtroMes, setFiltroMes] = useState<string>(new Date().toISOString().slice(0,7));
 
   useEffect(() => {
     const fetchOrdenes = async () => {
@@ -233,13 +231,6 @@ export default function RecepcionesPendientesPage() {
         const m = String(d.getMonth()+1).padStart(2,'0');
         return `${y}-${m}` === filtroMes;
       });
-    } else if (filtroTipo === 'rango' && (filtroDesde || filtroHasta)) {
-      const from = filtroDesde ? new Date(filtroDesde + 'T00:00:00') : null;
-      const to = filtroHasta ? new Date(filtroHasta + 'T23:59:59') : null;
-      base = base.filter(o => {
-        const d = new Date(String(o.fecha_actualizacion || o.fecha_creacion));
-        return (!from || d >= from) && (!to || d <= to);
-      });
     }
     // Ordenamiento
     base.sort((a,b)=>{
@@ -309,10 +300,9 @@ export default function RecepcionesPendientesPage() {
           </div>
           <div className="flex items-center gap-2">
             <label className="text-sm text-gray-700">Tiempo</label>
-            <select value={filtroTipo} onChange={e=> setFiltroTipo(e.target.value as 'todos'|'mes'|'rango')} className="px-2 py-1 border rounded">
+            <select value={filtroTipo} onChange={e=> setFiltroTipo(e.target.value as 'todos'|'mes')} className="px-2 py-1 border rounded">
               <option value="todos">Todos</option>
               <option value="mes">Mensual</option>
-              <option value="rango">Rango</option>
             </select>
             {filtroTipo === 'mes' && (
               <input
@@ -326,26 +316,7 @@ export default function RecepcionesPendientesPage() {
                 className="px-2 py-1 border rounded"
               />
             )}
-            {filtroTipo === 'rango' && (
-              <>
-                <input
-                  type="date"
-                  value={filtroDesde}
-                  onChange={e=> setFiltroDesde(e.target.value)}
-                  aria-label="Fecha desde"
-                  className="px-2 py-1 border rounded"
-                  max={filtroHasta || undefined}
-                />
-                <input
-                  type="date"
-                  value={filtroHasta}
-                  onChange={e=> setFiltroHasta(e.target.value)}
-                  aria-label="Fecha hasta"
-                  className="px-2 py-1 border rounded"
-                  min={filtroDesde || undefined}
-                />
-              </>
-            )}
+            
           </div>
         </div>
         {loading && <p className="text-center text-gray-600 my-4 text-sm">Cargando órdenes aprobadas...</p>}
