@@ -132,23 +132,21 @@ export default function SolicitudIngresoPage({ id }: any) {
     const tcNum = parseFloat(tc);
     let subtotal = 0;
     if (!isNaN(cantNum) && !isNaN(precioNum) && cantNum > 0 && precioNum >= 0) {
-      if (showTc && !isNaN(tcNum) && tcNum > 0) {
+      if (!isNaN(tcNum) && tcNum > 0) {
         subtotal = cantNum * precioNum * tcNum;
       } else {
         subtotal = cantNum * precioNum;
       }
       let total = subtotal;
-      // Sumar IVA si corresponde
-      if (showIva && iva && !isNaN(parseFloat(iva))) {
+      if (iva && !isNaN(parseFloat(iva))) {
         total += subtotal * (parseFloat(iva) / 100);
       }
-      // Sumar IIBB si corresponde
-      if (showIibb && iibb && !isNaN(parseFloat(iibb))) {
+      if (iibb && !isNaN(parseFloat(iibb))) {
         total += subtotal * (parseFloat(iibb) / 100);
       }
       setImporteTotal(total.toFixed(2));
     }
-  }, [cantidad, precioUnitario, tc, showTc, showIva, iva, showIibb, iibb]);
+  }, [cantidad, precioUnitario, tc, iva, iibb]);
 
   useEffect(() => {
     if (pagoCompletoUI) {
@@ -205,10 +203,10 @@ export default function SolicitudIngresoPage({ id }: any) {
         precio_unitario: parseFloat(String(solicitud.precioUnitario)),
         importe_total: parseFloat(String(solicitud.importeTotal)),
         cuenta: solicitud.cuenta,
-        iibb: showIibb ? solicitud.iibb : '',
-        iva: showIva ? solicitud.iva : '',
-        tc: showTc ? solicitud.tc : '',
-        ajuste_tc: showTc ? true : (ajusteTC === 'True'),
+        iibb: solicitud.iibb ?? iibb,
+        iva: solicitud.iva ?? iva,
+        tc: solicitud.tc ?? tc,
+        ajuste_tc: (ajusteTC === 'True'),
         nro_remito_proveedor: solicitud.nro_remito_proveedor,
         estado_recepcion: solicitud.estado_recepcion,
         importe_abonado: nuevoAbonoFloat,
@@ -256,10 +254,10 @@ export default function SolicitudIngresoPage({ id }: any) {
       // Type guards for solicitud
       const proveedor_id = typeof solicitud.proveedor_id === 'string' || typeof solicitud.proveedor_id === 'number' ? Number(solicitud.proveedor_id) : 0;
       const cuenta = typeof solicitud.cuenta === 'string' ? solicitud.cuenta : '';
-      const iibb_val = showIibb ? (typeof solicitud.iibb === 'string' ? solicitud.iibb : iibb) : '';
-      const iva_val = showIva ? (typeof solicitud.iva === 'string' ? solicitud.iva : iva) : '';
-      const tc_val = showTc ? (typeof solicitud.tc === 'string' ? solicitud.tc : tc) : '';
-      const ajuste_tc = showTc ? true : (ajusteTC === 'True');
+      const iibb_val = typeof solicitud.iibb === 'string' ? solicitud.iibb : iibb;
+      const iva_val = typeof solicitud.iva === 'string' ? solicitud.iva : iva;
+      const tc_val = typeof solicitud.tc === 'string' ? solicitud.tc : tc;
+      const ajuste_tc = (ajusteTC === 'True');
       const observaciones_solicitud = typeof solicitud.observaciones_solicitud === 'string' ? solicitud.observaciones_solicitud : '';
       const tipo_caja = typeof solicitud.tipo_caja === 'string' ? solicitud.tipo_caja : '';
       // items_recibidos
@@ -328,9 +326,9 @@ export default function SolicitudIngresoPage({ id }: any) {
       setErrorMensaje('');
       const proveedor_id = Number(proveedorId);
       const cuenta_val = cuenta;
-      const iibb_val = showIibb ? iibb : '';
-      const iva_val = showIva ? iva : '';
-      const tc_val = showTc ? tc : '';
+      const iibb_val = iibb;
+      const iva_val = iva;
+      const tc_val = tc;
       const ajuste_tc_val = showTc ? true : (ajusteTC === 'True');
       const tipo_caja_val = tipoCaja;
       const id_linea = Number(idLineaOCOriginal || 0);
@@ -535,11 +533,10 @@ export default function SolicitudIngresoPage({ id }: any) {
             <div className="flex items-center gap-1 mt-2">
               <label htmlFor="toggleTc" className="flex items-center cursor-pointer">
                 <input id="toggleTc" type="checkbox" checked={showTc} onChange={() => {
-                  setShowTc(!showTc);
-                  if (!showTc) {
+                  const next = !showTc;
+                  setShowTc(next);
+                  if (next && (!tc || isNaN(parseFloat(tc)))) {
                     setTc(valorTcOficial);
-                  } else {
-                    setTc('');
                   }
                 }} className="accent-blue-600 w-4 h-4 mr-1" />
                 <span className="text-white text-sm font-medium select-none">TC</span>
