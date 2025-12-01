@@ -133,6 +133,23 @@ export default function PedidoRapidoAdmin() {
     );
   }
 
+  const apiBase = process.env.NEXT_PUBLIC_API_URL || 'https://quimex.sistemataup.online';
+  type ApiErrorShape = { error?: string; mensaje?: string; detail?: string };
+  const apiRequest = async <T = unknown>(url: string, init: RequestInit): Promise<T> => {
+    const resp = await fetch(url, init);
+    let data: unknown = {};
+    try { data = await resp.json(); } catch { try { const t = await resp.text(); data = { error: t } as ApiErrorShape; } catch { data = {}; } }
+    if (!resp.ok) {
+      let msg = `Error ${resp.status}`;
+      if (data && typeof data === 'object') {
+        const obj = data as ApiErrorShape;
+        msg = obj.error ?? obj.mensaje ?? obj.detail ?? msg;
+      }
+      throw new Error(msg);
+    }
+    return data as T;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -212,30 +229,19 @@ export default function PedidoRapidoAdmin() {
         cheque_perteneciente_a: formaPago === 'Cheque' ? chequeEmisor : undefined,
       };
 
-      const crearResp = await fetch('https://quimex.sistemataup.online/ordenes_compra/crear', {
+      type CreateOcResponse = { orden?: { id?: number; estado?: string }; id?: number; orden_id?: number; estado?: string } & ApiErrorShape;
+      const crearData = await apiRequest<CreateOcResponse>(`${apiBase}/ordenes_compra/crear`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-User-Role': user.role,
-          'X-User-Name': user.usuario || user.name,
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify(crearPayload),
+        headers: { 'Content-Type': 'application/json', 'X-User-Role': user.role, 'X-User-Name': user.usuario || user.name, 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(crearPayload)
       });
-      const crearData = await crearResp.json().catch(() => ({}));
-      if (!crearResp.ok) throw new Error(crearData?.error || crearData?.mensaje || 'Error creando OC');
       const nuevaOCId = crearData?.orden?.id || crearData?.id || crearData?.orden_id;
       if (!nuevaOCId) throw new Error('No se pudo obtener ID de la OC creada.');
       const estadoCreado = crearData?.orden?.estado || crearData?.estado || 'Solicitado';
 
       // 2) Obtener OC para id_linea
-      const obtenerResp = await fetch(`https://quimex.sistemataup.online/ordenes_compra/obtener/${nuevaOCId}`, {
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-      const obtenerData = await obtenerResp.json();
+      type ObtenerOcResponse = { items?: Array<{ id_linea?: number; cantidad_solicitada?: number; precio_unitario_estimado?: number; producto_codigo?: string }> };
+      const obtenerData = await apiRequest<ObtenerOcResponse>(`${apiBase}/ordenes_compra/obtener/${nuevaOCId}`, { headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` } });
       const itemPrincipal = Array.isArray(obtenerData.items) ? obtenerData.items[0] : null;
       const id_linea = itemPrincipal?.id_linea ? Number(itemPrincipal.id_linea) : 0;
       const cantidad_solicitada = itemPrincipal?.cantidad_solicitada ? Number(itemPrincipal.cantidad_solicitada) : Number(cantidad);
@@ -283,18 +289,22 @@ export default function PedidoRapidoAdmin() {
         cheque_perteneciente_a: formaPago === 'Cheque' ? chequeEmisor : undefined,
       };
 
-      const aprobarResp = await fetch(`https://quimex.sistemataup.online/ordenes_compra/aprobar/${nuevaOCId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-User-Role': user.role,
-          'X-User-Name': user.usuario || user.name,
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify(aprobarPayload),
-      });
-      const aprobarData = await aprobarResp.json().catch(() => ({}));
-      if (!aprobarResp.ok) throw new Error(aprobarData?.error || aprobarData?.mensaje || 'Error aprobando OC');
+      try {
+        await apiRequest(`${apiBase}/ordenes_compra/aprobar/${nuevaOCId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'X-User-Role': user.role, 'X-User-Name': user.usuario || user.name, 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify(aprobarPayload)
+        });
+      } catch (err) {
+        try {
+          await apiRequest(`${apiBase}/ordenes_compra/rechazar/${nuevaOCId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'X-User-Role': user.role, 'X-User-Name': user.usuario || user.name, 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ motivo_rechazo: 'Auto-reversión por fallo de aprobación' })
+          });
+        } catch {}
+        throw err instanceof Error ? err : new Error('Error aprobando OC');
+      }
 
       alert('Pedido Rápido creado y aprobado correctamente.');
       router.push('/recepciones-pendientes');
@@ -342,13 +352,11 @@ export default function PedidoRapidoAdmin() {
           importe_abonado: importeAbonadoCrear,
           cheque_perteneciente_a: formaPago === 'Cheque' ? chequeEmisor : undefined,
         };
-        const crearResp = await fetch('https://quimex.sistemataup.online/ordenes_compra/crear', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-User-Role': user.role, 'X-User-Name': user.usuario || user.name, 'Authorization': `Bearer ${token}` }, body: JSON.stringify(crearPayload) });
-        const crearData = await crearResp.json().catch(() => ({}));
-        if (!crearResp.ok) throw new Error(crearData?.error || crearData?.mensaje || 'Error creando OC');
+        type CreateOcResponse = { orden?: { id?: number; estado?: string }; id?: number; orden_id?: number; estado?: string } & ApiErrorShape;
+        const crearData = await apiRequest<CreateOcResponse>(`${apiBase}/ordenes_compra/crear`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-User-Role': user.role, 'X-User-Name': user.usuario || user.name, 'Authorization': `Bearer ${token}` }, body: JSON.stringify(crearPayload) });
         const nuevaOCId = crearData?.orden?.id || crearData?.id || crearData?.orden_id;
         if (!nuevaOCId) throw new Error('No se pudo obtener ID de la OC creada.');
-        const obtenerResp = await fetch(`https://quimex.sistemataup.online/ordenes_compra/obtener/${nuevaOCId}`, { headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` } });
-        const obtenerData = await obtenerResp.json();
+        const obtenerData = await apiRequest<{ items?: Array<{ id_linea?: number; cantidad_solicitada?: number; precio_unitario_estimado?: number; producto_codigo?: string }> }>(`${apiBase}/ordenes_compra/obtener/${nuevaOCId}`, { headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` } });
         const itemPrincipal = Array.isArray(obtenerData.items) ? obtenerData.items[0] : null;
         const id_linea = itemPrincipal?.id_linea ? Number(itemPrincipal.id_linea) : 0;
         const cantidad_solicitada = itemPrincipal?.cantidad_solicitada ? Number(itemPrincipal.cantidad_solicitada) : Number(cantidad);
@@ -356,16 +364,12 @@ export default function PedidoRapidoAdmin() {
         const importe_total_estimado = total;
         if (String(user.role).toUpperCase() === 'ADMIN') {
           const aprobarPayload = { proveedor_id: Number(proveedorId), cuenta, iibb: showIibb ? iibb : '', iva: showIva ? iva : '', tc: showTc ? tc : '', ajuste_tc: showTc ? true : false, observaciones_solicitud: observacionesFinalCrear, tipo_caja: tipoCaja, forma_pago: formaPago, items: [{ id_linea, cantidad_solicitada, precio_unitario_estimado }], importe_total_estimado, importe_abonado: importeAbonadoCrear, cheque_perteneciente_a: formaPago === 'Cheque' ? chequeEmisor : undefined };
-          const aprobarResp = await fetch(`https://quimex.sistemataup.online/ordenes_compra/aprobar/${nuevaOCId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-User-Role': user.role, 'X-User-Name': user.usuario || user.name, 'Authorization': `Bearer ${token}` }, body: JSON.stringify(aprobarPayload) });
-          const aprobarData = await aprobarResp.json().catch(() => ({}));
-          if (!aprobarResp.ok) throw new Error(aprobarData?.error || aprobarData?.mensaje || 'Error aprobando OC');
+          await apiRequest(`${apiBase}/ordenes_compra/aprobar/${nuevaOCId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-User-Role': user.role, 'X-User-Name': user.usuario || user.name, 'Authorization': `Bearer ${token}` }, body: JSON.stringify(aprobarPayload) });
         }
         const itemsRecibidos = [{ id_linea, cantidad_recibida: Number(cantidad_solicitada), producto_codigo: String(itemPrincipal?.producto_codigo || ''), costo_unitario_ars: precio_unitario_estimado, notas_item: '' }];
         const estadoRecepcion = 'Completa';
         const recibirPayload = { proveedor_id: Number(proveedorId), cantidad: Number(cantidad_solicitada), precio_unitario: precio_unitario_estimado, importe_total: importe_total_estimado, cuenta, iibb: showIibb ? iibb : '', iva: showIva ? iva : '', tc: showTc ? tc : '', nro_remito_proveedor: '', estado_recepcion: estadoRecepcion, importe_abonado: pagoCompleto ? importe_total_estimado : (parseFloat(importeAbonado || '0') || 0), forma_pago: formaPago, cheque_perteneciente_a: formaPago === 'Cheque' ? chequeEmisor : '', tipo_caja: tipoCaja, items_recibidos: itemsRecibidos };
-        const recibirResp = await fetch(`https://quimex.sistemataup.online/ordenes_compra/recibir/${nuevaOCId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-User-Role': user.role, 'X-User-Name': user.usuario || user.name, 'Authorization': `Bearer ${token}` }, body: JSON.stringify(recibirPayload) });
-        const recibirData = await recibirResp.json().catch(() => ({}));
-        if (!recibirResp.ok) throw new Error(recibirData?.error || recibirData?.mensaje || 'Error registrando recepción');
+        await apiRequest(`${apiBase}/ordenes_compra/recibir/${nuevaOCId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-User-Role': user.role, 'X-User-Name': user.usuario || user.name, 'Authorization': `Bearer ${token}` }, body: JSON.stringify(recibirPayload) });
         alert('Pedido Rápido creado, aprobado y recepcionado.');
         router.push('/recepciones-pendientes');
       } else {
