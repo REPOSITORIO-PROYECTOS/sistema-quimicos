@@ -95,8 +95,7 @@ export default function ListaOrdenesCompra() {
   const [aprobacionFormaPago, setAprobacionFormaPago] = useState<string>("Efectivo");
   const [aprobacionError, setAprobacionError] = useState<string | null>(null);
   const [filtroId, setFiltroId] = useState<string>("");
-  const [filtroDesde, setFiltroDesde] = useState<string>("");
-  const [filtroHasta, setFiltroHasta] = useState<string>("");
+  const [filtroMes, setFiltroMes] = useState<string>(new Date().toISOString().slice(0,7)); // YYYY-MM
 
   const fetchOrdenes = async (currentPage = page, filtro = filtroEstado) => {
     setLoading(true); 
@@ -325,13 +324,13 @@ export default function ListaOrdenesCompra() {
     const base = (['Aprobado','Solicitado'].includes(filtroEstado) ? filtrarPorEstado(ordenes, filtroEstado) : ordenes);
     const soloSolicitado = esAdmin ? base.filter(o=> o.estado==='Solicitado') : base;
     const porId = filtroId ? soloSolicitado.filter(o=> String(o.id).includes(filtroId.trim())) : soloSolicitado;
-    const porFecha = porId.filter(o=> {
-      const d = new Date(o.fecha_creacion);
-      const okD = filtroDesde ? d >= new Date(filtroDesde) : true;
-      const okH = filtroHasta ? d <= new Date(filtroHasta) : true;
-      return okD && okH;
-    });
-    return porFecha;
+    const porMes = filtroMes ? porId.filter(o=> {
+      const d = new Date(String(o.fecha_creacion));
+      const y = d.getFullYear();
+      const m = String(d.getMonth()+1).padStart(2,'0');
+      return `${y}-${m}` === filtroMes;
+    }) : porId;
+    return porMes;
   })();
 
   return (
@@ -350,12 +349,8 @@ export default function ListaOrdenesCompra() {
                 <input type="text" value={filtroId} onChange={(e)=> setFiltroId(e.target.value)} className="ml-2 px-2 py-1 border rounded" placeholder="Ej: 118" />
               </div>
               <div>
-                <label className="text-sm text-gray-700">Desde</label>
-                <input type="date" value={filtroDesde} onChange={(e)=> setFiltroDesde(e.target.value)} className="ml-2 px-2 py-1 border rounded" />
-              </div>
-              <div>
-                <label className="text-sm text-gray-700">Hasta</label>
-                <input type="date" value={filtroHasta} onChange={(e)=> setFiltroHasta(e.target.value)} className="ml-2 px-2 py-1 border rounded" />
+                <label className="text-sm text-gray-700">Mes</label>
+                <input type="month" value={filtroMes} onChange={(e)=> setFiltroMes(e.target.value)} className="ml-2 px-2 py-1 border rounded" aria-label="Seleccionar mes" />
               </div>
             </>
           )}
