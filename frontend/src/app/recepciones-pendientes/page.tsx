@@ -41,9 +41,6 @@ export default function RecepcionesPendientesPage() {
   const [filtroMes, setFiltroMes] = useState<string>(''); // YYYY-MM
   const [filtroDesde, setFiltroDesde] = useState<string>('');
   const [filtroHasta, setFiltroHasta] = useState<string>('');
-  const [pagoCompletoRecep, setPagoCompletoRecep] = useState<boolean>(false);
-  const [importeAbonadoRecep, setImporteAbonadoRecep] = useState<string>('');
-  const [pagoErrorRecep, setPagoErrorRecep] = useState<string>('');
 
   useEffect(() => {
     const fetchOrdenes = async () => {
@@ -173,23 +170,6 @@ export default function RecepcionesPendientesPage() {
       const precioUnitarioOC = Number(ordenSeleccionada?.items?.[0]?.precio_unitario_estimado ?? 0);
       const precioUnitarioRecepcion = precioUnitarioOC || (itemsRecibidos.length > 0 ? Number(itemsRecibidos[0].costo_unitario_ars) || 0 : 0);
 
-      // Abono: si pago completo, usar total; si no, usar el valor ingresado (validado)
-      let montoAbonado = 0;
-      if (pagoCompletoRecep) {
-        montoAbonado = importeTotal;
-      } else {
-        const abonadoNum = parseFloat(importeAbonadoRecep || '0');
-        if (isNaN(abonadoNum) || abonadoNum < 0) {
-          setPagoErrorRecep('Ingrese un importe abonado válido.');
-          return;
-        }
-        if (abonadoNum > importeTotal) {
-          setPagoErrorRecep('El importe abonado no puede superar el total recibido.');
-          return;
-        }
-        setPagoErrorRecep('');
-        montoAbonado = abonadoNum;
-      }
 
       const payload = {
         // Campos usados por backend para generar deuda y registrar recepción
@@ -203,9 +183,7 @@ export default function RecepcionesPendientesPage() {
         tc: '',
         nro_remito_proveedor: '',
         estado_recepcion: estadoRecepcion,
-        importe_abonado: montoAbonado,
-        forma_pago: ordenSeleccionada?.forma_pago || '',
-        cheque_perteneciente_a: ordenSeleccionada?.cheque_perteneciente_a || '',
+        // Campos de pago eliminados en Recepciones Pendientes
         tipo_caja: '',
         items_recibidos: itemsRecibidos,
       };
@@ -225,9 +203,6 @@ export default function RecepcionesPendientesPage() {
 
       alert('Recepción registrada correctamente.');
       setOrdenSeleccionada(null);
-      setPagoCompletoRecep(false);
-      setImporteAbonadoRecep('');
-      setPagoErrorRecep('');
 
       // Refrescar lista base
       setLoading(true);
@@ -287,21 +262,7 @@ export default function RecepcionesPendientesPage() {
           <h2 className="text-xl font-bold mb-2 text-blue-100 text-center">Recepción de Orden Nº {ordenSeleccionada.id.toString().padStart(4, '0')}</h2>
           <p className="mb-4 text-blue-200 text-center">Fecha: {new Date(ordenSeleccionada.fecha_creacion).toLocaleDateString("es-AR")}</p>
           {loadingItems && <p className="text-blue-100">Cargando ítems...</p>}
-          {!loadingItems && (
-            <div className="mb-4 bg-white/10 rounded p-3">
-              <div className="flex items-center gap-3">
-                <input id="pagoCompletoRecep" type="checkbox" className="w-4 h-4" checked={pagoCompletoRecep} onChange={()=> setPagoCompletoRecep(!pagoCompletoRecep)} />
-                <label htmlFor="pagoCompletoRecep" className="text-blue-100 text-sm">Pago completo en recepción</label>
-              </div>
-              {!pagoCompletoRecep && (
-                <div className="mt-2">
-                  <label className="text-blue-100 text-sm">Importe abonado</label>
-                  <input type="number" step="0.01" min={0} value={importeAbonadoRecep} onChange={(e)=> setImporteAbonadoRecep(e.target.value)} className="w-full px-3 py-2 rounded bg-white text-black border border-gray-300 mt-1" placeholder="Ej: 100.00" />
-                  {pagoErrorRecep && <p className="mt-1 text-sm text-red-300">{pagoErrorRecep}</p>}
-                </div>
-              )}
-            </div>
-          )}
+          {!loadingItems && null}
           {items && (
             <RecepcionesPendientes
               items={items}
