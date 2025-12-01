@@ -6,7 +6,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import jsPDF from 'jspdf';
 //eslint-disable-next-line
-export default function SolicitudIngresoPage({ id }: any) {
+export default function SolicitudIngresoPage({ id }: { id: number | string }) {
   const [fecha, setFecha] = useState('');
   const [proveedorId, setProveedorId] = useState('');
   const [producto, setProducto] = useState('0');
@@ -37,6 +37,7 @@ export default function SolicitudIngresoPage({ id }: any) {
   const { proveedores, loading: proveedoresLoading } = useProveedoresContext();
   const [errorMensaje, setErrorMensaje] = useState('');
   const [estadoOC, setEstadoOC] = useState('');
+  const [estadoSolicitud, setEstadoSolicitud] = useState<string>('');
   const [montoYaAbonadoOC, setMontoYaAbonadoOC] = useState<number>(0);
   const [idLineaOCOriginal, setIdLineaOCOriginal] = useState<string | number>('');
   const [cantidadYaRecibida, setCantidadYaRecibida] = useState<number>(0);
@@ -45,6 +46,18 @@ export default function SolicitudIngresoPage({ id }: any) {
   let problema = false;
   const token = typeof window !== 'undefined' ? localStorage.getItem("token") : null;
   const router = useRouter();
+
+  const ESTADO_KEY = `solicitud_estado_${String(id)}`;
+  const actualizarEstadoPersistente = (estado: string) => {
+    try { localStorage.setItem(ESTADO_KEY, estado); } catch {}
+    setEstadoSolicitud(estado);
+  };
+  const cargarEstadoPersistente = () => {
+    try {
+      const saved = localStorage.getItem(ESTADO_KEY);
+      if (saved) setEstadoSolicitud(saved);
+    } catch {}
+  };
 
 
 
@@ -123,6 +136,7 @@ export default function SolicitudIngresoPage({ id }: any) {
   useEffect(() => {
     if (id && token) {
       cargarFormulario();
+      cargarEstadoPersistente();
     }
   }, [id, token, cargarFormulario]);
 
@@ -192,6 +206,7 @@ export default function SolicitudIngresoPage({ id }: any) {
     try {
       problema = false;
       setErrorMensaje('');
+      actualizarEstadoPersistente('Recepción pendiente');
       const nuevoAbonoFloat = parseFloat(String(solicitud.importeAbonado ?? '')) || 0;
       if (nuevoAbonoFloat < 0) {
         throw new Error('El importe abonado no puede ser negativo.');
@@ -233,6 +248,11 @@ export default function SolicitudIngresoPage({ id }: any) {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data?.error || data?.mensaje || `Error ${response.status}`);
+      const total = parseFloat(String(solicitud.importeTotal)) || 0;
+      const abonadoPrevio = montoYaAbonadoOC || 0;
+      const abonadoAhora = nuevoAbonoFloat;
+      const deuda = Math.max(0, total - (abonadoPrevio + abonadoAhora));
+      actualizarEstadoPersistente(deuda > 0 ? 'Con deuda' : 'Aprobado');
 
   } catch (error: unknown) {
     problema = true;
@@ -251,6 +271,7 @@ export default function SolicitudIngresoPage({ id }: any) {
     try {
       problema = false;
       setErrorMensaje('');
+      actualizarEstadoPersistente('Recepción pendiente');
       // Type guards for solicitud
       const proveedor_id = typeof solicitud.proveedor_id === 'string' || typeof solicitud.proveedor_id === 'number' ? Number(solicitud.proveedor_id) : 0;
       const cuenta = typeof solicitud.cuenta === 'string' ? solicitud.cuenta : '';
@@ -308,6 +329,11 @@ export default function SolicitudIngresoPage({ id }: any) {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data?.error || data?.mensaje || `Error ${response.status}`);
+      const total = typeof solicitud.importeTotal === 'string' ? parseFloat(solicitud.importeTotal) : 0;
+      const abonadoPrevio = montoYaAbonadoOC || 0;
+      const abonadoAhora = parseFloat(importeAbonado || '0') || 0;
+      const deuda = Math.max(0, total - (abonadoPrevio + abonadoAhora));
+      actualizarEstadoPersistente(deuda > 0 ? 'Con deuda' : 'Aprobado');
     } catch (error: unknown) {
       problema = true;
       if (error instanceof Error) {
@@ -370,6 +396,11 @@ export default function SolicitudIngresoPage({ id }: any) {
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result?.error || result?.mensaje || `Error ${response.status}`);
+      const total = parseFloat(importeTotal || '0') || 0;
+      const abonadoPrevio = montoYaAbonadoOC || 0;
+      const abonadoAhora = parseFloat(importeAbonado || '0') || 0;
+      const deuda = Math.max(0, total - (abonadoPrevio + abonadoAhora));
+      actualizarEstadoPersistente(deuda > 0 ? 'Con deuda' : 'Aprobado');
     } catch (error: unknown) {
       problema = true;
       setErrorMensaje(error instanceof Error ? error.message : 'Error guardando cambios.');
@@ -383,6 +414,7 @@ export default function SolicitudIngresoPage({ id }: any) {
       setErrorMensaje('Por favor complete todos los campos obligatorios.');
       return;
     }
+    actualizarEstadoPersistente('Recepción pendiente');
     const nuevaSolicitud = {
       proveedor_id: proveedorId, producto, codigo, cantidad, precioUnitario, cuenta,
       iibb: showIibb ? iibb : '',
@@ -400,6 +432,11 @@ export default function SolicitudIngresoPage({ id }: any) {
     };
     await enviarSolicitudAPI(nuevaSolicitud);
     if(!problema) {
+      const total = parseFloat(importeTotal || '0') || 0;
+      const abonadoPrevio = montoYaAbonadoOC || 0;
+      const abonadoAhora = parseFloat(importeAbonado || '0') || 0;
+      const deuda = Math.max(0, total - (abonadoPrevio + abonadoAhora));
+      actualizarEstadoPersistente(deuda > 0 ? 'Con deuda' : 'Aprobado');
       alert("Ingreso registrado correctamente.");
       router.back();
     }
@@ -475,6 +512,17 @@ export default function SolicitudIngresoPage({ id }: any) {
     <div className="min-h-screen flex flex-col items-center bg-[#20119d] px-4 py-10">
       <h1 className="text-white text-3xl font-bold mb-8 text-center">Solicitud de Ingreso (OC: {id})</h1>
       {estadoOC && (<p className="text-white text-lg mb-4">Estado Orden de Compra: <span className={`font-semibold ${estadoOC === 'Aprobado' ? 'text-green-300' : estadoOC === 'Con Deuda' ? 'text-orange-300' : 'text-yellow-300'}`}>{estadoOC}</span></p>)}
+      {estadoSolicitud && (
+        <div role="status" aria-live="polite" className="w-full max-w-5xl mb-4">
+          <div className={`flex items-center gap-2 p-3 rounded ${estadoSolicitud === 'Recepción pendiente' ? 'bg-blue-100 text-blue-800' : estadoSolicitud === 'Con deuda' ? 'bg-orange-100 text-orange-800' : 'bg-green-100 text-green-800'}`}>
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              {estadoSolicitud === 'Recepción pendiente' ? <path d="M2 10a8 8 0 1116 0A8 8 0 012 10zm8-4a1 1 0 011 1v2.382l1.447.724a1 1 0 01-.894 1.788l-2.5-1.25A1 1 0 018 10V7a1 1 0 011-1z"/> : estadoSolicitud === 'Con deuda' ? <path d="M10 18a8 8 0 100-16 8 8 0 000 16zm-1-5h2v2H9v-2zm0-8h2v6H9V5z"/> : <path d="M10 18a8 8 0 100-16 8 8 0 000 16zm-1.293-7.293l-2-2a1 1 0 011.414-1.414L9 8.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0z"/>}
+            </svg>
+            <span className="font-semibold">Estado Solicitud:</span>
+            <span>{estadoSolicitud}</span>
+          </div>
+        </div>
+      )}
       {errorMensaje && <div className="w-full max-w-4xl mb-4 bg-red-100 border-red-400 text-red-700 px-4 py-3 rounded" role="alert">{errorMensaje}</div>}
       <div className="w-full max-w-5xl">
         {/* --- Bloque 1: Proveedor y OC --- */}
@@ -641,6 +689,7 @@ export default function SolicitudIngresoPage({ id }: any) {
           <div className="flex flex-col md:flex-row gap-4 w-full md:w-auto">
             <button onClick={async () => {
               if (estadoOC === 'Solicitado') {
+                actualizarEstadoPersistente('Recepción pendiente');
                 await enviarAprobacionAPI({
                   proveedor_id: proveedorId,
                   cuenta,
@@ -681,6 +730,7 @@ export default function SolicitudIngresoPage({ id }: any) {
             <button
               onClick={() => {
                 setErrorMensaje('');
+                actualizarEstadoPersistente('Rechazado');
                 alert('No se aprobó la orden. La orden sigue pendiente.');
                 router.push('/compras');
               }}
