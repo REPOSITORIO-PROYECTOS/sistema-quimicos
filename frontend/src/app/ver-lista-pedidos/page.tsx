@@ -13,6 +13,8 @@ type OrdenCompra = {
   importe_total_estimado?: number | string;
   moneda?: string;
   condicion_iva?: string;
+  fecha_aprobacion?: string;
+  estado_recepcion?: string;
 };
 
 type DetalleItem = { id_linea?: number|string; cantidad_solicitada?: number|string; precio_unitario_estimado?: number|string };
@@ -53,6 +55,9 @@ export default function ListaOrdenesCompra() {
 
   // Si el filtro es 'Aprobado' o 'Solicitado', filtrar solo las órdenes correspondientes
   function filtrarPorEstado(ordenes: OrdenCompra[], estado: string) {
+    if (estado === 'Aprobado') {
+      return ordenes.filter((o: OrdenCompra) => o.estado === 'Aprobado' || !!o.fecha_aprobacion);
+    }
     return ordenes.filter((o: OrdenCompra) => o.estado === estado);
   }
   const [ordenes, setOrdenes] = useState<OrdenCompra[]>([]);
@@ -391,6 +396,16 @@ export default function ListaOrdenesCompra() {
                           orden.estado === 'Con Deuda' ? 'bg-orange-100 text-orange-800' : 'bg-gray-100 text-gray-800'}`}>
                         {orden.estado}
                       </span>
+                      {!!orden.fecha_aprobacion && (
+                        <span className="ml-2 px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                          Aprobado
+                        </span>
+                      )}
+                      {String(orden.estado_recepcion||'').toLowerCase()==='pendiente' && (
+                        <span className="ml-2 px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+                          Recepción Pendiente
+                        </span>
+                      )}
                       <span>{
                         (() => {
                           const resumen = resumenItems[orden.id];

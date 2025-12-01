@@ -49,7 +49,7 @@ export default function RecepcionesPendientesPage() {
       try {
         const token = localStorage.getItem("token");
         if (!token) throw new Error("Usuario no autenticado.");
-        const url = `https://quimex.sistemataup.online/ordenes_compra/obtener_todas?estado=Aprobado`;
+        const url = `https://quimex.sistemataup.online/ordenes_compra/obtener_todas?page=1&per_page=50`;
         const response = await fetch(url, {
           headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }
         });
@@ -58,7 +58,9 @@ export default function RecepcionesPendientesPage() {
           throw new Error(errData.message || "Error al traer órdenes.");
         }
         const data = await response.json();
-        setOrdenes((data.ordenes || []).filter((o: OrdenCompra) => ['Aprobado','EN_ESPERA_RECEPCION'].includes(String(o.estado))));
+        setOrdenes((data.ordenes || []).filter((o: OrdenCompra) => (
+          String(o.estado) === 'Aprobado' || String(o.estado_recepcion || '').toLowerCase() === 'pendiente'
+        )));
         // Mapear ítems por orden para mostrar en la lista
         const itemsMap: Record<number, {nombre: string, cantidad: number}[]> = {};
         (data.ordenes || []).forEach((orden: Record<string, unknown>) => {
@@ -207,10 +209,12 @@ export default function RecepcionesPendientesPage() {
       // Refrescar lista base
       setLoading(true);
       setError(null);
-      const url = `https://quimex.sistemataup.online/ordenes_compra/obtener_todas?estado=Aprobado`;
+      const url = `https://quimex.sistemataup.online/ordenes_compra/obtener_todas?page=1&per_page=50`;
       const refresco = await fetch(url, { headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` } });
       const nuevo = await refresco.json();
-      setOrdenes((nuevo.ordenes || []).filter((o: OrdenCompra) => ['Aprobado','EN_ESPERA_RECEPCION'].includes(String(o.estado))));
+      setOrdenes((nuevo.ordenes || []).filter((o: OrdenCompra) => (
+        String(o.estado) === 'Aprobado' || String(o.estado_recepcion || '').toLowerCase() === 'pendiente'
+      )));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error registrando recepción.';
       alert(msg);
