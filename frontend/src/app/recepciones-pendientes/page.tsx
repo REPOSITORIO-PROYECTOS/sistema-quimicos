@@ -135,7 +135,7 @@ export default function RecepcionesPendientesPage() {
   }, [ordenSeleccionada]);
 
   // Registrar recepción en backend y actualizar UI
-  const registrarRecepcion = async (resultados: { id: number; cantidadRecibida: number; incidencia: 'Falta' | 'Sobra' | 'OK'; observaciones: string; }[]) => {
+  const registrarRecepcion = async (resultados: { id: number; cantidadRecibida: number; incidencia: 'Falta' | 'Sobra' | 'OK'; observaciones: string; accionResto?: 'pendiente' | 'cancelar' | 'ninguno'; }[]) => {
     try {
       const token = localStorage.getItem("token");
       const userItem = sessionStorage.getItem("user");
@@ -149,7 +149,15 @@ export default function RecepcionesPendientesPage() {
           cantidad_recibida: Number(res.cantidadRecibida) || 0,
           producto_codigo: meta?.productoCodigo || '',
           costo_unitario_ars: typeof meta?.costoUnitarioARS === 'number' ? meta?.costoUnitarioARS : 0,
-          notas_item: res.observaciones || ''
+          notas_item: (() => {
+            const original = items?.find(i => i.id === res.id)?.cantidadSolicitada || 0;
+            const recibida = Number(res.cantidadRecibida) || 0;
+            const falta = Math.max(0, original - recibida);
+            const ingreso = `Ingresó ${recibida}`;
+            const resto = falta > 0 ? `Falta ${falta}${res.accionResto === 'cancelar' ? ' (cancelado)' : ' (pendiente)'}` : '';
+            const obs = res.observaciones || '';
+            return [ingreso, resto, obs].filter(Boolean).join(' ');
+          })()
         };
       });
 

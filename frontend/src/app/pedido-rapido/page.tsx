@@ -262,8 +262,14 @@ export default function PedidoRapidoAdmin() {
         return;
       }
 
-      const totalCalculado = parseFloat(importeTotal) || (cantidad_solicitada * precio_unitario_estimado);
-      const importe_abonado = pagoCompleto ? totalCalculado : (parseFloat(importeAbonado) || 0);
+      const totalCalculado = parseFloat(importeTotal || '0');
+      let importe_abonado = pagoCompleto ? totalCalculado : (parseFloat(importeAbonado || '0') || 0);
+      if (isFinite(totalCalculado)) {
+        const t = Math.max(0, Number(totalCalculado.toFixed(2)));
+        let a = Math.max(0, Number(importe_abonado.toFixed(2)));
+        if (a > t) a = t;
+        importe_abonado = a;
+      }
       const deuda_restante = Math.max(0, totalCalculado - importe_abonado);
       // Incluir detalles de cheque en observaciones si corresponde
       const observacionesPago = pagoCompleto ? 'Pago completo' : `Pago parcial: abonado=${importe_abonado.toFixed(2)}, deuda restante=${deuda_restante.toFixed(2)}`;
@@ -331,7 +337,13 @@ export default function PedidoRapidoAdmin() {
         let total = subtotal;
         if (showIva && iva && !isNaN(parseFloat(iva))) total += subtotal * (parseFloat(iva) / 100);
         if (showIibb && iibb && !isNaN(parseFloat(iibb))) total += subtotal * (parseFloat(iibb) / 100);
-        const importeAbonadoCrear = pagoCompleto ? total : (parseFloat(importeAbonado || '0') || 0);
+        let importeAbonadoCrear = pagoCompleto ? total : (parseFloat(importeAbonado || '0') || 0);
+        if (isFinite(total)) {
+          const t = Math.max(0, Number(total.toFixed(2)));
+          let a = Math.max(0, Number(importeAbonadoCrear.toFixed(2)));
+          if (a > t) a = t;
+          importeAbonadoCrear = a;
+        }
         const observacionesPagoCrear = pagoCompleto ? 'Pago completo' : `Pago parcial: abonado=${importeAbonadoCrear.toFixed(2)}`;
         const observacionesChequeCrear = formaPago === 'Cheque' ? ` | Cheque: Emisor=${chequeEmisor}; Banco=${chequeBanco}; N°=${chequeNumero}; Fecha=${chequeFecha}` : '';
         const observacionesFinalCrear = `${observaciones || ''}${observaciones ? ' | ' : ''}${observacionesPagoCrear}${observacionesChequeCrear}`.trim();
@@ -361,7 +373,7 @@ export default function PedidoRapidoAdmin() {
         const id_linea = itemPrincipal?.id_linea ? Number(itemPrincipal.id_linea) : 0;
         const cantidad_solicitada = itemPrincipal?.cantidad_solicitada ? Number(itemPrincipal.cantidad_solicitada) : Number(cantidad);
         const precio_unitario_estimado = itemPrincipal?.precio_unitario_estimado ? Number(itemPrincipal.precio_unitario_estimado) : parseFloat(precioUnitario) || 0;
-        const importe_total_estimado = total;
+        const importe_total_estimado = Number(total.toFixed(2));
         if (String(user.role).toUpperCase() === 'ADMIN') {
           const aprobarPayload = { proveedor_id: Number(proveedorId), cuenta, iibb: showIibb ? iibb : '', iva: showIva ? iva : '', tc: showTc ? tc : '', ajuste_tc: showTc ? true : false, observaciones_solicitud: observacionesFinalCrear, tipo_caja: tipoCaja, forma_pago: formaPago, items: [{ id_linea, cantidad_solicitada, precio_unitario_estimado }], importe_total_estimado, importe_abonado: importeAbonadoCrear, cheque_perteneciente_a: formaPago === 'Cheque' ? chequeEmisor : undefined };
           await apiRequest(`${apiBase}/ordenes_compra/aprobar/${nuevaOCId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-User-Role': user.role, 'X-User-Name': user.usuario || user.name, 'Authorization': `Bearer ${token}` }, body: JSON.stringify(aprobarPayload) });

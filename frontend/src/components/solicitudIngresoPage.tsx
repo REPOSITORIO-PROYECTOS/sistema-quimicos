@@ -141,6 +141,25 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
   }, [id, token, cargarFormulario]);
 
   useEffect(() => {
+    const fetchTC = async () => {
+      try {
+        const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://quimex.sistemataup.online';
+        const tkn = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+        const headers: Record<string,string> = tkn ? { Authorization: `Bearer ${tkn}` } : {};
+        const res = await fetch(`${API_BASE_URL}/tipos_cambio/obtener/Oficial`, { headers });
+        if (!res.ok) return;
+        const data = await res.json().catch(()=>({}));
+        const valor = Number((data && (data.valor ?? data.data?.valor)) ?? NaN);
+        if (isFinite(valor) && valor > 0) {
+          setTc(String(valor));
+          setShowTc(true);
+        }
+      } catch {}
+    };
+    fetchTC();
+  }, []);
+
+  useEffect(() => {
     const cantNum = parseFloat(cantidad);
     const precioNum = parseFloat(precioUnitario);
     const tcNum = parseFloat(tc);
@@ -230,7 +249,23 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
         tipo_caja: solicitud.tipo_caja,
         items_recibidos: solicitud.items_recibidos.map((item) => ({
           id_linea: Number(item.id_linea),
-          cantidad_recibida: parseFloat(String(item.cantidad_recibida)) || 0,
+          cantidad_recibida: (() => {
+            const cr = parseFloat(String(item.cantidad_recibida));
+            if (!isNaN(cr) && cr > 0) return cr;
+            const cs = parseFloat(String(cantidad));
+            return !isNaN(cs) && cs > 0 ? cs : 0;
+          })(),
+          notas_item: (() => {
+            const sol = parseFloat(String(cantidad));
+            const rec = parseFloat(String(item.cantidad_recibida || cantidad));
+            const ingreso = !isNaN(rec) && rec > 0 ? `Ingresó ${rec}` : '';
+            let resto = '';
+            if (!isNaN(sol) && !isNaN(rec) && sol > rec) {
+              const falta = Math.max(0, sol - rec);
+              resto = `Falta ${falta} (pendiente)`;
+            }
+            return [ingreso, resto].filter(Boolean).join(' ');
+          })(),
         })),
       };
 
@@ -242,7 +277,9 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${token}`,
+          'X-User-Role': user?.role || 'USER',
+          'X-User-Name': user?.usuario || user?.name || ''
         },
         body: JSON.stringify(payload),
       });
@@ -423,9 +460,9 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       tipo, importeTotal,
       estado_recepcion,
       items_recibidos: [{
-         "id_linea": idLineaOCOriginal,
-         "cantidad_recibida": Number(cantidad_recepcionada || '0'),
-         "producto_codigo": codigo,
+         id_linea: idLineaOCOriginal,
+         cantidad_recibida: Number(cantidad_recepcionada || cantidad || '0'),
+         producto_codigo: codigo,
       }],
       ajusteTC, importeAbonado, formaPago, chequePerteneceA,
       tipo_caja: tipoCaja,

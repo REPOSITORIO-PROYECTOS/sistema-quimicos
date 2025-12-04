@@ -197,7 +197,7 @@ export default function ListaOrdenesCompra() {
       
       const ordenRef = ordenes.find(o => o.id === ordenId);
       const totalRef = Number(ordenRef?.importe_total_estimado ?? 0) || 0;
-      const abonadoRef = aprobacionPagoCompleto ? totalRef : (parseFloat(aprobacionImporteAbonado || '0') || 0);
+      let abonadoRef = aprobacionPagoCompleto ? totalRef : (parseFloat(aprobacionImporteAbonado || '0') || 0);
       const detalleResp = await fetch(`https://quimex.sistemataup.online/ordenes_compra/obtener/${ordenId}`, {
         headers: {
           'Content-Type': 'application/json',
@@ -209,6 +209,12 @@ export default function ListaOrdenesCompra() {
       const itemsFull = Array.isArray(detalleData?.items) ? detalleData.items : [];
       const itemsPayload = (itemsFull as DetalleItem[]).map((it) => ({ id_linea: typeof it.id_linea === 'number' ? it.id_linea : Number(it.id_linea ?? 0), cantidad_solicitada: typeof it.cantidad_solicitada === 'number' ? it.cantidad_solicitada : Number(it.cantidad_solicitada ?? 0), precio_unitario_estimado: typeof it.precio_unitario_estimado === 'number' ? it.precio_unitario_estimado : Number(it.precio_unitario_estimado ?? 0) }));
       const importe_total_estimado = Number(detalleData?.importe_total_estimado ?? totalRef ?? 0);
+      if (isFinite(importe_total_estimado)) {
+        const t = Math.max(0, Number(importe_total_estimado.toFixed(2)));
+        let a = Math.max(0, Number(abonadoRef.toFixed(2)));
+        if (a > t) a = t;
+        abonadoRef = a;
+      }
       const payload = {
         proveedor_id,
         cuenta: '',

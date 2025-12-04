@@ -27,6 +27,7 @@ interface ResultadoRecepcion {
   cantidadRecibida: number;
   incidencia: 'Falta' | 'Sobra' | 'OK';
   observaciones: string;
+  accionResto?: 'pendiente' | 'cancelar' | 'ninguno';
 }
 // --- (Fin de Interfaces) ---
 
@@ -40,6 +41,7 @@ const RecepcionesPendientes: React.FC<RecepcionPendienteProps> = ({ items, onReg
         cantidadRecibida: item.cantidadSolicitada,
         incidencia: 'OK' as const,
         observaciones: '',
+        accionResto: 'ninguno',
       })),
     [items]
   );
@@ -75,10 +77,15 @@ const RecepcionesPendientes: React.FC<RecepcionPendienteProps> = ({ items, onReg
         let nuevaIncidencia: ResultadoRecepcion['incidencia'] = 'OK';
         if (cantidadRecibidaNum < cantidadSolicitada) {
           nuevaIncidencia = 'Falta';
+          if (!itemModificado.accionResto || itemModificado.accionResto === 'ninguno') {
+            itemModificado.accionResto = 'pendiente';
+          }
         } else if (cantidadRecibidaNum === cantidadSolicitada) {
           nuevaIncidencia = 'OK';
+          itemModificado.accionResto = 'ninguno';
         } else if (cantidadRecibidaNum > cantidadSolicitada) {
           nuevaIncidencia = 'Sobra';
+          itemModificado.accionResto = 'ninguno';
         }
         itemModificado.incidencia = nuevaIncidencia;
       }
@@ -157,6 +164,19 @@ const RecepcionesPendientes: React.FC<RecepcionPendienteProps> = ({ items, onReg
                     <option value="Sobra">Sobra</option>
                   </select>
                 </label>
+                {resultados[idx].incidencia === 'Falta' && (
+                  <label className="flex flex-col space-y-1">
+                    <span className="text-sm font-medium text-blue-900">Acción con resto</span>
+                    <select
+                      value={resultados[idx].accionResto ?? 'pendiente'}
+                      onChange={e => handleChange(idx, 'accionResto', e.target.value)}
+                      className="w-full md:w-40 px-3 py-2 border border-blue-300 rounded-md bg-white text-blue-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      <option value="pendiente">Mantener pendiente</option>
+                      <option value="cancelar">Cancelar resto</option>
+                    </select>
+                  </label>
+                )}
                 <label className="flex-1 flex flex-col space-y-1 md:col-span-3 lg:col-span-1">
                   <span className="text-sm font-medium text-blue-900">Observaciones</span>
                   <input
