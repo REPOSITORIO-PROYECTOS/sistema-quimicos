@@ -185,9 +185,11 @@ export default function PedidoRapidoAdmin() {
           setPagoError("Ingrese un importe abonado válido (0 o mayor).");
           return;
         }
-        if (abonadoNum > totalCalculadoForm) {
-          setPagoError("El importe abonado no puede superar el total.");
-          return;
+        const t = Math.max(0, Number(totalCalculadoForm.toFixed(2)));
+        const a = Math.max(0, Number(abonadoNum.toFixed(2)));
+        if (a > t) {
+          setImporteAbonado(String(t));
+          setPagoError("");
         }
       }
 

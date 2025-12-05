@@ -114,10 +114,18 @@ export default function RegistrarIngreso() {
       setErrorApi("El importe abonado no puede ser negativo.");
       return;
     }
-    if (!isNaN(importeAbonadoNum) && importeTotal && importeAbonadoNum > Number(importeTotal)) {
-      setIsLoading(false);
-      setErrorApi("El importe abonado no puede superar el total estimado.");
-      return;
+    if (!isNaN(importeAbonadoNum)) {
+      const totalNum = (() => {
+        const t = Number(importeTotal);
+        if (!isNaN(t) && t > 0) return t;
+        const c = Number(String(cantidad).replace(',', '.'));
+        const p = Number(String(precioEstimado).replace(',', '.'));
+        return (!isNaN(c) && !isNaN(p) && c > 0 && p >= 0) ? Number((c * p).toFixed(2)) : 0;
+      })();
+      const abonadoClamped = Math.min(Math.max(0, importeAbonadoNum), totalNum);
+      if (abonadoClamped !== importeAbonadoNum) {
+        setImporteAbonado(String(abonadoClamped.toFixed(2)));
+      }
     }
 
     // Objeto local para la lista de la UI, ya no contiene los campos eliminados
@@ -159,7 +167,17 @@ export default function RegistrarIngreso() {
       proveedor_id: 1, // Se envía un ID de proveedor fijo (Ej: 1 para "Varios" o "Interno"). ¡Ajustar si es necesario!
       fecha_limite: fechaLimite,
     };
-    if (!isNaN(importeAbonadoNum)) ventaPayload.importe_abonado = importeAbonadoNum;
+    if (!isNaN(importeAbonadoNum)) {
+      const totalNum = (() => {
+        const t = Number(importeTotal);
+        if (!isNaN(t) && t > 0) return t;
+        const c2 = Number(String(cantidad).replace(',', '.'));
+        const p2 = Number(String(precioEstimado).replace(',', '.'));
+        return (!isNaN(c2) && !isNaN(p2) && c2 > 0 && p2 >= 0) ? Number((c2 * p2).toFixed(2)) : 0;
+      })();
+      const abonadoClamped = Math.min(Math.max(0, importeAbonadoNum), totalNum);
+      ventaPayload.importe_abonado = abonadoClamped;
+    }
     console.log("Payload enviado a la API:", ventaPayload);
     // Guardar último intento para recuperación
     try { sessionStorage.setItem(LAST_PAYLOAD_KEY, JSON.stringify({ payload: ventaPayload, ts: Date.now() })); } catch {}
