@@ -79,40 +79,6 @@
   --sidebar-border: #EBEBEB;
   --sidebar-ring: #B3B3B3;
 }
-/* TEMA OSCURO (DARK MODE) */
-.dark {
-  --background: #252525;
-  --foreground: #FAFAFA;
-  --card: #333333;
-  --card-foreground: #FAFAFA;
-  --popover: var(--card); 
-  --popover-foreground: var(--card-foreground);
-  --primary: #EBEBEB;
-  --primary-foreground: #333333;
-  --secondary: #444444;
-  --secondary-foreground: #FAFAFA;
-  --muted: #444444;
-  --muted-foreground: #B3B3B3;
-  --accent: #444444;
-  --accent-foreground: #FAFAFA;
-  --destructive: #D9635C;
-  --border: rgba(255, 255, 255, 0.1);
-  --input: rgba(255, 255, 255, 0.15);
-  --ring: #8E8E8E;
-  --chart-1: #8C6ED9;
-  --chart-2: #66C2A5;
-  --chart-3: #E6C24F;
-  --chart-4: #D46EC8;
-  --chart-5: #DA835E;
-  --sidebar: #333333;
-  --sidebar-foreground: #FAFAFA;
-  --sidebar-primary: #8C6ED9;
-  --sidebar-primary-foreground: #FAFAFA;
-  --sidebar-accent: #444444;
-  --sidebar-accent-foreground: #FAFAFA;
-    --sidebar-ring: #8E8E8E;
-  --sidebar-ring: #8E8E8E;
-}
 /* --- ESTILOS BASE DE LA APLICACIÓN --- */
 @layer base {
   *, ::before, ::after {
@@ -136,28 +102,20 @@ select {
     color: #252525 !important;
     border-radius: 10px !important; /* ¡AQUÍ AÑADIMOS EL REDONDEO! */
 }
-.dark select {
-    background-color: #333333 !important;
-    color: #FAFAFA !important;
-    border-radius: 10px !important; /* ¡AQUÍ AÑADIMOS EL REDONDEO! */
-}
+/* Eliminado tema oscuro */
 
 /* --- Menús Desplegables del Navbar (ej. "Ventas") --- */
 [data-radix-popper-content-wrapper] div[role="menu"] {
     background-color: #FFFFFF !important;
     border-radius: 10px !important; /* ¡AQUÍ AÑADIMOS EL REDONDEO! */
 }
-.dark [data-radix-popper-content-wrapper] div[role="menu"] {
-    background-color: #333333 !important;
-    border-radius: 10px !important; /* ¡AQUÍ AÑADIMOS EL REDONDEO! */
-}
 
 select:focus {
-    /* El :focus solo se encarga de cambiar el borde y el shadow */
     outline: none;
     border-color: var(--color-ring);
     box-shadow: 0 0 0 2px var(--color-ring);
-};
+}
+
 }
 
 /* --- CLASES DE UTILIDAD PERSONALIZADAS --- */
@@ -318,3 +276,5 @@ select:focus {
 .hide-navbar-when-modal nav {
   display: none !important;
 }
+
+/* Overrides de oscuro eliminados */

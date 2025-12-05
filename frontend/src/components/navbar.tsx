@@ -5,7 +5,7 @@ import { useAuth } from "./providers/auth-provider"; // Asegúrate que la ruta e
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { usePathname } from "next/navigation";
-import { ModeToggle } from "./mode-toggle"; // Asegúrate que la ruta es correcta
+// Modo oscuro deshabilitado
 import Link from "next/link";
 import {
     DropdownMenu,
@@ -250,13 +250,12 @@ export function Navbar() {
                         >
                             Cerrar sesión
                         </Button>
-                        <ModeToggle />
+                        
                     </div>
                 )}
                  {!user && ( // Ejemplo: Mostrar solo ModeToggle si no hay usuario
                     <div className="flex items-center">
-                         <ModeToggle />
-                         {/* Podrías poner un botón de Login aquí */}
+                         {/* Modo oscuro deshabilitado */}
                     </div>
                  )}
             </div>
