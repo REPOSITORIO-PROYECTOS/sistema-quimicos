@@ -51,12 +51,13 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
     try { localStorage.setItem(ESTADO_KEY, estado); } catch {}
     setEstadoSolicitud(estado);
   };
-  const cargarEstadoPersistente = () => {
+  const cargarEstadoPersistente = useCallback(() => {
     try {
-      const saved = localStorage.getItem(ESTADO_KEY);
+      const key = `solicitud_estado_${String(id)}`;
+      const saved = localStorage.getItem(key);
       if (saved) setEstadoSolicitud(saved);
     } catch {}
-  };
+  }, [id]);
 
 
 
@@ -92,10 +93,10 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       setCantidad(itemPrincipal.cantidad_solicitada?.toString() ?? '');
       setPrecioUnitario(itemPrincipal.precio_unitario_estimado?.toString() ?? '0');
       setCuenta(data.cuenta?.toString() ?? '');
-      setIibb(data.iibb?.toString() ?? iibb);
-      setShowIibb(Boolean(data.iibb) || showIibb);
-      setIva(data.iva?.toString() ?? iva);
-      setShowIva(Boolean(data.iva) || showIva);
+      setIibb(data.iibb?.toString() ?? '');
+      setShowIibb(Boolean(data.iibb));
+      setIva(data.iva?.toString() ?? '');
+      setShowIva(Boolean(data.iva));
       if (data.tc) {
         setTc(String(data.tc));
         setShowTc(true);
@@ -392,7 +393,8 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       const cuenta_val = cuenta;
       const iibb_dom = (typeof document !== 'undefined') ? (document.getElementById('iibb') as HTMLInputElement | null) : null;
       const iibb_val = iibb_dom?.value ?? iibb;
-      const iibb_final = iibb_dom ? (iibb_val || '3.5') : '';
+      const isIibbActive = !!iibb_dom || showIibb;
+      const iibb_final = isIibbActive ? ((iibb_val && iibb_val !== '') ? iibb_val : '3.5') : '';
       const iva_val = iva;
       const tc_val = tc;
       const ajuste_tc_val = showTc ? true : false;
