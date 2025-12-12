@@ -5,7 +5,6 @@ import { useProveedoresContext } from "@/context/ProveedoresContext";
 import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import jsPDF from 'jspdf';
-//eslint-disable-next-line
 export default function SolicitudIngresoPage({ id }: { id: number | string }) {
   const [fecha, setFecha] = useState('');
   const [proveedorId, setProveedorId] = useState('');
@@ -41,7 +40,7 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
   const [montoYaAbonadoOC, setMontoYaAbonadoOC] = useState<number>(0);
   const [idLineaOCOriginal, setIdLineaOCOriginal] = useState<string | number>('');
   const [cantidadYaRecibida, setCantidadYaRecibida] = useState<number>(0);
-  const [ajusteTC, setAjusteTC] = useState<string>('False');
+  // ajusteTC removido: se deduce desde showTc
 
   let problema = false;
   const token = typeof window !== 'undefined' ? localStorage.getItem("token") : null;
@@ -93,19 +92,21 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       setCantidad(itemPrincipal.cantidad_solicitada?.toString() ?? '');
       setPrecioUnitario(itemPrincipal.precio_unitario_estimado?.toString() ?? '0');
       setCuenta(data.cuenta?.toString() ?? '');
-      setIibb(data.iibb?.toString() ?? '');
-      setShowIibb(Boolean(data.iibb));
-      setIva(data.iva?.toString() ?? '');
-      setShowIva(Boolean(data.iva));
-      setTc(data.tc?.toString() ?? '');
-      setShowTc(Boolean(data.tc));
+      setIibb(data.iibb?.toString() ?? iibb);
+      setShowIibb(Boolean(data.iibb) || showIibb);
+      setIva(data.iva?.toString() ?? iva);
+      setShowIva(Boolean(data.iva) || showIva);
+      if (data.tc) {
+        setTc(String(data.tc));
+        setShowTc(true);
+      }
       const totalOC = typeof data.importe_total_estimado === 'number'
         ? data.importe_total_estimado
         : (typeof itemPrincipal.importe_linea_estimado === 'number' ? itemPrincipal.importe_linea_estimado : 0);
       setImporteTotal(totalOC.toFixed(2));
       setEstadoOC(data.estado || '');
       setIdLineaOCOriginal(itemPrincipal.id_linea || '');
-      setAjusteTC(data.ajuste_tc === true ? 'True' : 'False');
+      // ajusteTC removido: estado derivado de showTc
       setNroRemitoProveedor(data.nro_remito_proveedor || '');
       setChequePerteneceA(data.cheque_perteneciente_a?.toString() ?? '');
       setTipoCaja(data.tipo_caja);
@@ -138,7 +139,7 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       cargarFormulario();
       cargarEstadoPersistente();
     }
-  }, [id, token, cargarFormulario]);
+  }, [id, token, cargarFormulario, cargarEstadoPersistente]);
 
   useEffect(() => {
     const fetchTC = async () => {
@@ -237,10 +238,10 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
         precio_unitario: parseFloat(String(solicitud.precioUnitario)),
         importe_total: parseFloat(String(solicitud.importeTotal)),
         cuenta: solicitud.cuenta,
-        iibb: solicitud.iibb ?? iibb,
-        iva: solicitud.iva ?? iva,
-        tc: solicitud.tc ?? tc,
-        ajuste_tc: (ajusteTC === 'True'),
+        iibb: (showIibb ? String(solicitud.iibb ?? iibb) : ''),
+        iva: (showIva ? String(solicitud.iva ?? iva) : ''),
+        tc: (showTc ? String(solicitud.tc ?? tc) : ''),
+        ajuste_tc: showTc ? true : false,
         nro_remito_proveedor: solicitud.nro_remito_proveedor,
         estado_recepcion: solicitud.estado_recepcion,
         importe_abonado: nuevoAbonoFloat,
@@ -315,7 +316,7 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       const iibb_val = typeof solicitud.iibb === 'string' ? solicitud.iibb : iibb;
       const iva_val = typeof solicitud.iva === 'string' ? solicitud.iva : iva;
       const tc_val = typeof solicitud.tc === 'string' ? solicitud.tc : tc;
-      const ajuste_tc = (ajusteTC === 'True');
+      const ajuste_tc = showTc ? true : false;
       const observaciones_solicitud = typeof solicitud.observaciones_solicitud === 'string' ? solicitud.observaciones_solicitud : '';
       const tipo_caja = typeof solicitud.tipo_caja === 'string' ? solicitud.tipo_caja : '';
       // items_recibidos
@@ -335,9 +336,9 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       const payload = {
         proveedor_id,
         cuenta,
-        iibb: iibb_val,
-        iva: iva_val,
-        tc: tc_val,
+        iibb: showIibb ? iibb_val : '',
+        iva: showIva ? iva_val : '',
+        tc: showTc ? tc_val : '',
         ajuste_tc,
         observaciones_solicitud,
         tipo_caja,
@@ -389,10 +390,12 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       setErrorMensaje('');
       const proveedor_id = Number(proveedorId);
       const cuenta_val = cuenta;
-      const iibb_val = iibb;
+      const iibb_dom = (typeof document !== 'undefined') ? (document.getElementById('iibb') as HTMLInputElement | null) : null;
+      const iibb_val = iibb_dom?.value ?? iibb;
+      const iibb_final = iibb_dom ? (iibb_val || '3.5') : '';
       const iva_val = iva;
       const tc_val = tc;
-      const ajuste_tc_val = showTc ? true : (ajusteTC === 'True');
+      const ajuste_tc_val = showTc ? true : false;
       const tipo_caja_val = tipoCaja;
       const id_linea = Number(idLineaOCOriginal || 0);
       const cantidad_solicitada_val = Number(cantidad || 0);
@@ -403,9 +406,9 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       const payload = {
         proveedor_id,
         cuenta: cuenta_val,
-        iibb: iibb_val,
-        iva: iva_val,
-        tc: tc_val,
+        iibb: iibb_final,
+        iva: iva_val ? iva_val : '',
+        tc: showTc ? tc_val : '',
         ajuste_tc: ajuste_tc_val,
         tipo_caja: tipo_caja_val,
         items: [
@@ -459,12 +462,13 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       tc: showTc ? tc : '',
       tipo, importeTotal,
       estado_recepcion,
-      items_recibidos: [{
+        items_recibidos: [{
          id_linea: idLineaOCOriginal,
          cantidad_recibida: Number(cantidad_recepcionada || cantidad || '0'),
          producto_codigo: codigo,
       }],
-      ajusteTC, importeAbonado, formaPago, chequePerteneceA,
+      ajuste_tc: showTc ? true : false,
+      importeAbonado, formaPago, chequePerteneceA,
       tipo_caja: tipoCaja,
     };
     await enviarSolicitudAPI(nuevaSolicitud);
@@ -563,7 +567,7 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       {errorMensaje && <div className="w-full max-w-4xl mb-4 bg-red-100 border-red-400 text-red-700 px-4 py-3 rounded" role="alert">{errorMensaje}</div>}
       <div className="w-full max-w-5xl">
         {/* --- Bloque 1: Proveedor y OC --- */}
-        <div className="mb-8 bg-white/20 rounded-lg p-6 shadow flex flex-col gap-4">
+        <div className="mb-8 bg白/20 rounded-lg p-6 shadow flex flex-col gap-4">
           <h2 className="text-lg font-bold text-white mb-2">Datos del Proveedor y Orden</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
@@ -663,6 +667,19 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
             <div>
               <label htmlFor="importeTotal" className={labelClass}>Importe Total OC</label>
               <input id="importeTotal" type="number" step="0.01" value={importeTotal} onChange={(e) => setImporteTotal(e.target.value)} className={baseInputClass} />
+            </div>
+            <div>
+              <label htmlFor="cantidadRecepcionada" className={labelClass}>Cantidad a Recepcionar</label>
+              <input
+                id="cantidadRecepcionada"
+                type="number"
+                step="0.01"
+                min="0"
+                value={cantidad_recepcionada}
+                onChange={(e) => setCantidadRecepcionada(e.target.value)}
+                className={baseInputClass}
+                placeholder="Ej: 5"
+              />
             </div>
             {/* Estado Recepción removido por requerimiento */}
           </div>

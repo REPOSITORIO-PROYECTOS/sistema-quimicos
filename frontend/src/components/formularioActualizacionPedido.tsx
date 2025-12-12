@@ -346,9 +346,11 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
   };
 
   const agregarProducto = () => setProductos([...productos, { ...initialProductoItem }]);
-  const eliminarProducto = (index: number) => {
+  const eliminarProducto = async (index: number) => {
     const nuevosProductos = productos.filter((_, i) => i !== index);
-    recalculatePricesForProducts(nuevosProductos.length > 0 ? nuevosProductos : [{ ...initialProductoItem }], formData.clienteId);
+    const lista = nuevosProductos.length > 0 ? nuevosProductos : [{ ...initialProductoItem }];
+    const recalculados = await recalculatePricesForProducts(lista, formData.clienteId);
+    setProductos(recalculados);
   };
 
   const handleImprimir = useCallback((documentos: string[]) => {

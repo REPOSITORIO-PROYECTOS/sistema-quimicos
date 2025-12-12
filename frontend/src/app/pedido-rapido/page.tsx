@@ -382,7 +382,24 @@ export default function PedidoRapidoAdmin() {
         }
         const itemsRecibidos = [{ id_linea, cantidad_recibida: Number(cantidad_solicitada), producto_codigo: String(itemPrincipal?.producto_codigo || ''), costo_unitario_ars: precio_unitario_estimado, notas_item: '' }];
         const estadoRecepcion = 'Completa';
-        const recibirPayload = { proveedor_id: Number(proveedorId), cantidad: Number(cantidad_solicitada), precio_unitario: precio_unitario_estimado, importe_total: importe_total_estimado, cuenta, iibb: showIibb ? iibb : '', iva: showIva ? iva : '', tc: showTc ? tc : '', nro_remito_proveedor: '', estado_recepcion: estadoRecepcion, importe_abonado: pagoCompleto ? importe_total_estimado : (parseFloat(importeAbonado || '0') || 0), forma_pago: formaPago, cheque_perteneciente_a: formaPago === 'Cheque' ? chequeEmisor : '', tipo_caja: tipoCaja, items_recibidos: itemsRecibidos };
+        const recibirPayload = {
+          proveedor_id: Number(proveedorId),
+          cantidad: Number(cantidad_solicitada),
+          precio_unitario: precio_unitario_estimado,
+          importe_total: importe_total_estimado,
+          cuenta,
+          iibb: showIibb ? Number(iibb) : undefined,
+          iva: showIva ? Number(iva) : undefined,
+          tc: showTc ? Number(tc) : undefined,
+          ajuste_tc: showTc ? true : false,
+          nro_remito_proveedor: '',
+          estado_recepcion: estadoRecepcion,
+          importe_abonado: pagoCompleto ? importe_total_estimado : (parseFloat(importeAbonado || '0') || 0),
+          forma_pago: formaPago,
+          cheque_perteneciente_a: formaPago === 'Cheque' ? chequeEmisor : '',
+          tipo_caja: tipoCaja,
+          items_recibidos: itemsRecibidos
+        };
         await apiRequest(`${apiBase}/ordenes_compra/recibir/${nuevaOCId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-User-Role': user.role, 'X-User-Name': user.usuario || user.name, 'Authorization': `Bearer ${token}` }, body: JSON.stringify(recibirPayload) });
         alert('Pedido Rápido creado, aprobado y recepcionado.');
         router.push('/recepciones-pendientes');
