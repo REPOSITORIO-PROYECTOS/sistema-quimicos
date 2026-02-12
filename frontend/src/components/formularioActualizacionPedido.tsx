@@ -501,17 +501,18 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         const surcharge_for_item = proportion * surcharge_total;
         return {
           ...item,
-          precio_total_item_ars: parseFloat((item.precio_total_item_ars + surcharge_for_item).toFixed(2))
+          precio_total_item_ars: Math.round((item.precio_total_item_ars + surcharge_for_item) * 100) / 100
         };
       });
       
       // Ajustar último ítem para que suma coincida exactamente con monto_final_con_recargos
       const targetSum = totalCalculadoApi?.monto_final_con_recargos || (base_total + surcharge_total);
       const sumAdjusted = adjustedItems.reduce((sum, item) => sum + item.precio_total_item_ars, 0);
-      const difference = parseFloat((targetSum - sumAdjusted).toFixed(2));
+      const difference = Math.round((targetSum - sumAdjusted) * 100) / 100;
       
       if (adjustedItems.length > 0 && Math.abs(difference) > 0.01) {
-        adjustedItems[adjustedItems.length - 1].precio_total_item_ars = parseFloat((adjustedItems[adjustedItems.length - 1].precio_total_item_ars + difference).toFixed(2));
+        adjustedItems[adjustedItems.length - 1].precio_total_item_ars += difference;
+        adjustedItems[adjustedItems.length - 1].precio_total_item_ars = Math.round(adjustedItems[adjustedItems.length - 1].precio_total_item_ars * 100) / 100;
       }
       
       return adjustedItems;
