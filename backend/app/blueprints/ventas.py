@@ -876,6 +876,7 @@ def venta_a_dict_resumen(venta):
         "forma_pago": venta.forma_pago,
         "requiere_factura": venta.requiere_factura,
         "descuento_general": venta.descuento_general,
+        "descuento_total_global_porcentaje": float(getattr(venta, "descuento_general", 0.0) or 0.0),
         "monto_final_con_recargos": float(venta.monto_final_con_recargos) if venta.monto_final_con_recargos is not None else None,
     }
 
