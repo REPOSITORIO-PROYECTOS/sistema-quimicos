@@ -434,20 +434,7 @@ export default function RegistrarPedidoPage() {
     forma_pago: formData.formaPago,
     monto_pagado_cliente: formData.montoPagado,
     vuelto_calculado: formData.vuelto,
-    total_bruto_sin_descuento: productos
-      .filter(p => p.producto && p.qx > 0)
-      .reduce((sum, item) => {
-        const subtotalRedondeadoBase = item.total || 0;
-        let subtotalFinalParaTicket = subtotalRedondeadoBase;
-        if (totalCalculadoApi && montoBaseProductos > 0) {
-          const factorRecargo = totalCalculadoApi.monto_final_con_recargos / montoBaseProductos;
-          const subtotalConRecargo = subtotalRedondeadoBase * factorRecargo;
-          subtotalFinalParaTicket = subtotalConRecargo;
-        }
-        const descuentoPorc = item.descuento || 0;
-        const subtotalBruto = descuentoPorc > 0 ? (subtotalFinalParaTicket / (1 - descuentoPorc / 100)) : subtotalFinalParaTicket;
-        return sum + subtotalBruto;
-      }, 0),
+    descuento_total_global_porcentaje: formData.descuentoTotal || 0,
   };
 
   return (

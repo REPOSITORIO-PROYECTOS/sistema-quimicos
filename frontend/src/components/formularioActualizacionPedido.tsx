@@ -50,6 +50,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
   const [isSubmitting, setIsSubmitting] = useState(false);
   const productosContext = useProductsContextActivos();
   const [documentosAImprimir, setDocumentosAImprimir] = useState<string[]>([]);
+  const [ventaActualizadaParaImprimir, setVentaActualizadaParaImprimir] = useState<any>(null);
 
   const opcionesDeProductoParaSelect = useMemo(() =>
     productosContext?.productos.map((prod: ProductoContextType) => ({
@@ -434,6 +435,10 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result?.message || 'Error al actualizar.');
+      
+      // Guardar los datos actualizados con valores correctos del backend
+      setVentaActualizadaParaImprimir(result.venta);
+      
       setSuccessMensaje("¡Pedido actualizado con éxito!");
       handleImprimir(['comprobante', 'comprobante', 'orden_de_trabajo']);
       setTimeout(irAcciones, 2000);
@@ -447,54 +452,125 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
 
   const getNumericInputValue = (value: number) => value === 0 ? '' : String(value);
 
-  // Calcular el subtotal de todos los ítems con descuento particular
+  // Calcular los items finales distribuyendo recargos proporcionalmente
   const itemsFiltrados = productos.filter(p => p.producto && p.qx > 0);
-  const itemsFinalesBase = itemsFiltrados.map(item => {
-    const pInfo = productosContext?.productos.find(p => p.id === item.producto);
-    return {
-      id_detalle: item.id_detalle,
-      producto_id: item.producto,
-      producto_nombre: pInfo?.nombre || `ID: ${item.producto}`,
-      cantidad: item.qx,
-      observacion_item: item.observacion || "",
-      precio_total_item_ars: item.total || 0,
-      subtotal_bruto_item_ars: item.total || 0,
-    };
-  });
-
-  // Redistribuir el sobrecargo proporcionalmente en los ítems para que la suma coincida con total_final
-  const base_total = totalCalculadoApi?.monto_base || 0;
-  const surcharge_total = (totalCalculadoApi?.recargos?.transferencia || 0) + (totalCalculadoApi?.recargos?.factura_iva || 0);
-  let itemsFinales = itemsFinalesBase;
-  if (base_total > 0 && surcharge_total > 0) {
-    const adjustedItems = itemsFinalesBase.map(item => {
-      const proportion = item.subtotal_bruto_item_ars / base_total;
-      const surcharge_for_item = proportion * surcharge_total;
-      const new_price = item.subtotal_bruto_item_ars + surcharge_for_item;
-      return { ...item, precio_total_item_ars: parseFloat(new_price.toFixed(2)) };
+  const itemsFinales = (() => {
+    const items = itemsFiltrados.map(item => {
+      const pInfo = productosContext?.productos.find(p => p.id === item.producto);
+      return {
+        id_detalle: item.id_detalle,
+        producto_id: item.producto,
+        producto_nombre: pInfo?.nombre || `ID: ${item.producto}`,
+        cantidad: item.qx,
+        observacion_item: item.observacion || "",
+        precio_total_item_ars: item.total || 0,
+      };
     });
-    const sum_adjusted = adjustedItems.reduce((sum, item) => sum + item.precio_total_item_ars, 0);
-    const difference = totalFinalCalculado - sum_adjusted;
-    if (adjustedItems.length > 0) {
-      adjustedItems[adjustedItems.length - 1].precio_total_item_ars += difference;
-      adjustedItems[adjustedItems.length - 1].precio_total_item_ars = parseFloat(adjustedItems[adjustedItems.length - 1].precio_total_item_ars.toFixed(2));
+    
+    // Si hay recargos, distribuirlos proporcionalmente
+    const base_total = totalCalculadoApi?.monto_base || montoBaseProductos;
+    const surcharge_total = (totalCalculadoApi?.recargos?.transferencia || 0) + (totalCalculadoApi?.recargos?.factura_iva || 0);
+    
+    if (base_total > 0 && surcharge_total > 0) {
+      const adjustedItems = items.map(item => {
+        const proportion = item.precio_total_item_ars / base_total;
+        const surcharge_for_item = proportion * surcharge_total;
+        return {
+          ...item,
+          precio_total_item_ars: parseFloat((item.precio_total_item_ars + surcharge_for_item).toFixed(2))
+        };
+      });
+      
+      // Ajustar último ítem para que suma coincida exactamente con monto_final_con_recargos
+      const targetSum = totalCalculadoApi?.monto_final_con_recargos || (base_total + surcharge_total);
+      const sumAdjusted = adjustedItems.reduce((sum, item) => sum + item.precio_total_item_ars, 0);
+      const difference = parseFloat((targetSum - sumAdjusted).toFixed(2));
+      
+      if (adjustedItems.length > 0 && Math.abs(difference) > 0.01) {
+        adjustedItems[adjustedItems.length - 1].precio_total_item_ars = parseFloat((adjustedItems[adjustedItems.length - 1].precio_total_item_ars + difference).toFixed(2));
+      }
+      
+      return adjustedItems;
     }
-    itemsFinales = adjustedItems;
-  }
+    
+    return items;
+  })();
 
-  const ventaDataParaTicket: VentaDataParaTicket = {
-    venta_id: id,
-    fecha_emision: formData.fechaEmision,
-    cliente: { nombre: formData.nombre, direccion: formData.direccion },
-    nombre_vendedor: "pedidos",
-    items: itemsFinales,
-    total_final: totalFinalCalculado,
-    observaciones: formData.observaciones,
-    forma_pago: formData.formaPago,
-    monto_pagado_cliente: formData.montoPagado,
-    vuelto_calculado: formData.vuelto,
-    // total_bruto_sin_descuento removido: backend maneja cálculo global
-  };
+  const ventaDataParaTicket: VentaDataParaTicket = (() => {
+    // Si tenemos datos actualizados del backend (después del PUT), usarlos
+    if (ventaActualizadaParaImprimir) {
+      const detalles = ventaActualizadaParaImprimir.detalles || [];
+      const itemsDelBackend = detalles
+        .filter((detalle: any) => {
+          const precio = detalle.subtotal_proporcional_con_recargos || detalle.precio_total_item_ars;
+          // Filtrar: cantidad > 0 Y precio > 0 (sin negativos ni ceros)
+          return detalle.cantidad > 0 && precio > 0;
+        })
+        .map((detalle: any) => {
+          // Usar subtotal_proporcional_con_recargos si existe, sino precio_total_item_ars
+          const precioItem = detalle.subtotal_proporcional_con_recargos || detalle.precio_total_item_ars;
+          // Redondear a 2 decimales y asegurar que sea positivo
+          const precioFinal = Math.max(0, Math.round(precioItem * 100) / 100);
+          
+          return {
+            producto_id: detalle.producto_id,
+            producto_nombre: detalle.producto_nombre,
+            cantidad: detalle.cantidad,
+            observacion_item: detalle.observacion_item || "",
+            precio_total_item_ars: precioFinal,
+          };
+        });
+      
+      // Asegurar que la suma coincida exactamente con el total
+      const totalFinalDelBackend = ventaActualizadaParaImprimir.monto_final_con_descuento !== undefined 
+        ? ventaActualizadaParaImprimir.monto_final_con_descuento
+        : ventaActualizadaParaImprimir.monto_final_con_recargos;
+      
+      const sumItems = itemsDelBackend.reduce((sum: number, item: any) => sum + item.precio_total_item_ars, 0);
+      const diff = Math.round((totalFinalDelBackend - sumItems) * 100) / 100;
+      
+      if (itemsDelBackend.length > 0 && Math.abs(diff) > 0.01) {
+        itemsDelBackend[itemsDelBackend.length - 1].precio_total_item_ars = Math.round((itemsDelBackend[itemsDelBackend.length - 1].precio_total_item_ars + diff) * 100) / 100;
+      }
+      
+      console.log('DEBUG ventaDataParaTicket con datos del backend:', {
+        items: itemsDelBackend,
+        total_final: totalFinalDelBackend,
+        descuento_porcentaje: ventaActualizadaParaImprimir.descuento_total_global_porcentaje,
+        suma_items: sumItems,
+        diferencia_ajustada: diff
+      });
+      
+      return {
+        venta_id: id,
+        fecha_emision: ventaActualizadaParaImprimir.fecha_registro || formData.fechaEmision,
+        cliente: { nombre: ventaActualizadaParaImprimir.cliente_nombre || formData.nombre, direccion: ventaActualizadaParaImprimir.direccion_entrega || formData.direccion },
+        nombre_vendedor: "pedidos",
+        items: itemsDelBackend,
+        total_final: totalFinalDelBackend,
+        observaciones: ventaActualizadaParaImprimir.observaciones || "",
+        forma_pago: ventaActualizadaParaImprimir.forma_pago,
+        monto_pagado_cliente: ventaActualizadaParaImprimir.monto_pagado_cliente,
+        vuelto_calculado: ventaActualizadaParaImprimir.vuelto_calculado,
+        descuento_total_global_porcentaje: ventaActualizadaParaImprimir.descuento_total_global_porcentaje || 0,
+      };
+    }
+    
+    // Si no, usar los valores locales (para reimprimir sin actualizar)
+    return {
+      venta_id: id,
+      fecha_emision: formData.fechaEmision,
+      cliente: { nombre: formData.nombre, direccion: formData.direccion },
+      nombre_vendedor: "pedidos",
+      items: itemsFinales,
+      total_final: totalFinalCalculado,
+      observaciones: formData.observaciones,
+      forma_pago: formData.formaPago,
+      monto_pagado_cliente: formData.montoPagado,
+      vuelto_calculado: formData.vuelto,
+      descuento_total_global_porcentaje: formData.descuentoTotal || 0,
+    };
+  })();
 
   return (
     <>

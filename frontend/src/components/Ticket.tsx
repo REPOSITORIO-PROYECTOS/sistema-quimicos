@@ -31,7 +31,6 @@ export interface VentaData {
     monto_pagado_cliente?: number;
     vuelto_calculado?: number;
     descuento_total_global_porcentaje?: number;
-    total_bruto_sin_descuento?: number; // opcional, para mostrar el total antes de descuento global
 }
 
 interface TicketProps {
@@ -50,21 +49,12 @@ const Ticket: React.FC<TicketProps> = ({ tipo, ventaData }) => {
         }).format(value);
     };
 
-    // Usar solo los valores que vienen del backend, sin recalcular nada
-    const totalBrutoSinDescuento = ventaData.total_bruto_sin_descuento !== undefined
-        ? ventaData.total_bruto_sin_descuento
-        : ventaData.items.reduce((sum, item) => {
-            // Si el subtotal bruto viene, usarlo, si no, sumar el total directo
-            if (item.subtotal_bruto_item_ars !== undefined) return sum + item.subtotal_bruto_item_ars;
-            return sum + item.precio_total_item_ars;
-        }, 0);
-
+    // Calcular el descuento global en plata basado en la suma de los items
+    const sumaTotalesItems = ventaData.items.reduce((sum, item) => sum + item.precio_total_item_ars, 0);
     const descuentoGlobalPorc = ventaData.descuento_total_global_porcentaje || 0;
-    const descuentoGlobalEnPlata = descuentoGlobalPorc > 0 ? totalBrutoSinDescuento * (descuentoGlobalPorc / 100) : 0;
+    const descuentoGlobalEnPlata = descuentoGlobalPorc > 0 ? sumaTotalesItems * (descuentoGlobalPorc / 100) : 0;
 
     const isFinancial = tipo === 'comprobante';
-
-    // ELIMINADO: La constante 'numeroDeItemsParaRelleno' ya no es necesaria.
 
     return (
         // El div contenedor ahora se llama #presupuesto-imprimible para coincidir con globals.css
@@ -164,17 +154,10 @@ const Ticket: React.FC<TicketProps> = ({ tipo, ventaData }) => {
                 <section className="datos-totales">
                     <table className="tabla-datos-secundarios">
                         <tbody>
-                            {/* Mostrar total bruto si hay descuento global */}
-                            {descuentoGlobalPorc > 0 && (
-                                <tr>
-                                    <td>Total sin descuento:</td>
-                                    <td>$ {formatPrice(totalBrutoSinDescuento)}</td>
-                                </tr>
-                            )}
                             {/* Mostrar descuento global si existe */}
                             {descuentoGlobalPorc > 0 && (
                                 <tr>
-                                    <td>Desc. global {descuentoGlobalPorc}%:</td>
+                                    <td>Descuento {descuentoGlobalPorc}%:</td>
                                     <td className="text-red-700">-$ {formatPrice(descuentoGlobalEnPlata)}</td>
                                 </tr>
                             )}

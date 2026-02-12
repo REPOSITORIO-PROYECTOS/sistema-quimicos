@@ -243,22 +243,19 @@ const handlePrint = async (tipo: 'comprobante' | 'orden_de_trabajo') => {
           };
         });
         
-        // Ajustar el último item para que la suma sea exacta al total final
-        const totalPreferido = (typeof data.monto_final_con_descuento === 'number') ? data.monto_final_con_descuento : data.monto_final_con_recargos;
+        // Ajustar el último item para que la suma sea exacta (sin descuento global, eso lo muestra Ticket separado)
+        const targetSum = data.monto_final_con_recargos || sumaTotales + recargoTotal;
         const sumAdjusted = adjustedItems.reduce((sum, item) => sum + item.precio_total_item_ars, 0);
-        const difference = Math.round((totalPreferido - sumAdjusted) * 100) / 100;
+        const difference = Math.round((targetSum - sumAdjusted) * 100) / 100;
         if (adjustedItems.length > 0 && Math.abs(difference) > 0.01) {
           adjustedItems[adjustedItems.length - 1].precio_total_item_ars += difference;
           adjustedItems[adjustedItems.length - 1].precio_total_item_ars = Math.round(adjustedItems[adjustedItems.length - 1].precio_total_item_ars * 100) / 100;
         }
         
-        // Calcular total_bruto_sin_descuento igual que en registrar-pedido
-        const totalBrutoSinDescuento = adjustedItems.reduce((sum, item) => {
-          const subtotalFinalParaTicket = item.precio_total_item_ars;
-          const descuentoPorc = item.descuento_item_porcentaje || 0;
-          const subtotalBruto = descuentoPorc > 0 ? (subtotalFinalParaTicket / (1 - descuentoPorc / 100)) : subtotalFinalParaTicket;
-          return sum + subtotalBruto;
-        }, 0);
+        // El total_final que se pasa es el monto con descuento (si existe)
+        const totalFinal = (typeof data.monto_final_con_descuento === 'number') ? data.monto_final_con_descuento : data.monto_final_con_recargos;
+        // El total_final que se pasa es el monto con descuento (si existe)
+        const totalFinal = (typeof data.monto_final_con_descuento === 'number') ? data.monto_final_con_descuento : data.monto_final_con_recargos;
         
         return {
           venta_id: data.venta_id,
@@ -266,13 +263,12 @@ const handlePrint = async (tipo: 'comprobante' | 'orden_de_trabajo') => {
           cliente: { nombre: data.cliente_nombre, direccion: data.direccion_entrega, localidad: data.cliente_zona },
           nombre_vendedor: data.nombre_vendedor || '',
           items: adjustedItems,
-          total_final: totalPreferido,
+          total_final: totalFinal,
           observaciones: data.observaciones,
           forma_pago: data.forma_pago,
           monto_pagado_cliente: data.monto_pagado_cliente,
           vuelto_calculado: data.vuelto_calculado,
-          descuento_total_global_porcentaje: data.descuento_total_global_porcentaje,
-          total_bruto_sin_descuento: totalBrutoSinDescuento,
+          descuento_total_global_porcentaje: data.descuento_total_global_porcentaje || 0,
         };
       });
       
