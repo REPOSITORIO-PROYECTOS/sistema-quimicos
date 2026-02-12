@@ -437,7 +437,11 @@ export default function RegistrarPedidoPage() {
     descuento_total_global_porcentaje: typeof formData.descuentoTotal === 'number' ? formData.descuentoTotal : 0,
   };
   
-  console.log('DEBUG registrar-pedido - ventaDataParaTicket:', ventaDataParaTicket);
+  if ((ventaDataParaTicket.descuento_total_global_porcentaje ?? 0) > 0) {
+    console.log('✓ DESCUENTO ENCONTRADO: ', ventaDataParaTicket.descuento_total_global_porcentaje, '%');
+  } else {
+    console.log('✗ SIN DESCUENTO - formData.descuentoTotal:', formData.descuentoTotal);
+  }
 
   return (
     <>

@@ -50,7 +50,31 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
   const [isSubmitting, setIsSubmitting] = useState(false);
   const productosContext = useProductsContextActivos();
   const [documentosAImprimir, setDocumentosAImprimir] = useState<string[]>([]);
-  const [ventaActualizadaParaImprimir, setVentaActualizadaParaImprimir] = useState<any>(null);
+  
+  // Tipo para la venta actualizada del backend
+  interface VentaDelBackend {
+    venta_id?: number;
+    detalles?: Array<{
+      producto_id: number;
+      producto_nombre: string;
+      cantidad: number;
+      precio_total_item_ars: number;
+      subtotal_proporcional_con_recargos?: number;
+      observacion_item?: string;
+    }>;
+    monto_final_con_descuento?: number;
+    monto_final_con_recargos: number;
+    descuento_total_global_porcentaje?: number;
+    fecha_registro?: string;
+    cliente_nombre?: string;
+    direccion_entrega?: string;
+    observaciones?: string;
+    forma_pago?: string;
+    monto_pagado_cliente?: number;
+    vuelto_calculado?: number;
+  }
+  
+  const [ventaActualizadaParaImprimir, setVentaActualizadaParaImprimir] = useState<VentaDelBackend | null>(null);
 
   const opcionesDeProductoParaSelect = useMemo(() =>
     productosContext?.productos.map((prod: ProductoContextType) => ({
@@ -501,12 +525,12 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     if (ventaActualizadaParaImprimir) {
       const detalles = ventaActualizadaParaImprimir.detalles || [];
       const itemsDelBackend = detalles
-        .filter((detalle: any) => {
+        .filter((detalle): detalle is NonNullable<typeof detalle> => {
           const precio = detalle.subtotal_proporcional_con_recargos || detalle.precio_total_item_ars;
           // Filtrar: cantidad > 0 Y precio > 0 (sin negativos ni ceros)
           return detalle.cantidad > 0 && precio > 0;
         })
-        .map((detalle: any) => {
+        .map((detalle) => {
           // Usar subtotal_proporcional_con_recargos si existe, sino precio_total_item_ars
           const precioItem = detalle.subtotal_proporcional_con_recargos || detalle.precio_total_item_ars;
           // Redondear a 2 decimales y asegurar que sea positivo
@@ -526,7 +550,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         ? ventaActualizadaParaImprimir.monto_final_con_descuento
         : ventaActualizadaParaImprimir.monto_final_con_recargos;
       
-      const sumItems = itemsDelBackend.reduce((sum: number, item: any) => sum + item.precio_total_item_ars, 0);
+      const sumItems = itemsDelBackend.reduce((sum: number, item) => sum + item.precio_total_item_ars, 0);
       const diff = Math.round((totalFinalDelBackend - sumItems) * 100) / 100;
       
       if (itemsDelBackend.length > 0 && Math.abs(diff) > 0.01) {

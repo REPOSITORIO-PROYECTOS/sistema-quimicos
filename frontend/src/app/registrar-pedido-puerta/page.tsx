@@ -435,6 +435,7 @@ export default function RegistrarPedidoPuertaPage() {
         forma_pago: formData.formaPago,
         monto_pagado_cliente: formData.montoPagado,
         vuelto_calculado: formData.vuelto,
+        descuento_total_global_porcentaje: 0,
     };
 
     return (
