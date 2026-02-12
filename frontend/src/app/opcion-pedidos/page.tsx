@@ -68,6 +68,7 @@ type VentaData = {
   forma_pago: string;
   monto_pagado_cliente?: number;
   vuelto_calculado?: number;
+  descuento_total_global_porcentaje?: number;
 };
 
 export default function TotalPedidos() {
@@ -252,8 +253,6 @@ const handlePrint = async (tipo: 'comprobante' | 'orden_de_trabajo') => {
           adjustedItems[adjustedItems.length - 1].precio_total_item_ars = Math.round(adjustedItems[adjustedItems.length - 1].precio_total_item_ars * 100) / 100;
         }
         
-        // El total_final que se pasa es el monto con descuento (si existe)
-        const totalFinal = (typeof data.monto_final_con_descuento === 'number') ? data.monto_final_con_descuento : data.monto_final_con_recargos;
         // El total_final que se pasa es el monto con descuento (si existe)
         const totalFinal = (typeof data.monto_final_con_descuento === 'number') ? data.monto_final_con_descuento : data.monto_final_con_recargos;
         

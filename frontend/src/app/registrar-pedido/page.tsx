@@ -434,8 +434,10 @@ export default function RegistrarPedidoPage() {
     forma_pago: formData.formaPago,
     monto_pagado_cliente: formData.montoPagado,
     vuelto_calculado: formData.vuelto,
-    descuento_total_global_porcentaje: formData.descuentoTotal || 0,
+    descuento_total_global_porcentaje: typeof formData.descuentoTotal === 'number' ? formData.descuentoTotal : 0,
   };
+  
+  console.log('DEBUG registrar-pedido - ventaDataParaTicket:', ventaDataParaTicket);
 
   return (
     <>
