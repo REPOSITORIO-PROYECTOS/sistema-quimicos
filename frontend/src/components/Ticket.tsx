@@ -54,6 +54,8 @@ const Ticket: React.FC<TicketProps> = ({ tipo, ventaData }) => {
     const descuentoGlobalPorc = ventaData.descuento_total_global_porcentaje || 0;
     const descuentoGlobalEnPlata = descuentoGlobalPorc > 0 ? sumaTotalesItems * (descuentoGlobalPorc / 100) : 0;
 
+    console.log('DEBUG Ticket - ventaData:', { descuento_total_global_porcentaje: ventaData.descuento_total_global_porcentaje, descuentoGlobalPorc, descuentoGlobalEnPlata, tipo });
+
     const isFinancial = tipo === 'comprobante';
 
     return (

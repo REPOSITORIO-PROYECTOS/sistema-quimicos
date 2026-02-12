@@ -137,12 +137,11 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         const item = newProducts[index];
         if (!item) return;
         const cantidad = item.qx || 0;
-        const descuento = item.descuento || 0; // %
+        // NO aplicar descuento aquí - los precios ya vienen del backend redondeados
         const unitQuantized = quantizeToDecimals(precioUnitario);
-        const unitWithDiscount = unitQuantized * (1 - (descuento / 100));
-        const totalBruto = unitWithDiscount * cantidad;
+        const totalBruto = unitQuantized * cantidad;
         const totalQuantized = quantizeToDecimals(totalBruto);
-        item.precio = quantizeToDecimals(unitWithDiscount);
+        item.precio = unitQuantized;  // Precio SIN descuento adicional
         item.total = totalQuantized;
       });
     });
