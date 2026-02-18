@@ -350,10 +350,10 @@ export default function RecepcionesPendientesPage() {
                     <span>{new Date(orden.fecha_creacion).toLocaleDateString("es-AR")}</span>
                     <span className="flex items-center gap-2">
                       <span>{orden.proveedor_nombre || '-'}</span>
-                      {orden.estado && (
+                      {orden.estado && String(orden.estado).toLowerCase() !== 'con deuda' && (
                         <span className="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-800">{String(orden.estado)}</span>
                       )}
-                      {orden.estado_recepcion && (
+                      {orden.estado_recepcion && String(orden.estado_recepcion).toLowerCase() !== 'recepción pendiente' && String(orden.estado_recepcion).toLowerCase() !== 'recepcion pendiente' && (
                         <span className="text-xs px-2 py-0.5 rounded bg-orange-100 text-orange-800">Recepción: {String(orden.estado_recepcion)}</span>
                       )}
                     </span>

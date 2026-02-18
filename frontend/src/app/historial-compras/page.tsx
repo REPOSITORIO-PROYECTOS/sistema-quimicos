@@ -129,11 +129,13 @@ export default function OrdenesRecibidasPage() {
           <>
             <div className="overflow-x-auto">
               <ul className="space-y-2 divide-y divide-gray-200 min-w-[600px]">
-                <li className="grid grid-cols-[1fr_1.5fr_1fr_2fr] gap-x-3 items-center bg-gray-100 p-3 rounded-t-md font-semibold text-sm text-gray-700 uppercase tracking-wider">
+                <li className="grid grid-cols-[1fr_1.2fr_1fr_1fr_1fr_2fr] gap-x-3 items-center bg-gray-100 p-3 rounded-t-md font-semibold text-sm text-gray-700 uppercase tracking-wider">
                   <span>Nº Orden</span>
                   <span>Fecha</span>
-                  <span>Estado</span>
-                  <span>Artículo(s)</span>
+                  <span>Cant. Solicitada</span>
+                  <span>Cant. Recibida</span>
+                  <span>Estado Pago</span>
+                  <span>Estado Recepción</span>
                 </li>
 
                 {ordenes.length > 0 ? ordenes.map((orden) => {
@@ -155,20 +157,42 @@ export default function OrdenesRecibidasPage() {
                     >
                       <span>{`Nº ${orden.id.toString().padStart(4, '0')}`}</span>
                       <span>{fechaFormateada}</span>
+                      {/* Cantidad solicitada y recibida */}
                       <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${badgeClass(String(orden.estado))}`}>
                         {orden.estado}
                       </span>
                       <span>
                         {Array.isArray(orden.items) && orden.items.length > 0 ? (
                           <>
-                            {orden.items.slice(0,3).map((it, idx) => (
-                              <span key={idx} className="inline-block mr-2 text-gray-700">{it.producto_nombre || `ID: ${it.producto_id}`}</span>
-                            ))}
-                            {orden.items.length > 3 && <span className="text-gray-500">…</span>}
+                            {/* Mostrar suma de cantidades solicitadas y recibidas si están disponibles */}
+                            <span className="inline-block mr-2 text-gray-700">{orden.items.reduce((acc:any, it:any) => acc + (Number(it.cantidad_solicitada || 0)), 0)}</span>
                           </>
                         ) : (
-                          <span className="text-gray-400 italic">Sin ítems</span>
+                          <span className="text-gray-400 italic">0</span>
                         )}
+                      </span>
+                      <span>
+                        {Array.isArray(orden.items) && orden.items.length > 0 ? (
+                          <>
+                            <span className="inline-block mr-2 text-gray-700">{orden.items.reduce((acc:any, it:any) => acc + (Number(it.cantidad_recibida || 0)), 0)}</span>
+                          </>
+                        ) : (
+                          <span className="text-gray-400 italic">0</span>
+                        )}
+                      </span>
+                      <span>
+                        {/* Estado de pago inferido a partir de importes si vienen */}
+                        {(() => {
+                          const total = Number(orden.importe_total_estimado || 0);
+                          const abonado = Number(orden.importe_abonado || 0);
+                          if (total === 0) return 'N/A';
+                          if (abonado >= total) return 'Pagado';
+                          if (abonado > 0 && abonado < total) return 'Pago parcial';
+                          return 'Con deuda';
+                        })()}
+                      </span>
+                      <span>
+                        {orden.estado_recepcion || 'N/A'}
                       </span>
                     </li>
                   );
