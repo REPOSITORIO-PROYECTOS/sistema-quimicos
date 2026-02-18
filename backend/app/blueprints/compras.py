@@ -32,6 +32,150 @@ compras_bp = Blueprint('compras', __name__, url_prefix='/ordenes_compra')
 logger = logging.getLogger(__name__)
 
 
+def _convert_to_ars(amount, ajuste_tc_flag):
+    """Convierte `amount` (Decimal) a ARS si `ajuste_tc_flag` es True (orden en USD).
+    Usa TipoCambio 'Oficial' si está disponible; si falla devuelve el monto sin conversión.
+    """
+    try:
+        if not amount:
+            return amount
+        # Si ajuste por TC está marcado, convertir usando TC Oficial
+        if ajuste_tc_flag:
+            from ..models import TipoCambio
+            tc = TipoCambio.query.filter_by(nombre='Oficial').first()
+            if tc and tc.valor:
+                return (Decimal(amount) * Decimal(tc.valor)).quantize(Decimal('0.01'))
+        return Decimal(amount)
+    except Exception:
+        return Decimal(amount)
+
+
+def _parse_iibb_rate(iibb_value):
+    """Parsea el campo `iibb` que puede ser '3%', '0.03', '3' y devuelve la fracción (ej 0.03).
+    Si no puede parsear devuelve Decimal('0').
+    """
+    try:
+        if iibb_value is None:
+            return Decimal('0')
+        if isinstance(iibb_value, (int, float, Decimal)):
+            v = Decimal(str(iibb_value))
+            # si <=1 asumimos fracción, si >1 asumimos porcentaje
+            return (v if v <= 1 else (v / Decimal('100')))
+        s = str(iibb_value).strip()
+        if s.endswith('%'):
+            s = s[:-1].strip()
+            return (Decimal(s) / Decimal('100'))
+        # si tiene coma o punto
+        v = Decimal(s)
+        return (v if v <= 1 else (v / Decimal('100')))
+    except Exception:
+        return Decimal('0')
+
+
+def _recalcular_importe_y_actualizar_deuda(orden_db, usuario_actualiza=None, iva_flag=None, iva_rate=None, iibb_payload=None):
+    """Recalcula `importe_total_estimado` de la orden aplicando IVA e IIBB cuando se proveen.
+    Luego actualiza (o crea/ajusta) el MovimientoProveedor tipo DEBITO con la deuda restante (convertida a ARS si `ajuste_tc`).
+    No hace commit; el llamador debe commitear.
+    """
+    try:
+        # Base debe calcularse a partir de las líneas (sin impuestos) si están disponibles
+        try:
+            items = getattr(orden_db, 'items', None)
+            try:
+                print(f"DEBUG RECALK items present={bool(items)} items={items}")
+            except Exception:
+                pass
+            marker_key = '__BASE_SIN_IMPUESTOS__:'
+            obs = orden_db.observaciones_solicitud or ''
+            # If we have item lines, compute base from them and persist marker
+            if items:
+                base = sum([item.importe_linea_estimado or Decimal('0') for item in items])
+                # persist base marker to avoid stacking on repeated recalcs
+                marker = marker_key + str(base)
+                if marker_key in obs:
+                    # replace existing marker
+                    parts = [p for p in obs.split('\n') if not p.startswith(marker_key)]
+                    parts.append(marker)
+                    orden_db.observaciones_solicitud = '\n'.join([p for p in parts if p])
+                else:
+                    orden_db.observaciones_solicitud = (obs + ('\n' if obs else '') + marker)
+            else:
+                # No items: try to read stored base marker first
+                base = None
+                if obs and marker_key in obs:
+                    try:
+                        for part in obs.split('\n'):
+                            if part.startswith(marker_key):
+                                base = Decimal(part.replace(marker_key, '').strip())
+                                break
+                    except Exception:
+                        base = None
+                # If no marker found, assume current importe_total_estimado is the net base and persist it
+                if base is None:
+                    base = orden_db.importe_total_estimado or Decimal('0')
+                    marker = marker_key + str(base)
+                    orden_db.observaciones_solicitud = (obs + ('\n' if obs else '') + marker) if marker_key not in obs else obs
+        except Exception:
+            base = orden_db.importe_total_estimado or Decimal('0')
+        # IVA: si iva_flag está None no lo tocamos; si True aplicamos iva_rate (default 21%)
+        iva_amt = Decimal('0')
+        if iva_flag is None:
+            # no cambia
+            pass
+        else:
+            rate = Decimal(str(iva_rate)) if iva_rate is not None else Decimal('0.21')
+            if iva_flag:
+                iva_amt = (base * Decimal(rate)).quantize(Decimal('0.01'))
+            else:
+                iva_amt = Decimal('0')
+
+        # IIBB
+        iibb_amt = Decimal('0')
+        if iibb_payload is not None:
+            rate_iibb = _parse_iibb_rate(iibb_payload)
+            iibb_amt = (base * rate_iibb).quantize(Decimal('0.01'))
+
+        nuevo_total = (base + iva_amt + iibb_amt).quantize(Decimal('0.01'))
+        try:
+            print(f"DEBUG RECALK base={base} iva={iva_amt} iibb={iibb_amt} nuevo_total={nuevo_total}")
+        except Exception:
+            pass
+        orden_db.importe_total_estimado = nuevo_total
+
+        # Ajustar movimientos de proveedor: DEBITO debe reflejar la deuda restante (total - abonado)
+        restante = (orden_db.importe_total_estimado or Decimal('0')) - (orden_db.importe_abonado or Decimal('0'))
+        restante = restante if restante > 0 else Decimal('0')
+
+        debito = db.session.query(MovimientoProveedor).filter(
+            MovimientoProveedor.orden_id == orden_db.id,
+            MovimientoProveedor.tipo == 'DEBITO'
+        ).first()
+
+        monto_debito = _convert_to_ars(restante, orden_db.ajuste_tc)
+        try:
+            print(f"DEBUG RECALK restante={restante} monto_debito={monto_debito} ajuste_tc={orden_db.ajuste_tc}")
+        except Exception:
+            pass
+
+        if debito:
+            debito.monto = monto_debito
+        else:
+            if monto_debito > 0:
+                mov = MovimientoProveedor(
+                    proveedor_id=orden_db.proveedor_id,
+                    orden_id=orden_db.id,
+                    tipo='DEBITO',
+                    monto=monto_debito,
+                    descripcion=f"OC {orden_db.id} - Deuda recalculada",
+                    usuario=usuario_actualiza
+                )
+                db.session.add(mov)
+        return True
+    except Exception:
+        logger.exception("Error recalculando importe y deuda para orden %s", getattr(orden_db, 'id', 'N/A'))
+        return False
+
+
 def _extract_user_info(current_user):
     """Devuelve (id, username, role) intentando soportar dicts y objetos."""
     uid = None
@@ -53,9 +197,17 @@ def _extract_user_info(current_user):
         return None, None, None
     return uid, uname, urole
 
-# --- Estados Permitidos (Opcional, puede definirse en otro lugar) ---
-ESTADOS_ORDEN = ["Solicitado", "Aprobado", "Rechazado", "Recibido", "Con Deuda", "Parcialmente Recibido"] # Añadir estado parcial
-ESTADOS_RECEPCION = ["Completa", "Parcial", "Extra", "Con Daños"]
+# --- Estados Permitidos (usar consistente UPPERCASE) ---
+ESTADOS_ORDEN = [
+    "SOLICITADO",
+    "APROBADO",
+    "RECHAZADO",
+    "RECIBIDO",
+    "CON DEUDA",
+    "RECIBIDA_PARCIAL",
+    "EN_ESPERA_RECEPCION"
+]
+ESTADOS_RECEPCION = ["COMPLETA", "PARCIAL", "EXTRA", "CON_DANOS"]
 FORMAS_PAGO = ["Cheque", "Efectivo", "Transferencia", "Cuenta Corriente"]
 
 
@@ -78,6 +230,10 @@ def formatear_orden_por_rol(orden_db, rol="almacen"):
         "proveedor_id": orden_db.proveedor_id,
         "proveedor_nombre": orden_db.proveedor.nombre if orden_db.proveedor else None,
         "importe_total_estimado": float(orden_db.importe_total_estimado) if orden_db.importe_total_estimado is not None else None,
+        # Inferir moneda a partir de `ajuste_tc`: True -> USD, False -> ARS (no columna nueva para evitar migración)
+        "moneda_inferida": ('USD' if orden_db.ajuste_tc else 'ARS'),
+        # Extraer fecha tentativa desde observaciones si existe el marcador
+        "fecha_entrega_tentativa": None,
         "cuenta": orden_db.cuenta,
         "iibb": orden_db.iibb,
         "observaciones_solicitud": orden_db.observaciones_solicitud,
@@ -87,7 +243,7 @@ def formatear_orden_por_rol(orden_db, rol="almacen"):
         # --- CORRECCIÓN AQUÍ ---
         # Accede al ID del aprobador o al nombre, no al objeto completo
         "fecha_aprobacion": orden_db.fecha_aprobacion.isoformat() if orden_db.fecha_aprobacion else None,
-        "aprobado_por": orden_db.aprobado_por_id.username if orden_db.aprobado_por_id else None, # Ejemplo si tienes una relación y quieres el nombre de usuario
+        "aprobado_por": getattr(orden_db, 'aprobador', None) and getattr(orden_db.aprobador, 'nombre_usuario', None) or None,
         
         "forma_pago": orden_db.forma_pago,
         "fecha_rechazo": orden_db.fecha_rechazo.isoformat() if orden_db.fecha_rechazo else None,
@@ -96,7 +252,7 @@ def formatear_orden_por_rol(orden_db, rol="almacen"):
 
         # --- Y CORRECCIÓN AQUÍ ---
         # Accede al ID del receptor o al nombre, no al objeto completo
-        "recibido_por": orden_db.recibido_por_id.username if orden_db.recibido_por_id else None, # Ejemplo si tienes una relación y quieres el nombre de usuario
+        "recibido_por": getattr(orden_db, 'recibido_por_id', None),
         
         "estado_recepcion": orden_db.estado_recepcion,
         "notas_recepcion": orden_db.notas_recepcion,
@@ -124,6 +280,17 @@ def formatear_orden_por_rol(orden_db, rol="almacen"):
             }
             items_list.append(item_dict)
     orden_dict["items"] = items_list
+
+    # Buscar marcador de fecha tentativa en observaciones: '__FECHA_ENTREGA_TENTATIVA__:<ISO>'
+    try:
+        obs = orden_db.observaciones_solicitud or ''
+        marker_key = '__FECHA_ENTREGA_TENTATIVA__:'
+        if marker_key in obs:
+            # extraer después del marcador la porción ISO
+            part = obs.split(marker_key, 1)[1].strip().splitlines()[0].strip()
+            orden_dict['fecha_entrega_tentativa'] = part
+    except Exception:
+        pass
 
     if rol == "ADMIN":
         orden_dict.update({
@@ -217,18 +384,43 @@ def crear_orden_compra(current_user):
         num_ordenes_hoy = OrdenCompra.query.filter(db.func.date(OrdenCompra.fecha_creacion) == datetime.date.today()).count()
         nro_interno_solicitud = f"OC-{datetime.date.today().strftime('%Y%m%d')}-{num_ordenes_hoy+1:04d}"
 
-        # Si el usuario es Admin, la OC se crea directamente como 'Aprobado' y se registra el aprobador
+        # Determinar si la orden debe ajustarse por TC (ajuste_tc=True => precios en USD)
+        ajuste_tc_payload = None
+        if 'ajuste_tc' in data:
+            ajuste_tc_payload = str(data.get('ajuste_tc')).lower() == 'true' or data.get('ajuste_tc') is True
+        elif 'moneda' in data:
+            ajuste_tc_payload = str(data.get('moneda')).upper() in ['USD', 'US$']
+        else:
+            ajuste_tc_payload = False
+
+        # Fecha tentativa: no creamos nueva columna para evitar migración; la guardamos en observaciones
+        fecha_entrega_payload = data.get('fecha_entrega_tentativa')
+        fecha_entrega_dt = None
+        if fecha_entrega_payload:
+            try:
+                fecha_entrega_dt = datetime.datetime.fromisoformat(fecha_entrega_payload)
+            except Exception:
+                fecha_entrega_dt = None
+
+        obs_init = data.get("observaciones_solicitud") or ''
+        if fecha_entrega_dt:
+            marker = "__FECHA_ENTREGA_TENTATIVA__:" + fecha_entrega_dt.isoformat()
+            if '__FECHA_ENTREGA_TENTATIVA__' not in obs_init:
+                obs_init = (obs_init + ('\n' if obs_init else '') + marker)
+
+        # Si el usuario es Admin, la OC se crea directamente como 'APROBADO' y se registra el aprobador
         if rol_usuario and rol_usuario.upper() == "ADMIN":
             nueva_orden = OrdenCompra(
                 nro_solicitud_interno=nro_interno_solicitud,
                 proveedor_id=proveedor_id,
                 forma_pago=data.get("forma_pago"),
                 importe_total_estimado=importe_total_estimado_calc,
-                observaciones_solicitud=data.get("observaciones_solicitud"),
-                estado="Aprobado",
+                observaciones_solicitud=obs_init,
+                estado="APROBADO",
                 solicitado_por_id=usuario_solicitante_id,
                 aprobado_por_id=usuario_solicitante_id,
-                fecha_aprobacion=datetime.datetime.now()
+                fecha_aprobacion=datetime.datetime.now(),
+                ajuste_tc=ajuste_tc_payload
             )
         else:
             nueva_orden = OrdenCompra(
@@ -236,9 +428,10 @@ def crear_orden_compra(current_user):
                 proveedor_id=proveedor_id,
                 forma_pago=data.get("forma_pago"),
                 importe_total_estimado=importe_total_estimado_calc,
-                observaciones_solicitud=data.get("observaciones_solicitud"),
-                estado="Solicitado",
-                solicitado_por_id=usuario_solicitante_id
+                observaciones_solicitud=obs_init,
+                estado="SOLICITADO",
+                solicitado_por_id=usuario_solicitante_id,
+                ajuste_tc=ajuste_tc_payload
             )
 
         # Asociar detalles a la orden
@@ -286,18 +479,20 @@ def crear_orden_compra(current_user):
             total_crear = nueva_orden.importe_total_estimado or Decimal('0')
             abonado_crear = nueva_orden.importe_abonado or Decimal('0')
             if rol_usuario and rol_usuario.upper() == "ADMIN" and total_crear > 0 and abonado_crear < total_crear:
-                nueva_orden.estado = 'Con Deuda'
+                nueva_orden.estado = 'CON DEUDA'
                 db.session.commit()
                 debito_existente = db.session.query(MovimientoProveedor).filter(
                     MovimientoProveedor.orden_id == nueva_orden.id,
                     MovimientoProveedor.tipo == 'DEBITO'
                 ).first()
                 if not debito_existente:
+                    monto_deuda = (total_crear - abonado_crear)
+                    monto_deuda_ars = _convert_to_ars(monto_deuda, nueva_orden.ajuste_tc)
                     mov_debito_crear = MovimientoProveedor(
                         proveedor_id=nueva_orden.proveedor_id,
                         orden_id=nueva_orden.id,
                         tipo='DEBITO',
-                        monto=total_crear - abonado_crear,
+                        monto=monto_deuda_ars,
                         descripcion=f"OC {nueva_orden.id} - Deuda al crear",
                         usuario=usuario_nombre
                     )
@@ -485,8 +680,8 @@ def aprobar_orden_compra(current_user, orden_id):
             return jsonify({"error": "Orden de compra no encontrada"}), 404
 
         # Validar estado actual
-        if orden_db.estado != 'Solicitado':
-            return jsonify({"error": f"Solo se pueden aprobar órdenes en estado 'Solicitado'. Estado actual: {orden_db.estado}"}), 409 # Conflict
+        if orden_db.estado != 'SOLICITADO':
+            return jsonify({"error": f"Solo se pueden aprobar órdenes en estado 'SOLICITADO'. Estado actual: {orden_db.estado}"}), 409 # Conflict
 
         # --- Actualizar datos generales de la Orden de Compra ---
         orden_db.proveedor_id = data.get('proveedor_id', orden_db.proveedor_id)
@@ -553,12 +748,25 @@ def aprobar_orden_compra(current_user, orden_id):
             total = sum([item.importe_linea_estimado or 0 for item in orden_db.items])
             orden_db.importe_total_estimado = total
 
+        # Si el payload incluye cambios en IVA o IIBB, recalcular importe y actualizar deuda
+        try:
+            iva_flag = data.get('iva') if 'iva' in data else None
+            iva_rate = data.get('iva_rate') if 'iva_rate' in data else None
+            iibb_payload = data.get('iibb') if 'iibb' in data else None
+            _recalcular_importe_y_actualizar_deuda(orden_db,
+                                                   usuario_actualiza=usuario_aprobador,
+                                                   iva_flag=iva_flag,
+                                                   iva_rate=iva_rate,
+                                                   iibb_payload=iibb_payload)
+        except Exception:
+            logger.warning("No se pudo recalcular importe/deuda al aprobar OC %s", orden_id)
+
         # --- Actualizar estado y aprobador ---
         total_aprob = orden_db.importe_total_estimado or Decimal('0')
         abonado_aprob = orden_db.importe_abonado or Decimal('0')
-        # Estados multidimensionales: recepción pendiente y deuda
-        orden_db.estado_recepcion = 'Pendiente'
-        orden_db.estado = 'Con Deuda' if total_aprob > abonado_aprob else 'Aprobado'
+        # Estados multidimensionales: recepción pendiente y deuda (usar UPPERCASE)
+        orden_db.estado_recepcion = 'EN_ESPERA_RECEPCION'
+        orden_db.estado = 'CON DEUDA' if total_aprob > abonado_aprob else 'APROBADO'
         orden_db.fecha_aprobacion = datetime.datetime.utcnow()
         orden_db.aprobado_por = usuario_aprobador
         # fecha_actualizacion se actualiza via onupdate
@@ -583,11 +791,13 @@ def aprobar_orden_compra(current_user, orden_id):
                     MovimientoProveedor.tipo == 'DEBITO'
                 ).first()
                 if not debito_existente:
+                    monto_deuda = (total_aprob - abonado_aprob)
+                    monto_deuda_ars = _convert_to_ars(monto_deuda, orden_db.ajuste_tc)
                     mov_debito_aprob = MovimientoProveedor(
                         proveedor_id=orden_db.proveedor_id,
                         orden_id=orden_id,
                         tipo='DEBITO',
-                        monto=total_aprob - abonado_aprob,
+                        monto=monto_deuda_ars,
                         descripcion=f"OC {orden_id} - Deuda al aprobar",
                         usuario=usuario_aprobador
                     )
@@ -644,11 +854,11 @@ def rechazar_orden_compra(current_user, orden_id):
         if not orden_db:
             return jsonify({"error": "Orden de compra no encontrada"}), 404
 
-        if orden_db.estado != 'Solicitado':
-            return jsonify({"error": f"Solo se pueden rechazar órdenes en estado 'Solicitado'. Estado actual: {orden_db.estado}"}), 409 # Conflict
+        if orden_db.estado != 'SOLICITADO':
+            return jsonify({"error": f"Solo se pueden rechazar órdenes en estado 'SOLICITADO'. Estado actual: {orden_db.estado}"}), 409 # Conflict
 
         # --- Actualizar Orden ---
-        orden_db.estado = 'Rechazado'
+        orden_db.estado = 'RECHAZADO'
         orden_db.fecha_rechazo = datetime.datetime.utcnow()
         orden_db.rechazado_por = usuario_rechazador
         orden_db.motivo_rechazo = data['motivo_rechazo']
@@ -699,55 +909,100 @@ def recibir_orden_compra(current_user, orden_id):
             ajuste_valor = data.get('ajuste_tc')
             orden_db.ajuste_tc = str(ajuste_valor).lower() == 'true' or ajuste_valor is True
         
-        # 2. Actualizar datos de los items y calcular total
+        # 2. Actualizar datos de los items y calcular total (soportando múltiples líneas)
         total_estimado_recalculado = Decimal('0.0')
-        if orden_db.items:
-            detalle_a_modificar = orden_db.items[0] # Asumimos una sola línea por ahora
-            
-            # Convertir valores del payload a Decimal de forma segura
-            cantidad_solicitada = Decimal(str(data.get('cantidad', '0')))
-            precio_unitario = Decimal(str(data.get('precio_unitario', '0')))
-            
-            detalle_a_modificar.cantidad_solicitada = cantidad_solicitada
-            detalle_a_modificar.precio_unitario_estimado = precio_unitario
-            
-            importe_linea = cantidad_solicitada * precio_unitario
-            detalle_a_modificar.importe_linea_estimado = importe_linea
-            total_estimado_recalculado = importe_linea
+        # Si payload trae items para actualizar cantidades/precios, aplicarlos por id_linea
+        items_payload_update = data.get('items', [])
+        if items_payload_update and orden_db.items:
+            for item_update in items_payload_update:
+                id_linea = item_update.get('id_linea')
+                detalle = next((it for it in orden_db.items if it.id == id_linea), None)
+                if detalle:
+                    if 'cantidad_solicitada' in item_update:
+                        detalle.cantidad_solicitada = Decimal(str(item_update.get('cantidad_solicitada', detalle.cantidad_solicitada or 0)))
+                    if 'precio_unitario_estimado' in item_update:
+                        detalle.precio_unitario_estimado = Decimal(str(item_update.get('precio_unitario_estimado', detalle.precio_unitario_estimado or 0)))
+                    # Recalcular importe línea
+                    detalle.importe_linea_estimado = (detalle.cantidad_solicitada or Decimal('0')) * (detalle.precio_unitario_estimado or Decimal('0'))
+
+        # Si no vienen items para actualización, permitir payload simple para una sola línea (compatibilidad)
+        if not items_payload_update and orden_db.items:
+            # intentar leer campos simples 'cantidad' y 'precio_unitario' para compatibilidad
+            try:
+                cantidad_solicitada = Decimal(str(data.get('cantidad', '0')))
+                precio_unitario = Decimal(str(data.get('precio_unitario', '0')))
+                if orden_db.items:
+                    detalle0 = orden_db.items[0]
+                    detalle0.cantidad_solicitada = cantidad_solicitada
+                    detalle0.precio_unitario_estimado = precio_unitario
+                    detalle0.importe_linea_estimado = cantidad_solicitada * precio_unitario
+            except Exception:
+                pass
+
+        # Recalcular total estimado
+        total_estimado_recalculado = sum([(item.importe_linea_estimado or Decimal('0')) for item in orden_db.items])
 
         # Actualizar el importe total de la orden con el del payload o el recalculado
         orden_db.importe_total_estimado = Decimal(str(data.get('importe_total', total_estimado_recalculado)))
 
+        # Si el payload incluye cambios en IVA o IIBB, recalcular importe y actualizar deuda
+        try:
+            iva_flag = data.get('iva') if 'iva' in data else None
+            iva_rate = data.get('iva_rate') if 'iva_rate' in data else None
+            iibb_payload = data.get('iibb') if 'iibb' in data else None
+            _recalcular_importe_y_actualizar_deuda(orden_db,
+                                                   usuario_actualiza=usuario_receptor,
+                                                   iva_flag=iva_flag,
+                                                   iva_rate=iva_rate,
+                                                   iibb_payload=iibb_payload)
+        except Exception:
+            logger.warning("No se pudo recalcular importe/deuda al recibir OC %s", orden_id)
+
         # 3. Procesar la recepción de items
         items_recibidos = data.get('items_recibidos', [])
-        for item_data in items_recibidos:
-            id_linea = item_data.get('id_linea')
-            detalle_para_recepcion = next((item for item in orden_db.items if item.id == id_linea), None)
-            
-            if detalle_para_recepcion:
-                cantidad_recibida_ahora = Decimal(str(item_data.get('cantidad_recibida', '0')))
-                if orden_db.estado not in ['Aprobado', 'Parcialmente Recibido', 'Con Deuda'] and item_data.get('cantidad_recibida') > 0 :
-                     return jsonify({"error": f"No se puede recibir mercadería para una orden con estado: {orden_db.estado}"}), 409
+        if items_recibidos:
+            for item_data in items_recibidos:
+                id_linea = item_data.get('id_linea')
+                detalle_para_recepcion = next((item for item in orden_db.items if item.id == id_linea), None)
+                if detalle_para_recepcion:
+                    cantidad_recibida_ahora = Decimal(str(item_data.get('cantidad_recibida', '0')))
+                    # Solo permitir recepción si está aprobada o ya parcialmente recibida o con deuda
+                    if orden_db.estado not in ['APROBADO', 'RECIBIDA_PARCIAL', 'CON DEUDA', 'EN_ESPERA_RECEPCION'] and cantidad_recibida_ahora > 0:
+                        return jsonify({"error": f"No se puede recibir mercadería para una orden con estado: {orden_db.estado}"}), 409
+                    cantidad_previa = detalle_para_recepcion.cantidad_recibida or Decimal('0')
+                    detalle_para_recepcion.cantidad_recibida = cantidad_previa + cantidad_recibida_ahora
 
-                # Sumar a lo que ya se haya recibido antes
-                cantidad_previa = detalle_para_recepcion.cantidad_recibida or Decimal('0')
-                detalle_para_recepcion.cantidad_recibida = cantidad_previa + cantidad_recibida_ahora
+        # Determinar si la recepción es parcial o completa
+        all_received = True
+        any_received = False
+        for it in orden_db.items:
+            qty_req = it.cantidad_solicitada or Decimal('0')
+            qty_rec = it.cantidad_recibida or Decimal('0')
+            if qty_rec < qty_req:
+                all_received = False
+            if qty_rec > 0:
+                any_received = True
 
         # 4. Actualizar cabecera de la recepción
         orden_db.fecha_recepcion = datetime.datetime.utcnow()
         orden_db.recibido_por = usuario_receptor
         orden_db.nro_remito_proveedor = data.get('nro_remito_proveedor')
-        orden_db.estado_recepcion = data.get('estado_recepcion')
+        # Establecer estado de recepción acorde a lo recibido
+        orden_db.estado_recepcion = 'COMPLETA' if all_received else ('PARCIAL' if any_received else (data.get('estado_recepcion') or orden_db.estado_recepcion))
 
         # 5. Procesar el pago y determinar el estado final
         nuevo_abono = Decimal(str(data.get('importe_abonado', '0')))
         importe_abonado_previo = orden_db.importe_abonado or Decimal('0')
         orden_db.importe_abonado = importe_abonado_previo + nuevo_abono
 
-        if orden_db.importe_abonado >= orden_db.importe_total_estimado:
-            orden_db.estado = 'Recibido'
+        # Estado final de la orden según recepción y pagos
+        if all_received and orden_db.importe_abonado >= orden_db.importe_total_estimado:
+            orden_db.estado = 'RECIBIDO'
+        elif all_received and orden_db.importe_abonado < orden_db.importe_total_estimado:
+            orden_db.estado = 'RECIBIDA_PARCIAL'
         else:
-            orden_db.estado = 'Con Deuda'
+            # Si no fue recibida completamente, mantén en deuda o en estado correspondiente
+            orden_db.estado = 'CON DEUDA' if orden_db.importe_abonado < orden_db.importe_total_estimado else orden_db.estado
         
         # 6. Actualizar datos de pago
         orden_db.forma_pago = data.get('forma_pago', orden_db.forma_pago)
@@ -777,22 +1032,26 @@ def recibir_orden_compra(current_user, orden_id):
                 MovimientoProveedor.tipo == 'DEBITO'
             ).first()
             if not debito_existente:
+                restante = (orden_db.importe_total_estimado or Decimal('0')) - (orden_db.importe_abonado or Decimal('0'))
+                restante = restante if restante > 0 else Decimal('0')
+                monto_deuda_ars = _convert_to_ars(restante, orden_db.ajuste_tc)
                 mov_debito = MovimientoProveedor(
                     proveedor_id=orden_db.proveedor_id,
                     orden_id=orden_db.id,
                     tipo='DEBITO',
-                    monto=orden_db.importe_total_estimado or Decimal('0'),
+                    monto=monto_deuda_ars,
                     descripcion=f"OC {orden_db.id} - Deuda por recepción",
                     usuario=usuario_receptor
                 )
                 db.session.add(mov_debito)
-            # Registrar crédito si se abonó
+            # Registrar crédito si se abonó (convertir a ARS si OC estaba en USD)
             if nuevo_abono > 0:
+                monto_credito_ars = _convert_to_ars(nuevo_abono, orden_db.ajuste_tc)
                 mov_credito = MovimientoProveedor(
                     proveedor_id=orden_db.proveedor_id,
                     orden_id=orden_db.id,
                     tipo='CREDITO',
-                    monto=nuevo_abono,
+                    monto=monto_credito_ars,
                     descripcion=f"OC {orden_db.id} - Pago en recepción",
                     usuario=usuario_receptor
                 )

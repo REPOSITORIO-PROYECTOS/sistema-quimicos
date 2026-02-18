@@ -118,7 +118,7 @@ def reporte_movimientos_excel_limitado(current_user):
         
         headers_ventas = [
             "Tipo Venta", "N° Pedido", "Fecha", "Hora", "Cliente", "Vendedor", 
-            "Forma de Pago", "Estado", "ID Prod", "Producto", "Categoría", "Cant", 
+            "Localidad", "Forma de Pago", "Estado", "ID Prod", "Producto", "Categoría", "Cant", 
             "Subtotal Item (ARS)", "Costo (ARS)", "Margen (%)", "Total Venta (ARS)"
         ]
         style_header(ws_ventas, headers_ventas)
@@ -187,22 +187,23 @@ def reporte_movimientos_excel_limitado(current_user):
                 hora_cell = ws_ventas.cell(row=row_idx, column=4, value=fecha_ar.time())
                 hora_cell.number_format = 'HH:MM:SS'
                 ws_ventas.cell(row=row_idx, column=5, value=venta.cliente.nombre_razon_social if venta.cliente else "Consumidor Final")
-                ws_ventas.cell(row=row_idx, column=6, value=venta.nombre_vendedor or "N/A")
-                ws_ventas.cell(row=row_idx, column=7, value=venta.forma_pago or "N/A")
-                ws_ventas.cell(row=row_idx, column=8, value=estado_venta)
-                ws_ventas.cell(row=row_idx, column=9, value=detalle.producto_id)
-                ws_ventas.cell(row=row_idx, column=10, value=detalle.producto.nombre if detalle.producto else "N/A")
+                ws_ventas.cell(row=row_idx, column=6, value=venta.cliente.localidad if (venta.cliente and getattr(venta.cliente, 'localidad', None)) else "")
+                ws_ventas.cell(row=row_idx, column=7, value=venta.nombre_vendedor or "N/A")
+                ws_ventas.cell(row=row_idx, column=8, value=venta.forma_pago or "N/A")
+                ws_ventas.cell(row=row_idx, column=9, value=estado_venta)
+                ws_ventas.cell(row=row_idx, column=10, value=detalle.producto_id)
+                ws_ventas.cell(row=row_idx, column=11, value=detalle.producto.nombre if detalle.producto else "N/A")
                 # Obtener categoría de producto de forma segura
                 try:
                     categoria_nombre = detalle.producto.categoria.nombre if (detalle.producto and getattr(detalle.producto, 'categoria', None)) else 'Sin categoría'
                 except Exception:
                     categoria_nombre = 'Sin categoría'
-                ws_ventas.cell(row=row_idx, column=11, value=categoria_nombre)
-                ws_ventas.cell(row=row_idx, column=12, value=float(detalle.cantidad)).number_format = '#,##0.00'
-                ws_ventas.cell(row=row_idx, column=13, value=float(subtotal_item_final_calculado)).number_format = '"$"#,##0.00'
-                ws_ventas.cell(row=row_idx, column=14, value=float(costo_total_prod)).number_format = '"$"#,##0.00'
-                ws_ventas.cell(row=row_idx, column=15, value=float(margen)).number_format = '0.00"%"'
-                ws_ventas.cell(row=row_idx, column=16, value=float(monto_final_real)).number_format = '"$"#,##0.00'
+                ws_ventas.cell(row=row_idx, column=12, value=categoria_nombre)
+                ws_ventas.cell(row=row_idx, column=13, value=float(detalle.cantidad)).number_format = '#,##0.00'
+                ws_ventas.cell(row=row_idx, column=14, value=float(subtotal_item_final_calculado)).number_format = '"$"#,##0.00'
+                ws_ventas.cell(row=row_idx, column=15, value=float(costo_total_prod)).number_format = '"$"#,##0.00'
+                ws_ventas.cell(row=row_idx, column=16, value=float(margen)).number_format = '0.00"%"'
+                ws_ventas.cell(row=row_idx, column=17, value=float(monto_final_real)).number_format = '"$"#,##0.00'
                 row_idx += 1
 
             # Clasificar forma de pago: efectivo vs transferencia/otros
@@ -214,13 +215,14 @@ def reporte_movimientos_excel_limitado(current_user):
 
             try:
                 if venta.cliente and venta.cliente.fecha_alta and (start_datetime <= venta.cliente.fecha_alta <= end_datetime):
-                    clientes_nuevos_rows.append({
-                        'cliente': venta.cliente.nombre_razon_social,
-                        'fecha_alta': venta.cliente.fecha_alta,
-                        'fecha_venta': fecha_ar.date(),
-                        'vendedor': venta.nombre_vendedor or "N/A",
-                        'importe': float(monto_final_real)
-                    })
+                        clientes_nuevos_rows.append({
+                            'cliente': venta.cliente.nombre_razon_social,
+                            'localidad': venta.cliente.localidad if getattr(venta.cliente, 'localidad', None) else '',
+                            'fecha_alta': venta.cliente.fecha_alta,
+                            'fecha_venta': fecha_ar.date(),
+                            'vendedor': venta.nombre_vendedor or "N/A",
+                            'importe': float(monto_final_real)
+                        })
             except Exception:
                 pass
             else:
@@ -229,16 +231,17 @@ def reporte_movimientos_excel_limitado(current_user):
 
         # === HOJA 2: COMPRAS DETALLADAS ===
         ws_clientes = workbook.create_sheet("Clientes Nuevos")
-        headers_clientes = ["Cliente", "Fecha Alta", "Fecha Primera Venta", "Vendedor", "Importe Venta (ARS)"]
+        headers_clientes = ["Cliente", "Localidad", "Fecha Alta", "Fecha Primera Venta", "Vendedor", "Importe Venta (ARS)"]
         style_header(ws_clientes, headers_clientes)
         for r_idx, row in enumerate(clientes_nuevos_rows, 2):
             ws_clientes.cell(row=r_idx, column=1, value=row['cliente'])
-            fa = ws_clientes.cell(row=r_idx, column=2, value=row['fecha_alta'].date())
+            ws_clientes.cell(row=r_idx, column=2, value=row.get('localidad', ''))
+            fa = ws_clientes.cell(row=r_idx, column=3, value=row['fecha_alta'].date())
             fa.number_format = 'DD-MM-YYYY'
-            fv = ws_clientes.cell(row=r_idx, column=3, value=row['fecha_venta'])
+            fv = ws_clientes.cell(row=r_idx, column=4, value=row['fecha_venta'])
             fv.number_format = 'DD-MM-YYYY'
-            ws_clientes.cell(row=r_idx, column=4, value=row['vendedor'])
-            imp = ws_clientes.cell(row=r_idx, column=5, value=row['importe'])
+            ws_clientes.cell(row=r_idx, column=5, value=row['vendedor'])
+            imp = ws_clientes.cell(row=r_idx, column=6, value=row['importe'])
             imp.number_format = '"$"#,##0.00'
 
         ws_compras = workbook.create_sheet("Compras Detalladas")
@@ -693,7 +696,7 @@ def _get_kpis_de_compras():
     deuda_proveedores = (deuda_proveedores_raw.total or Decimal('0.0')) - (deuda_proveedores_raw.abonado or Decimal('0.0'))
     
     compras_por_recibir = db.session.query(func.sum(OrdenCompra.importe_total_estimado))\
-        .filter(OrdenCompra.estado == 'Aprobado').scalar() or Decimal('0.0')
+        .filter(OrdenCompra.estado == 'APROBADO').scalar() or Decimal('0.0')
         
     return {
         "deuda_proveedores": deuda_proveedores,
