@@ -7,6 +7,8 @@ import { useState, useEffect, useCallback } from 'react';
 type ItemOrden = {
   producto_id: number;
   producto_nombre?: string;
+  cantidad_solicitada?: number | string;
+  cantidad_recibida?: number | string;
 };
 
 type OrdenCompra = {
@@ -16,6 +18,7 @@ type OrdenCompra = {
   importe_total_estimado?: number | string;
   importe_abonado?: number | string;
   items?: ItemOrden[];
+  estado_recepcion?: string;
 };
 
 type Pagination = {
@@ -165,7 +168,7 @@ export default function OrdenesRecibidasPage() {
                         {Array.isArray(orden.items) && orden.items.length > 0 ? (
                           <>
                             {/* Mostrar suma de cantidades solicitadas y recibidas si están disponibles */}
-                            <span className="inline-block mr-2 text-gray-700">{orden.items.reduce((acc:any, it:any) => acc + (Number(it.cantidad_solicitada || 0)), 0)}</span>
+                            <span className="inline-block mr-2 text-gray-700">{orden.items.reduce((acc: number, it: ItemOrden) => acc + (Number(it.cantidad_solicitada || 0)), 0)}</span>
                           </>
                         ) : (
                           <span className="text-gray-400 italic">0</span>
@@ -174,7 +177,7 @@ export default function OrdenesRecibidasPage() {
                       <span>
                         {Array.isArray(orden.items) && orden.items.length > 0 ? (
                           <>
-                            <span className="inline-block mr-2 text-gray-700">{orden.items.reduce((acc:any, it:any) => acc + (Number(it.cantidad_recibida || 0)), 0)}</span>
+                            <span className="inline-block mr-2 text-gray-700">{orden.items.reduce((acc: number, it: ItemOrden) => acc + (Number(it.cantidad_recibida || 0)), 0)}</span>
                           </>
                         ) : (
                           <span className="text-gray-400 italic">0</span>
