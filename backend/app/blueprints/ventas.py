@@ -309,7 +309,8 @@ def registrar_venta(current_user):
             recargo_f_calc = (monto_total_base_neto * RECARGO_FACTURA_PORC / Decimal(100)).quantize(Decimal("0.01"), ROUND_HALF_UP)
 
         monto_final_a_pagar = monto_total_base_neto + recargo_t_calc + recargo_f_calc
-        monto_final_a_pagar = Decimal(math.ceil(monto_final_a_pagar / 10) * 10)
+        # Redondeo por centena para alinear con la lógica que usan las boletas.
+        monto_final_a_pagar = Decimal(math.ceil(monto_final_a_pagar / 100) * 100)
 
         vuelto_final_calc = Decimal('0.00')
         if monto_pagado_str is not None:

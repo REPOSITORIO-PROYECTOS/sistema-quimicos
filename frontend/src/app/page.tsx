@@ -12,10 +12,9 @@ type UserRole = "ADMIN" | "ALMACEN" | "VENTAS_LOCAL" | "VENTAS_PEDIDOS" | "CONTA
 const defaultPathsByRole: Partial<Record<UserRole, string>> = {
     ALMACEN: "/compras",
     VENTAS_LOCAL: "/acciones-puerta",
-    VENTAS_PEDIDOS: "/acciones",
     CONTABLE: "/movimientos",
+    // VENTAS_PEDIDOS ahora puede ver el dashboard con 3 variables: Ingreso Puerta, Pedidos Pendientes, Kgs a Entregar
     // ADMIN se queda en "/", así que no necesita entrada explícita aquí
-    // o puedes poner ADMIN: "/" si prefieres ser explícito.
 };
 
 export default function Home() {
@@ -79,11 +78,9 @@ export default function Home() {
         );
     }
 
-    // Si el rol es ADMIN (o si la lógica de redirección falló y no se redirigió antes),
-    // se muestra el Dashboard.
-    // Idealmente, este if no debería ser necesario si isLoading maneja todos los casos de redirección
-    // pero es una salvaguarda para asegurar que solo ADMIN vea el Dashboard.
-    if (userRole === "ADMIN") {
+    // Si el rol es ADMIN o VENTAS_PEDIDOS, se muestra el Dashboard.
+    // Para VENTAS_PEDIDOS se mostrará una versión simplificada con solo 3 variables.
+    if (userRole === "ADMIN" || userRole === "VENTAS_PEDIDOS") {
         return (
             <div className="bg-background p-4 md:p-6">
                 <Dashboard />

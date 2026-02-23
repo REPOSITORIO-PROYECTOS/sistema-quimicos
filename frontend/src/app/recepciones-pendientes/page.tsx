@@ -56,9 +56,22 @@ export default function RecepcionesPendientesPage() {
           throw new Error(errData.message || "Error al traer órdenes.");
         }
         const data = await response.json();
-        setOrdenes((data.ordenes || []).filter((o: OrdenCompra) => (
-          String(o.estado) === 'Aprobado' || String(o.estado_recepcion || '').toLowerCase() === 'pendiente'
-        )));
+        setOrdenes((data.ordenes || []).filter((o: OrdenCompra) => {
+          // Mostrar órdenes que:
+          // - Están en estado 'Aprobado' (pendiente de recepción)
+          // - Tienen estado_recepcion 'EN_ESPERA_RECEPCION' (esperando más recepciones)
+          // - Tienen estado_recepcion 'PARCIAL' (recepción incompleta, esperando más)
+          // - Tienen estado 'CON DEUDA' y estado_recepcion está pendiente
+          const estado = String(o.estado || '').toUpperCase();
+          const estadoRecepcion = String(o.estado_recepcion || '').toUpperCase();
+          
+          return (
+            estado === 'APROBADO' ||
+            estadoRecepcion === 'EN_ESPERA_RECEPCION' ||
+            estadoRecepcion === 'PARCIAL' ||
+            (estado === 'CON DEUDA' && (estadoRecepcion === 'EN_ESPERA_RECEPCION' || estadoRecepcion === 'PARCIAL'))
+          );
+        }));
         // Mapear ítems por orden para mostrar en la lista
         const itemsMap: Record<number, {nombre: string, cantidad: number}[]> = {};
         (data.ordenes || []).forEach((orden: Record<string, unknown>) => {
@@ -215,12 +228,23 @@ export default function RecepcionesPendientesPage() {
       // Refrescar lista base
       setLoading(true);
       setError(null);
-      const url = `https://quimex.sistemataup.online/ordenes_compra/obtener_todas?page=1&per_page=50`;
-      const refresco = await fetch(url, { headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` } });
-      const nuevo = await refresco.json();
-      setOrdenes((nuevo.ordenes || []).filter((o: OrdenCompra) => (
-        String(o.estado) === 'Aprobado' || String(o.estado_recepcion || '').toLowerCase() === 'pendiente'
-      )));
+      try {
+        const refresco = await fetch(`https://quimex.sistemataup.online/ordenes_compra/obtener_todas?page=1&per_page=50`, { headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` } });
+        const nuevo = await refresco.json();
+        setOrdenes((nuevo.ordenes || []).filter((o: OrdenCompra) => {
+          const estado = String(o.estado || '').toUpperCase();
+          const estadoRecepcion = String(o.estado_recepcion || '').toUpperCase();
+          
+          return (
+            estado === 'APROBADO' ||
+            estadoRecepcion === 'EN_ESPERA_RECEPCION' ||
+            estadoRecepcion === 'PARCIAL' ||
+            (estado === 'CON DEUDA' && (estadoRecepcion === 'EN_ESPERA_RECEPCION' || estadoRecepcion === 'PARCIAL'))
+          );
+        }));
+      } catch (err) {
+        console.warn('No se pudo refrescar la lista de recepciones', err);
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error registrando recepción.';
       alert(msg);
@@ -350,12 +374,6 @@ export default function RecepcionesPendientesPage() {
                     <span>{new Date(orden.fecha_creacion).toLocaleDateString("es-AR")}</span>
                     <span className="flex items-center gap-2">
                       <span>{orden.proveedor_nombre || '-'}</span>
-                      {orden.estado && String(orden.estado).toLowerCase() !== 'con deuda' && (
-                        <span className="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-800">{String(orden.estado)}</span>
-                      )}
-                      {orden.estado_recepcion && String(orden.estado_recepcion).toLowerCase() !== 'recepción pendiente' && String(orden.estado_recepcion).toLowerCase() !== 'recepcion pendiente' && (
-                        <span className="text-xs px-2 py-0.5 rounded bg-orange-100 text-orange-800">Recepción: {String(orden.estado_recepcion)}</span>
-                      )}
                     </span>
                     <span>
                       {Array.isArray(itemsPorOrden[orden.id]) && itemsPorOrden[orden.id].length > 0 ? (

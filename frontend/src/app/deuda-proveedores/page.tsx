@@ -22,8 +22,12 @@ export default function DeudaProveedoresPage() {
   const [movimientos, setMovimientos] = useState<Movimiento[]>([]);
   const [filtroDesde, setFiltroDesde] = useState('');
   const [filtroHasta, setFiltroHasta] = useState('');
+  const [filtroProveedor, setFiltroProveedor] = useState('');
+  const [filtroProducto, setFiltroProducto] = useState('');
   const [ordenarPor, setOrdenarPor] = useState<'pendiente'|'orden'>('pendiente');
   const [seleccionOcId, setSeleccionOcId] = useState<number|null>(null);
+  const [proveedoresDisponibles, setProveedoresDisponibles] = useState<{id: number, nombre: string}[]>([]);
+  const [productosDisponibles, setProductosDisponibles] = useState<{id: number, nombre: string}[]>([]);
 
   const fetchDeudaOrdenes = async () => {
     if (!token) throw new Error('No autenticado');
@@ -32,15 +36,34 @@ export default function DeudaProveedoresPage() {
     const lista: OrdenResumen[] = (data.ordenes || []).map((o: OrdenResumen) => ({ id:o.id, fecha_creacion:o.fecha_creacion, estado:o.estado, proveedor_id:o.proveedor_id, importe_total_estimado:o.importe_total_estimado ?? 0, importe_abonado:o.importe_abonado ?? 0 }));
     setOrdenes(lista);
     const detalles: Record<number, ItemDetalle[]> = {};
+    const proveedoresSet = new Set<{id: number, nombre: string}>();
+    const productosSet = new Set<{id: number, nombre: string}>();
+    
     for (const oc of lista) {
       const rd = await fetch(`${API}/ordenes_compra/obtener/${oc.id}`, { headers: { Authorization: `Bearer ${token}` } });
       const dd = await rd.json();
       detalles[oc.id] = (dd.items || []).map((raw: ItemAPI) => ({ id_linea: typeof raw.id_linea === 'number' ? raw.id_linea : Number(raw.id_linea), producto_id: typeof raw.producto_id === 'number' ? raw.producto_id : Number(raw.producto_id), producto_nombre: raw.producto_nombre, cantidad_solicitada: typeof raw.cantidad_solicitada === 'number' ? raw.cantidad_solicitada : Number(raw.cantidad_solicitada || 0), precio_unitario_estimado: typeof raw.precio_unitario_estimado === 'number' ? raw.precio_unitario_estimado : Number(raw.precio_unitario_estimado || 0), importe_linea_estimado: typeof raw.importe_linea_estimado === 'number' ? raw.importe_linea_estimado : Number(raw.importe_linea_estimado || 0) }));
       const provNombre = (dd.proveedor_nombre as string) || (dd.proveedor && typeof dd.proveedor.nombre === 'string' ? dd.proveedor.nombre : '') || '';
       proveedorPorOrden[oc.id] = provNombre;
+      
+      // Llenar proveedores disponibles
+      if (provNombre) {
+        proveedoresSet.add({ id: oc.proveedor_id, nombre: provNombre });
+      }
+      
+      // Llenar productos disponibles si hay items pendientes de recepción
+      if (dd.estado_recepcion !== 'COMPLETA') {
+        detalles[oc.id].forEach(item => {
+          if (item.producto_nombre) {
+            productosSet.add({ id: item.producto_id, nombre: item.producto_nombre });
+          }
+        });
+      }
     }
     setItemsPorOrden(detalles);
     setProveedorPorOrden({...proveedorPorOrden});
+    setProveedoresDisponibles(Array.from(proveedoresSet).sort((a, b) => a.nombre.localeCompare(b.nombre)));
+    setProductosDisponibles(Array.from(productosSet).sort((a, b) => a.nombre.localeCompare(b.nombre)));
   };
 
   const fetchMovs = async () => {
@@ -82,13 +105,16 @@ export default function DeudaProveedoresPage() {
       const d = new Date(oc.fecha_creacion);
       const okDesde = filtroDesde ? d >= new Date(filtroDesde) : true;
       const okHasta = filtroHasta ? d <= new Date(filtroHasta) : true;
-      if (!(okDesde && okHasta)) continue;
-      rows.push({ ocId: oc.id, total: totalOC, abonado: abonadoOC, pendiente: pendienteOC, ultimoPago, fecha: d.toLocaleDateString('es-AR'), proveedor: proveedorPorOrden[oc.id] || String(oc.proveedor_id), items });
+      const proveedor = proveedorPorOrden[oc.id] || String(oc.proveedor_id);
+      const okProveedor = filtroProveedor ? proveedor === filtroProveedor : true;
+      const okProducto = filtroProducto ? items.some(item => item.producto_nombre === filtroProducto) : true;
+      if (!(okDesde && okHasta && okProveedor && okProducto)) continue;
+      rows.push({ ocId: oc.id, total: totalOC, abonado: abonadoOC, pendiente: pendienteOC, ultimoPago, fecha: d.toLocaleDateString('es-AR'), proveedor, items });
     }
     if (ordenarPor==='pendiente') rows.sort((a,b)=> b.pendiente - a.pendiente);
     if (ordenarPor==='orden') rows.sort((a,b)=> a.ocId - b.ocId);
     return rows;
-  }, [ordenes, itemsPorOrden, movimientos, ordenarPor, filtroDesde, filtroHasta, proveedorPorOrden]);
+  }, [ordenes, itemsPorOrden, movimientos, ordenarPor, filtroDesde, filtroHasta, filtroProveedor, filtroProducto, proveedorPorOrden]);
 
   const exportCSV = () => {
     const header = ['OC','Total','Abonado','Pendiente','Último Pago','Fecha'];
@@ -119,6 +145,20 @@ export default function DeudaProveedoresPage() {
 
         {/* Filtros */}
         <div className="flex flex-wrap gap-3 items-end mb-4">
+          <div>
+            <label className="text-sm text-gray-700">Proveedor</label>
+            <select value={filtroProveedor} onChange={e=> setFiltroProveedor(e.target.value)} className="ml-2 px-2 py-1 border rounded">
+              <option value="">-- Todos --</option>
+              {proveedoresDisponibles.map(p=> <option key={p.id} value={p.nombre}>{p.nombre}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-sm text-gray-700">Producto</label>
+            <select value={filtroProducto} onChange={e=> setFiltroProducto(e.target.value)} className="ml-2 px-2 py-1 border rounded">
+              <option value="">-- Todos --</option>
+              {productosDisponibles.map(p=> <option key={p.id} value={p.nombre}>{p.nombre}</option>)}
+            </select>
+          </div>
           <div>
             <label className="text-sm text-gray-700">Desde</label>
             <input type="date" value={filtroDesde} onChange={e=> setFiltroDesde(e.target.value)} className="ml-2 px-2 py-1 border rounded"/>
