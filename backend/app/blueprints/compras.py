@@ -78,6 +78,21 @@ def _parse_iibb_rate(iibb_value):
         return Decimal('0')
 
 
+def _parse_percentage_rate(value):
+    """Normaliza un valor porcentual como fracción decimal (ej. 21 -> 0.21)."""
+    try:
+        if value is None:
+            return Decimal('0')
+        raw = str(value).strip()
+        if not raw:
+            return Decimal('0')
+        normalized = raw.replace(',', '.')
+        parsed = Decimal(normalized)
+        return parsed if parsed <= 1 else (parsed / Decimal('100'))
+    except Exception:
+        return Decimal('0')
+
+
 def _recalcular_importe_y_actualizar_deuda(orden_db, usuario_actualiza=None, iva_flag=None, iva_rate=None, iibb_payload=None):
     """Recalcula `importe_total_estimado` de la orden aplicando IVA e IIBB cuando se proveen.
     Luego actualiza (o crea/ajusta) el MovimientoProveedor tipo DEBITO con la deuda restante (convertida a ARS si `ajuste_tc`).
@@ -375,6 +390,14 @@ def crear_orden_compra(current_user):
                 # cantidad_recibida se inicializa en None/0 por defecto en el modelo
             )
             detalles_db.append(detalle)
+
+        # Aplicar IVA e IIBB (si vienen) para que el total estimado coincida con lo que muestra el frontend
+        base_total = importe_total_estimado_calc
+        iva_rate = _parse_percentage_rate(data.get('iva'))
+        iva_amount = (base_total * iva_rate).quantize(Decimal('0.01')) if iva_rate else Decimal('0')
+        iibb_rate = _parse_iibb_rate(data.get('iibb'))
+        iibb_amount = (base_total * iibb_rate).quantize(Decimal('0.01')) if iibb_rate else Decimal('0')
+        importe_total_estimado_calc = (base_total + iva_amount + iibb_amount).quantize(Decimal('0.01'))
 
         # --- Crear Cabecera de la Orden ---
         # Generar un ID único si usas UUID como PK string
@@ -713,8 +736,7 @@ def aprobar_orden_compra(current_user, orden_id):
                 importe_abonado_val = Decimal(str(data.get('importe_abonado')))
                 if importe_abonado_val < 0:
                     return jsonify({"error": "'importe_abonado' no puede ser negativo"}), 400
-                # Validar contra el total estimado (recalcular antes por si actualizamos items)
-                total_estimado = sum([(item.importe_linea_estimado or 0) for item in orden_db.items])
+                total_estimado = orden_db.importe_total_estimado or sum([(item.importe_linea_estimado or 0) for item in orden_db.items])
                 if total_estimado and importe_abonado_val > total_estimado:
                     return jsonify({"error": "'importe_abonado' no puede superar el total estimado"}), 400
                 orden_db.importe_abonado = importe_abonado_val

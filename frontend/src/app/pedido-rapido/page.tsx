@@ -195,7 +195,13 @@ export default function PedidoRapidoAdmin() {
 
       // 1) Crear OC
       // Calcular observaciones de pago para registrar en la creación
-      const importeAbonadoCrear = pagoCompleto ? totalCalculadoForm : (parseFloat(importeAbonado || '0') || 0);
+      let importeAbonadoCrear = pagoCompleto ? totalCalculadoForm : (parseFloat(importeAbonado || '0') || 0);
+      if (isFinite(totalCalculadoForm)) {
+        const t = Math.max(0, Number(totalCalculadoForm.toFixed(2)));
+        let a = Math.max(0, Number(importeAbonadoCrear.toFixed(2)));
+        if (a > t) a = t;
+        importeAbonadoCrear = a;
+      }
       const deudaRestanteCrear = Math.max(0, totalCalculadoForm - importeAbonadoCrear);
       const observacionesPagoCrear = pagoCompleto
         ? 'Pago completo'
