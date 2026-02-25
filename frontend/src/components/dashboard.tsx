@@ -297,11 +297,9 @@ export default function DashboardPage() {
                             </CardContent>
                         </Card>
                         <Card>
-                            <CardHeader className="pb-2">
-                                <CardTitle className="text-sm font-medium">Pedidos Pendientes para Entregar Mañana</CardTitle>
-                            </CardHeader>
+                            <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Ingreso Pedidos {tituloDia}</CardTitle></CardHeader>
                             <CardContent>
-                                <p className="text-2xl font-bold">{data.primera_fila.pedidos_pendientes_manana}</p>
+                                <p className="text-2xl font-bold">{formatCurrency(data.primera_fila.ingreso_pedido_hoy)}</p>
                             </CardContent>
                         </Card>
                         <Card>
@@ -414,8 +412,7 @@ export default function DashboardPage() {
                     </Card>
                     <Card>
                         <CardHeader className="pb-2 flex flex-row items-center justify-between">
-                            <CardTitle className="text-sm font-medium">Ganancia Bruta del Mes</CardTitle>
-                            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                                    <TrendingUp className="h-4 w-4 text-muted-foreground" />
                         </CardHeader>
                         <CardContent>
                             <p className={`text-2xl font-bold ${data.segunda_fila.ganancia_bruta_mes < 0 ? 'text-red-600' : 'text-green-600'}`}>

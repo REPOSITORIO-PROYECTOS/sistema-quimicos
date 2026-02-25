@@ -64,7 +64,7 @@ def _extraer_estado_nombre_vendedor(nombre_vendedor: str) -> str:
 
 @reportes_bp.route('/movimientos-excel', methods=['GET'])
 @token_required
-@roles_required(ROLES['ADMIN'], ROLES['CONTABLE'])
+@roles_required(ROLES['ADMIN'], ROLES['CONTABLE'], ROLES['VENTAS_PEDIDOS']) # Ajustado para permitir ADMIN, CONTABLE y VENTAS_PEDIDOS
 def reporte_movimientos_excel_limitado(current_user):
     """
     [VERSIÓN FINAL CON VENTAS UNIFICADAS Y AGRUPADAS POR DÍA]
@@ -749,7 +749,7 @@ def _get_kpis_del_mes(fecha_seleccionada: date):
 
 @reportes_bp.route('/dashboard-kpis', methods=['GET'])
 @token_required
-@roles_required(ROLES['ADMIN'], ROLES['CONTABLE'], ROLES['VENTAS_PEDIDOS'])
+@roles_required(ROLES['ADMIN'], ROLES['CONTABLE'], ROLES['VENTAS_LOCAL'], ROLES['VENTAS_PEDIDOS'], ROLES['ALMACEN'])
 def get_dashboard_kpis(current_user):
     """
     [VERSIÓN 2.6 REFACTORIZADA CON FUNCIONES AUXILIARES]
