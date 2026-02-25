@@ -92,7 +92,8 @@ def reporte_movimientos_excel_limitado(current_user):
 
     try:
         workbook = openpyxl.Workbook()
-        workbook.remove(workbook.active)
+        if workbook.active:
+            workbook.remove(workbook.active)
 
         # --- 1. CONSULTAS EFICIENTES ---
         # Ordenamos por fecha para poder agrupar por día
@@ -441,16 +442,7 @@ def exportar_lista_precios_excel(current_user):
 # (Debes asegurarte de que estén aquí el resto de tus funciones, como `reporte_movimientos_excel_limitado`, etc.)
 # ==============================================================================
 
-def obtener_tipo_de_cambio_actual() -> Decimal:
-    """
-    Función auxiliar para obtener el tipo de cambio.
-    (La mantengo por si es usada en otros endpoints que no me pasaste)
-    """
-    # Se asume que el tipo de cambio que nos interesa es el que tiene el nombre 'USD' o similar.
-    tipo_cambio = TipoCambio.query.order_by(TipoCambio.fecha_actualizacion.desc()).first()
-    if not tipo_cambio or not tipo_cambio.valor:
-        raise ValueError("No se encontró un tipo de cambio configurado en la base de datos.")
-    return tipo_cambio.valor
+
 
 
 def _aplanar_receta(receta_item: RecetaItem, nivel: int, lista_plana: list):
@@ -897,6 +889,19 @@ def guardar_costo_historico_endpoint(current_user):
         traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
 
+
+# Manejador de preflight CORS para /dashboard-kpis-lite
+# Responde a OPTIONS sin requerir autenticación (solo CORS headers)
+@reportes_bp.route('/dashboard-kpis-lite', methods=['OPTIONS'])
+def _options_dashboard_kpis_lite():
+    """Responde a preflight CORS sin requerir autenticación."""
+    from flask import make_response
+    resp = make_response(('', 204))
+    resp.headers['Access-Control-Allow-Origin'] = request.headers.get('Origin', '*')
+    resp.headers['Access-Control-Allow-Methods'] = 'GET,OPTIONS'
+    resp.headers['Access-Control-Allow-Headers'] = 'Authorization,Content-Type'
+    resp.headers['Access-Control-Allow-Credentials'] = 'true'
+    return resp
 
 # ------------------------------------------------------------------------------
 # Endpoint ligero para KPIs: devuelve sólo las métricas mínimas necesarias para
