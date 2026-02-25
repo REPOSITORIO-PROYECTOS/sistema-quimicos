@@ -106,9 +106,38 @@ export default function DashboardPage() {
             const url = `https://quimex.sistemataup.online/reportes/dashboard-kpis?fecha=${fecha}`;
             const response = await fetch(url, { headers: { "Authorization": `Bearer ${token}` } });
             if (!response.ok) {
-                const errorData = await response.json().catch(() => ({error: "Error de servidor"}));
+                const errorData = await response.json().catch(() => ({ error: "Error de servidor" }));
+                // Si el backend responde 403 y el usuario es VENTAS_PEDIDOS, ofrecer un fallback mínimo
+                if (response.status === 403 && userRole === 'ventas_pedidos') {
+                    // Construir un objeto mínimo seguro para que la UI muestre las 3 métricas esenciales
+                    const minimal: DashboardData = {
+                        primera_fila: {
+                            ingreso_puerta_hoy: 0,
+                            ingreso_pedido_hoy: 0,
+                            pedidos_pendientes_manana: 0,
+                            kgs_manana: 0,
+                            deuda_proveedores: 0,
+                            compras_por_recibir: 0,
+                        },
+                        segunda_fila: {
+                            ventas_mes: 0,
+                            costos_variables_mes: 0,
+                            ganancia_bruta_mes: 0,
+                        },
+                        tercera_fila: {
+                            relacion_ingresos: { puerta: 0, pedidos: 0 },
+                            relacion_pagos: { efectivo: 0, otros: 0 },
+                        },
+                    };
+                    setData(minimal);
+                    setError(errorData.message || errorData.error || "No autorizado para KPIs avanzados. Mostrando métricas esenciales si están disponibles.");
+                    setIsLoading(false);
+                    return;
+                }
+
                 throw new Error(errorData.error || "Error al cargar los datos del dashboard.");
             }
+
             const kpiData: DashboardData = await response.json();
             setData(kpiData);
         } catch (err) {
@@ -117,7 +146,7 @@ export default function DashboardPage() {
         } finally {
             setIsLoading(false);
         }
-    }, [token]);
+    }, [token, userRole]);
 
     useEffect(() => {
         fetchDashboardData(selectedDate);

@@ -897,6 +897,56 @@ def guardar_costo_historico_endpoint(current_user):
         traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
 
+
+# ------------------------------------------------------------------------------
+# Endpoint ligero para KPIs: devuelve sólo las métricas mínimas necesarias para
+# usuarios con rol VENTAS_PEDIDOS (además de ADMIN y CONTABLE). Esto evita exponer
+# KPIs financieros y cálculos complejos a roles con permisos limitados.
+# ------------------------------------------------------------------------------
+@reportes_bp.route('/dashboard-kpis-lite', methods=['GET'])
+@token_required
+@roles_required(ROLES['ADMIN'], ROLES['CONTABLE'], ROLES['VENTAS_PEDIDOS'])
+def get_dashboard_kpis_lite(current_user):
+    """
+    Endpoint ligero pensado para vistas de ventas/pedidos que solo necesitan
+    mostrar un subconjunto de KPIs (ingresos puerta, pedidos pendientes y kgs
+    a entregar). No realiza ni retorna datos financieros sensibles.
+    """
+    try:
+        fecha_str = request.args.get('fecha', date.today().isoformat())
+        fecha_seleccionada = date.fromisoformat(fecha_str)
+
+        # Usar funciones auxiliares ya existentes para calcular solo lo necesario
+        kpis_dia = _get_kpis_del_dia(fecha_seleccionada)
+        kpis_manana = _get_kpis_entregas_manana(fecha_seleccionada)
+
+        response_data = {
+            "primera_fila": {
+                "ingreso_puerta_hoy": float(kpis_dia.get("ingreso_puerta_hoy", 0.0)),
+                "ingreso_pedido_hoy": float(kpis_dia.get("ingreso_pedido_hoy", 0.0)),
+                "pedidos_pendientes_manana": int(kpis_manana.get("pedidos_pendientes_manana", 0)),
+                "kgs_manana": float(kpis_manana.get("kgs_manana", 0.0)),
+                # Campos no sensibles o no aplicables se devuelven en 0/por defecto
+                "deuda_proveedores": 0.0,
+                "compras_por_recibir": 0.0
+            },
+            "segunda_fila": {
+                "ventas_mes": 0.0,
+                "costos_variables_mes": 0.0,
+                "ganancia_bruta_mes": 0.0
+            },
+            "tercera_fila": {
+                "relacion_ingresos": {"puerta": 0.0, "pedidos": 0.0},
+                "relacion_pagos": {"efectivo": 0.0, "otros": 0.0}
+            }
+        }
+
+        return jsonify(response_data)
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": "Error interno al generar KPIs ligeros.", "detalle": str(e)}), 500
+
 # --- Reporte de Faltantes por Orden (Excel) ---
 @reportes_bp.route('/orden/<int:orden_id>/faltantes-excel', methods=['GET'])
 @token_required
