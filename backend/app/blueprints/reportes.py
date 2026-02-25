@@ -749,7 +749,7 @@ def _get_kpis_del_mes(fecha_seleccionada: date):
 
 @reportes_bp.route('/dashboard-kpis', methods=['GET'])
 @token_required
-@roles_required(ROLES['ADMIN'], ROLES['CONTABLE'])
+@roles_required(ROLES['ADMIN'], ROLES['CONTABLE'], ROLES['VENTAS_PEDIDOS'])
 def get_dashboard_kpis(current_user):
     """
     [VERSIÓN 2.6 REFACTORIZADA CON FUNCIONES AUXILIARES]
