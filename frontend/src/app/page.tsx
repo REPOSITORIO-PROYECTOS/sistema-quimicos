@@ -13,8 +13,8 @@ const defaultPathsByRole: Partial<Record<UserRole, string>> = {
     ALMACEN: "/compras",
     VENTAS_LOCAL: "/acciones-puerta",
     CONTABLE: "/movimientos",
-    // VENTAS_PEDIDOS ahora puede ver el dashboard con 3 variables: Ingreso Puerta, Pedidos Pendientes, Kgs a Entregar
-    // ADMIN se queda en "/", así que no necesita entrada explícita aquí
+    // VENTAS_PEDIDOS y ADMIN se quedan en "/" para ver el dashboard
+    VENTAS_PEDIDOS: "/", // Ahora puede ver dashboard con 3 variables: Ingreso Puerta, Pedidos Pendientes, Kgs a Entregar
 };
 
 export default function Home() {
@@ -32,7 +32,7 @@ export default function Home() {
                     const role = (user?.role as UserRole) || "GUEST"; // Asegúrate que 'role' es el nombre correcto
                     setUserRole(role);
 
-                    if (role !== "ADMIN" && role !== "GUEST") {
+                    if (role !== "ADMIN" && role !== "GUEST" && role !== "VENTAS_PEDIDOS") {
                         const targetPath = defaultPathsByRole[role];
                         if (targetPath) {
                             router.replace(targetPath);
@@ -51,7 +51,7 @@ export default function Home() {
                         // Si un GUEST llega aquí (AppShell debería haberlo prevenido teóricamente)
                         router.replace('/login'); // Redirigir a login
                     } else {
-                        // Es ADMIN o no hay redirección necesaria
+                        // Es ADMIN, VENTAS_PEDIDOS o no hay redirección necesaria
                         setIsLoading(false);
                     }
                 } catch (error) {
