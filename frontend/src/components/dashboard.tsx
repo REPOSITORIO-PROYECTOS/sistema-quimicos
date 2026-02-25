@@ -103,7 +103,11 @@ export default function DashboardPage() {
             return;
         }
         try {
-            const url = `https://quimex.sistemataup.online/reportes/dashboard-kpis?fecha=${fecha}`;
+                // Usar endpoint ligero para usuarios de tipo 'ventas_pedidos'
+                const base = `https://quimex.sistemataup.online/reportes`;
+                const url = userRole === 'ventas_pedidos'
+                    ? `${base}/dashboard-kpis-lite?fecha=${fecha}`
+                    : `${base}/dashboard-kpis?fecha=${fecha}`;
             const response = await fetch(url, { headers: { "Authorization": `Bearer ${token}` } });
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({ error: "Error de servidor" }));
