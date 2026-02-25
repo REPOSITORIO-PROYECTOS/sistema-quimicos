@@ -91,7 +91,8 @@ export default function DashboardPage() {
     useEffect(() => {
         if (typeof window === 'undefined') return;
         const role = getUserRoleFromToken(localStorage.getItem('token'));
-        setUserRole(role);
+        // Normalizar a minúsculas para comparaciones consistentes ('VENTAS_PEDIDOS' -> 'ventas_pedidos')
+        setUserRole(role ? String(role).toLowerCase() : null);
     }, [token]);
 
     const fetchDashboardData = useCallback(async (fecha: string) => {
@@ -158,6 +159,8 @@ export default function DashboardPage() {
     
     const handleDownloadResumen = async () => {
         if (!token) { alert("No autenticado."); return; }
+        // Seguridad adicional: usuarios de pedidos no pueden descargar el resumen
+        if (userRole === 'ventas_pedidos') { alert('No tiene permiso para descargar el resumen del mes.'); return; }
         setIsDownloading(true);
         try {
             // Construir fechas base en zona horaria de Argentina
@@ -239,7 +242,7 @@ export default function DashboardPage() {
                 <h2 className="text-3xl font-bold tracking-tight">Dashboard General</h2>
                 <div className="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto">
                     {/* Para usuarios 'ventas_pedidos' mostramos solo las métricas esenciales */}
-                    {userRole !== 'ventas_pedidos' && (
+                    {userRole && userRole !== 'ventas_pedidos' && (
                         <>
                             <button
                                 type="button"
