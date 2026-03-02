@@ -5,9 +5,9 @@ import SolicitudIngresoPage from '@/components/solicitudIngresoPage';
 import { useEffect, useMemo, useState } from 'react';
 import jsPDF from 'jspdf';
 
-type OrdenResumen = { id:number; fecha_creacion:string; estado:string; proveedor_id:number; importe_total_estimado?:number; importe_abonado?:number };
-type ItemDetalle = { id_linea:number; producto_id:number; producto_nombre?:string; cantidad_solicitada:number; precio_unitario_estimado:number; importe_linea_estimado:number };
-type ItemAPI = { id_linea:number|string; producto_id:number|string; producto_nombre?:string; cantidad_solicitada?: number|string; precio_unitario_estimado?: number|string; importe_linea_estimado?: number|string };
+type OrdenResumen = { id:number; fecha_creacion:string; estado:string; proveedor_id:number; importe_total_estimado?:number; importe_abonado?:number; estado_recepcion?:string };
+type ItemDetalle = { id_linea:number; producto_id:number; producto_nombre?:string; cantidad_solicitada:number; cantidad_recibida?:number; precio_unitario_estimado:number; importe_linea_estimado:number };
+type ItemAPI = { id_linea:number|string; producto_id:number|string; producto_nombre?:string; cantidad_solicitada?: number|string; cantidad_recibida?: number|string; precio_unitario_estimado?: number|string; importe_linea_estimado?: number|string };
 type Movimiento = { id:number; proveedor_id:number; orden_id:number|null; tipo:'DEBITO'|'CREDITO'; monto:number; fecha:string };
 
 const API = 'https://quimex.sistemataup.online';
@@ -42,7 +42,15 @@ export default function DeudaProveedoresPage() {
     for (const oc of lista) {
       const rd = await fetch(`${API}/ordenes_compra/obtener/${oc.id}`, { headers: { Authorization: `Bearer ${token}` } });
       const dd = await rd.json();
-      detalles[oc.id] = (dd.items || []).map((raw: ItemAPI) => ({ id_linea: typeof raw.id_linea === 'number' ? raw.id_linea : Number(raw.id_linea), producto_id: typeof raw.producto_id === 'number' ? raw.producto_id : Number(raw.producto_id), producto_nombre: raw.producto_nombre, cantidad_solicitada: typeof raw.cantidad_solicitada === 'number' ? raw.cantidad_solicitada : Number(raw.cantidad_solicitada || 0), precio_unitario_estimado: typeof raw.precio_unitario_estimado === 'number' ? raw.precio_unitario_estimado : Number(raw.precio_unitario_estimado || 0), importe_linea_estimado: typeof raw.importe_linea_estimado === 'number' ? raw.importe_linea_estimado : Number(raw.importe_linea_estimado || 0) }));
+      detalles[oc.id] = (dd.items || []).map((raw: ItemAPI) => ({ 
+        id_linea: typeof raw.id_linea === 'number' ? raw.id_linea : Number(raw.id_linea), 
+        producto_id: typeof raw.producto_id === 'number' ? raw.producto_id : Number(raw.producto_id), 
+        producto_nombre: raw.producto_nombre, 
+        cantidad_solicitada: typeof raw.cantidad_solicitada === 'number' ? raw.cantidad_solicitada : Number(raw.cantidad_solicitada || 0), 
+        cantidad_recibida: typeof raw.cantidad_recibida === 'number' ? raw.cantidad_recibida : Number(raw.cantidad_recibida || 0),
+        precio_unitario_estimado: typeof raw.precio_unitario_estimado === 'number' ? raw.precio_unitario_estimado : Number(raw.precio_unitario_estimado || 0), 
+        importe_linea_estimado: typeof raw.importe_linea_estimado === 'number' ? raw.importe_linea_estimado : Number(raw.importe_linea_estimado || 0) 
+      }));
       const provNombre = (dd.proveedor_nombre as string) || (dd.proveedor && typeof dd.proveedor.nombre === 'string' ? dd.proveedor.nombre : '') || '';
       proveedorPorOrden[oc.id] = provNombre;
       
@@ -117,11 +125,72 @@ export default function DeudaProveedoresPage() {
   }, [ordenes, itemsPorOrden, movimientos, ordenarPor, filtroDesde, filtroHasta, filtroProveedor, filtroProducto, proveedorPorOrden]);
 
   const exportCSV = () => {
-    const header = ['OC','Total','Abonado','Pendiente','Último Pago','Fecha'];
-    const lines = filasOrdenes.map(r=> [r.ocId, r.total.toFixed(2), r.abonado.toFixed(2), r.pendiente.toFixed(2), r.ultimoPago||'', r.fecha].join(','));
-    const csv = [header.join(','), ...lines].join('\n');
-    const blob = new Blob([csv], {type:'text/csv'});
-    const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='deuda_proveedores.csv'; a.click(); URL.revokeObjectURL(url);
+    const headers = [
+      'OC',
+      'Fecha',
+      'Proveedor',
+      'Total',
+      'Abonado',
+      'Pendiente',
+      'Último Pago',
+      'Producto',
+      'Cant. Solicitada',
+      'Cant. Recibida',
+      'Precio Unitario',
+      'Estado Recepción'
+    ];
+    
+    const lines: string[] = [];
+    filasOrdenes.forEach(r => {
+      if (r.items && r.items.length > 0) {
+        // Una línea por cada producto
+        r.items.forEach(item => {
+          const cantRecibida = Number(item.cantidad_recibida || 0);
+          const cantSolicitada = Number(item.cantidad_solicitada || 0);
+          const estadoItem = cantRecibida >= cantSolicitada ? 'Completo' : 'Pendiente';
+          
+          lines.push([
+            r.ocId,
+            r.fecha,
+            r.proveedor || '-',
+            r.total.toFixed(2),
+            r.abonado.toFixed(2),
+            r.pendiente.toFixed(2),
+            r.ultimoPago || '-',
+            item.producto_nombre || `ID ${item.producto_id}`,
+            item.cantidad_solicitada || 0,
+            cantRecibida,
+            item.precio_unitario_estimado?.toFixed(2) || '-',
+            estadoItem
+          ].map(cell => typeof cell === 'string' && cell.includes(',') ? `"${cell}"` : cell).join(','));
+        });
+      } else {
+        // Si no hay items, una línea con datos generales
+        lines.push([
+          r.ocId,
+          r.fecha,
+          r.proveedor || '-',
+          r.total.toFixed(2),
+          r.abonado.toFixed(2),
+          r.pendiente.toFixed(2),
+          r.ultimoPago || '-',
+          'Sin items',
+          '0',
+          '0',
+          '-',
+          'N/A'
+        ].join(','));
+      }
+    });
+    
+    const csv = [headers.join(','), ...lines].join('\n');
+    const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+    const url = URL.createObjectURL(blob); 
+    const a=document.createElement('a'); 
+    a.href=url; 
+    a.download=`deuda_proveedores_detallado_${new Date().toISOString().slice(0,10)}.csv`; 
+    a.click(); 
+    URL.revokeObjectURL(url);
   };
   const exportPDF = () => {
     const doc = new jsPDF(); let y=10; doc.setFontSize(14); doc.text('Deuda de Proveedores (Boletas)', 10, y); y+=8; doc.setFontSize(9);

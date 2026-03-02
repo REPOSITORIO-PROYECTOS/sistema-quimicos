@@ -41,6 +41,8 @@ export default function OrdenesRecibidasPage() {
   const [estadosDisponibles, setEstadosDisponibles] = useState<string[]>(['Todos']);
   const [filtroDesde, setFiltroDesde] = useState<string>('');
   const [filtroHasta, setFiltroHasta] = useState<string>('');
+  const [filtroProveedorDeuda, setFiltroProveedorDeuda] = useState<boolean>(false);
+  const [filtroProductoPendiente, setFiltroProductoPendiente] = useState<boolean>(false);
 
   const fetchOrdenesRecibidas = useCallback(async (currentPage: number) => {
     try {
@@ -68,13 +70,30 @@ export default function OrdenesRecibidasPage() {
         const okHasta = filtroHasta ? d <= new Date(filtroHasta) : true;
         return okDesde && okHasta;
       });
+      
+      // Filtro: Proveedor con deuda
+      const porDeuda = filtroProveedorDeuda
+        ? porFecha.filter(o => {
+            const total = Number(o.importe_total_estimado || 0);
+            const abonado = Number(o.importe_abonado || 0);
+            return abonado < total;
+          })
+        : porFecha;
+      
+      // Filtro: Producto pendiente de entrega
+      const porProductoPendiente = filtroProductoPendiente
+        ? porDeuda.filter(o => {
+            const estadoRecep = String(o.estado_recepcion || '').toUpperCase();
+            return estadoRecep !== 'COMPLETA';
+          })
+        : porDeuda;
 
       // Si no encontramos órdenes recibidas en esta página y hay más páginas, buscamos en la siguiente
-      if (porFecha.length === 0 && data.pagination.has_next) {
+      if (porProductoPendiente.length === 0 && data.pagination.has_next) {
         await fetchOrdenesRecibidas(currentPage + 1);
       } else {
         // Si encontramos órdenes o es la última página, actualizamos el estado
-        setOrdenes(porFecha);
+        setOrdenes(porProductoPendiente);
         // Actualizamos la paginación para reflejar la página actual que estamos mostrando
         setPagination(data.pagination ? { ...data.pagination, current_page: currentPage } : null);
         setPage(currentPage); // Sincronizamos el estado de la página principal
@@ -86,7 +105,7 @@ export default function OrdenesRecibidasPage() {
       console.error("FetchOrdenesRecibidas Error:", err);
       setLoading(false);
     }
-  }, [estadoFiltro, filtroDesde, filtroHasta]);
+  }, [estadoFiltro, filtroDesde, filtroHasta, filtroProveedorDeuda, filtroProductoPendiente]);
 
   useEffect(() => {
     setLoading(true); // Iniciar la carga
@@ -123,6 +142,33 @@ export default function OrdenesRecibidasPage() {
                   <option key={est} value={est}>{est}</option>
                 ))}
               </select>
+            </div>
+          </div>
+          {/* Nuevos filtros específicos */}
+          <div className="flex gap-3">
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="filtroDeuda"
+                checked={filtroProveedorDeuda}
+                onChange={(e) => setFiltroProveedorDeuda(e.target.checked)}
+                className="w-4 h-4 accent-indigo-600"
+              />
+              <label htmlFor="filtroDeuda" className="text-sm text-gray-700 cursor-pointer">
+                Solo con deuda
+              </label>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="filtroPendiente"
+                checked={filtroProductoPendiente}
+                onChange={(e) => setFiltroProductoPendiente(e.target.checked)}
+                className="w-4 h-4 accent-indigo-600"
+              />
+              <label htmlFor="filtroPendiente" className="text-sm text-gray-700 cursor-pointer">
+                Con productos pendientes
+              </label>
             </div>
           </div>
           {/* Botón de exportación Excel para admins */}
