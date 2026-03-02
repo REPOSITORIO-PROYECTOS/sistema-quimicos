@@ -13,8 +13,7 @@ const defaultPathsByRole: Partial<Record<UserRole, string>> = {
     ALMACEN: "/compras",
     VENTAS_LOCAL: "/acciones-puerta",
     CONTABLE: "/movimientos",
-    // VENTAS_PEDIDOS y ADMIN se quedan en "/" para ver el dashboard
-    VENTAS_PEDIDOS: "/", // Ahora puede ver dashboard con 3 variables: Ingreso Puerta, Pedidos Pendientes, Kgs a Entregar
+    VENTAS_PEDIDOS: "/dashboard-pedidos",
 };
 
 export default function Home() {
@@ -32,7 +31,7 @@ export default function Home() {
                     const role = (user?.role as UserRole) || "GUEST"; // Asegúrate que 'role' es el nombre correcto
                     setUserRole(role);
 
-                    if (role !== "ADMIN" && role !== "GUEST" && role !== "VENTAS_PEDIDOS") {
+                    if (role !== "ADMIN" && role !== "GUEST") {
                         const targetPath = defaultPathsByRole[role];
                         if (targetPath) {
                             router.replace(targetPath);
@@ -51,7 +50,7 @@ export default function Home() {
                         // Si un GUEST llega aquí (AppShell debería haberlo prevenido teóricamente)
                         router.replace('/login'); // Redirigir a login
                     } else {
-                        // Es ADMIN, VENTAS_PEDIDOS o no hay redirección necesaria
+                        // Es ADMIN o no hay redirección necesaria
                         setIsLoading(false);
                     }
                 } catch (error) {
@@ -78,9 +77,8 @@ export default function Home() {
         );
     }
 
-    // Si el rol es ADMIN o VENTAS_PEDIDOS, se muestra el Dashboard.
-    // Para VENTAS_PEDIDOS se mostrará una versión simplificada con solo 3 variables.
-    if (userRole === "ADMIN" || userRole === "VENTAS_PEDIDOS") {
+    // Solo ADMIN ve el dashboard común en Home.
+    if (userRole === "ADMIN") {
         return (
             <div className="bg-background p-4 md:p-6">
                 <Dashboard />
