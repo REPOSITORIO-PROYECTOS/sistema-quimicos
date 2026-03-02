@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useEffect, useState } from "react";
-import { DollarSign, Package, Truck, TrendingUp, AlertTriangle } from 'lucide-react';
+import { DollarSign, Package, Truck, AlertTriangle } from 'lucide-react';
 
 interface DashboardPedidosData {
   kgs_pendientes: number;
@@ -87,8 +87,6 @@ export default function DashboardPedidos() {
     return <div className="p-6">No hay datos disponibles</div>;
   }
 
-  const ingresoTotalHoy = data.ingreso_puerta_hoy + data.ingreso_pedido_hoy;
-
   return (
     <div className="p-6 space-y-4 max-w-6xl mx-auto">
       <div>
@@ -142,35 +140,6 @@ export default function DashboardPedidos() {
           </CardContent>
         </Card>
 
-        <Card className="bg-linear-to-br from-purple-50 to-purple-100 border-purple-200">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold text-purple-900 flex items-center gap-2">
-              <DollarSign className="w-4 h-4" />
-              PEDIDOS HOY
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-purple-900">
-              {formatCurrency(data.ingreso_pedido_hoy)}
-            </div>
-            <p className="text-xs text-purple-700 mt-1">vendido</p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-linear-to-br from-slate-50 to-slate-100 border-slate-200">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold text-slate-900 flex items-center gap-2">
-              <TrendingUp className="w-4 h-4" />
-              TOTAL HOY
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-slate-900">
-              {formatCurrency(ingresoTotalHoy)}
-            </div>
-            <p className="text-xs text-slate-700 mt-1">puerta + pedidos</p>
-          </CardContent>
-        </Card>
       </div>
     </div>
   );
