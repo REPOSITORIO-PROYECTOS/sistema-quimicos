@@ -119,7 +119,7 @@ export default function DashboardPedidos() {
         <p className="text-gray-600 text-sm mt-1">Vista simplificada de ventas y entregas</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="bg-linear-to-br from-orange-50 to-orange-100 border-orange-200">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold text-orange-900 flex items-center gap-2">
@@ -162,21 +162,6 @@ export default function DashboardPedidos() {
               {formatCurrency(data?.primera_fila?.ingreso_puerta_hoy ?? 0)}
             </div>
             <p className="text-xs text-green-700 mt-1">vendido</p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-linear-to-br from-cyan-50 to-cyan-100 border-cyan-200">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold text-cyan-900 flex items-center gap-2">
-              <DollarSign className="w-4 h-4" />
-              PEDIDO MAÑANA
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-cyan-900">
-              {formatCurrency(data?.primera_fila?.ingreso_pedido_manana ?? 0)}
-            </div>
-            <p className="text-xs text-cyan-700 mt-1">estimado</p>
           </CardContent>
         </Card>
       </div>
