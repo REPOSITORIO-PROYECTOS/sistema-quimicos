@@ -8,7 +8,6 @@ interface DashboardPedidosData {
   kgs_pendientes: number;
   pedidos_pendientes: number;
   ingreso_puerta_hoy: number;
-  ingreso_pedido_hoy: number;
 }
 
 const formatCurrency = (value: number) => 

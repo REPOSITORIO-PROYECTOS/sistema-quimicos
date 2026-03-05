@@ -133,41 +133,23 @@ def get_dashboard_kpis(current_user):
                 (Venta.direccion_entrega.isnot(None)) & (Venta.direccion_entrega != '')
             ).scalar() or Decimal('0.0')
         
+        # Calcular ingresos de HOY para el dashboard
+        today_inicio = datetime.datetime.combine(today, datetime.time.min)
+        today_fin = datetime.datetime.combine(today, datetime.time.max)
+        
+        # Ingresos de hoy por tipo de venta (PUERTA - sin dirección)
+        ingreso_puerta_hoy = db.session.query(
+            func.sum(Venta.monto_final_con_recargos)
+        ).filter(
+            Venta.fecha_pedido.between(today_inicio, today_fin),
+            or_(Venta.direccion_entrega.is_(None), Venta.direccion_entrega == '')
+        ).scalar() or Decimal('0.0')
+        
+        # Formato SIMPLE para el DashboardPedidos (lo que frontend espera)
         response_data = {
-            "filtros": {
-                "fecha_inicio": fecha_inicio_str or today.isoformat(),
-                "fecha_fin": fecha_fin_str or today.isoformat(),
-                "tipo_venta": tipo_venta if tipo_venta else "ambas"
-            },
-            "resumen_general": {
-                "ingresos_total": float(ingresos_total),
-                "costos_total": float(costos_total),
-                "margen_total": float(margen_total),
-                "porcentaje_margen": float(porcentaje_margen),
-                "cantidad_ventas": cantidad_ventas,
-                "promedio_venta": promedio_venta
-            },
-            "desglose_tipo_venta": {
-                "puerta": {
-                    "ingresos": float((getattr(desglose, 'puerta', 0) or 0)),
-                    "cantidad": getattr(desglose, 'count_puerta', 0) or 0,
-                    "costos": float(costos_puerta)
-                },
-                "pedido": {
-                    "ingresos": float((getattr(desglose, 'pedido', 0) or 0)),
-                    "cantidad": getattr(desglose, 'count_pedidos', 0) or 0,
-                    "costos": float(costos_pedido)
-                }
-            },
-            "pagos": {
-                "efectivo": float((getattr(pagos, 'efectivo', 0) or 0)),
-                "transferencia": float((getattr(pagos, 'transferencia', 0) or 0)),
-                "factura": float((getattr(pagos, 'factura', 0) or 0))
-            },
-            "pendiente_entrega": {
-                "cantidad_pedidos": cantidad_pedidos_pendientes,
-                "cantidad_kilos": float(total_kgs_pendientes)
-            }
+            "kgs_pendientes": float(total_kgs_pendientes),
+            "pedidos_pendientes": cantidad_pedidos_pendientes,
+            "ingreso_puerta_hoy": float(ingreso_puerta_hoy)
         }
         return jsonify(response_data)
 
