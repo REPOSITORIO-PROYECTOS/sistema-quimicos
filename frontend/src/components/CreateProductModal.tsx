@@ -125,7 +125,7 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({
             setIsLoadingData(true); setSaveError(null);
             try {
                 if (productIdToEdit) {
-                    const productRes = await fetch(`https://quimex.sistemataup.online/productos/obtener/${productIdToEdit}`, { headers: { "Authorization": `Bearer ${token}` } });
+                    const productRes = await fetch(`https://quimex.sistemataup.online/api/productos/obtener/${productIdToEdit}`, { headers: { "Authorization": `Bearer ${token}` } });
                     if (!productRes.ok) throw new Error(`Error obteniendo producto ${productIdToEdit}.`);
                     const productData: ProductDataForEditAPI = await productRes.json();
                     setFormData({
@@ -262,7 +262,7 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({
                     categoria_id: formData.categoriaId && formData.categoriaId !== '0' ? Number(formData.categoriaId) : null,
                 };
 
-                const productApiUrl = isEditMode && productIdToEdit ? `https://quimex.sistemataup.online/productos/actualizar/${productIdToEdit}` : 'https://quimex.sistemataup.online/productos/crear';
+                const productApiUrl = isEditMode && productIdToEdit ? `https://quimex.sistemataup.online/api/productos/actualizar/${productIdToEdit}` : 'https://quimex.sistemataup.online/api/productos/crear';
                 const productApiMethod = isEditMode && productIdToEdit ? 'PUT' : 'POST';
                 const productResponse = await fetch(productApiUrl, { method: productApiMethod, headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }, body: JSON.stringify(productPayload) });
                 const productResult = await productResponse.json();

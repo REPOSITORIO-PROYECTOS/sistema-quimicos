@@ -78,7 +78,7 @@ export default function ListaClientes() {
           // Construir URL hacia el endpoint paginado (el backend debe usar search_term
           // para filtrar en la BASE DE DATOS). Si prefieres usar un endpoint dedicado
           // '/clientes/buscar_todos' se puede cambiar aquí.
-          const apiUrl = `https://quimex.sistemataup.online/clientes/obtener_todos?${params.toString()}`;
+          const apiUrl = `https://quimex.sistemataup.online/api/clientes/obtener_todos?${params.toString()}`;
 
           console.debug('Fetching clientes URL:', apiUrl, 'page:', page, 'searchTerm:', trimmedTerm);
           const response = await fetch(apiUrl, { cache: 'no-store', headers: {"Content-Type":"application/json", "Authorization":`Bearer ${token}`} });
@@ -135,7 +135,7 @@ export default function ListaClientes() {
 
     try {
     // Obtener todos los clientes con sus precios especiales desde el endpoint nuevo
-  const url = `https://quimex.sistemataup.online/clientes/obtener_todos_con_precios?all=true`;
+  const url = `https://quimex.sistemataup.online/api/clientes/obtener_todos_con_precios?all=true`;
   const resAll = await fetch(url + `&_ts=${Date.now()}`, { cache: 'no-store', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` } });
   if (!resAll.ok) throw new Error('No se pudieron obtener todos los clientes para exportar');
   const dataAll = await resAll.json();
@@ -211,7 +211,7 @@ export default function ListaClientes() {
     if (window.confirm(`¿Estás seguro de que deseas eliminar el cliente con ID ${id}?`)) {
       try {
         const token = localStorage.getItem("token");
-        const response = await fetch(`https://quimex.sistemataup.online/clientes/desactivar/${id}`, {
+        const response = await fetch(`https://quimex.sistemataup.online/api/clientes/desactivar/${id}`, {
           method: 'DELETE',
           headers: { 'Authorization': `Bearer ${token}` }
         });

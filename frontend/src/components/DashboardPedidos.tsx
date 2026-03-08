@@ -36,7 +36,7 @@ export default function DashboardPedidos() {
         }
 
         const response = await fetch(
-          "https://quimex.sistemataup.online/dashboard/kpis",
+          "https://quimex.sistemataup.online/api/dashboard/kpis",
           {
             headers: {
               "Authorization": `Bearer ${token}`,

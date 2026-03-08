@@ -13,7 +13,7 @@ from ..utils.decorators import token_required, roles_required
 from ..utils.permissions import ROLES
 
 # --- Blueprint ---
-categoria_productos_bp = Blueprint('categoria_productos', __name__, url_prefix='/categoria_productos')
+categoria_productos_bp = Blueprint('categoria_productos', __name__, url_prefix='/api/categoria_productos')
 
 @categoria_productos_bp.route('/asignar_masivo', methods=['POST'])
 @token_required

@@ -177,5 +177,9 @@ def create_app(config_object='config.Config'):
         def hello():
             return 'API Quimex Funcionando!'
 
+        @app.route('/health')
+        def health():
+            return {'status': 'healthy'}, 200
+
         print("--- INFO [app/__init__.py]: Fábrica de aplicación completada.")
         return app

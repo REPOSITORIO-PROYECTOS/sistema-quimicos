@@ -107,7 +107,7 @@ export default function TotalPedidos() {
         fecha_desde: fechaSeleccionada,
         fecha_hasta: fechaSeleccionada
       });
-      const apiUrl = `https://quimex.sistemataup.online/ventas/con_entrega?${params.toString()}`;
+      const apiUrl = `https://quimex.sistemataup.online/api/ventas/con_entrega?${params.toString()}`;
       const response = await fetch(apiUrl, { headers: { "Authorization": `Bearer ${token}` } });
       if (!response.ok) throw new Error(`Error al traer boletas: ${response.statusText}`);
       const data = await response.json();
@@ -173,7 +173,7 @@ export default function TotalPedidos() {
     setError(null);
     const token = localStorage.getItem("token");
     try {
-        const response = await fetch('https://quimex.sistemataup.online/ventas/actualizar-estado-lote', {
+        const response = await fetch('https://quimex.sistemataup.online/api/ventas/actualizar-estado-lote', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
             body: JSON.stringify({
@@ -203,7 +203,7 @@ const handlePrint = async (tipo: 'comprobante' | 'orden_de_trabajo') => {
 
     try {
       // 1. Llamada al endpoint de lote (esto está perfecto)
-      const response = await fetch('https://quimex.sistemataup.online/ventas/obtener-detalles-lote', {
+      const response = await fetch('https://quimex.sistemataup.online/api/ventas/obtener-detalles-lote', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ venta_ids: Array.from(selectedBoletas) })

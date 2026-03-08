@@ -124,7 +124,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         return { precioUnitario: 0, precioTotalCalculado: 0, indices, esPrecioEspecial: false };
       }
       try {
-        const precioRes = await fetch(`https://quimex.sistemataup.online/productos/calcular_precio/${productoId}`, {
+        const precioRes = await fetch(`https://quimex.sistemataup.online/api/productos/calcular_precio/${productoId}`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
           body: JSON.stringify({
@@ -179,7 +179,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     const token = localStorage.getItem("token");
     if (!token) { setErrorMensaje("No autenticado."); setIsLoading(false); return; }
     try {
-      const response = await fetch(`https://quimex.sistemataup.online/ventas/obtener/${pedidoId}`, {
+      const response = await fetch(`https://quimex.sistemataup.online/api/ventas/obtener/${pedidoId}`, {
         headers: { "Authorization": `Bearer ${token}` }
       });
       if (!response.ok) throw new Error((await response.json()).message || "No se pudieron cargar los datos.");
@@ -282,7 +282,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
       try {
         // Log de body enviado para debug de descuento
         console.log('Enviando calcular_total con payload:', JSON.stringify({ monto_base: montoBaseProductos, forma_pago: formData.formaPago, requiere_factura: formData.requiereFactura, descuento_total_global_porcentaje: formData.descuentoTotal }));
-        const resTotal = await fetch("https://quimex.sistemataup.online/ventas/calcular_total", {
+        const resTotal = await fetch("https://quimex.sistemataup.online/api/ventas/calcular_total", {
           method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
           body: JSON.stringify({ monto_base: montoBaseProductos, forma_pago: formData.formaPago, requiere_factura: formData.requiereFactura, descuento_total_global_porcentaje: formData.descuentoTotal }),
         });
@@ -453,7 +453,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
       descuento_total_global_porcentaje: formData.descuentoTotal || 0,
     };
     try {
-      const response = await fetch(`https://quimex.sistemataup.online/ventas/actualizar/${id}`, {
+      const response = await fetch(`https://quimex.sistemataup.online/api/ventas/actualizar/${id}`, {
         method: "PUT", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify(dataToUpdate),
       });

@@ -37,7 +37,7 @@ export default function AccionesPuertaPage() {
         alert('No autenticado. Inicie sesión.');
         return;
       }
-      const resp = await fetch('https://quimex.sistemataup.online/ventas/clientes_nuevos_puerta_csv', {
+      const resp = await fetch('https://quimex.sistemataup.online/api/ventas/clientes_nuevos_puerta_csv', {
         method: 'GET',
         headers: { 'Authorization': `Bearer ${token}` }
       });

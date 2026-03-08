@@ -7,7 +7,7 @@ from ..calculator.core import obtener_coeficiente_por_rango
 from sqlalchemy.exc import IntegrityError
 import traceback
 
-combos_bp = Blueprint('combos_bp', __name__, url_prefix='/combos')
+combos_bp = Blueprint('combos_bp', __name__, url_prefix='/api/combos')
 
 
 def calcular_precio_combo_ars(precio_base_usd_combo, nombre_tc='Oficial'):

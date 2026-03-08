@@ -14,7 +14,7 @@ import io
 import traceback
 from sqlalchemy import or_
 
-clientes_bp = Blueprint('clientes', __name__, url_prefix='/clientes')
+clientes_bp = Blueprint('clientes', __name__, url_prefix='/api/clientes')
 
 # --- Helper Function ---
 def cliente_a_diccionario(cliente):

@@ -1,11 +1,17 @@
 # Reemplaza con tus datos reales de MySQL
-SQLALCHEMY_DATABASE_URI = 'mysql+mysqlconnector://tu_usuario_mysql:tu_contraseña_mysql@localhost:3306/quimex_db'
+import os
+
+# Get database connection from environment or use defaults
+db_user = os.getenv('DB_USER', 'quimex')
+db_password = os.getenv('DB_PASSWORD', 'quimex')
+db_host = os.getenv('DB_HOST', 'quimex-db')
+db_port = os.getenv('DB_PORT', '3306')
+db_name = os.getenv('DB_NAME', 'quimex_db')
+
+SQLALCHEMY_DATABASE_URI = f'mysql+pymysql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}?charset=utf8mb4'
 
 # --- DESGLOSE ---
-# 'mysql+mysqlconnector://' : Indica usar MySQL con el driver mysql-connector-python
-# 'tu_usuario_mysql'       : El nombre de usuario que creaste o usas en MySQL (¡NO 'root' en producción!)
-# ':tu_contraseña_mysql'   : La contraseña para ese usuario MySQL.
-# '@localhost:3306'        : La dirección del servidor MySQL ('localhost' si está en la misma máquina) y el puerto (3306 es el predeterminado). Cambia si es diferente.
-# '/quimex_db'             : El nombre EXACTO de la base de datos que creaste en MySQL.
+# 'mysql+pymysql://' : Indica usar MySQL con el driver PyMySQL
+# Estos valores se toman del environment o usan defaults para Docker
 
 SQLALCHEMY_TRACK_MODIFICATIONS = False

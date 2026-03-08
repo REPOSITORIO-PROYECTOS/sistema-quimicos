@@ -1,0 +1,99 @@
+version: '3.8'
+
+services:
+  quimex-db:
+    image: mysql:8.0
+    container_name: quimex-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: quimex_db
+      MYSQL_USER: quimex
+      MYSQL_PASSWORD: QuimexApp_Pass123
+    ports:
+      - "127.0.0.1:3306:3306"
+    volumes:
+      - quimex-mysql-data:/var/lib/mysql
+      - /home/dev_taup/all_databases.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - quimex
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  quimex-redis:
+    image: redis:7-alpine
+    container_name: quimex-redis
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - quimex-redis-data:/data
+    networks:
+      - quimex
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  quimex-backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: quimex-backend
+    restart: unless-stopped
+    environment:
+      DB_USER: quimex
+      DB_PASSWORD: QuimexApp_Pass123
+      DB_HOST: quimex-db
+      DB_PORT: "3306"
+      DB_NAME: quimex_db
+      REDIS_URL: redis://quimex-redis:6379/0
+      FLASK_ENV: production
+      PYTHONUNBUFFERED: "1"
+    ports:
+      - "127.0.0.1:5000:5000"
+    depends_on:
+      quimex-db:
+        condition: service_healthy
+      quimex-redis:
+        condition: service_healthy
+    networks:
+      - quimex
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  quimex-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: quimex-frontend
+    restart: unless-stopped
+    environment:
+      REACT_APP_API_URL: http://quimex-backend:5000
+      NODE_ENV: production
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - quimex-backend
+    networks:
+      - quimex
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  quimex-mysql-data:
+  quimex-redis-data:
+
+networks:
+  quimex:
+    driver: bridge

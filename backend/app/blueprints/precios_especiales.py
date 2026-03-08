@@ -21,7 +21,7 @@ from ..utils.math_utils import redondear_a_siguiente_decena_simplificado
 # from ..utils.cost_utils import redondear_decimal
 
 # --- Blueprint ---
-precios_especiales_bp = Blueprint('precios_especiales', __name__, url_prefix='/precios_especiales')
+precios_especiales_bp = Blueprint('precios_especiales', __name__, url_prefix='/api/precios_especiales')
 
 # Logger del módulo
 logger = logging.getLogger(__name__)

@@ -6,7 +6,7 @@ from datetime import datetime
 from app.models import Producto  # Importa el modelo Producto
 from app import db              # Importa la instancia db
 
-import_csv_bp = Blueprint('import_csv', __name__, url_prefix='/import_csv')
+import_csv_bp = Blueprint('import_csv', __name__, url_prefix='/api/import_csv')
 
 @import_csv_bp.route('/generar_sql', methods=['POST'])
 def generar_sql_desde_csv():

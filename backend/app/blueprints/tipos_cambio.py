@@ -9,7 +9,7 @@ from .. import db
 from ..utils.decorators import token_required, roles_required
 from ..utils.permissions import ROLES # Importar diccionario de roles
 
-tipos_cambio_bp = Blueprint('tipos_cambio', __name__, url_prefix='/tipos_cambio')
+tipos_cambio_bp = Blueprint('tipos_cambio', __name__, url_prefix='/api/tipos_cambio')
 
 @tipos_cambio_bp.route('/crear', methods=['POST'])
 @token_required

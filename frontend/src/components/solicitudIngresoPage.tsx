@@ -63,7 +63,7 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
 
   const cargarCamposProducto = useCallback(async (id_producto:number) => {
     try {
-      const response = await fetch(`https://quimex.sistemataup.online/productos/obtener/${id_producto}`,{headers: { "Authorization": `Bearer ${token}` }});
+      const response = await fetch(`https://quimex.sistemataup.online/api/productos/obtener/${id_producto}`,{headers: { "Authorization": `Bearer ${token}` }});
       if (!response.ok) return;
       const dataProd = await response.json();
       const unidad = dataProd.unidad_venta;
@@ -78,7 +78,7 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
   const cargarFormulario = useCallback(async () => {
     try {
       setErrorMensaje('');
-      const response = await fetch(`https://quimex.sistemataup.online/ordenes_compra/obtener/${id}`,{headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }});
+      const response = await fetch(`https://quimex.sistemataup.online/api/ordenes_compra/obtener/${id}`,{headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }});
       if (!response.ok) throw new Error(`Error al traer la orden`);
       const data = await response.json();
       if (!data?.items?.length) throw new Error("No se encontraron items en la OC.");
@@ -275,7 +275,7 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       const user = userText ? (JSON.parse(userText) as { role?: string; usuario?: string; name?: string }) : null;
       if (!user || !token) throw new Error("Error de autenticación.");
       
-      const response = await fetch(`https://quimex.sistemataup.online/ordenes_compra/recibir/${id}`, {
+      const response = await fetch(`https://quimex.sistemataup.online/api/ordenes_compra/recibir/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -356,7 +356,7 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       const userItem = sessionStorage.getItem("user");
       const user = userItem ? JSON.parse(userItem) : null;
       if (!user || !token) throw new Error("Error de autenticación.");
-      const response = await fetch(`https://quimex.sistemataup.online/ordenes_compra/aprobar/${id}`, {
+      const response = await fetch(`https://quimex.sistemataup.online/api/ordenes_compra/aprobar/${id}`, {
         method: 'PUT',
         headers: {
             'Content-Type': 'application/json',
@@ -426,7 +426,7 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       const userItem = sessionStorage.getItem("user");
       const user = userItem ? JSON.parse(userItem) : null;
       if (!user || !token) throw new Error("Error de autenticación.");
-      const response = await fetch(`https://quimex.sistemataup.online/ordenes_compra/editar/${id}`, {
+      const response = await fetch(`https://quimex.sistemataup.online/api/ordenes_compra/editar/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

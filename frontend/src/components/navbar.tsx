@@ -10,306 +10,304 @@ import { usePathname } from "next/navigation";
 // Modo oscuro deshabilitado
 import Link from "next/link";
 import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuTrigger,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
 // Definición de roles
 type UserRole = "ADMIN" | "ALMACEN" | "VENTAS_LOCAL" | "VENTAS_PEDIDOS" | "CONTABLE" | "PUERTA" | "GUEST";
 
 interface NavItemConfig {
-    href: string;
-    label: string;
-    roles: UserRole[];
-    isDropdown?: boolean;
-    subItems?: NavItemConfig[];
+  href: string;
+  label: string;
+  roles: UserRole[];
+  isDropdown?: boolean;
+  subItems?: NavItemConfig[];
 }
 
 // Configuración de los items de navegación
 const navItemsConfig: NavItemConfig[] = [
-    {
-        href: "/",
-        label: "Dashboard",
-        roles: ["ADMIN"],
-    },
-    // Ventas/Pedidos/Puerta según rol
-    {
-        href: "/acciones",
-        label: "Pedidos",
-        roles: ["ADMIN", "VENTAS_PEDIDOS"],
-    },
-    {
-        href: "/acciones-puerta",
-        label: "Puerta",
-        roles: ["ADMIN", "VENTAS_LOCAL", "VENTAS_PEDIDOS", "PUERTA"],
-    },
-    { href: "/lista", label: "Lista", roles: ["ADMIN"] },
-    { href: "/compras", label: "Compras", roles: ["ADMIN", "ALMACEN","CONTABLE" ] },
-    { href: "/movimientos", label: "Movimientos", roles: ["ADMIN", "CONTABLE"] },
-    { href: "/proveedores-acciones", label: "Proveedores", roles: ["ADMIN", "ALMACEN"] },
-    { href: "/usuarios", label: "Usuarios", roles: ["ADMIN"] },
+  {
+    href: "/",
+    label: "Dashboard",
+    roles: ["ADMIN"],
+  },
+  // Ventas/Pedidos/Puerta según rol
+  {
+    href: "/acciones",
+    label: "Pedidos",
+    roles: ["ADMIN", "VENTAS_PEDIDOS"],
+  },
+  {
+    href: "/acciones-puerta",
+    label: "Puerta",
+    roles: ["ADMIN", "VENTAS_LOCAL", "VENTAS_PEDIDOS", "PUERTA"],
+  },
+  { href: "/lista", label: "Lista", roles: ["ADMIN"] },
+  { href: "/compras", label: "Compras", roles: ["ADMIN", "ALMACEN", "CONTABLE"] },
+  { href: "/movimientos", label: "Movimientos", roles: ["ADMIN", "CONTABLE"] },
+  { href: "/proveedores-acciones", label: "Proveedores", roles: ["ADMIN", "ALMACEN"] },
+  { href: "/usuarios", label: "Usuarios", roles: ["ADMIN"] },
 ];
 
 type IndicatorStyle = {
-    width?: string;
-    transform?: string;
-    opacity?: number;
+  width?: string;
+  transform?: string;
+  opacity?: number;
 };
 
 export function Navbar() {
-    const pathname = usePathname();
-    const { logout } = useAuth();
-    
-    // Obtener usuario de sessionStorage
-    const userItem: string | null = typeof window !== "undefined" ? sessionStorage.getItem("user") : null;
-    const user = userItem ? JSON.parse(userItem) : null;
-    // Asegúrate que la propiedad del rol en tu objeto user sea 'role'
-    const userRole = (user?.role as UserRole) || "GUEST";
+  const pathname = usePathname();
+  const { logout } = useAuth();
 
-    const [indicatorStyle, setIndicatorStyle] = useState<IndicatorStyle>({});
-    const [mobileOpen, setMobileOpen] = useState(false);
-    const navRef = useRef<HTMLDivElement>(null);
+  // Obtener usuario de localStorage
+  const userItem: string | null = typeof window !== "undefined" ? localStorage.getItem("user") : null;
+  const user = userItem ? JSON.parse(userItem) : null;
+  // Asegúrate que la propiedad del rol en tu objeto user sea 'role'
+  const userRole = (user?.role as UserRole) || "GUEST";
 
-    const currentNavItems = useMemo(() => {
-        if (userRole === "GUEST") {
-            // GUEST no ve ningún item de esta lista por defecto,
-            // ya que Home ahora es solo para ADMIN.
-            // Si GUEST debe ver algo específico, añádelo a navItemsConfig con rol "GUEST"
-            // y ajusta este filtro o elimina esta condición if para que se aplique la lógica general.
-            return [];
+  const [indicatorStyle, setIndicatorStyle] = useState<IndicatorStyle>({});
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const navRef = useRef<HTMLDivElement>(null);
+
+  const currentNavItems = useMemo(() => {
+    if (userRole === "GUEST") {
+      // GUEST no ve ningún item de esta lista por defecto,
+      // ya que Home ahora es solo para ADMIN.
+      // Si GUEST debe ver algo específico, añádelo a navItemsConfig con rol "GUEST"
+      // y ajusta este filtro o elimina esta condición if para que se aplique la lógica general.
+      return [];
+    }
+
+    return navItemsConfig.reduce((acc, item) => {
+      // ADMIN siempre tiene acceso si el item está en la lista general
+      // Para otros roles, verifica si su rol está incluido en item.roles
+      const canAccessItem = userRole === "ADMIN" || item.roles.includes(userRole);
+
+      if (canAccessItem) {
+        if (item.isDropdown && item.subItems) {
+          const visibleSubItems = item.subItems.filter(
+            (sub) => userRole === "ADMIN" || sub.roles.includes(userRole)
+          );
+          if (visibleSubItems.length > 0) {
+            acc.push({ ...item, subItems: visibleSubItems });
+          }
+        } else if (!item.isDropdown) {
+          acc.push(item);
         }
-
-        return navItemsConfig.reduce((acc, item) => {
-            // ADMIN siempre tiene acceso si el item está en la lista general
-            // Para otros roles, verifica si su rol está incluido en item.roles
-            const canAccessItem = userRole === "ADMIN" || item.roles.includes(userRole);
-
-            if (canAccessItem) {
-                if (item.isDropdown && item.subItems) {
-                    const visibleSubItems = item.subItems.filter(
-                        (sub) => userRole === "ADMIN" || sub.roles.includes(userRole)
-                    );
-                    if (visibleSubItems.length > 0) {
-                        acc.push({ ...item, subItems: visibleSubItems });
-                    }
-                } else if (!item.isDropdown) {
-                    acc.push(item);
-                }
-            }
-            return acc;
-        }, [] as NavItemConfig[]);
-    }, [userRole]);
+      }
+      return acc;
+    }, [] as NavItemConfig[]);
+  }, [userRole]);
 
 
-    useEffect(() => {
-        // Solo ejecutar en el cliente
-        if (typeof window === "undefined" || !navRef.current || currentNavItems.length === 0) {
-            // Si no hay items o no estamos en el cliente, ocultar indicador
-            if (indicatorStyle.opacity !== 0 || indicatorStyle.width !== '0px') {
-                 setIndicatorStyle({ opacity: 0, width: '0px' });
-            }
-            return;
-        }
-        
-        let activeElement: HTMLElement | null = null;
-        const children = Array.from(navRef.current.children) as HTMLElement[];
-        let activeItemConfigIndex = -1;
+  useEffect(() => {
+    // Solo ejecutar en el cliente
+    if (typeof window === "undefined" || !navRef.current || currentNavItems.length === 0) {
+      // Si no hay items o no estamos en el cliente, ocultar indicador
+      if (indicatorStyle.opacity !== 0 || indicatorStyle.width !== '0px') {
+        setIndicatorStyle({ opacity: 0, width: '0px' });
+      }
+      return;
+    }
+
+    let activeElement: HTMLElement | null = null;
+    const children = Array.from(navRef.current.children) as HTMLElement[];
+    let activeItemConfigIndex = -1;
 
     if ((pathname || "").startsWith('/acciones')) {
-            activeItemConfigIndex = currentNavItems.findIndex(item => item.label === 'Ventas');
-        } else {
-            activeItemConfigIndex = currentNavItems.findIndex(item => item.href === pathname);
-        }
-        
-        if (activeItemConfigIndex !== -1 && children[activeItemConfigIndex]) {
-            activeElement = children[activeItemConfigIndex];
-        }
+      activeItemConfigIndex = currentNavItems.findIndex(item => item.label === 'Ventas');
+    } else {
+      activeItemConfigIndex = currentNavItems.findIndex(item => item.href === pathname);
+    }
 
-        let newStyle: IndicatorStyle = {};
-        if (activeElement) {
-            newStyle = {
-                width: `${activeElement.offsetWidth}px`,
-                transform: `translateX(${activeElement.offsetLeft}px)`,
-                opacity: 1,
-            };
-        } else {
-             newStyle = {
-                 opacity: 0,
-                 width: '0px',
-             };
-        }
+    if (activeItemConfigIndex !== -1 && children[activeItemConfigIndex]) {
+      activeElement = children[activeItemConfigIndex];
+    }
 
-        const currentStyleValues = `${indicatorStyle.width || ''}-${indicatorStyle.transform || ''}-${indicatorStyle.opacity ?? 0}`;
-        const newStyleValues = `${newStyle.width || ''}-${newStyle.transform || ''}-${newStyle.opacity ?? 0}`;
+    let newStyle: IndicatorStyle = {};
+    if (activeElement) {
+      newStyle = {
+        width: `${activeElement.offsetWidth}px`,
+        transform: `translateX(${activeElement.offsetLeft}px)`,
+        opacity: 1,
+      };
+    } else {
+      newStyle = {
+        opacity: 0,
+        width: '0px',
+      };
+    }
 
-        if (currentStyleValues !== newStyleValues) {
-             setIndicatorStyle(newStyle);
-        }
+    const currentStyleValues = `${indicatorStyle.width || ''}-${indicatorStyle.transform || ''}-${indicatorStyle.opacity ?? 0}`;
+    const newStyleValues = `${newStyle.width || ''}-${newStyle.transform || ''}-${newStyle.opacity ?? 0}`;
+
+    if (currentStyleValues !== newStyleValues) {
+      setIndicatorStyle(newStyle);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [pathname, currentNavItems]); // No incluyas indicatorStyle aquí para evitar bucles si la comparación es simple
-                                     // Si la comparación de estilos es compleja y necesitas el valor previo, sí debes incluirlo
+  }, [pathname, currentNavItems]); // No incluyas indicatorStyle aquí para evitar bucles si la comparación es simple
+  // Si la comparación de estilos es compleja y necesitas el valor previo, sí debes incluirlo
 
-    // Si no hay usuario (y por ende es GUEST y currentNavItems está vacío)
-    // podrías querer renderizar una Navbar diferente o solo los botones de la derecha
-    // if (!user) {
-    // // Por ejemplo, no mostrar la barra de navegación izquierda si es GUEST y no hay items para él
-    // }
+  // Si no hay usuario (y por ende es GUEST y currentNavItems está vacío)
+  // podrías querer renderizar una Navbar diferente o solo los botones de la derecha
+  // if (!user) {
+  // // Por ejemplo, no mostrar la barra de navegación izquierda si es GUEST y no hay items para él
+  // }
 
-    return (
-      <nav className="relative z-50 shadow-md border-b dark:border-gray-700">
-        <div className="container mx-auto px-4 md:px-6 py-3 flex justify-between items-center">
-          <div className="flex items-center gap-2 md:gap-3">
-            <button
-              aria-label="Abrir menú"
-              aria-expanded={mobileOpen}
-              aria-controls="mobile-nav"
-              onClick={() => setMobileOpen((v) => !v)}
-              className="md:hidden inline-flex items-center justify-center p-2 rounded-md text-gray-700 hover:bg-gray-100"
-            >
-              <Menu className="h-6 w-6" />
-            </button>
-            <div className="space-x-2 relative items-center hidden md:flex" ref={navRef}>
-              {currentNavItems.map((item) => {
-                if (item.isDropdown && item.subItems && item.subItems.length > 0) {
-                  const isVentasActive = item.subItems.some((sub) => pathname === sub.href) ||
-                    (((pathname || "").startsWith(item.href)) && item.href !== "/");
-                  return (
-                    <DropdownMenu key={item.href}>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          data-trigger-for="ventas"
-                          className={`relative z-10 transition-colors duration-200 flex items-center gap-1 ${
-                            isVentasActive ? "text-white hover:text-white bg-transparent" : "hover:text-black dark:hover:text-white"
+  return (
+    <nav className="relative z-50 shadow-md border-b dark:border-gray-700">
+      <div className="container mx-auto px-4 md:px-6 py-3 flex justify-between items-center">
+        <div className="flex items-center gap-2 md:gap-3">
+          <button
+            aria-label="Abrir menú"
+            aria-expanded={mobileOpen}
+            aria-controls="mobile-nav"
+            onClick={() => setMobileOpen((v) => !v)}
+            className="md:hidden inline-flex items-center justify-center p-2 rounded-md text-gray-700 hover:bg-gray-100"
+          >
+            <Menu className="h-6 w-6" />
+          </button>
+          <div className="space-x-2 relative items-center hidden md:flex" ref={navRef}>
+            {currentNavItems.map((item) => {
+              if (item.isDropdown && item.subItems && item.subItems.length > 0) {
+                const isVentasActive = item.subItems.some((sub) => pathname === sub.href) ||
+                  (((pathname || "").startsWith(item.href)) && item.href !== "/");
+                return (
+                  <DropdownMenu key={item.href}>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        data-trigger-for="ventas"
+                        className={`relative z-10 transition-colors duration-200 flex items-center gap-1 ${isVentasActive ? "text-white hover:text-white bg-transparent" : "hover:text-black dark:hover:text-white"
                           }`}
-                        >
-                          {item.label}
-                          <ChevronDown className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="start">
-                        {item.subItems.map((subItem) => (
-                          <DropdownMenuItem key={subItem.href} asChild>
-                            <Link href={subItem.href}>{subItem.label}</Link>
-                          </DropdownMenuItem>
-                        ))}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  );
-                } else if (!item.isDropdown) {
-                  const isActive = pathname === item.href;
-                  return (
-                    <Button
-                      key={item.href}
-                      variant="ghost"
-                      data-href={item.href}
-                      className={`relative z-10 transition-colors duration-200 ${
-                        isActive ? "text-white hover:text-white bg-transparent" : "hover:text-black dark:hover:text-white"
+                      >
+                        {item.label}
+                        <ChevronDown className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start">
+                      {item.subItems.map((subItem) => (
+                        <DropdownMenuItem key={subItem.href} asChild>
+                          <Link href={subItem.href}>{subItem.label}</Link>
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                );
+              } else if (!item.isDropdown) {
+                const isActive = pathname === item.href;
+                return (
+                  <Button
+                    key={item.href}
+                    variant="ghost"
+                    data-href={item.href}
+                    className={`relative z-10 transition-colors duration-200 ${isActive ? "text-white hover:text-white bg-transparent" : "hover:text-black dark:hover:text-white"
                       }`}
-                      asChild
-                    >
-                      <Link href={item.href}>{item.label}</Link>
-                    </Button>
-                  );
-                }
-                return null;
-              })}
-              {currentNavItems.length > 0 && (
-                <div
-                  className="absolute bottom-0 left-0 h-full bg-blue-700 transition-all duration-300 ease-in-out z-0 rounded-md pointer-events-none"
-                  style={{ ...indicatorStyle, transition: "transform 0.3s ease-in-out, width 0.3s ease-in-out, opacity 0.3s ease-in-out" }}
-                />
-              )}
-            </div>
-
-            {user && (
-              <div className="space-x-4 flex items-center">
-                <Button asChild className="bg-blue-600 hover:bg-blue-800 hidden md:inline-flex">
-                  <a
-                    href="https://docs.google.com/document/d/12KQzz4cuZpppyin51XasedYbP6R_ZhFHPSDcyoU2UHY/edit?usp=sharing"
-                    target="_blank"
-                    rel="noopener noreferrer"
+                    asChild
                   >
-                    Manual del Usuario
-                    <BookOpenIcon className="w-5 h-5 ml-2" aria-hidden="true" />
-                  </a>
-                </Button>
-                <Button asChild className="bg-blue-600 hover:bg-blue-800 hidden md:inline-flex">
-                  <a href="https://wa.me/542646281854" target="_blank" rel="noopener noreferrer">
-                    Soporte
-                  </a>
-                </Button>
-                <Button
-                  variant="ghost"
-                  onClick={() => {
-                    logout();
-                    if (typeof window !== "undefined") {
-                      sessionStorage.removeItem("user");
-                    }
-                  }}
-                  className="text-sm font-semibold hover:bg-red-500 hover:text-white"
-                >
-                  Cerrar sesión
-                </Button>
-              </div>
+                    <Link href={item.href}>{item.label}</Link>
+                  </Button>
+                );
+              }
+              return null;
+            })}
+            {currentNavItems.length > 0 && (
+              <div
+                className="absolute bottom-0 left-0 h-full bg-blue-700 transition-all duration-300 ease-in-out z-0 rounded-md pointer-events-none"
+                style={{ ...indicatorStyle, transition: "transform 0.3s ease-in-out, width 0.3s ease-in-out, opacity 0.3s ease-in-out" }}
+              />
             )}
-            {!user && (
-              <div className="flex items-center">{/* Modo oscuro deshabilitado */}</div>
+          </div>
+
+          {user && (
+            <div className="space-x-4 flex items-center">
+              <Button asChild className="bg-blue-600 hover:bg-blue-800 hidden md:inline-flex">
+                <a
+                  href="https://docs.google.com/document/d/12KQzz4cuZpppyin51XasedYbP6R_ZhFHPSDcyoU2UHY/edit?usp=sharing"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Manual del Usuario
+                  <BookOpenIcon className="w-5 h-5 ml-2" aria-hidden="true" />
+                </a>
+              </Button>
+              <Button asChild className="bg-blue-600 hover:bg-blue-800 hidden md:inline-flex">
+                <a href="https://wa.me/542646281854" target="_blank" rel="noopener noreferrer">
+                  Soporte
+                </a>
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  logout();
+                  if (typeof window !== "undefined") {
+                    sessionStorage.removeItem("user");
+                  }
+                }}
+                className="text-sm font-semibold hover:bg-red-500 hover:text-white"
+              >
+                Cerrar sesión
+              </Button>
+            </div>
+          )}
+          {!user && (
+            <div className="flex items-center">{/* Modo oscuro deshabilitado */}</div>
+          )}
+        </div>
+      </div>
+      {mobileOpen && currentNavItems.length > 0 && (
+        <div id="mobile-nav" className="md:hidden border-t border-gray-200 bg-white">
+          <div className="container mx-auto px-4 py-2 flex flex-col gap-1">
+            {currentNavItems.map((item) => {
+              const isActive = pathname === item.href;
+              if (item.isDropdown && item.subItems && item.subItems.length > 0) {
+                return (
+                  <div key={item.href} className="flex flex-col">
+                    <span className="px-2 py-2 font-medium text-gray-700">{item.label}</span>
+                    {item.subItems.map((subItem) => (
+                      <Link
+                        key={subItem.href}
+                        href={subItem.href}
+                        className="px-3 py-2 rounded-md text-gray-700 hover:bg-gray-100"
+                        onClick={() => setMobileOpen(false)}
+                      >
+                        {subItem.label}
+                      </Link>
+                    ))}
+                  </div>
+                );
+              }
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`px-3 py-2 rounded-md ${isActive ? "bg-blue-600 text-white" : "text-gray-700 hover:bg-gray-100"}`}
+                  onClick={() => setMobileOpen(false)}
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
+            {user && (
+              <button
+                onClick={() => {
+                  logout();
+                  if (typeof window !== "undefined") {
+                    sessionStorage.removeItem("user");
+                  }
+                  setMobileOpen(false);
+                }}
+                className="mt-2 px-3 py-2 rounded-md text-gray-700 hover:bg-red-500 hover:text-white text-left"
+              >
+                Cerrar sesión
+              </button>
             )}
           </div>
         </div>
-        {mobileOpen && currentNavItems.length > 0 && (
-          <div id="mobile-nav" className="md:hidden border-t border-gray-200 bg-white">
-            <div className="container mx-auto px-4 py-2 flex flex-col gap-1">
-              {currentNavItems.map((item) => {
-                const isActive = pathname === item.href;
-                if (item.isDropdown && item.subItems && item.subItems.length > 0) {
-                  return (
-                    <div key={item.href} className="flex flex-col">
-                      <span className="px-2 py-2 font-medium text-gray-700">{item.label}</span>
-                      {item.subItems.map((subItem) => (
-                        <Link
-                          key={subItem.href}
-                          href={subItem.href}
-                          className="px-3 py-2 rounded-md text-gray-700 hover:bg-gray-100"
-                          onClick={() => setMobileOpen(false)}
-                        >
-                          {subItem.label}
-                        </Link>
-                      ))}
-                    </div>
-                  );
-                }
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={`px-3 py-2 rounded-md ${isActive ? "bg-blue-600 text-white" : "text-gray-700 hover:bg-gray-100"}`}
-                    onClick={() => setMobileOpen(false)}
-                  >
-                    {item.label}
-                  </Link>
-                );
-              })}
-              {user && (
-                <button
-                  onClick={() => {
-                    logout();
-                    if (typeof window !== "undefined") {
-                      sessionStorage.removeItem("user");
-                    }
-                    setMobileOpen(false);
-                  }}
-                  className="mt-2 px-3 py-2 rounded-md text-gray-700 hover:bg-red-500 hover:text-white text-left"
-                >
-                  Cerrar sesión
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-      </nav>
-    );
+      )}
+    </nav>
+  );
 }

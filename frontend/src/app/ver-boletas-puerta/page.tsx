@@ -63,7 +63,7 @@ export default function ListaBoletasPuerta() {
       const token = localStorage.getItem("token");
       if (!token) throw new Error("Usuario no autenticado.");
       
-      const response = await fetch(`https://quimex.sistemataup.online/ventas/sin_entrega?page=${pageToFetch}`, {
+      const response = await fetch(`https://quimex.sistemataup.online/api/ventas/sin_entrega?page=${pageToFetch}`, {
         headers: { "Authorization": `Bearer ${token}` }
       });
       
@@ -115,7 +115,7 @@ export default function ListaBoletasPuerta() {
     try {
       const token = localStorage.getItem("token");
       if (!token) throw new Error("Usuario no autenticado.");
-      const response = await fetch(`https://quimex.sistemataup.online/ventas/eliminar/${ventaId}`, {
+      const response = await fetch(`https://quimex.sistemataup.online/api/ventas/eliminar/${ventaId}`, {
         method: 'DELETE',
         headers: { "Authorization": `Bearer ${token}` },
       });

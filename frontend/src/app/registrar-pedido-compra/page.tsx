@@ -183,7 +183,7 @@ export default function RegistrarIngreso() {
     try { sessionStorage.setItem(LAST_PAYLOAD_KEY, JSON.stringify({ payload: ventaPayload, ts: Date.now() })); } catch {}
 
     try {
-      const response = await fetch('https://quimex.sistemataup.online/ordenes_compra/crear', {
+      const response = await fetch('https://quimex.sistemataup.online/api/ordenes_compra/crear', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -279,7 +279,7 @@ export default function RegistrarIngreso() {
                           try {
                             const userText = sessionStorage.getItem("user");
                             const user = userText ? (JSON.parse(userText) as { role?: string; id?: number | string }) : null;
-                            const response = await fetch('https://quimex.sistemataup.online/ordenes_compra/crear', {
+                            const response = await fetch('https://quimex.sistemataup.online/api/ordenes_compra/crear', {
                               method: 'POST',
                               headers: {
                                 'Content-Type': 'application/json',

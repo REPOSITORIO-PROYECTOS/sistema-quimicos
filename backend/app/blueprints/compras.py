@@ -26,7 +26,7 @@ BASE_API_URL = "http://localhost:8001"
 
 
 # Crear el Blueprint
-compras_bp = Blueprint('compras', __name__, url_prefix='/ordenes_compra')
+compras_bp = Blueprint('compras', __name__, url_prefix='/api/ordenes_compra')
 
 # Logger del módulo
 logger = logging.getLogger(__name__)

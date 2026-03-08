@@ -106,7 +106,7 @@ export default function FormularioActualizarPedidoPuerta({ id, onVolver }: Formu
         return { precioUnitario: 0, precioTotalCalculado: 0, indices };
       }
       try {
-        const precioRes = await fetch(`https://quimex.sistemataup.online/productos/calcular_precio/${productoId}`, {
+        const precioRes = await fetch(`https://quimex.sistemataup.online/api/productos/calcular_precio/${productoId}`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
           body: JSON.stringify({ producto_id: productoId, quantity: totalQuantity, cliente_id: null }),
@@ -160,7 +160,7 @@ export default function FormularioActualizarPedidoPuerta({ id, onVolver }: Formu
     if (!token) { setErrorMensaje("No autenticado."); setIsLoading(false); return; }
 
     try {
-      const response = await fetch(`https://quimex.sistemataup.online/ventas/obtener/${pedidoId}`, {
+      const response = await fetch(`https://quimex.sistemataup.online/api/ventas/obtener/${pedidoId}`, {
         headers: { "Authorization": `Bearer ${token}` }
       });
       if (!response.ok) throw new Error((await response.json()).message || "No se pudieron cargar los datos del pedido.");
@@ -227,7 +227,7 @@ export default function FormularioActualizarPedidoPuerta({ id, onVolver }: Formu
           requiere_factura: formData.requiere_factura,
           // descuento_total_global_porcentaje eliminado (puerta no usa descuento global)
         };
-        const response = await fetch("https://quimex.sistemataup.online/ventas/calcular_total", {
+        const response = await fetch("https://quimex.sistemataup.online/api/ventas/calcular_total", {
           method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }, body: JSON.stringify(payload)
         });
         const raw = await response.json() as RawTotalCalculadoPuertaResponse;
@@ -338,7 +338,7 @@ export default function FormularioActualizarPedidoPuerta({ id, onVolver }: Formu
       })),
     };
     try {
-      const response = await fetch(`https://quimex.sistemataup.online/ventas/actualizar/${id}`, {
+      const response = await fetch(`https://quimex.sistemataup.online/api/ventas/actualizar/${id}`, {
         method: "PUT", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify(dataToUpdate),
       });

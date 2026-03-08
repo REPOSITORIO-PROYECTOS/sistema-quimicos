@@ -106,7 +106,7 @@ export default function ListaOrdenesCompra() {
       const token = localStorage.getItem("token");
       if (!token) throw new Error("Usuario no autenticado.");
       
-      let url = `https://quimex.sistemataup.online/ordenes_compra/obtener_todas?page=${currentPage}&per_page=20`;
+      let url = `https://quimex.sistemataup.online/api/ordenes_compra/obtener_todas?page=${currentPage}&per_page=20`;
       if (filtro !== 'todos') {
         url += `&estado=${filtro}`;
       }
@@ -146,7 +146,7 @@ export default function ListaOrdenesCompra() {
         if (idsAConsultar.length === 0) return;
         const resultados = await Promise.all(idsAConsultar.map(async (ordenId) => {
           try {
-            const resp = await fetch(`https://quimex.sistemataup.online/ordenes_compra/obtener/${ordenId}`, {
+            const resp = await fetch(`https://quimex.sistemataup.online/api/ordenes_compra/obtener/${ordenId}`, {
               headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
             });
             if (!resp.ok) return { id: ordenId, codigo: '', cantidad: 0 };
@@ -198,7 +198,7 @@ export default function ListaOrdenesCompra() {
       const ordenRef = ordenes.find(o => o.id === ordenId);
       const totalRef = Number(ordenRef?.importe_total_estimado ?? 0) || 0;
       let abonadoRef = aprobacionPagoCompleto ? totalRef : (parseFloat(aprobacionImporteAbonado || '0') || 0);
-      const detalleResp = await fetch(`https://quimex.sistemataup.online/ordenes_compra/obtener/${ordenId}`, {
+      const detalleResp = await fetch(`https://quimex.sistemataup.online/api/ordenes_compra/obtener/${ordenId}`, {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
@@ -230,7 +230,7 @@ export default function ListaOrdenesCompra() {
         importe_abonado: abonadoRef,
         cheque_perteneciente_a: undefined,
       };
-      const response = await fetch(`https://quimex.sistemataup.online/ordenes_compra/aprobar/${ordenId}`, {
+      const response = await fetch(`https://quimex.sistemataup.online/api/ordenes_compra/aprobar/${ordenId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -285,7 +285,7 @@ export default function ListaOrdenesCompra() {
       const token = localStorage.getItem("token");
       if (!token) throw new Error("Usuario no autenticado.");
 
-      const response = await fetch(`https://quimex.sistemataup.online/ordenes_compra/rechazar/${ordenId}`, {
+      const response = await fetch(`https://quimex.sistemataup.online/api/ordenes_compra/rechazar/${ordenId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

@@ -25,11 +25,13 @@ const LoginForm: React.FC = () => {
                 setLoginError('Usuario o contraseña incorrectos. Por favor, verifica los datos.');
                 alert('Usuario o contraseña incorrectos. Por favor, verifica los datos.');
             } else {
-                // No es necesario redirigir desde aquí si AuthProvider ya lo hace.
+                // Login exitoso - redirigir a home
+                console.log("LoginForm: Login exitoso, redirigiendo a /");
+                window.location.href = "/";
             }
             setLoginIsLoading(false);
         } //eslint-disable-next-line
-         catch (err: any) {
+        catch (err: any) {
             console.error("LoginForm: Error durante el login (excepción):", err);
             const errorMessage = err.message || 'Ocurrió un error inesperado al intentar iniciar sesión.';
             setLoginError(`Error: ${errorMessage}`);
@@ -58,12 +60,12 @@ const LoginForm: React.FC = () => {
                 >
                     <div className="flex flex-col items-center mb-2">
                         <span className="text-4xl font-bold tracking-wide mb-1" style={{ color: '#1a237e', fontFamily: 'inherit', display: 'inline-block' }}>
-                          Qu
-                          <span style={{ position: 'relative', display: 'inline-block' }}>
-                            <span style={{ color: '#1a237e' }}>i</span>
-                            <span style={{ position: 'absolute', left: '50%', top: '0.12em', transform: 'translateX(-50%)', color: '#d32f2f', fontSize: '1em', fontWeight: 'bold', lineHeight: 0 }}>•</span>
-                          </span>
-                          mex
+                            Qu
+                            <span style={{ position: 'relative', display: 'inline-block' }}>
+                                <span style={{ color: '#1a237e' }}>i</span>
+                                <span style={{ position: 'absolute', left: '50%', top: '0.12em', transform: 'translateX(-50%)', color: '#d32f2f', fontSize: '1em', fontWeight: 'bold', lineHeight: 0 }}>•</span>
+                            </span>
+                            mex
                         </span>
                         <span className="text-lg font-semibold text-[#1a237e] mb-2">SISTEMA DE GESTIÓN</span>
                         <span className="text-base text-[#1a237e] font-medium">Ingresá tus datos para acceder</span>

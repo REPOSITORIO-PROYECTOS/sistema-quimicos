@@ -24,7 +24,7 @@ from ..utils.decorators import token_required, roles_required
 from ..utils.permissions import ROLES
 
 # --- Blueprint ---
-ventas_bp = Blueprint('ventas', __name__, url_prefix='/ventas')
+ventas_bp = Blueprint('ventas', __name__, url_prefix='/api/ventas')
 
 # --- Constantes de Recargo ---
 RECARGO_TRANSFERENCIA_PORC = Decimal("10.5") # 10.5%

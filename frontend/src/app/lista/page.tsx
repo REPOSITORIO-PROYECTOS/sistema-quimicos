@@ -317,7 +317,7 @@ export default function ProductPriceTable() {
     try {
       const quantity = quantityOverride !== undefined ? quantityOverride : (parseFloat(item.ref_calculo || '1') || 1);
       const body = { quantity: quantity, producto_id: item.id };
-      const calculateUrl = `https://quimex.sistemataup.online/productos/calcular_precio/${item.id}`;
+      const calculateUrl = `https://quimex.sistemataup.online/api/productos/calcular_precio/${item.id}`;
       const response = await fetch(calculateUrl, { 
         method: "POST", 
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }, 
@@ -423,7 +423,7 @@ export default function ProductPriceTable() {
     if (!token) { setErrorDolar("Token no disponible."); setLoadingDolar(false); return; }
     setLoadingDolar(true); setErrorDolar(null);
     try {
-      const res = await fetch('https://quimex.sistemataup.online/tipos_cambio/obtener_todos', { headers: { "Authorization": `Bearer ${token}` } });
+      const res = await fetch('https://quimex.sistemataup.online/api/tipos_cambio/obtener_todos', { headers: { "Authorization": `Bearer ${token}` } });
       if (!res.ok) throw new Error(`Error ${res.status}`);
       const data = await res.json();
       //eslint-disable-next-line
@@ -442,7 +442,7 @@ export default function ProductPriceTable() {
     setLoadingInitial(true); setErrorInitial(null);
     try {
       const [productsResponse, combosResponse] = await Promise.all([
-        fetch(`https://quimex.sistemataup.online/productos/obtener_todos_paginado?page=1&per_page=10000`, { headers: { "Authorization": `Bearer ${token}` } }),
+        fetch(`https://quimex.sistemataup.online/api/productos/obtener_todos_paginado?page=1&per_page=10000`, { headers: { "Authorization": `Bearer ${token}` } }),
         fetch('https://quimex.sistemataup.online/combos/obtener-todos?incluir_info_usd=true&incluir_componentes=false', { headers: { "Authorization": `Bearer ${token}` } })
       ]);
 
@@ -940,7 +940,7 @@ const handleDownloadFormulas = async () => {
     if (isNaN(oficialNum) || oficialNum < 0 || isNaN(quimexNum) || quimexNum < 0) { setErrorDolarSave("Valores inválidos."); return; }
     setLoadingDolarSave(true); setErrorDolarSave(null);
     const nombreOficial = "Oficial"; const nombreEmpresa = "Empresa";
-    const baseUrl = 'https://quimex.sistemataup.online/tipos_cambio/actualizar';
+    const baseUrl = 'https://quimex.sistemataup.online/api/tipos_cambio/actualizar';
     try {
         const responses = await Promise.allSettled([
             fetch(`${baseUrl}/${nombreOficial}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', "Authorization": `Bearer ${token}` }, body: JSON.stringify({ valor: oficialNum }), }),
@@ -1000,7 +1000,7 @@ const handleDeleteProduct = async (itemToDelete: DisplayItem) => {
 
   try {
     // --- PASO 2: INTENTO DE ELIMINACIÓN (MODO ANÁLISIS) ---
-    const deleteUrl = `https://quimex.sistemataup.online/productos/eliminar/${itemToDelete.id}`;
+    const deleteUrl = `https://quimex.sistemataup.online/api/productos/eliminar/${itemToDelete.id}`;
     const response = await fetch(deleteUrl, {
       method: 'DELETE',
       headers: {

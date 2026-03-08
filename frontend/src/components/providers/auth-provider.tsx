@@ -48,13 +48,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [user, setUser] = useState<User>(null);
     const [isLoading, setIsLoading] = useState(true); // Inicia como true, para efecto de carga inicial
     const router = useRouter();
-    
-    // Efecto para cargar desde sessionStorage al inicio
+
+    // Efecto para cargar desde localStorage al inicio
     useEffect(() => {
-       
+
         try {
-            const storedUser = sessionStorage.getItem("user");
-            const storedToken = sessionStorage.getItem("authToken");
+            const storedUser = localStorage.getItem("user");
+            const storedToken = localStorage.getItem("authToken");
 
             if (storedUser && storedToken) {
                 const parsedUser = JSON.parse(storedUser);
@@ -69,17 +69,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     //foundUser = true;
                 } else {
                     console.warn(
-                        "AuthProvider useEffect: Datos de usuario en sessionStorage no válidos o rol desconocido:",
+                        "AuthProvider useEffect: Datos de usuario en localStorage no válidos o rol desconocido:",
                         parsedUser?.role
                     );
-                    sessionStorage.removeItem("user");
-                    sessionStorage.removeItem("authToken");
+                    localStorage.removeItem("user");
+                    localStorage.removeItem("authToken");
                 }
-            } 
+            }
         } catch (error) {
-            console.error("AuthProvider useEffect: Error al parsear usuario de sessionStorage", error);
-            sessionStorage.removeItem("user");
-            sessionStorage.removeItem("authToken");
+            console.error("AuthProvider useEffect: Error al parsear usuario de localStorage", error);
+            localStorage.removeItem("user");
+            localStorage.removeItem("authToken");
         } finally {
             setIsLoading(false); // CRÍTICO: Asegurar que isLoading se ponga en false
         }
@@ -92,30 +92,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setIsLoading(true); // Iniciar carga para la operación de login
 
         try {
-            const response = await fetch(`${API_BASE_URL}/auth/login`, {
+            const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ nombre_usuario: usuario, contrasena: password }),
             });
 
             const data = await response.json();
-            
+
             if (!response.ok) {
-                
-                sessionStorage.removeItem("user");
-                sessionStorage.removeItem("authToken");
+
+                localStorage.removeItem("user");
+                localStorage.removeItem("authToken");
                 setUser(null);
                 setIsLoading(false); // Finalizar carga en caso de error
                 return false;
             }
-            
+
             const { token, user_info: backendUser } = data as { token?: string; user_info?: BackendUser };
-            
-            // Persistir token para compatibilidad con páginas que usan localStorage
+
+            // Persistir token
             if (token) {
                 try {
-                    localStorage.setItem("token", token);
-                } catch {}
+                    localStorage.setItem("authToken", token);
+                } catch { }
             }
 
             // Intentar armar el usuario con rol del backend; si falta rol, buscarlo con un fallback
@@ -135,7 +135,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                             ? list.find((u: BackendUser) => (
                                 (backendUser?.id && u.id === backendUser.id) ||
                                 (backendUser?.nombre_usuario && u.nombre_usuario === backendUser.nombre_usuario)
-                              ))
+                            ))
                             : undefined;
                         if (found && typeof found.rol === 'string' && ROLES_DISPONIBLES_VALUES.includes(found.rol as UserRole)) {
                             resolvedRole = found.rol as UserRole;
@@ -148,8 +148,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
             if (!token || !backendUser || !resolvedRole) {
                 console.error("AuthProvider login: Respuesta incompleta, no se pudo determinar el rol.", backendUser);
-                sessionStorage.removeItem("user");
-                sessionStorage.removeItem("authToken");
+                localStorage.removeItem("user");
+                localStorage.removeItem("authToken");
                 setUser(null);
                 setIsLoading(false); // Finalizar carga
                 return false;
@@ -163,35 +163,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 role: resolvedRole,
             };
 
-            sessionStorage.setItem("user", JSON.stringify(loggedInUser));
+            localStorage.setItem("user", JSON.stringify(loggedInUser));
             if (token) {
-                sessionStorage.setItem("authToken", token);
+                localStorage.setItem("authToken", token);
             }
             localStorage.setItem("user_name", loggedInUser.name);
             localStorage.setItem("usuario_id", (loggedInUser.id ?? "").toString());
-            // Compatibilidad: guardar también en localStorage para componentes que lo leen
-            try {
-                localStorage.setItem("user", JSON.stringify(loggedInUser));
-                localStorage.setItem("rol", loggedInUser.role);
-                localStorage.setItem("isAdmin", String(loggedInUser.role === "ADMIN"));
-            } catch {}
+            localStorage.setItem("rol", loggedInUser.role);
+            localStorage.setItem("isAdmin", String(loggedInUser.role === "ADMIN"));
             setUser(loggedInUser);
 
-            // La redirección se maneja ahora. setIsLoading(false) se hará después o el componente se desmontará.
-            // No necesitamos un setIsLoading(false) explícito aquí si la redirección ocurre.
-            // El estado de carga se resolverá con la nueva carga de página o
-            // si la redirección falla (aunque router.push no suele fallar así).
-            router.push("/"); // O a la ruta de dashboard principal
-            // setIsLoading(false); // Opcional: podrías ponerlo aquí, pero la redirección puede desmontar.
-                                // Si la redirección es a una ruta protegida que vuelve a verificar el auth,
-                                // el isLoading del AuthProvider se reseteará de todas formas.
+            // La redirección se maneja en LoginForm
             setIsLoading(false);
             return true;
 
         } catch (error) {
             console.error("AuthProvider login: Error en la petición", error);
-            sessionStorage.removeItem("user");
-            sessionStorage.removeItem("authToken");
+            localStorage.removeItem("user");
+            localStorage.removeItem("authToken");
             setUser(null);
             setIsLoading(false); // Finalizar carga en caso de excepción
             return false;
@@ -203,10 +192,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const logout = () => {
         setIsLoading(true); // Indicar que estamos procesando algo (opcional pero puede ser bueno para UI)
         try {
-            sessionStorage.removeItem("user");
-            sessionStorage.removeItem("authToken");
+            localStorage.removeItem("user");
+            localStorage.removeItem("authToken");
+            localStorage.removeItem("user_name");
+            localStorage.removeItem("usuario_id");
+            localStorage.removeItem("rol");
+            localStorage.removeItem("isAdmin");
         } catch (error) {
-            console.error("AuthProvider logout: Error limpiando sessionStorage", error);
+            console.error("AuthProvider logout: Error limpiando localStorage", error);
         }
         setUser(null);
         router.push("/login");
@@ -215,7 +208,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const getToken = (): string | null => {
         if (typeof window !== "undefined") {
-            return sessionStorage.getItem("authToken");
+            return localStorage.getItem("authToken");
         }
         return null;
     };

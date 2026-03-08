@@ -20,7 +20,7 @@ from ..utils.decorators import token_required, roles_required
 from ..utils.permissions import ROLES
 
 # Crear el Blueprint para productos
-productos_bp = Blueprint('productos', __name__, url_prefix='/productos')
+productos_bp = Blueprint('productos', __name__, url_prefix='/api/productos')
 
 # --- Función de Cálculo de Costo en Moneda de Referencia (USD) ---
 # En app/blueprints/productos.py

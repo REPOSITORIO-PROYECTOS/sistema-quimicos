@@ -56,7 +56,7 @@ export const ProveedoresProvider = ({ children }: ProveedoresProviderProps) => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch('https://quimex.sistemataup.online/proveedores/obtener-todos', {
+      const response = await fetch('https://quimex.sistemataup.online/api/proveedores/obtener-todos', {
         headers: {
           "Authorization": `Bearer ${token}`,
           // "Content-Type": "application/json", // No es necesario para GET sin body

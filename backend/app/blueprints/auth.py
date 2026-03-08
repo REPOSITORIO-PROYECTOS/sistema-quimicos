@@ -18,7 +18,7 @@ from ..utils.decorators import token_required, roles_required
 # Asumiremos que los roles son strings simples por ahora
 # Ejemplo: ROLES_PERMITIDOS = ['    ADMINistrador general', 'vendedor de pedidos', ...]
 
-auth_bp = Blueprint('auth', __name__, url_prefix='/auth') # Mantenemos prefijo /auth
+auth_bp = Blueprint('auth', __name__, url_prefix='/api/auth') # Mantenemos prefijo /auth
 
 # --- LOGIN ---
 @auth_bp.route('/login', methods=['POST'])

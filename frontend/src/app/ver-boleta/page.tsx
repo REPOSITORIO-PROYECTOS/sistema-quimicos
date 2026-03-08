@@ -47,7 +47,7 @@ export default function ListaBoletas() {
       const token = localStorage.getItem("token");
       if (!token) throw new Error("Usuario no autenticado.");
 
-      const response = await fetch(`https://quimex.sistemataup.online/ventas/con_entrega?page=${pageToFetch}&per_page=20`, {
+      const response = await fetch(`https://quimex.sistemataup.online/api/ventas/con_entrega?page=${pageToFetch}&per_page=20`, {
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }
       });
 
@@ -95,7 +95,7 @@ export default function ListaBoletas() {
       try {
         const token = localStorage.getItem("token");
         if (!token) throw new Error("Usuario no autenticado.");
-        const response = await fetch(`https://quimex.sistemataup.online/ventas/con_entrega?page=${paginaDeBusqueda}&per_page=20`, {
+        const response = await fetch(`https://quimex.sistemataup.online/api/ventas/con_entrega?page=${paginaDeBusqueda}&per_page=20`, {
             headers: { "Authorization": `Bearer ${token}` }
         });
         if (!response.ok) throw new Error("Error en la búsqueda");
@@ -136,7 +136,7 @@ export default function ListaBoletas() {
          try {
             const token = localStorage.getItem("token");
             if (!token) throw new Error("Usuario no autenticado.");
-            const response = await fetch(`https://quimex.sistemataup.online/ventas/con_entrega?page=${paginaDeBusqueda}&per_page=20`, {
+            const response = await fetch(`https://quimex.sistemataup.online/api/ventas/con_entrega?page=${paginaDeBusqueda}&per_page=20`, {
                 headers: { "Authorization": `Bearer ${token}` }
             });
             if (!response.ok) throw new Error("Error en la búsqueda");
@@ -172,7 +172,7 @@ export default function ListaBoletas() {
     try {
         const token = localStorage.getItem("token");
         if (!token) throw new Error("Usuario no autenticado.");
-        const response = await fetch(`https://quimex.sistemataup.online/ventas/eliminar/${ventaId}`, {
+        const response = await fetch(`https://quimex.sistemataup.online/api/ventas/eliminar/${ventaId}`, {
             method: 'DELETE',
             headers: { "Authorization": `Bearer ${token}` },
         });

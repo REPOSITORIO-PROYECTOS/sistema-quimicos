@@ -36,7 +36,7 @@ from ..utils.permissions import ROLES
 from ..utils.costos_utils import guardar_costo_historico
 
 # --- Blueprint ---
-reportes_bp = Blueprint('reportes', __name__, url_prefix='/reportes')
+reportes_bp = Blueprint('reportes', __name__, url_prefix='/api/reportes')
 
 HEADER_FONT = Font(bold=True, color="FFFFFF")
 HEADER_FILL = PatternFill(start_color="4F81BD", end_color="4F81BD", fill_type="solid")

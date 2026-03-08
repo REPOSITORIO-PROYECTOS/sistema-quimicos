@@ -6,7 +6,7 @@ from ..models import MovimientoProveedor, Proveedor, OrdenCompra
 from ..utils.decorators import token_required, roles_required
 from ..utils.permissions import ROLES
 
-finanzas_bp = Blueprint('finanzas', __name__, url_prefix='/finanzas')
+finanzas_bp = Blueprint('finanzas', __name__, url_prefix='/api/finanzas')
 
 def _deuda_proveedor(proveedor_id: int) -> Decimal:
     debitos = db.session.query(func.coalesce(func.sum(MovimientoProveedor.monto), 0)).filter(

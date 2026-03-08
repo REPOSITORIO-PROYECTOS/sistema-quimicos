@@ -1,8 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Agrega esta línea para generar una salida estática
-  output: 'export',
+  // Removed static export config to allow dev server
   images: {
     unoptimized: true,
   },

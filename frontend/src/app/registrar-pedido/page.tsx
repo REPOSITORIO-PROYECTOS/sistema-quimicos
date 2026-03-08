@@ -61,7 +61,7 @@ export default function RegistrarPedidoPage() {
   const fetchClientesRemoto = async (inputValue: string): Promise<{ value: Cliente; label: string }[]> => {
     if (!inputValue || inputValue.trim().length === 0) return [];
     const token = localStorage.getItem("token");
-    const url = `https://quimex.sistemataup.online/clientes/buscar_todos?search_term=${encodeURIComponent(inputValue)}`;
+    const url = `https://quimex.sistemataup.online/api/clientes/buscar_todos?search_term=${encodeURIComponent(inputValue)}`;
     const response = await fetch(url, { headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` } });
     if (!response.ok) return [];
     const data = await response.json();
@@ -118,7 +118,7 @@ export default function RegistrarPedidoPage() {
       try {
         // Log de payload para debug de descuento en RegistrarPedidoPage
         console.log('RegistrarPedidoPage - payload calcular_total:', { monto_base: montoBaseProductos, forma_pago: formData.formaPago, requiere_factura: formData.requiereFactura, descuento_total_global_porcentaje: formData.descuentoTotal });
-        const resTotal = await fetch("https://quimex.sistemataup.online/ventas/calcular_total", {
+        const resTotal = await fetch("https://quimex.sistemataup.online/api/ventas/calcular_total", {
           method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
           body: JSON.stringify({ monto_base: montoBaseProductos, forma_pago: formData.formaPago, requiere_factura: formData.requiereFactura, descuento_total_global_porcentaje: formData.descuentoTotal }),
         });
@@ -173,7 +173,7 @@ export default function RegistrarPedidoPage() {
         return { precioUnitario: 0, precioTotalCalculado: 0, indices };
       }
       try {
-        const precioRes = await fetch(`https://quimex.sistemataup.online/productos/calcular_precio/${productoId}`, {
+        const precioRes = await fetch(`https://quimex.sistemataup.online/api/productos/calcular_precio/${productoId}`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
           body: JSON.stringify({
@@ -329,7 +329,7 @@ export default function RegistrarPedidoPage() {
     };
 
     try {
-      const response = await fetch("https://quimex.sistemataup.online/ventas/registrar", {
+      const response = await fetch("https://quimex.sistemataup.online/api/ventas/registrar", {
         method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify(dataPayload),
       });

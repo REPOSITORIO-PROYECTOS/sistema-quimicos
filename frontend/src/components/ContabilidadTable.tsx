@@ -115,9 +115,9 @@ export default function ContabilidadTable() {
         setBalance(0);
         setLoadingStage("Cargando listas iniciales (ventas y compras)...");
 
-        const ventasApiUrl = 'https://quimex.sistemataup.online/ventas/obtener_todas';
-        const comprasListApiUrl = 'https://quimex.sistemataup.online/ordenes_compra/obtener_todas';
-        const compraDetailApiUrlBase = 'https://quimex.sistemataup.online/ordenes_compra/obtener/';
+        const ventasApiUrl = 'https://quimex.sistemataup.online/api/ventas/obtener_todas';
+        const comprasListApiUrl = 'https://quimex.sistemataup.online/api/ordenes_compra/obtener_todas';
+        const compraDetailApiUrlBase = 'https://quimex.sistemataup.online/api/ordenes_compra/obtener/';
 
         try {
             const commonHeaders = { "Content-Type": "application/json", "Authorization": `Bearer ${token}` };

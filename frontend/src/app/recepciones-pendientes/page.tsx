@@ -47,7 +47,7 @@ export default function RecepcionesPendientesPage() {
       try {
         const token = localStorage.getItem("token");
         if (!token) throw new Error("Usuario no autenticado.");
-        const url = `https://quimex.sistemataup.online/ordenes_compra/obtener_todas?page=1&per_page=50`;
+        const url = `https://quimex.sistemataup.online/api/ordenes_compra/obtener_todas?page=1&per_page=50`;
         const response = await fetch(url, {
           headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }
         });
@@ -116,7 +116,7 @@ export default function RecepcionesPendientesPage() {
       try {
         const token = localStorage.getItem("token");
         if (!token) throw new Error("Usuario no autenticado.");
-        const url = `https://quimex.sistemataup.online/ordenes_compra/obtener/${ordenSeleccionada.id}`;
+        const url = `https://quimex.sistemataup.online/api/ordenes_compra/obtener/${ordenSeleccionada.id}`;
         const response = await fetch(url, {
           headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }
         });
@@ -209,7 +209,7 @@ export default function RecepcionesPendientesPage() {
         items_recibidos: itemsRecibidos,
       };
 
-      const response = await fetch(`https://quimex.sistemataup.online/ordenes_compra/recibir/${ordenSeleccionada?.id}` || '', {
+      const response = await fetch(`https://quimex.sistemataup.online/api/ordenes_compra/recibir/${ordenSeleccionada?.id}` || '', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -229,7 +229,7 @@ export default function RecepcionesPendientesPage() {
       setLoading(true);
       setError(null);
       try {
-        const refresco = await fetch(`https://quimex.sistemataup.online/ordenes_compra/obtener_todas?page=1&per_page=50`, { headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` } });
+        const refresco = await fetch(`https://quimex.sistemataup.online/api/ordenes_compra/obtener_todas?page=1&per_page=50`, { headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` } });
         const nuevo = await refresco.json();
         setOrdenes((nuevo.ordenes || []).filter((o: OrdenCompra) => {
           const estado = String(o.estado || '').toUpperCase();

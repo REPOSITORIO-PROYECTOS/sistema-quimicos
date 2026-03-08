@@ -22,7 +22,7 @@ type ProductsContextActiveType = {
 const ProductsContextActivos = createContext<ProductsContextActiveType | undefined>(undefined);
 
 // eslint-disable-next-line
-export const ProductsActivosProvider  = ({ children }: any) => {
+export const ProductsActivosProvider = ({ children }: any) => {
   const [productos, setProductos] = useState<Producto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -31,11 +31,11 @@ export const ProductsActivosProvider  = ({ children }: any) => {
     try {
       setLoading(true);
       setError(null);
-  
-      const res = await fetch('https://quimex.sistemataup.online/productos/obtener_todos_activos');
+
+      const res = await fetch('https://quimex.sistemataup.online/api/productos/obtener_todos_activos');
       const data = await res.json();
       setProductos(data);
-    // eslint-disable-next-line
+      // eslint-disable-next-line
     } catch (err: any) {
       setError(err.message || 'Error al obtener productos');
       console.error('Error al obtener productos:', err);

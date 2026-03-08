@@ -134,7 +134,7 @@ export default function RegistrarPedidoPuertaPage() {
         });
         const pricePromises = Array.from(productQuantities.entries()).map(async ([productoId, { totalQuantity, indices }]) => {
             try {
-                const precioRes = await fetch(`https://quimex.sistemataup.online/productos/calcular_precio/${productoId}`, {
+                const precioRes = await fetch(`https://quimex.sistemataup.online/api/productos/calcular_precio/${productoId}`, {
                     method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
                     body: JSON.stringify({ producto_id: productoId, quantity: totalQuantity, cliente_id: null }),
                 });
@@ -181,7 +181,7 @@ export default function RegistrarPedidoPuertaPage() {
                     forma_pago: formData.formaPago,
                     requiere_factura: formData.requiereFactura
                 };
-                const resTotal = await fetch("https://quimex.sistemataup.online/ventas/calcular_total", {
+                const resTotal = await fetch("https://quimex.sistemataup.online/api/ventas/calcular_total", {
                     method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }, body: JSON.stringify(payload),
                 });
                 const raw = await resTotal.json() as RawTotalCalculadoResponse;
@@ -204,7 +204,7 @@ export default function RegistrarPedidoPuertaPage() {
                     ? dataTotal.monto_final_con_descuento
                     : dataTotal.monto_final_con_recargos;
                 if (formData.formaPago === 'efectivo' && formData.montoPagado >= totalParaVuelto && totalParaVuelto > 0) {
-                    const resVuelto = await fetch("https://quimex.sistemataup.online/ventas/calcular_vuelto", {
+                    const resVuelto = await fetch("https://quimex.sistemataup.online/api/ventas/calcular_vuelto", {
                         method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }, body: JSON.stringify({ monto_pagado: formData.montoPagado, monto_total_final: totalParaVuelto }),
                     });
                     const dataVuelto = await resVuelto.json();
@@ -297,7 +297,7 @@ export default function RegistrarPedidoPuertaPage() {
                 setShowPhoneModal(true);
             } else {
                 // Registrar de inmediato cuando el total es bajo
-                const response = await fetch("https://quimex.sistemataup.online/ventas/registrar", {
+                const response = await fetch("https://quimex.sistemataup.online/api/ventas/registrar", {
                     method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }, body: JSON.stringify(dataPayload),
                 });
                 const result = await response.json();
@@ -323,7 +323,7 @@ export default function RegistrarPedidoPuertaPage() {
 
         // 1) Intentar obtener cliente existente por teléfono
         try {
-            const resGet = await fetch(`https://quimex.sistemataup.online/clientes/obtener_por_telefono?telefono=${encodeURIComponent(telefono)}`, {
+            const resGet = await fetch(`https://quimex.sistemataup.online/api/clientes/obtener_por_telefono?telefono=${encodeURIComponent(telefono)}`, {
                 method: "GET",
                 headers: { "Authorization": `Bearer ${token}` }
             });
@@ -344,7 +344,7 @@ export default function RegistrarPedidoPuertaPage() {
             direccion: 'Desconocida',
             activo: true
         };
-        const res = await fetch("https://quimex.sistemataup.online/clientes/crear", {
+        const res = await fetch("https://quimex.sistemataup.online/api/clientes/crear", {
             method: "POST",
             headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
             body: JSON.stringify(payload)
@@ -364,7 +364,7 @@ export default function RegistrarPedidoPuertaPage() {
         const observacionesPrevias = (cliente.observaciones || "").trim();
         const nuevasObservaciones = [observacionesPrevias, textoObservacion].filter(Boolean).join("\n");
         const payloadCliente = { observaciones: nuevasObservaciones };
-        const res = await fetch(`https://quimex.sistemataup.online/clientes/actualizar/${cliente.id}`, {
+        const res = await fetch(`https://quimex.sistemataup.online/api/clientes/actualizar/${cliente.id}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
             body: JSON.stringify(payloadCliente)
@@ -600,7 +600,7 @@ export default function RegistrarPedidoPuertaPage() {
                                         return;
                                     }
                                     try {
-                                        const res = await fetch("https://quimex.sistemataup.online/ventas/registrar", {
+                                        const res = await fetch("https://quimex.sistemataup.online/api/ventas/registrar", {
                                             method: "POST",
                                             headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
                                             body: JSON.stringify(payload)
@@ -640,7 +640,7 @@ export default function RegistrarPedidoPuertaPage() {
                                         if (!token) { throw new Error('Sesión inválida.'); }
                                         const payload = pendingSalePayload ? pendingSalePayload : null;
                                         if (!payload) { throw new Error('No hay venta pendiente para registrar.'); }
-                                        const res = await fetch("https://quimex.sistemataup.online/ventas/registrar", {
+                                        const res = await fetch("https://quimex.sistemataup.online/api/ventas/registrar", {
                                             method: "POST",
                                             headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
                                             body: JSON.stringify(payload)

@@ -11,7 +11,7 @@ from ..models import Venta, DetalleVenta, OrdenCompra
 from ..utils.decorators import token_required, roles_required
 from ..utils.permissions import ROLES
 
-dashboard_bp = Blueprint('dashboard', __name__, url_prefix='/dashboard')
+dashboard_bp = Blueprint('dashboard', __name__, url_prefix='/api/dashboard')
 
 @dashboard_bp.route('/kpis', methods=['GET'])
 @token_required

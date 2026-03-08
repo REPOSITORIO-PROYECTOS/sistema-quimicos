@@ -49,7 +49,7 @@ export default function OrdenesRecibidasPage() {
       const token = localStorage.getItem("token");
       if (!token) throw new Error("Usuario no autenticado.");
       
-      const response = await fetch(`https://quimex.sistemataup.online/ordenes_compra/obtener_todas?page=${currentPage}&per_page=20`, {
+      const response = await fetch(`https://quimex.sistemataup.online/api/ordenes_compra/obtener_todas?page=${currentPage}&per_page=20`, {
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }
       });
       if (!response.ok) {

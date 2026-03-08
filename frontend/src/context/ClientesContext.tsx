@@ -3,21 +3,21 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react'; // Importa ReactNode
 
 type Cliente = {
-    activo: boolean,
-    codigo_postal: number | null, // Puede ser null? Ajusta si es necesario
-    condicion_iva: string,
-    contacto_principal: string | null,
-    cuit: number, // <-- Es number
-    direccion: string,
-    email: string | null,
-    fecha_alta: string,
-    id: number, // <-- Es number
-    lista_precio_asignada: string | null,
-    localidad: string,
-    nombre_razon_social: string, // <-- Este es el campo clave
-    observaciones: string | null,
-    provincia: string,
-    telefono: string | null
+  activo: boolean,
+  codigo_postal: number | null, // Puede ser null? Ajusta si es necesario
+  condicion_iva: string,
+  contacto_principal: string | null,
+  cuit: number, // <-- Es number
+  direccion: string,
+  email: string | null,
+  fecha_alta: string,
+  id: number, // <-- Es number
+  lista_precio_asignada: string | null,
+  localidad: string,
+  nombre_razon_social: string, // <-- Este es el campo clave
+  observaciones: string | null,
+  provincia: string,
+  telefono: string | null
 }
 
 type ClientesContextType = {
@@ -58,7 +58,7 @@ export const ClientesProvider = ({ children }: ClientesProviderProps) => {
       params.append('page', String(page));
       params.append('per_page', String(perPage));
       if (searchTerm) params.append('search_term', searchTerm);
-      const res = await fetch(`https://quimex.sistemataup.online/clientes/obtener_todos?${params.toString()}`);
+      const res = await fetch(`https://quimex.sistemataup.online/api/clientes/obtener_todos?${params.toString()}`);
       if (!res.ok) {
         throw new Error(`Error ${res.status}: ${res.statusText}`);
       }

@@ -13,7 +13,7 @@ from ..utils.decorators import token_required, roles_required
 from ..utils.permissions import ROLES
 
 # --- Blueprint ---
-categorias_bp = Blueprint('categorias', __name__, url_prefix='/categorias')
+categorias_bp = Blueprint('categorias', __name__, url_prefix='/api/categorias')
 
 @categorias_bp.route('/', methods=['GET'])
 @token_required

@@ -72,7 +72,7 @@ def propagar_actualizacion_costo(producto_id_actualizado: int, db_session):
 
 
 # --- Blueprint ---
-costos_bp = Blueprint('costos', __name__, url_prefix='/costos')
+costos_bp = Blueprint('costos', __name__, url_prefix='/api/costos')
 
 # --- Endpoints ---
 

@@ -8,7 +8,7 @@ import traceback # Para logs de errores más detallados
 
 # Creamos el Blueprint
 # url_prefix es clave para organizar las rutas de la API.
-proveedores_bp = Blueprint('proveedores_bp', __name__, url_prefix='/proveedores')
+proveedores_bp = Blueprint('proveedores_bp', __name__, url_prefix='/api/proveedores')
 
 
 # [CREATE] Crear un nuevo proveedor

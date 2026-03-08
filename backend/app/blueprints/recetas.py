@@ -14,7 +14,7 @@ from ..utils.costos_utils import calcular_costo_producto
 
 # Quitado si no se usa aquí: from .productos import producto_a_dict
 
-recetas_bp = Blueprint('recetas', __name__, url_prefix='/recetas')
+recetas_bp = Blueprint('recetas', __name__, url_prefix='/api/recetas')
 
 # --- Helper para serializar ---
 def receta_a_dict(receta: Receta) -> dict:
