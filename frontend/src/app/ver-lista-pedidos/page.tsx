@@ -17,7 +17,7 @@ type OrdenCompra = {
   estado_recepcion?: string;
 };
 
-type DetalleItem = { id_linea?: number|string; cantidad_solicitada?: number|string; precio_unitario_estimado?: number|string };
+type DetalleItem = { id_linea?: number | string; cantidad_solicitada?: number | string; precio_unitario_estimado?: number | string };
 
 type Pagination = {
   total_items: number;
@@ -30,7 +30,7 @@ type Pagination = {
 
 export default function ListaOrdenesCompra() {
   // Obtener usuario
-  const userItem = typeof window !== 'undefined' ? sessionStorage.getItem("user") : null;
+  const userItem = typeof window !== 'undefined' ? localStorage.getItem('user') || sessionStorage.getItem('user') : null;
   const user = userItem ? JSON.parse(userItem) : null;
   const esAlmacen = user && user.role && user.role.toUpperCase() === 'ALMACEN';
   const esAdmin = user && user.role && user.role.toUpperCase() === 'ADMIN';
@@ -95,27 +95,28 @@ export default function ListaOrdenesCompra() {
   const [aprobacionFormaPago, setAprobacionFormaPago] = useState<string>("Efectivo");
   const [aprobacionError, setAprobacionError] = useState<string | null>(null);
   const [filtroId, setFiltroId] = useState<string>("");
-  const [filtroMes, setFiltroMes] = useState<string>(new Date().toISOString().slice(0,7)); // YYYY-MM
+  const [filtroMes, setFiltroMes] = useState<string>(new Date().toISOString().slice(0, 7)); // YYYY-MM
 
   const fetchOrdenes = async (currentPage = page, filtro = filtroEstado) => {
-    setLoading(true); 
-    setError(null); 
-    setActionError(null); 
+    setLoading(true);
+    setError(null);
+    setActionError(null);
     setActionSuccess(null);
     try {
       const token = localStorage.getItem("authToken");
       if (!token) throw new Error("Usuario no autenticado.");
-      
+
       let url = `https://quimex.sistemataup.online/api/ordenes_compra/obtener_todas?page=${currentPage}&per_page=20`;
       if (filtro !== 'todos') {
-        url += `&estado=${filtro}`;
+        // El backend espera los estados en MAYÚSCULAS
+        url += `&estado=${filtro.toUpperCase()}`;
       }
 
       const response = await fetch(url, {
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, 'X-User-Role': user?.role || '', 'X-User-Name': user?.name || user?.usuario || '' }
       });
       if (!response.ok) {
-        const errData = await response.json().catch(()=>({message:`Error ${response.status}`}));
+        const errData = await response.json().catch(() => ({ message: `Error ${response.status}` }));
         throw new Error(errData.message || "Error al traer órdenes.");
       }
       const data = await response.json();
@@ -132,7 +133,7 @@ export default function ListaOrdenesCompra() {
 
   useEffect(() => {
     fetchOrdenes(page, filtroEstado);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, filtroEstado]);
 
   // Cargar resumen del primer ítem (producto y cantidad) por orden mostrada
@@ -141,13 +142,13 @@ export default function ListaOrdenesCompra() {
       try {
         const token = localStorage.getItem("authToken");
         if (!token) return;
-        const lista = (['Aprobado','Solicitado'].includes(filtroEstado) ? filtrarPorEstado(ordenes, filtroEstado) : ordenes);
+        const lista = (['Aprobado', 'Solicitado'].includes(filtroEstado) ? filtrarPorEstado(ordenes, filtroEstado) : ordenes);
         const idsAConsultar = lista.map(o => o.id).filter(id => !(id in resumenItems));
         if (idsAConsultar.length === 0) return;
         const resultados = await Promise.all(idsAConsultar.map(async (ordenId) => {
           try {
             const resp = await fetch(`https://quimex.sistemataup.online/api/ordenes_compra/obtener/${ordenId}`, {
-              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, 'X-User-Role': user?.role || '', 'X-User-Name': user?.name || user?.usuario || '' }
             });
             if (!resp.ok) return { id: ordenId, codigo: '', cantidad: 0 };
             const data = await resp.json();
@@ -194,7 +195,7 @@ export default function ListaOrdenesCompra() {
     try {
       const token = localStorage.getItem("authToken");
       if (!token) throw new Error("Usuario no autenticado.");
-      
+
       const ordenRef = ordenes.find(o => o.id === ordenId);
       const totalRef = Number(ordenRef?.importe_total_estimado ?? 0) || 0;
       let abonadoRef = aprobacionPagoCompleto ? totalRef : (parseFloat(aprobacionImporteAbonado || '0') || 0);
@@ -204,7 +205,7 @@ export default function ListaOrdenesCompra() {
           'Authorization': `Bearer ${token}`,
         }
       });
-      const detalleData = await detalleResp.json().catch(()=>({}));
+      const detalleData = await detalleResp.json().catch(() => ({}));
       const proveedor_id = Number((detalleData?.proveedor_id) ?? (detalleData?.proveedor?.id) ?? 0);
       const itemsFull = Array.isArray(detalleData?.items) ? detalleData.items : [];
       const itemsPayload = (itemsFull as DetalleItem[]).map((it) => ({ id_linea: typeof it.id_linea === 'number' ? it.id_linea : Number(it.id_linea ?? 0), cantidad_solicitada: typeof it.cantidad_solicitada === 'number' ? it.cantidad_solicitada : Number(it.cantidad_solicitada ?? 0), precio_unitario_estimado: typeof it.precio_unitario_estimado === 'number' ? it.precio_unitario_estimado : Number(it.precio_unitario_estimado ?? 0) }));
@@ -225,7 +226,7 @@ export default function ListaOrdenesCompra() {
         observaciones_solicitud: 'Aprobada desde Lista',
         tipo_caja: '',
         forma_pago: aprobacionFormaPago,
-        items: itemsPayload.length>0 ? itemsPayload : [{ id_linea: 0, cantidad_solicitada: 0, precio_unitario_estimado: 0 }],
+        items: itemsPayload.length > 0 ? itemsPayload : [{ id_linea: 0, cantidad_solicitada: 0, precio_unitario_estimado: 0 }],
         importe_total_estimado,
         importe_abonado: abonadoRef,
         cheque_perteneciente_a: undefined,
@@ -234,8 +235,8 @@ export default function ListaOrdenesCompra() {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'X-User-Role' : user.role,
-          'X-User-Name' : user.name,
+          'X-User-Role': user.role,
+          'X-User-Name': user.name,
           'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify(payload),
@@ -249,14 +250,14 @@ export default function ListaOrdenesCompra() {
           : (result && typeof result === 'object' && 'error' in result ? (result as { error?: string }).error || `Error ${response.status}` : `Error ${response.status} al aprobar la orden.`);
         throw new Error(msg);
       }
-      
+
       const message = (result && typeof result === 'object' && 'message' in result) ? (result as { message?: string }).message : undefined;
       const ordenEstado = (result && typeof result === 'object' && 'orden' in result && typeof (result as { orden?: { estado?: string } }).orden?.estado === 'string')
         ? (result as { orden?: { estado?: string } }).orden!.estado
         : undefined;
       setActionSuccess(message || `Orden Nº ${ordenId} aprobada con éxito.`);
       const nowIso = new Date().toISOString();
-      setOrdenes(prevOrdenes => prevOrdenes.map(o => 
+      setOrdenes(prevOrdenes => prevOrdenes.map(o =>
         o.id === ordenId ? { ...o, estado: ordenEstado || 'Aprobado', fecha_creacion: nowIso } : o
       ).filter(o => filtroEstado === 'todos' || o.estado === filtroEstado));
     } catch (err: unknown) {
@@ -289,8 +290,8 @@ export default function ListaOrdenesCompra() {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'X-User-Role' : user.role,
-          'X-User-Name' : user.name,
+          'X-User-Role': user.role,
+          'X-User-Name': user.name,
           "Authorization": `Bearer ${token}`,
         },
         body: JSON.stringify({ motivo_rechazo: motivoRechazo }),
@@ -303,7 +304,7 @@ export default function ListaOrdenesCompra() {
 
       setActionSuccess(result.message || `Orden Nº ${ordenId} rechazada con éxito.`);
       const nowIso = new Date().toISOString();
-      setOrdenes(prevOrdenes => prevOrdenes.map(o => 
+      setOrdenes(prevOrdenes => prevOrdenes.map(o =>
         o.id === ordenId ? { ...o, estado: result.orden?.estado || 'Rechazado', motivo_rechazo: motivoRechazo, fecha_creacion: nowIso } : o
       ).filter(o => filtroEstado === 'todos' || o.estado === filtroEstado));
     } catch (err: unknown) {
@@ -327,13 +328,13 @@ export default function ListaOrdenesCompra() {
   // Si viene con filtro 'Solicitado' por query, solo mostrar ese filtro
 
   const ordenesFiltradas = (() => {
-    const base = (['Aprobado','Solicitado'].includes(filtroEstado) ? filtrarPorEstado(ordenes, filtroEstado) : ordenes);
-    const soloSolicitado = esAdmin ? base.filter(o=> o.estado==='Solicitado') : base;
-    const porId = filtroId ? soloSolicitado.filter(o=> String(o.id).includes(filtroId.trim())) : soloSolicitado;
-    const porMes = filtroMes ? porId.filter(o=> {
+    const base = (['Aprobado', 'Solicitado'].includes(filtroEstado) ? filtrarPorEstado(ordenes, filtroEstado) : ordenes);
+    const soloSolicitado = esAdmin ? base.filter(o => o.estado === 'Solicitado') : base;
+    const porId = filtroId ? soloSolicitado.filter(o => String(o.id).includes(filtroId.trim())) : soloSolicitado;
+    const porMes = filtroMes ? porId.filter(o => {
       const d = new Date(String(o.fecha_creacion));
       const y = d.getFullYear();
-      const m = String(d.getMonth()+1).padStart(2,'0');
+      const m = String(d.getMonth() + 1).padStart(2, '0');
       return `${y}-${m}` === filtroMes;
     }) : porId;
     return porMes;
@@ -352,11 +353,11 @@ export default function ListaOrdenesCompra() {
             <>
               <div>
                 <label className="text-sm text-gray-700">ID</label>
-                <input type="text" value={filtroId} onChange={(e)=> setFiltroId(e.target.value)} className="ml-2 px-2 py-1 border rounded" placeholder="Ej: 118" />
+                <input type="text" value={filtroId} onChange={(e) => setFiltroId(e.target.value)} className="ml-2 px-2 py-1 border rounded" placeholder="Ej: 118" />
               </div>
               <div>
                 <label className="text-sm text-gray-700">Mes</label>
-                <input type="month" value={filtroMes} onChange={(e)=> setFiltroMes(e.target.value)} className="ml-2 px-2 py-1 border rounded" aria-label="Seleccionar mes" />
+                <input type="month" value={filtroMes} onChange={(e) => setFiltroMes(e.target.value)} className="ml-2 px-2 py-1 border rounded" aria-label="Seleccionar mes" />
               </div>
             </>
           )}
@@ -391,10 +392,10 @@ export default function ListaOrdenesCompra() {
                       <span>{`Nº ${orden.id.toString().padStart(4, '0')}`}</span>
                       <span>{new Date(orden.fecha_creacion).toLocaleDateString("es-AR")}</span>
                       <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full 
-                        ${orden.estado === 'Aprobado' ? 'bg-green-100 text-green-800' : 
-                          orden.estado === 'Rechazado' ? 'bg-red-100 text-red-800' : 
-                          orden.estado === 'Solicitado' ? 'bg-yellow-100 text-yellow-800' : 
-                          orden.estado === 'Con Deuda' ? 'bg-orange-100 text-orange-800' : 'bg-gray-100 text-gray-800'}`}>
+                        ${orden.estado === 'Aprobado' ? 'bg-green-100 text-green-800' :
+                          orden.estado === 'Rechazado' ? 'bg-red-100 text-red-800' :
+                            orden.estado === 'Solicitado' ? 'bg-yellow-100 text-yellow-800' :
+                              orden.estado === 'Con Deuda' ? 'bg-orange-100 text-orange-800' : 'bg-gray-100 text-gray-800'}`}>
                         {orden.estado}
                       </span>
                       {!!orden.fecha_aprobacion && (
@@ -402,7 +403,7 @@ export default function ListaOrdenesCompra() {
                           Aprobado
                         </span>
                       )}
-                      {String(orden.estado_recepcion||'').toLowerCase()==='pendiente' && (
+                      {String(orden.estado_recepcion || '').toLowerCase() === 'pendiente' && (
                         <span className="ml-2 px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
                           Recepción Pendiente
                         </span>
@@ -429,16 +430,16 @@ export default function ListaOrdenesCompra() {
                         </button>
                         {user && user.role && user.role.toUpperCase() === 'ADMIN' && orden.estado === 'Solicitado' && (
                           <>
-                        <button
-                          title="Aprobar Orden"
-                          onClick={() => handleAprobarOrden(orden.id)}
-                          disabled={!puedeActuar || isProcessingCurrent}
-                          className={`p-1 rounded text-green-500 hover:text-green-700 disabled:text-gray-400 disabled:cursor-not-allowed ${isProcessingCurrent ? 'animate-pulse' : ''}`}
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                          </svg>
-                        </button>
+                            <button
+                              title="Aprobar Orden"
+                              onClick={() => handleAprobarOrden(orden.id)}
+                              disabled={!puedeActuar || isProcessingCurrent}
+                              className={`p-1 rounded text-green-500 hover:text-green-700 disabled:text-gray-400 disabled:cursor-not-allowed ${isProcessingCurrent ? 'animate-pulse' : ''}`}
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                              </svg>
+                            </button>
                             <button
                               title="Rechazar Orden"
                               onClick={() => handleRechazarOrden(orden.id)}
@@ -461,12 +462,12 @@ export default function ListaOrdenesCompra() {
                 )}
               </ul>
             </div>
-                
+
             {pagination && pagination.total_pages > 1 && (
               <div className="flex justify-center mt-6 gap-4">
-                <button onClick={() => setPage(p => Math.max(1,p-1))} disabled={!pagination.has_prev||loading} className="btn-pag">Anterior</button>
+                <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={!pagination.has_prev || loading} className="btn-pag">Anterior</button>
                 <span className="text-indigo-700 font-medium text-sm self-center">Página {pagination.current_page} de {pagination.total_pages}</span>
-                <button onClick={() => setPage(p => p+1)} disabled={!pagination.has_next||loading} className="btn-pag">Siguiente</button>
+                <button onClick={() => setPage(p => p + 1)} disabled={!pagination.has_next || loading} className="btn-pag">Siguiente</button>
               </div>
             )}
           </>
@@ -495,11 +496,11 @@ export default function ListaOrdenesCompra() {
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">Importe abonado</label>
-                <input type="number" step="0.01" min={0} value={aprobacionImporteAbonado} onChange={(e)=> setAprobacionImporteAbonado(e.target.value)} disabled={aprobacionPagoCompleto} className="w-full px-3 py-2 rounded border" />
+                <input type="number" step="0.01" min={0} value={aprobacionImporteAbonado} onChange={(e) => setAprobacionImporteAbonado(e.target.value)} disabled={aprobacionPagoCompleto} className="w-full px-3 py-2 rounded border" />
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">Forma de Pago</label>
-                <select value={aprobacionFormaPago} onChange={(e)=> setAprobacionFormaPago(e.target.value)} className="w-full px-3 py-2 rounded border">
+                <select value={aprobacionFormaPago} onChange={(e) => setAprobacionFormaPago(e.target.value)} className="w-full px-3 py-2 rounded border">
                   <option value="Efectivo">Efectivo</option>
                   <option value="Transferencia">Transferencia</option>
                   <option value="Cheque">Cheque</option>

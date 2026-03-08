@@ -85,7 +85,7 @@ services:
     networks:
       - quimex
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:3000', (r) => {if (r.statusCode !== 200) throw new Error(r.statusCode)})"]
       interval: 10s
       timeout: 5s
       retries: 3

@@ -88,7 +88,7 @@ export default function PedidoRapidoAdmin() {
       try {
         const API_BASE_URL = 'https://quimex.sistemataup.online/api';
         const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
-        const headers: Record<string,string> = token ? { Authorization: `Bearer ${token}` } : {};
+        const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
         const res = await fetch(`${API_BASE_URL}/tipos_cambio/obtener/Oficial`, { headers });
         if (!res.ok) throw new Error('No se pudo obtener TC Oficial');
         const data = await res.json();
@@ -113,13 +113,45 @@ export default function PedidoRapidoAdmin() {
       if (uv === 'LT' || uv === 'LITROS') setUnidadMedida('Litros');
       else if (uv === 'KG' || uv === 'KILOS') setUnidadMedida('Kilos');
       else setUnidadMedida('Unidades');
-    } catch {}
+    } catch { }
   }, [productoId, productos]);
 
   const esAdmin = useMemo(() => {
-    const userItem = typeof window !== 'undefined' ? sessionStorage.getItem('user') : null;
-    const user = userItem ? JSON.parse(userItem) : null;
-    return user && user.role && user.role.toUpperCase() === 'ADMIN';
+    if (typeof window === 'undefined') return false;
+
+    // Intentar leer de localStorage primero
+    let userItem = localStorage.getItem('user');
+    let rolItem = localStorage.getItem('rol');
+
+    // Si no está en localStorage, intentar sessionStorage
+    if (!userItem) {
+      userItem = sessionStorage.getItem('user');
+    }
+
+    // Intentar obtener rol desde localStorage
+    if (!rolItem) {
+      rolItem = localStorage.getItem('rol');
+    } else if (!rolItem) {
+      rolItem = sessionStorage.getItem('rol');
+    }
+
+    // Parsear usuario
+    let user = null;
+    if (userItem) {
+      try {
+        user = JSON.parse(userItem);
+      } catch (e) {
+        console.error('Error al parsear user:', e);
+      }
+    }
+
+    // Definir rol
+    const rol = user?.role || user?.rol || rolItem || '';
+    const isAdmin = rol.toUpperCase() === 'ADMIN';
+
+    console.log('🔐 PedidoRapido - Role Check:', { rol, isAdmin, user });
+
+    return isAdmin;
   }, []);
 
   if (!esAdmin) {
@@ -316,7 +348,7 @@ export default function PedidoRapidoAdmin() {
             headers: { 'Content-Type': 'application/json', 'X-User-Role': user.role, 'X-User-Name': user.usuario || user.name, 'Authorization': `Bearer ${token}` },
             body: JSON.stringify({ motivo_rechazo: 'Auto-reversión por fallo de aprobación' })
           });
-        } catch {}
+        } catch { }
         throw err instanceof Error ? err : new Error('Error aprobando OC');
       }
 
@@ -515,7 +547,7 @@ export default function PedidoRapidoAdmin() {
               }}
               className={baseInput}
             >
-              {['Efectivo','Cheque','Transferencia','Cuenta Corriente'].map(fp => (
+              {['Efectivo', 'Cheque', 'Transferencia', 'Cuenta Corriente'].map(fp => (
                 <option key={fp} value={fp}>{fp}</option>
               ))}
             </select>

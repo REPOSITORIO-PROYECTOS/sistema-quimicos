@@ -28,17 +28,19 @@ type ItemRecepcion = {
 };
 
 export default function RecepcionesPendientesPage() {
+  const userItem = typeof window !== 'undefined' ? localStorage.getItem('user') || sessionStorage.getItem('user') : null;
+  const user = userItem ? JSON.parse(userItem) : null;
   const [ordenes, setOrdenes] = useState<OrdenCompra[]>([]);
-  const [itemsPorOrden, setItemsPorOrden] = useState<Record<number, {nombre: string, cantidad: number}[]>>({});
+  const [itemsPorOrden, setItemsPorOrden] = useState<Record<number, { nombre: string, cantidad: number }[]>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [ordenSeleccionada, setOrdenSeleccionada] = useState<OrdenCompra | null>(null);
   const [items, setItems] = useState<ItemRecepcion[] | null>(null);
   const [loadingItems, setLoadingItems] = useState(false);
-  const [sortBy, setSortBy] = useState<'id'|'fecha'|'proveedor'>('fecha');
-  const [sortDir, setSortDir] = useState<'asc'|'desc'>('asc');
-  const [filtroTipo, setFiltroTipo] = useState<'todos'|'mes'>('mes');
-  const [filtroMes, setFiltroMes] = useState<string>(new Date().toISOString().slice(0,7));
+  const [sortBy, setSortBy] = useState<'id' | 'fecha' | 'proveedor'>('fecha');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [filtroTipo, setFiltroTipo] = useState<'todos' | 'mes'>('mes');
+  const [filtroMes, setFiltroMes] = useState<string>(new Date().toISOString().slice(0, 7));
 
   useEffect(() => {
     const fetchOrdenes = async () => {
@@ -49,10 +51,10 @@ export default function RecepcionesPendientesPage() {
         if (!token) throw new Error("Usuario no autenticado.");
         const url = `https://quimex.sistemataup.online/api/ordenes_compra/obtener_todas?page=1&per_page=50`;
         const response = await fetch(url, {
-          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, 'X-User-Role': user?.role || '', 'X-User-Name': user?.name || user?.usuario || '' }
         });
         if (!response.ok) {
-          const errData = await response.json().catch(()=>({message:`Error ${response.status}`}));
+          const errData = await response.json().catch(() => ({ message: `Error ${response.status}` }));
           throw new Error(errData.message || "Error al traer órdenes.");
         }
         const data = await response.json();
@@ -64,7 +66,7 @@ export default function RecepcionesPendientesPage() {
           // - Tienen estado 'CON DEUDA' y estado_recepcion está pendiente
           const estado = String(o.estado || '').toUpperCase();
           const estadoRecepcion = String(o.estado_recepcion || '').toUpperCase();
-          
+
           return (
             estado === 'APROBADO' ||
             estadoRecepcion === 'EN_ESPERA_RECEPCION' ||
@@ -73,7 +75,7 @@ export default function RecepcionesPendientesPage() {
           );
         }));
         // Mapear ítems por orden para mostrar en la lista
-        const itemsMap: Record<number, {nombre: string, cantidad: number}[]> = {};
+        const itemsMap: Record<number, { nombre: string, cantidad: number }[]> = {};
         (data.ordenes || []).forEach((orden: Record<string, unknown>) => {
           if (orden.items && Array.isArray(orden.items)) {
             itemsMap[Number(orden.id)] = (orden.items as Record<string, unknown>[]).map((item) => {
@@ -118,7 +120,7 @@ export default function RecepcionesPendientesPage() {
         if (!token) throw new Error("Usuario no autenticado.");
         const url = `https://quimex.sistemataup.online/api/ordenes_compra/obtener/${ordenSeleccionada.id}`;
         const response = await fetch(url, {
-          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, 'X-User-Role': user?.role || '', 'X-User-Name': user?.name || user?.usuario || '' }
         });
         if (!response.ok) throw new Error("Error al obtener ítems de la orden");
         const data = await response.json();
@@ -213,8 +215,8 @@ export default function RecepcionesPendientesPage() {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'X-User-Role' : user.role,
-          'X-User-Name' : user.usuario || user.name,
+          'X-User-Role': user.role,
+          'X-User-Name': user.usuario || user.name,
           "Authorization": `Bearer ${token}`
         },
         body: JSON.stringify(payload),
@@ -234,7 +236,7 @@ export default function RecepcionesPendientesPage() {
         setOrdenes((nuevo.ordenes || []).filter((o: OrdenCompra) => {
           const estado = String(o.estado || '').toUpperCase();
           const estadoRecepcion = String(o.estado_recepcion || '').toUpperCase();
-          
+
           return (
             estado === 'APROBADO' ||
             estadoRecepcion === 'EN_ESPERA_RECEPCION' ||
@@ -260,13 +262,13 @@ export default function RecepcionesPendientesPage() {
       base = base.filter(o => {
         const d = new Date(String(o.fecha_actualizacion || o.fecha_creacion));
         const y = d.getFullYear();
-        const m = String(d.getMonth()+1).padStart(2,'0');
+        const m = String(d.getMonth() + 1).padStart(2, '0');
         return `${y}-${m}` === filtroMes;
       });
     }
     // Ordenamiento
-    base.sort((a,b)=>{
-      let va: string|number = 0; let vb: string|number = 0;
+    base.sort((a, b) => {
+      let va: string | number = 0; let vb: string | number = 0;
       if (sortBy === 'id') { va = a.id; vb = b.id; }
       else if (sortBy === 'proveedor') { va = a.proveedor_nombre || ''; vb = b.proveedor_nombre || ''; }
       else { va = new Date(a.fecha_creacion).getTime(); vb = new Date(b.fecha_creacion).getTime(); }
@@ -320,19 +322,19 @@ export default function RecepcionesPendientesPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
           <div className="flex items-center gap-2">
             <label className="text-sm text-gray-700">Ordenar por</label>
-            <select value={sortBy} onChange={e=> setSortBy(e.target.value as 'id'|'fecha'|'proveedor')} className="px-2 py-1 border rounded">
+            <select value={sortBy} onChange={e => setSortBy(e.target.value as 'id' | 'fecha' | 'proveedor')} className="px-2 py-1 border rounded">
               <option value="fecha">Fecha</option>
               <option value="id">ID</option>
               <option value="proveedor">Proveedor</option>
             </select>
-            <select value={sortDir} onChange={e=> setSortDir(e.target.value as 'asc'|'desc')} className="px-2 py-1 border rounded">
+            <select value={sortDir} onChange={e => setSortDir(e.target.value as 'asc' | 'desc')} className="px-2 py-1 border rounded">
               <option value="asc">Asc</option>
               <option value="desc">Desc</option>
             </select>
           </div>
           <div className="flex items-center gap-2">
             <label className="text-sm text-gray-700">Tiempo</label>
-            <select value={filtroTipo} onChange={e=> setFiltroTipo(e.target.value as 'todos'|'mes')} className="px-2 py-1 border rounded">
+            <select value={filtroTipo} onChange={e => setFiltroTipo(e.target.value as 'todos' | 'mes')} className="px-2 py-1 border rounded">
               <option value="todos">Todos</option>
               <option value="mes">Mensual</option>
             </select>
@@ -348,7 +350,7 @@ export default function RecepcionesPendientesPage() {
                 className="px-2 py-1 border rounded"
               />
             )}
-            
+
           </div>
         </div>
         {loading && <p className="text-center text-gray-600 my-4 text-sm">Cargando órdenes aprobadas...</p>}

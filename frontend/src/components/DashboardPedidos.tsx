@@ -35,10 +35,10 @@ interface DashboardPedidosData {
   };
 }
 
-const formatCurrency = (value: number) => 
+const formatCurrency = (value: number) =>
   new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(value);
 
-const formatNumber = (value: number) => 
+const formatNumber = (value: number) =>
   new Intl.NumberFormat("es-AR").format(Math.round(value));
 
 export default function DashboardPedidos() {
@@ -51,7 +51,7 @@ export default function DashboardPedidos() {
       try {
         setIsLoading(true);
         setError(null);
-        
+
         const token = localStorage.getItem("authToken");
         if (!token) {
           setError("No autenticado. Por favor inicia sesión.");
@@ -59,8 +59,9 @@ export default function DashboardPedidos() {
           return;
         }
 
+        // Usar endpoint de ventas-pedidos para VENTAS_PEDIDOS
         const response = await fetch(
-          "https://quimex.sistemataup.online/api/dashboard/kpis",
+          "https://quimex.sistemataup.online/api/dashboard/ventas-pedidos",
           {
             headers: {
               "Authorization": `Bearer ${token}`,
@@ -71,6 +72,7 @@ export default function DashboardPedidos() {
 
         if (!response.ok) {
           const errData = await response.json().catch(() => ({}));
+          console.error("Dashboard error response:", response.status, errData);
           throw new Error(errData.error || `Error ${response.status}`);
         }
 
@@ -78,7 +80,9 @@ export default function DashboardPedidos() {
         console.log("Dashboard data received:", result);
         setData(result);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Error al cargar datos");
+        const errorMsg = err instanceof Error ? err.message : "Error al cargar datos";
+        console.error("Dashboard fetch error:", errorMsg);
+        setError(errorMsg);
       } finally {
         setIsLoading(false);
       }
