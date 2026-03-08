@@ -5,10 +5,34 @@ import { useEffect, useState } from "react";
 import { DollarSign, Package, Truck, AlertTriangle } from 'lucide-react';
 
 interface DashboardPedidosData {
-  kgs_pendientes: number;
-  pedidos_pendientes: number;
-  ingreso_puerta_hoy: number;
-  ingreso_pedido_hoy: number;
+  primera_fila: {
+    compras_por_recibir: number;
+    deuda_proveedores: number;
+    ingreso_pedido_hoy: number;
+    ingreso_pedido_manana: number;
+    ingreso_puerta_hoy: number;
+    kgs_manana: number;
+    pedidos_pendientes_manana: number;
+  };
+  segunda_fila: {
+    costos_fijos_mes: number;
+    costos_variables_mes: number;
+    ventas_mes: number;
+  };
+  tercera_fila: {
+    relacion_ingresos: {
+      pedidos: number;
+      puerta: number;
+    };
+    relacion_pagos: {
+      efectivo: number;
+      otros: number;
+    };
+  };
+  pendientes: {
+    kgs_pendientes: number;
+    pedidos_pendientes: number;
+  };
 }
 
 const formatCurrency = (value: number) => 
@@ -51,6 +75,7 @@ export default function DashboardPedidos() {
         }
 
         const result = await response.json();
+        console.log("Dashboard data received:", result);
         setData(result);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Error al cargar datos");
@@ -94,7 +119,7 @@ export default function DashboardPedidos() {
         <p className="text-gray-600 text-sm mt-1">Vista simplificada de ventas y entregas</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="bg-linear-to-br from-orange-50 to-orange-100 border-orange-200">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold text-orange-900 flex items-center gap-2">
@@ -104,7 +129,7 @@ export default function DashboardPedidos() {
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-orange-900">
-              {formatNumber(data.kgs_pendientes)}
+              {formatNumber(data?.pendientes?.kgs_pendientes ?? 0)}
             </div>
             <p className="text-xs text-orange-700 mt-1">pendientes</p>
           </CardContent>
@@ -119,7 +144,7 @@ export default function DashboardPedidos() {
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-blue-900">
-              {data.pedidos_pendientes}
+              {data?.pendientes?.pedidos_pendientes ?? 0}
             </div>
             <p className="text-xs text-blue-700 mt-1">de entrega</p>
           </CardContent>
@@ -134,12 +159,11 @@ export default function DashboardPedidos() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-900">
-              {formatCurrency(data.ingreso_puerta_hoy)}
+              {formatCurrency(data?.primera_fila?.ingreso_puerta_hoy ?? 0)}
             </div>
             <p className="text-xs text-green-700 mt-1">vendido</p>
           </CardContent>
         </Card>
-
       </div>
     </div>
   );

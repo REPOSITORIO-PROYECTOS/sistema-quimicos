@@ -730,14 +730,47 @@ def aprobar_orden_compra(current_user, orden_id):
             ajuste_valor = data.get('ajuste_tc')
             orden_db.ajuste_tc = str(ajuste_valor).lower() == 'true' or ajuste_valor is True
 
+        # --- Actualizar items (solo si vienen en el payload) ANTES de validar pago---
+        items_payload = data.get('items', [])
+        if items_payload and orden_db.items:
+            for item_data in items_payload:
+                id_linea = item_data.get('id_linea')
+                detalle = next((item for item in orden_db.items if item.id == id_linea), None)
+                if detalle:
+                    if 'cantidad_solicitada' in item_data:
+                        detalle.cantidad_solicitada = item_data['cantidad_solicitada']
+                    if 'precio_unitario_estimado' in item_data:
+                        detalle.precio_unitario_estimado = item_data['precio_unitario_estimado']
+                    # Recalcular importe línea si ambos presentes
+                    if 'cantidad_solicitada' in item_data and 'precio_unitario_estimado' in item_data:
+                        detalle.importe_linea_estimado = item_data['cantidad_solicitada'] * item_data['precio_unitario_estimado']
+
+        # Actualizar el importe total de la orden con el del payload o recalcular
+        if 'importe_total_estimado' in data:
+            orden_db.importe_total_estimado = data['importe_total_estimado']
+        else:
+            # Recalcular si no viene
+            total = sum([item.importe_linea_estimado or 0 for item in orden_db.items])
+            orden_db.importe_total_estimado = total
+
+        # Calcular total INCLUYENDO IVA e IIBB antes de validar importe_abonado
+        base_total = orden_db.importe_total_estimado or Decimal('0')
+        
+        # Usar nuevas tasas si vienen en el payload, sino usar las existentes
+        iva_rate_for_calc = _parse_percentage_rate(data.get('iva') if 'iva' in data else orden_db.iva or '0')
+        iibb_rate_for_calc = _parse_iibb_rate(data.get('iibb') if 'iibb' in data else orden_db.iibb or '0')
+        
+        iva_amount = (base_total * iva_rate_for_calc).quantize(Decimal('0.01')) if iva_rate_for_calc else Decimal('0')
+        iibb_amount = (base_total * iibb_rate_for_calc).quantize(Decimal('0.01')) if iibb_rate_for_calc else Decimal('0')
+        total_estimado_con_impuestos = (base_total + iva_amount + iibb_amount).quantize(Decimal('0.01'))
+
         # --- Actualizar datos de pago (si vienen) ---
         if 'importe_abonado' in data:
             try:
                 importe_abonado_val = Decimal(str(data.get('importe_abonado')))
                 if importe_abonado_val < 0:
                     return jsonify({"error": "'importe_abonado' no puede ser negativo"}), 400
-                total_estimado = orden_db.importe_total_estimado or sum([(item.importe_linea_estimado or 0) for item in orden_db.items])
-                if total_estimado and importe_abonado_val > total_estimado:
+                if total_estimado_con_impuestos and importe_abonado_val > total_estimado_con_impuestos:
                     return jsonify({"error": "'importe_abonado' no puede superar el total estimado"}), 400
                 orden_db.importe_abonado = importe_abonado_val
             except (InvalidOperation, TypeError):
@@ -761,29 +794,6 @@ def aprobar_orden_compra(current_user, orden_id):
                 orden_db.observaciones_solicitud = (obs + ('\n' if obs else '') + s)
         except Exception:
             pass
-
-        # --- Actualizar items (solo si vienen en el payload) ---
-        items_payload = data.get('items', [])
-        if items_payload and orden_db.items:
-            for item_data in items_payload:
-                id_linea = item_data.get('id_linea')
-                detalle = next((item for item in orden_db.items if item.id == id_linea), None)
-                if detalle:
-                    if 'cantidad_solicitada' in item_data:
-                        detalle.cantidad_solicitada = item_data['cantidad_solicitada']
-                    if 'precio_unitario_estimado' in item_data:
-                        detalle.precio_unitario_estimado = item_data['precio_unitario_estimado']
-                    # Recalcular importe línea si ambos presentes
-                    if 'cantidad_solicitada' in item_data and 'precio_unitario_estimado' in item_data:
-                        detalle.importe_linea_estimado = item_data['cantidad_solicitada'] * item_data['precio_unitario_estimado']
-
-        # Actualizar el importe total de la orden con el del payload o recalcular
-        if 'importe_total_estimado' in data:
-            orden_db.importe_total_estimado = data['importe_total_estimado']
-        else:
-            # Recalcular si no viene
-            total = sum([item.importe_linea_estimado or 0 for item in orden_db.items])
-            orden_db.importe_total_estimado = total
 
         # Si el payload incluye cambios en IVA o IIBB, recalcular importe y actualizar deuda
         try:

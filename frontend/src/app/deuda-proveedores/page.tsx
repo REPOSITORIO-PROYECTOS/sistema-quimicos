@@ -218,14 +218,14 @@ export default function DeudaProveedoresPage() {
             <label className="text-sm text-gray-700">Proveedor</label>
             <select value={filtroProveedor} onChange={e=> setFiltroProveedor(e.target.value)} className="ml-2 px-2 py-1 border rounded">
               <option value="">-- Todos --</option>
-              {proveedoresDisponibles.map(p=> <option key={p.id} value={p.nombre}>{p.nombre}</option>)}
+              {proveedoresDisponibles.map((p, idx)=> <option key={`proveedor-${idx}-${p.nombre}`} value={p.nombre}>{p.nombre}</option>)}
             </select>
           </div>
           <div>
             <label className="text-sm text-gray-700">Producto</label>
             <select value={filtroProducto} onChange={e=> setFiltroProducto(e.target.value)} className="ml-2 px-2 py-1 border rounded">
               <option value="">-- Todos --</option>
-              {productosDisponibles.map(p=> <option key={p.id} value={p.nombre}>{p.nombre}</option>)}
+              {productosDisponibles.map((p, idx)=> <option key={`producto-${idx}-${p.nombre}`} value={p.nombre}>{p.nombre}</option>)}
             </select>
           </div>
           <div>
@@ -283,7 +283,7 @@ export default function DeudaProveedoresPage() {
                     {r.items.length>0 ? (
                       <ul className="list-disc ml-4">
                         {r.items.slice(0,3).map(it=> (
-                          <li key={it.id_linea}>{it.producto_nombre || `ID ${it.producto_id}`} ({it.cantidad_solicitada})</li>
+                          <li key={`${r.ocId}-${it.id_linea}`}>{it.producto_nombre || `ID ${it.producto_id}`} ({it.cantidad_solicitada})</li>
                         ))}
                         {r.items.length>3 && <li className="text-xs text-gray-500">+{r.items.length-3} más</li>}
                       </ul>

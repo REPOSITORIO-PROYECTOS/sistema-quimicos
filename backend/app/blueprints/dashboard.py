@@ -1,7 +1,7 @@
 # app/blueprints/dashboard.py
 
 from flask import Blueprint, jsonify, request
-from sqlalchemy import func, case, or_
+from sqlalchemy import func, case, or_, literal
 from decimal import Decimal
 import datetime
 import traceback
@@ -55,7 +55,7 @@ def get_dashboard_kpis(current_user):
         elif tipo_venta == 'pedido':
             filtro_venta = (Venta.direccion_entrega.isnot(None)) & (Venta.direccion_entrega != '')
         else:
-            filtro_venta = True
+            filtro_venta = literal(True)
         
         # INGRESOS totales
         ingresos_total = db.session.query(
@@ -133,40 +133,109 @@ def get_dashboard_kpis(current_user):
                 (Venta.direccion_entrega.isnot(None)) & (Venta.direccion_entrega != '')
             ).scalar() or Decimal('0.0')
         
+        # Calcular ingresos de HOY para el dashboard
+        today_inicio = datetime.datetime.combine(today, datetime.time.min)
+        today_fin = datetime.datetime.combine(today, datetime.time.max)
+        
+        # Ingresos de hoy por tipo de venta (PEDIDO - con dirección)
+        ingreso_pedido_hoy = db.session.query(
+            func.sum(Venta.monto_final_con_recargos)
+        ).filter(
+            Venta.fecha_pedido.between(today_inicio, today_fin),
+            (Venta.direccion_entrega.isnot(None)) & (Venta.direccion_entrega != '')
+        ).scalar() or Decimal('0.0')
+        
+        # Ingresos de hoy por tipo de venta (PUERTA - sin dirección)
+        ingreso_puerta_hoy = db.session.query(
+            func.sum(Venta.monto_final_con_recargos)
+        ).filter(
+            Venta.fecha_pedido.between(today_inicio, today_fin),
+            or_(Venta.direccion_entrega.is_(None), Venta.direccion_entrega == '')
+        ).scalar() or Decimal('0.0')
+        
+        # Mañana
+        manana = today + datetime.timedelta(days=1)
+        manana_inicio = datetime.datetime.combine(manana, datetime.time.min)
+        manana_fin = datetime.datetime.combine(manana, datetime.time.max)
+        
+        ingreso_pedido_manana = db.session.query(
+            func.sum(Venta.monto_final_con_recargos)
+        ).filter(
+            Venta.fecha_pedido.between(manana_inicio, manana_fin),
+            (Venta.direccion_entrega.isnot(None)) & (Venta.direccion_entrega != '')
+        ).scalar() or Decimal('0.0')
+        
+        print(f"DEBUG: Mañana ({manana}), ingreso_pedido_manana: {ingreso_pedido_manana}")
+        
+        kgs_manana = db.session.query(
+            func.sum(DetalleVenta.cantidad)
+        ).select_from(DetalleVenta).join(Venta).filter(
+            Venta.fecha_pedido.between(manana_inicio, manana_fin),
+            (Venta.direccion_entrega.isnot(None)) & (Venta.direccion_entrega != '')
+        ).scalar() or Decimal('0.0')
+        
+        # Cantidad de pedidos para mañana
+        pedidos_pendientes_manana = db.session.query(
+            func.count(Venta.id)
+        ).filter(
+            Venta.fecha_pedido.between(manana_inicio, manana_fin),
+            (Venta.direccion_entrega.isnot(None)) & (Venta.direccion_entrega != '')
+        ).scalar() or 0
+        
+        # DESGLOSE ingresos (relación pedidos vs puerta)
+        ingresos_pedido_mes = db.session.query(
+            func.sum(Venta.monto_final_con_recargos)
+        ).filter(
+            filtro_base,
+            (Venta.direccion_entrega.isnot(None)) & (Venta.direccion_entrega != '')
+        ).scalar() or Decimal('0.0')
+        
+        ingresos_puerta_mes = db.session.query(
+            func.sum(Venta.monto_final_con_recargos)
+        ).filter(
+            filtro_base,
+            or_(Venta.direccion_entrega.is_(None), Venta.direccion_entrega == '')
+        ).scalar() or Decimal('0.0')
+        
+        # DESGLOSE pagos
+        pagos_efectivo = db.session.query(
+            func.sum(Venta.monto_final_con_recargos)
+        ).filter(
+            filtro_base,
+            Venta.forma_pago == 'efectivo'
+        ).scalar() or Decimal('0.0')
+        
+        pagos_otros = ingresos_total - pagos_efectivo
+        
+        # Estructura de respuesta completa
         response_data = {
-            "filtros": {
-                "fecha_inicio": fecha_inicio_str or today.isoformat(),
-                "fecha_fin": fecha_fin_str or today.isoformat(),
-                "tipo_venta": tipo_venta if tipo_venta else "ambas"
+            "primera_fila": {
+                "compras_por_recibir": 0.0,  # Requiere tabla de OrdenCompra
+                "deuda_proveedores": 0.0,     # Requiere tabla de Proveedores
+                "ingreso_pedido_hoy": float(ingreso_pedido_hoy),
+                "ingreso_pedido_manana": float(ingreso_pedido_manana),
+                "ingreso_puerta_hoy": float(ingreso_puerta_hoy),
+                "kgs_manana": float(kgs_manana),
+                "pedidos_pendientes_manana": pedidos_pendientes_manana
             },
-            "resumen_general": {
-                "ingresos_total": float(ingresos_total),
-                "costos_total": float(costos_total),
-                "margen_total": float(margen_total),
-                "porcentaje_margen": float(porcentaje_margen),
-                "cantidad_ventas": cantidad_ventas,
-                "promedio_venta": promedio_venta
+            "segunda_fila": {
+                "costos_fijos_mes": 0.0,      # Requiere tabla de Costos Fijos
+                "costos_variables_mes": float(costos_total),
+                "ventas_mes": float(ingresos_total)
             },
-            "desglose_tipo_venta": {
-                "puerta": {
-                    "ingresos": float((getattr(desglose, 'puerta', 0) or 0)),
-                    "cantidad": getattr(desglose, 'count_puerta', 0) or 0,
-                    "costos": float(costos_puerta)
+            "tercera_fila": {
+                "relacion_ingresos": {
+                    "pedidos": float(ingresos_pedido_mes),
+                    "puerta": float(ingresos_puerta_mes)
                 },
-                "pedido": {
-                    "ingresos": float((getattr(desglose, 'pedido', 0) or 0)),
-                    "cantidad": getattr(desglose, 'count_pedidos', 0) or 0,
-                    "costos": float(costos_pedido)
+                "relacion_pagos": {
+                    "efectivo": float(pagos_efectivo),
+                    "otros": float(pagos_otros)
                 }
             },
-            "pagos": {
-                "efectivo": float((getattr(pagos, 'efectivo', 0) or 0)),
-                "transferencia": float((getattr(pagos, 'transferencia', 0) or 0)),
-                "factura": float((getattr(pagos, 'factura', 0) or 0))
-            },
-            "pendiente_entrega": {
-                "cantidad_pedidos": cantidad_pedidos_pendientes,
-                "cantidad_kilos": float(total_kgs_pendientes)
+            "pendientes": {
+                "kgs_pendientes": float(total_kgs_pendientes),
+                "pedidos_pendientes": cantidad_pedidos_pendientes
             }
         }
         return jsonify(response_data)

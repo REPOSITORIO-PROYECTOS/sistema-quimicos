@@ -86,7 +86,7 @@ export default function PedidoRapidoAdmin() {
     // Traer Tipo de Cambio Oficial
     const fetchTC = async () => {
       try {
-        const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://quimex.sistemataup.online';
+        const API_BASE_URL = 'https://quimex.sistemataup.online';
         const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
         const headers: Record<string,string> = token ? { Authorization: `Bearer ${token}` } : {};
         const res = await fetch(`${API_BASE_URL}/tipos_cambio/obtener/Oficial`, { headers });
