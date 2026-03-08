@@ -52,7 +52,7 @@ export default function DashboardPedidos() {
         setIsLoading(true);
         setError(null);
         
-        const token = localStorage.getItem("token");
+        const token = localStorage.getItem("authToken");
         if (!token) {
           setError("No autenticado. Por favor inicia sesión.");
           setIsLoading(false);

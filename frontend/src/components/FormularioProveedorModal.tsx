@@ -41,7 +41,7 @@ export default function FormularioProveedorModal({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null); // Mensaje de éxito local del modal
-  const token = typeof window !== 'undefined' ? localStorage.getItem("token") : null;
+  const token = typeof window !== 'undefined' ? localStorage.getItem("authToken") : null;
 
   useEffect(() => {
     // Limpiar mensajes de error/éxito al abrir el modal o cambiar el proveedor a editar

@@ -1,99 +1,56 @@
 // src/app/page.tsx
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import Dashboard from "@/components/dashboard"; // Este será el contenido para ADMIN
+import Dashboard from "@/components/dashboard";
+import { useAuth } from '@/components/providers/auth-provider';
 
-// Definición de roles (debe ser consistente con tu Navbar y otros lugares)
-type UserRole = "ADMIN" | "ALMACEN" | "VENTAS_LOCAL" | "VENTAS_PEDIDOS" | "CONTABLE" | "GUEST";
-
-// Mapeo de roles a sus páginas por defecto (como lo definimos antes)
-const defaultPathsByRole: Partial<Record<UserRole, string>> = {
+// Mapeo de roles a sus páginas por defecto
+const defaultPathsByRole: Record<string, string> = {
     ALMACEN: "/compras",
     VENTAS_LOCAL: "/acciones-puerta",
     CONTABLE: "/movimientos",
     VENTAS_PEDIDOS: "/dashboard-pedidos",
+    ADMIN: "", // ADMIN se queda en home (Dashboard)
 };
 
 export default function Home() {
     const router = useRouter();
-    const [isLoading, setIsLoading] = useState(true);
-    const [userRole, setUserRole] = useState<UserRole | null>(null);
+    const { user, isHydrated } = useAuth();
 
     useEffect(() => {
-        // Solo ejecutar en el cliente donde localStorage está disponible
-        if (typeof window !== "undefined") {
-            const userItem = localStorage.getItem("user");
-            if (userItem) {
-                try {
-                    const user = JSON.parse(userItem);
-                    const role = (user?.role as UserRole) || "GUEST"; // Asegúrate que 'role' es el nombre correcto
-                    setUserRole(role);
+        // Solo procesar después de que el contexto se haya hidratado
+        if (!isHydrated) return;
 
-                    if (role !== "ADMIN" && role !== "GUEST") {
-                        const targetPath = defaultPathsByRole[role];
-                        if (targetPath) {
-                            router.replace(targetPath);
-                            // No necesitamos setIsLoading(false) aquí porque la redirección ocurrirá
-                        } else {
-                            console.warn(`No default path for role: ${role}. Staying on Home or consider redirecting.`);
-                            // Si no hay ruta definida y no es ADMIN, podrías decidir redirigir a login
-                            // o a una página de error, o dejar que se muestre el dashboard (lo cual no es ideal)
-                            // Por ahora, si no hay ruta, y no es ADMIN, se quedará en Home,
-                            // lo que significa que el Dashboard se mostrará.
-                            // Podrías querer que este caso también redirija, por ejemplo, a /login
-                            // router.replace('/login');
-                            setIsLoading(false); // Permitir renderizar si no hay redirección
-                        }
-                    } else if (role === "GUEST") {
-                        // Si un GUEST llega aquí (AppShell debería haberlo prevenido teóricamente)
-                        router.replace('/login'); // Redirigir a login
-                    } else {
-                        // Es ADMIN o no hay redirección necesaria
-                        setIsLoading(false);
-                    }
-                } catch (error) {
-                    console.error("Failed to parse user from localStorage:", error);
-                    setUserRole("GUEST"); // Tratar como GUEST si hay error
-                    router.replace('/login'); // Redirigir a login en caso de error
-                }
-            } else {
-                // No hay usuario en localStorage, AppShell debería haber manejado esto.
-                // Como medida de seguridad, redirigir a login.
-                setUserRole("GUEST");
-                router.replace('/login');
+        if (!user) {
+            // Si no hay usuario, AppShell debería mostrar LoginForm
+            return;
+        }
+
+        // Si el usuario no es ADMIN, redirigir a su página por defecto
+        if (user.role !== "ADMIN") {
+            const targetPath = defaultPathsByRole[user.role];
+            if (targetPath) {
+                router.replace(targetPath);
             }
         }
-    }, [router]);
+        // Si es ADMIN, permanecer en home (mostrar Dashboard)
+    }, [user, isHydrated, router]);
 
-    // Mostrar un estado de carga mientras se determina el rol y se redirige
-    if (isLoading) {
-        return (
-            <div className="flex justify-center items-center h-screen bg-background">
-                {/* Puedes poner un spinner aquí */}
-                <p>Cargando...</p>
-            </div>
-        );
+    // ADMIN users ver el Dashboard
+    if (user?.role === "ADMIN") {
+        return <Dashboard />;
     }
 
-    // Solo ADMIN ve el dashboard común en Home.
-    if (userRole === "ADMIN") {
-        return (
-            <div className="bg-background p-4 md:p-6">
-                <Dashboard />
-            </div>
-        );
-    }
-
-    // Si no es ADMIN y no se ha redirigido (ej. GUEST esperando redirección a login),
-    // puedes mostrar un mensaje o nada, ya que la redirección debería ocurrir.
-    // El estado de carga ya cubre esto.
-    // Si llegamos aquí y no somos ADMIN, algo en la lógica anterior necesita ajuste.
-    // Por seguridad, podrías retornar null o un mensaje genérico.
+    // Otros roles serán redirigidos por el useEffect
+    // Mientras tanto, mostrar un mensaje de carga
     return (
-        <div className="flex justify-center items-center h-screen bg-background">
-            <p>Redirigiendo...</p> {/* Mensaje mientras la redirección se completa */}
+        <div className="flex items-center justify-center min-h-screen bg-background">
+            <div className="flex flex-col items-center gap-4">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+                <p className="text-muted-foreground">Redirigiendo...</p>
+            </div>
         </div>
     );
 }

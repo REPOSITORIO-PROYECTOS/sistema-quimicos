@@ -3,9 +3,18 @@
 
 import type React from "react";
 import { createContext, useContext, useEffect, useState } from "react";
-import { useRouter } from "next/navigation"; // No necesitamos usePathname aquí si no hay protección de rutas activa
+import { useRouter } from "next/navigation";
 
-// (Mantén tus definiciones de ROLES_DISPONIBLES_VALUES y UserRole aquí o importadas)
+/**
+ * AuthProvider - Gestor centralizado de autenticación para Quimex
+ * 
+ * Features:
+ * - Manejo correcto de SSR/hidratación
+ * - Validación de tokens al cargar desde localStorage
+ * - Sincronización entre ventanas/tabs
+ * - Tipos robustos para roles de usuario
+ */
+
 export const ROLES_DISPONIBLES_VALUES = [
     "ADMIN", "ALMACEN", "VENTAS_LOCAL", "VENTAS_PEDIDOS", "CONTABLE"
 ] as const;
@@ -37,62 +46,120 @@ type AuthContextType = {
     ) => Promise<boolean>;
     logout: () => void;
     isLoading: boolean;
+    isHydrated: boolean; // Nueva bandera para saber si ya cargó desde localStorage
     getToken: () => string | null;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://quimex.sistemataup.online";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://quimex.sistemataup.online/api";
+
+// Función auxiliar para validar que el objeto user tenga la estructura correcta
+function isValidUser(obj: unknown): obj is Exclude<User, null> {
+    if (!obj || typeof obj !== "object") return false;
+    const u = obj as Record<string, unknown>;
+    return (
+        typeof u.usuario === "string" &&
+        typeof u.name === "string" &&
+        typeof u.role === "string" &&
+        ROLES_DISPONIBLES_VALUES.includes(u.role as UserRole)
+    );
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [user, setUser] = useState<User>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [isHydrated, setIsHydrated] = useState(false);
     const router = useRouter();
 
-    // Efecto para cargar desde localStorage al inicio (solo en cliente)
+    /**
+     * Efecto para cargar desde localStorage al montar (solo en cliente)
+     * Maneja correctamente la hidratación SSR
+     */
     useEffect(() => {
-        // Cargar estado desde localStorage después de que React se monte en el cliente
+        // Este efecto NO se ejecuta en el servidor, solo en cliente
+        const initializeAuth = () => {
+            try {
+                const storedUser = localStorage.getItem("user");
+                const storedToken = localStorage.getItem("authToken");
 
-        try {
-            const storedUser = localStorage.getItem("user");
-            const storedToken = localStorage.getItem("authToken");
+                if (storedUser && storedToken) {
+                    try {
+                        const parsedUser = JSON.parse(storedUser);
 
-            if (storedUser && storedToken) {
-                const parsedUser = JSON.parse(storedUser);
-                if (
-                    parsedUser &&
-                    typeof parsedUser.usuario === "string" &&
-                    typeof parsedUser.name === "string" &&
-                    parsedUser.role &&
-                    ROLES_DISPONIBLES_VALUES.includes(parsedUser.role as UserRole)
-                ) {
-                    setUser(parsedUser as User);
+                        // Validar que el usuario tenga la estructura correcta
+                        if (isValidUser(parsedUser)) {
+                            // Confiar en los datos guardados locales
+                            // Si el token es inválido, lo descubriremos cuando hagamos requests a la API
+                            setUser(parsedUser as User);
+                            console.info("AuthProvider: Usuario cargado desde localStorage");
+                        } else {
+                            console.warn(
+                                "AuthProvider: Datos de usuario en localStorage inválidos:",
+                                parsedUser
+                            );
+                            localStorage.removeItem("user");
+                            localStorage.removeItem("authToken");
+                        }
+                    } catch (parseError) {
+                        console.error("AuthProvider: Error al parsear usuario de localStorage", parseError);
+                        localStorage.removeItem("user");
+                        localStorage.removeItem("authToken");
+                    }
                 } else {
-                    console.warn(
-                        "AuthProvider useEffect: Datos de usuario en localStorage no válidos o rol desconocido:",
-                        parsedUser?.role
-                    );
-                    localStorage.removeItem("user");
-                    localStorage.removeItem("authToken");
+                    console.info("AuthProvider: No hay sesión guardada en localStorage");
                 }
+            } catch (error) {
+                console.error("AuthProvider: Error general en inicialización", error);
+            } finally {
+                // IMPORTANTE: Marcar como hidratado SIEMPRE, incluso si hubo errores
+                setIsHydrated(true);
+                setIsLoading(false);
             }
-        } catch (error) {
-            console.error("AuthProvider useEffect: Error al parsear usuario de localStorage", error);
-            localStorage.removeItem("user");
-            localStorage.removeItem("authToken");
-        } finally {
-            setIsLoading(false);
-        }
+        };
+
+        // Ejecutar sincronamente para no bloquear renderizado
+        initializeAuth();
     }, []); // Se ejecuta solo una vez al montar el provider
 
+    /**
+     * Escuchar cambios de almacenamiento (para sincronización entre tabs)
+     */
+    useEffect(() => {
+        const handleStorageChange = (e: StorageEvent) => {
+            if (e.key === "user" || e.key === "authToken") {
+                // Si otro tab hace logout, sincronizar aquí también
+                if (!e.newValue) {
+                    setUser(null);
+                } else if (e.key === "user" && e.newValue) {
+                    try {
+                        const newUser = JSON.parse(e.newValue);
+                        if (isValidUser(newUser)) {
+                            setUser(newUser as User);
+                        }
+                    } catch (err) {
+                        console.error("Error al sincronizar usuario desde otro tab", err);
+                    }
+                }
+            }
+        };
+
+        window.addEventListener("storage", handleStorageChange);
+        return () => window.removeEventListener("storage", handleStorageChange);
+    }, []);
+
+    /**
+     * Función de login
+     * Autentica contra el API de Quimex
+     */
     const login = async (
         usuario: string,
         password: string,
     ): Promise<boolean> => {
-        setIsLoading(true); // Iniciar carga para la operación de login
+        setIsLoading(true);
 
         try {
-            const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+            const response = await fetch(`${API_BASE_URL}/auth/login`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ nombre_usuario: usuario, contrasena: password }),
@@ -101,11 +168,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const data = await response.json();
 
             if (!response.ok) {
-
+                console.error("AuthProvider login: Error de autenticación", data);
                 localStorage.removeItem("user");
                 localStorage.removeItem("authToken");
                 setUser(null);
-                setIsLoading(false); // Finalizar carga en caso de error
+                setIsLoading(false);
                 return false;
             }
 
@@ -115,15 +182,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (token) {
                 try {
                     localStorage.setItem("authToken", token);
-                } catch { }
+                } catch (e) {
+                    console.error("Error guardando token", e);
+                }
             }
 
-            // Intentar armar el usuario con rol del backend; si falta rol, buscarlo con un fallback
+            // Resolver el rol del usuario
             let resolvedRole: UserRole | null = null;
-            if (backendUser && backendUser.rol && ROLES_DISPONIBLES_VALUES.includes(backendUser.rol as UserRole)) {
+            if (backendUser?.rol && ROLES_DISPONIBLES_VALUES.includes(backendUser.rol as UserRole)) {
                 resolvedRole = backendUser.rol as UserRole;
             } else if (token && backendUser) {
-                // Fallback: consultar /auth/usuarios y resolver el rol por id o nombre_usuario
+                // Fallback: consultar /auth/usuarios para resolver el rol
                 try {
                     const resUsers = await fetch(`${API_BASE_URL}/auth/usuarios`, {
                         headers: { Authorization: `Bearer ${token}` },
@@ -137,7 +206,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                                 (backendUser?.nombre_usuario && u.nombre_usuario === backendUser.nombre_usuario)
                             ))
                             : undefined;
-                        if (found && typeof found.rol === 'string' && ROLES_DISPONIBLES_VALUES.includes(found.rol as UserRole)) {
+                        if (found?.rol && ROLES_DISPONIBLES_VALUES.includes(found.rol as UserRole)) {
                             resolvedRole = found.rol as UserRole;
                         }
                     }
@@ -146,34 +215,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 }
             }
 
+            // Validar que tenemos toda la información necesaria
             if (!token || !backendUser || !resolvedRole) {
-                console.error("AuthProvider login: Respuesta incompleta, no se pudo determinar el rol.", backendUser);
+                console.error("AuthProvider login: Respuesta incompleta del servidor", {
+                    hasToken: !!token,
+                    hasBackendUser: !!backendUser,
+                    hasRole: !!resolvedRole,
+                });
                 localStorage.removeItem("user");
                 localStorage.removeItem("authToken");
                 setUser(null);
-                setIsLoading(false); // Finalizar carga
+                setIsLoading(false);
                 return false;
             }
 
+            // Crear objeto usuario con toda la información
             const loggedInUser: NonNullable<User> = {
                 id: backendUser.id,
                 usuario: backendUser.nombre_usuario ?? usuario,
-                name: `${backendUser.nombre ?? ""} ${backendUser.apellido ?? ""}`.trim(),
+                name: `${backendUser.nombre ?? ""} ${backendUser.apellido ?? ""}`.trim() || usuario,
                 email: backendUser.email,
                 role: resolvedRole,
             };
 
-            localStorage.setItem("user", JSON.stringify(loggedInUser));
-            if (token) {
-                localStorage.setItem("authToken", token);
+            // Guardar en localStorage (de forma segura)
+            try {
+                localStorage.setItem("user", JSON.stringify(loggedInUser));
+                localStorage.setItem("user_name", loggedInUser.name);
+                localStorage.setItem("usuario_id", (loggedInUser.id ?? "").toString());
+                localStorage.setItem("rol", loggedInUser.role);
+                localStorage.setItem("isAdmin", String(loggedInUser.role === "ADMIN"));
+            } catch (e) {
+                console.error("Error guardando datos de usuario en localStorage", e);
             }
-            localStorage.setItem("user_name", loggedInUser.name);
-            localStorage.setItem("usuario_id", (loggedInUser.id ?? "").toString());
-            localStorage.setItem("rol", loggedInUser.role);
-            localStorage.setItem("isAdmin", String(loggedInUser.role === "ADMIN"));
-            setUser(loggedInUser);
 
-            // La redirección se maneja en LoginForm
+            setUser(loggedInUser);
             setIsLoading(false);
             return true;
 
@@ -182,15 +258,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             localStorage.removeItem("user");
             localStorage.removeItem("authToken");
             setUser(null);
-            setIsLoading(false); // Finalizar carga en caso de excepción
+            setIsLoading(false);
             return false;
         }
-        // No es necesario un 'finally' aquí para setIsLoading si todos los caminos lo manejan.
-        // Si se llega aquí, router.push() ya se llamó, o un return false con setIsLoading(false) ocurrió.
     };
 
+    /**
+     * Función de logout
+     */
     const logout = () => {
-        setIsLoading(true); // Indicar que estamos procesando algo (opcional pero puede ser bueno para UI)
         try {
             localStorage.removeItem("user");
             localStorage.removeItem("authToken");
@@ -203,9 +279,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         setUser(null);
         router.push("/login");
-        setIsLoading(false); // Terminar carga después de redirigir
     };
 
+    /**
+     * Obtener token actual
+     */
     const getToken = (): string | null => {
         if (typeof window !== "undefined") {
             return localStorage.getItem("authToken");
@@ -213,24 +291,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return null;
     };
 
-    // Si aún está cargando la información inicial del usuario, podrías mostrar un spinner global
-    // o simplemente no renderizar {children} hasta que isLoading sea false.
-    // Esto depende de tu UX deseada. Por ahora, renderiza children siempre.
-    // if (isLoading) {
-    //     return <p>Cargando aplicación...</p>; // O un componente Spinner global
-    // }
+    // No renderizar nada hasta que el cliente se haya hidratado
+    // Esto previene el error de "Text content does not match server-rendered HTML"
+    if (!isHydrated) {
+        return <div className="flex items-center justify-center min-h-screen">Inicializando autenticación...</div>;
+    }
 
     return (
-        <AuthContext.Provider value={{ user, login, logout, isLoading, getToken }}>
+        <AuthContext.Provider
+            value={{
+                user,
+                login,
+                logout,
+                isLoading,
+                isHydrated,
+                getToken,
+            }}
+        >
             {children}
         </AuthContext.Provider>
     );
 }
 
+/**
+ * Hook para usar autenticación en componentes
+ */
 export const useAuth = () => {
     const context = useContext(AuthContext);
     if (context === undefined) {
-        throw new Error("useAuth must be used within an AuthProvider");
+        throw new Error("useAuth debe ser usado dentro de un AuthProvider");
     }
     return context;
 };

@@ -103,7 +103,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
    */
   // Solo recalcula y retorna los productos recibidos, no setea toda la lista
   const recalculatePricesForProducts = useCallback(async (currentProducts: ProductoVenta[], clienteId: number | null) => {
-    const token = localStorage.getItem("token");
+    const token = localStorage.getItem("authToken");
     if (!token) {
       setErrorMensaje("No autenticado.");
       return [];
@@ -176,7 +176,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
   const cargarFormulario = useCallback(async (pedidoId: number) => {
     setIsLoading(true);
     setErrorMensaje('');
-    const token = localStorage.getItem("token");
+    const token = localStorage.getItem("authToken");
     if (!token) { setErrorMensaje("No autenticado."); setIsLoading(false); return; }
     try {
       const response = await fetch(`https://quimex.sistemataup.online/api/ventas/obtener/${pedidoId}`, {
@@ -277,7 +277,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
     const recalcularTodo = async () => {
       if (isLoading) return;
       setIsCalculatingTotal(true);
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("authToken");
       if (!token) { setIsCalculatingTotal(false); return; }
       try {
         // Log de body enviado para debug de descuento
@@ -416,7 +416,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
       return;
     }
     setIsSubmitting(true);
-    const token = localStorage.getItem("token");
+    const token = localStorage.getItem("authToken");
     const usuarioId = localStorage.getItem("usuario_id");
     if (!token || !usuarioId) { setErrorMensaje("No autenticado."); setIsSubmitting(false); return; }
 

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 type ResumenProveedor = { proveedor_id: number; proveedor_nombre: string; deuda: number; estado: 'VERDE'|'ROJO' };
 type Movimiento = { id:number; proveedor_id:number; orden_id:number|null; tipo:'DEBITO'|'CREDITO'; monto:number; fecha:string; descripcion?:string; usuario?:string };
 
-const API_BASE = 'https://quimex.sistemataup.online';
+const API_BASE = 'https://quimex.sistemataup.online/api';
 
 export default function FinanzasDashboard() {
   const [estadoGeneral, setEstadoGeneral] = useState<string>('');
@@ -16,7 +16,7 @@ export default function FinanzasDashboard() {
   const [tipoFiltro, setTipoFiltro] = useState<string>('');
   const [desde, setDesde] = useState<string>('');
   const [hasta, setHasta] = useState<string>('');
-  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+  const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
 
   const fetchDashboard = useCallback(async () => {
     if (!token) return;

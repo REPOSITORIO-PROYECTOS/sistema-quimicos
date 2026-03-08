@@ -3,13 +3,13 @@
 
 import { Geist, Geist_Mono } from "next/font/google";
 import "@/styles/globals.css";
-// Quitamos import de Navbar y Header de aquí
 import { AuthProvider } from "@/components/providers/auth-provider";
+import { AuthGuard } from "@/components/providers/auth-guard";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { ProductsProvider } from "@/context/ProductsContext";
 import { ProductsActivosProvider } from "@/context/ProductsContextActivos";
 import { ClientesProvider } from '@/context/ClientesContext';
-import AppShell from "@/components/AppShell"; // <-- 1. IMPORTAMOS AppShell
+import AppShell from "@/components/AppShell";
 import { ProveedoresProvider } from "@/context/ProveedoresContext";
 
 const geistSans = Geist({
@@ -28,9 +28,9 @@ export default function RootLayout({
 }>) {
     return (
         <html lang="es" suppressHydrationWarning>
-             <head>
-                 <title>Quimex</title>
-             </head>
+            <head>
+                <title>Quimex</title>
+            </head>
             <body
                 className={`${geistSans.variable} ${geistMono.variable} antialiased`}
             >
@@ -41,17 +41,21 @@ export default function RootLayout({
                     disableTransitionOnChange
                 >
                     <AuthProvider>
-                        <ClientesProvider>
-                            <ProductsProvider>
-                                <ProductsActivosProvider>
-                                <ProveedoresProvider>
-                                <AppShell>
-                                    {children}
-                                </AppShell>
-                                </ProveedoresProvider>
-                                </ProductsActivosProvider>
-                            </ProductsProvider>
-                        </ClientesProvider>
+                        {/* AuthGuard espera a que AuthProvider esté hidratado 
+                            antes de renderizar los contextos de datos */}
+                        <AuthGuard>
+                            <ClientesProvider>
+                                <ProductsProvider>
+                                    <ProductsActivosProvider>
+                                        <ProveedoresProvider>
+                                            <AppShell>
+                                                {children}
+                                            </AppShell>
+                                        </ProveedoresProvider>
+                                    </ProductsActivosProvider>
+                                </ProductsProvider>
+                            </ClientesProvider>
+                        </AuthGuard>
                     </AuthProvider>
                 </ThemeProvider>
             </body>

@@ -6,45 +6,73 @@ import { useAuth } from '@/components/providers/auth-provider';
 import LoginForm from '@/components/LoginForm';
 import { Header } from "@/components/header";
 import { Navbar } from "@/components/navbar";
-import { usePathname } from 'next/navigation'; // <-- IMPORTAR usePathname
+import { usePathname } from 'next/navigation';
 
 interface AppShellProps {
   children: ReactNode;
 }
 
-// ✨ NUEVO: Definir rutas que no requieren autenticación
-const PUBLIC_ROUTES = ['/login', '/register']; // Añade otras si es necesario
+// Rutas que no requieren autenticación
+const PUBLIC_ROUTES = ['/login', '/register'];
 
 const AppShell: React.FC<AppShellProps> = ({ children }) => {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, isHydrated } = useAuth();
   const pathname = usePathname();
 
   const isPublicRoute = PUBLIC_ROUTES.includes(pathname || "");
 
-  // 1. Mientras cargue el contexto, mostrar spinner
-  if (isLoading) {
-    return <div className="flex items-center justify-center min-h-screen">Cargando...</div>;
-  }
-
-  // 2. Si es ruta pública O usuario autenticado -> mostrar contenido
-  if (isPublicRoute || user) {
-    if (isPublicRoute) {
-      return <>{children}</>;
-    } else {
-      // Usuario autenticado en ruta privada
-      return (
-        <div className="flex flex-col min-h-screen">
-          <Header />
-          <Navbar />
-          <div className="flex-grow">
-            {children}
-          </div>
+  /**
+   * Fase de hidratación: esperar a que React cargue desde localStorage
+   * Mostrar un spinner mientras tanto
+   */
+  if (!isHydrated) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <div className="flex flex-col items-center gap-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+          <p className="text-muted-foreground">Inicializando aplicación...</p>
         </div>
-      );
-    }
+      </div>
+    );
   }
 
-  // 3. No autenticado en ruta privada
+  /**
+   * Fase de carga de login: pero ya estamos hidratados
+   */
+  if (isLoading && !user && !isPublicRoute) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <div className="flex flex-col items-center gap-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+          <p className="text-muted-foreground">Verificando sesión...</p>
+        </div>
+      </div>
+    );
+  }
+
+  /**
+   * Lógica de renderizado después de hidratación
+   */
+
+  // Ruta pública (login, register) - mostrar el children sin navbar/header
+  if (isPublicRoute) {
+    return <>{children}</>;
+  }
+
+  // Usuario autenticado - mostrar navbar, header y contenido
+  if (user) {
+    return (
+      <div className="flex flex-col min-h-screen">
+        <Header />
+        <Navbar />
+        <div className="flex-grow">
+          {children}
+        </div>
+      </div>
+    );
+  }
+
+  // No autenticado en ruta privada - mostrar login
   return <LoginForm />;
 };
 

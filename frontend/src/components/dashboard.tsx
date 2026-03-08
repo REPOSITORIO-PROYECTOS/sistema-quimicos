@@ -84,13 +84,13 @@ export default function DashboardPage() {
         transferencia: data ? (data.primera_fila.pedido_transferencia_unidades ?? 0) : 0,
         factura: data ? (data.primera_fila.pedido_factura_unidades ?? 0) : 0,
     };
-    const token = typeof window !== 'undefined' ? localStorage.getItem("token") : null;
+    const token = typeof window !== 'undefined' ? localStorage.getItem("authToken") : null;
 
     const [userRole, setUserRole] = useState<string | null>(null);
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
-        const role = getUserRoleFromToken(localStorage.getItem('token'));
+        const role = getUserRoleFromToken(localStorage.getItem('authToken'));
         // Normalizar a minúsculas para comparaciones consistentes ('VENTAS_PEDIDOS' -> 'ventas_pedidos')
         setUserRole(role ? String(role).toLowerCase() : null);
     }, [token]);
@@ -105,7 +105,7 @@ export default function DashboardPage() {
         }
         try {
                 // Usar endpoint completo para todos
-                const base = `https://quimex.sistemataup.online/reportes`;
+                const base = `https://quimex.sistemataup.online/api/reportes`;
                 const url = `${base}/dashboard-kpis?fecha=${fecha}`;
             const response = await fetch(url, { headers: { "Authorization": `Bearer ${token}` } });
             if (!response.ok) {
@@ -174,7 +174,7 @@ export default function DashboardPage() {
             const toISODate = (date: Date) => date.toISOString().slice(0, 10);
             const primerDiaMes = toISODate(primerDiaMesDate);
             const ultimoDiaMes = toISODate(ultimoDiaMesDate);
-            const url = `https://quimex.sistemataup.online/reportes/movimientos-excel?fecha_desde=${primerDiaMes}&fecha_hasta=${ultimoDiaMes}`;
+            const url = `https://quimex.sistemataup.online/api/reportes/movimientos-excel?fecha_desde=${primerDiaMes}&fecha_hasta=${ultimoDiaMes}`;
             
             const response = await fetch(url, { headers: { "Authorization": `Bearer ${token}` } });
             if (!response.ok) throw new Error((await response.json()).error || `Error ${response.status}`);

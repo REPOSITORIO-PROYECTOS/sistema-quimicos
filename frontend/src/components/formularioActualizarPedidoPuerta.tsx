@@ -81,7 +81,7 @@ export default function FormularioActualizarPedidoPuerta({ id, onVolver }: Formu
   }, [productos]);
 
   const recalculatePricesForProducts = useCallback(async (currentProducts: ProductoPedido[]) => {
-    const token = localStorage.getItem("token");
+    const token = localStorage.getItem("authToken");
     if (!token) {
       setErrorMensaje("No autenticado.");
       return;
@@ -156,7 +156,7 @@ export default function FormularioActualizarPedidoPuerta({ id, onVolver }: Formu
   const cargarFormulario = useCallback(async (pedidoId: number) => {
     setIsLoading(true);
     setErrorMensaje('');
-    const token = localStorage.getItem("token");
+    const token = localStorage.getItem("authToken");
     if (!token) { setErrorMensaje("No autenticado."); setIsLoading(false); return; }
 
     try {
@@ -218,7 +218,7 @@ export default function FormularioActualizarPedidoPuerta({ id, onVolver }: Formu
       if (isLoading || isSubmitting) return;
       if (montoBaseProductos <= 0) { setTotalCalculadoApi(null); return; }
       setIsCalculatingTotal(true);
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("authToken");
       if (!token) { setIsCalculatingTotal(false); return; }
       try {
         const payload = {
@@ -319,7 +319,7 @@ export default function FormularioActualizarPedidoPuerta({ id, onVolver }: Formu
     setErrorMensaje(''); setSuccessMensaje('');
     if (!id || !formData.nombre_vendedor.trim()) { setErrorMensaje("ID o Vendedor no válidos."); return; }
     setIsSubmitting(true);
-    const token = localStorage.getItem("token");
+    const token = localStorage.getItem("authToken");
     if (!token) { setErrorMensaje("No autenticado."); setIsSubmitting(false); return; }
     const dataToUpdate = {
       nombre_vendedor: formData.nombre_vendedor.trim(),

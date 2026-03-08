@@ -11,12 +11,12 @@ import { useState } from 'react';
 // your environment (.env.local) to e.g. http://127.0.0.1:8001
 
 async function descargarPlantilla() {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+  const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
   const headers: HeadersInit = {};
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
   // Construir URL sin duplicar slashes
-  const endpoint = 'https://quimex.sistemataup.online/precios_especiales/descargar_plantilla_precios';
+  const endpoint = 'https://quimex.sistemataup.online/api/precios_especiales/descargar_plantilla_precios';
   const fullUrl = endpoint;
 
   let res: Response;

@@ -58,7 +58,7 @@ export default function ListaClientes() {
         try {
           setLoading(true);
           setError(null);
-          const token = localStorage.getItem("token");
+          const token = localStorage.getItem("authToken");
           const params = new URLSearchParams();
           // Usar el término recortado para evitar búsquedas con solo espacios.
           const trimmedTerm = searchTerm.trim();
@@ -125,7 +125,7 @@ export default function ListaClientes() {
   const handleDownloadExcel = async () => {
     setIsDownloading(true);
     setError(null);
-    const token = localStorage.getItem("token");
+    const token = localStorage.getItem("authToken");
 
     if (!token) {
       setError("No estás autenticado para realizar esta acción.");
@@ -210,7 +210,7 @@ export default function ListaClientes() {
   const handleDelete = async (id: number) => {
     if (window.confirm(`¿Estás seguro de que deseas eliminar el cliente con ID ${id}?`)) {
       try {
-        const token = localStorage.getItem("token");
+        const token = localStorage.getItem("authToken");
         const response = await fetch(`https://quimex.sistemataup.online/api/clientes/desactivar/${id}`, {
           method: 'DELETE',
           headers: { 'Authorization': `Bearer ${token}` }
@@ -246,7 +246,7 @@ export default function ListaClientes() {
     setIsUpdatingPrices(true);
     setPriceUpdateError(null);
     setPriceUpdateSuccess(null);
-    const token = localStorage.getItem("token");
+    const token = localStorage.getItem("authToken");
     
     let direccion;
     if (type === 'decrease') {
@@ -256,7 +256,7 @@ export default function ListaClientes() {
        direccion = "subida";
 
     try {
-      const response = await fetch('https://quimex.sistemataup.online/precios_especiales/actualizar-global', {
+      const response = await fetch('https://quimex.sistemataup.online/api/precios_especiales/actualizar-global', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

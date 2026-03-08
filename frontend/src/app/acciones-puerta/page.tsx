@@ -17,7 +17,7 @@ export default function AccionesPuertaPage() {
   const [esAdmin, setEsAdmin] = useState(false);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('authToken');
     if (!token) return;
     try {
       const base64Url = token.split('.')[1] || '';
@@ -32,7 +32,7 @@ export default function AccionesPuertaPage() {
 
   const handleDescargarClientesNuevos = async () => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('authToken');
       if (!token) {
         alert('No autenticado. Inicie sesión.');
         return;

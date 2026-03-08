@@ -9,7 +9,7 @@ import { useProductsContext, Producto } from "@/context/ProductsContext"; // <--
 import BotonVolver from '@/components/BotonVolver';
 
 // Usar variable de entorno pública de Next (con fallback para desarrollo)
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://quimex.sistemataup.online';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://quimex.sistemataup.online/api';
 
 
 // Interfaz para un item de producto en el estado del formulario
@@ -70,7 +70,7 @@ export default function RegistrarCliente() {
   const [calcMoneda, setCalcMoneda] = useState<'ARS'|'USD'>('ARS');
   const [calcLoading, setCalcLoading] = useState(false);
   const [calcError, setCalcError] = useState<string | null>(null);
-  const token = typeof window !== 'undefined' ? localStorage.getItem("token") : null;
+  const token = typeof window !== 'undefined' ? localStorage.getItem("authToken") : null;
     // Traer tipo de cambio Oficial cuando el usuario habilita precios especiales
     useEffect(() => {
       const fetchTC = async () => {
@@ -147,7 +147,7 @@ export default function RegistrarCliente() {
   const fetchPreview = useCallback(async (productoId: number, margenPorcentaje: number, index: number) => {
     setPreviews(prev => ({ ...prev, [index]: { loading: true } }));
     try {
-      const tokenLocal = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const tokenLocal = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
       const url = `${API_BASE_URL}/precios_especiales/calcular-precio-preview/${productoId}?margen=${margenPorcentaje / 100}`;
       const headers: Record<string,string> = {};
       if (tokenLocal) headers['Authorization'] = `Bearer ${tokenLocal}`;
@@ -559,7 +559,7 @@ export default function RegistrarCliente() {
                   const index = calcIndex as number;
                   const prod = form.productos[index];
                   if (!prod || !prod.producto_id) { setCalcError('Seleccione un producto válido antes de usar la calculadora'); setCalcLoading(false); return; }
-                  const tokenLocal = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+                  const tokenLocal = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
                   const payload = {
                     producto_id: Number(prod.producto_id),
                     precio_objetivo: objetivo,

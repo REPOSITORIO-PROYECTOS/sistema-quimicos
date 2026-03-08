@@ -20,7 +20,7 @@ import { useEffect } from 'react';
 async function fetchCategorias(token: string | null) {
     if (!token) return [];
     try {
-        const res = await fetch('https://quimex.sistemataup.online/categorias/?activo=true', { headers: { 'Authorization': `Bearer ${token}` } });
+        const res = await fetch('https://quimex.sistemataup.online/api/categorias/?activo=true', { headers: { 'Authorization': `Bearer ${token}` } });
         if (!res.ok) return [];
         const data = await res.json();
         return data.categorias || [];
@@ -55,7 +55,7 @@ export function FormularioItem({ onSubmit, onCancel, initialData }: FormularioIt
     const [categorias, setCategorias] = useState<{id:number;nombre:string}[]>([]);
 
     useEffect(() => {
-        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+        const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
         fetchCategorias(token).then(setCategorias);
     }, []);
 

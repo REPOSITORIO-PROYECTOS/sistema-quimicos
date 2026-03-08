@@ -1,7 +1,7 @@
-/* --- CONFIGURACIÓN BASE DE TAILWIND --- */
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* --- IMPORTACIONES Y CONFIGURACIÓN BASE DE TAILWIND --- */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;700&display=swap');
+@import "tailwindcss";
+@import "tw-animate-css";
 
 /* --- DEFINICIÓN DE VARIABLES DE TEMA (THEME) --- */
 

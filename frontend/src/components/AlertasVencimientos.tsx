@@ -28,14 +28,14 @@ export default function AlertasVencimientos() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+  const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
 
   const fetchData = useCallback(async () => {
     if (!token) return;
     setIsLoading(true);
     setError(null);
     try {
-      const res = await fetch("https://quimex.sistemataup.online/reportes/ordenes-pendientes-vencimientos", {
+      const res = await fetch("https://quimex.sistemataup.online/api/reportes/ordenes-pendientes-vencimientos", {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) {

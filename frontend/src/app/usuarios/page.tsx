@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from "react";
 
 // Configuración de la API
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://quimex.sistemataup.online';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://quimex.sistemataup.online/api';
 
 interface Usuario {
   id: number;
@@ -70,7 +70,7 @@ export default function UsuariosPage() {
     setEditError(null);
     setEditLoading(true);
     try {
-      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
       if (!token || !editUser) throw new Error("No autenticado");
       const API_URL = `${API_BASE_URL}/auth/usuarios/${editUser.id}`;
       const body: Record<string, unknown> = {};
@@ -115,7 +115,7 @@ export default function UsuariosPage() {
     if (!window.confirm(`¿Seguro que deseas eliminar al usuario ${user.nombre_usuario}?`)) return;
     
     try {
-      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
       if (!token) throw new Error("No autenticado");
       const API_URL = `${API_BASE_URL}/auth/usuarios/${user.id}`;
       const res = await fetch(API_URL, {
@@ -144,7 +144,7 @@ export default function UsuariosPage() {
     setLoading(true);
     setError(null);
     try {
-      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
       if (!token) {
         setError("No autenticado. Inicie sesión.");
         setLoading(false);
@@ -179,7 +179,7 @@ export default function UsuariosPage() {
     setFormError(null);
     setFormLoading(true);
     try {
-      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
       if (!token) throw new Error("No autenticado");
       const API_URL = `${API_BASE_URL}/auth/register`;
       const res = await fetch(API_URL, {

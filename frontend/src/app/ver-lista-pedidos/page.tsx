@@ -103,7 +103,7 @@ export default function ListaOrdenesCompra() {
     setActionError(null); 
     setActionSuccess(null);
     try {
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("authToken");
       if (!token) throw new Error("Usuario no autenticado.");
       
       let url = `https://quimex.sistemataup.online/api/ordenes_compra/obtener_todas?page=${currentPage}&per_page=20`;
@@ -139,7 +139,7 @@ export default function ListaOrdenesCompra() {
   useEffect(() => {
     const cargarResumen = async () => {
       try {
-        const token = localStorage.getItem("token");
+        const token = localStorage.getItem("authToken");
         if (!token) return;
         const lista = (['Aprobado','Solicitado'].includes(filtroEstado) ? filtrarPorEstado(ordenes, filtroEstado) : ordenes);
         const idsAConsultar = lista.map(o => o.id).filter(id => !(id in resumenItems));
@@ -192,7 +192,7 @@ export default function ListaOrdenesCompra() {
 
     setProcessingId(ordenId); setActionError(null); setActionSuccess(null);
     try {
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("authToken");
       if (!token) throw new Error("Usuario no autenticado.");
       
       const ordenRef = ordenes.find(o => o.id === ordenId);
@@ -282,7 +282,7 @@ export default function ListaOrdenesCompra() {
 
     setProcessingId(ordenId); setActionError(null); setActionSuccess(null);
     try {
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("authToken");
       if (!token) throw new Error("Usuario no autenticado.");
 
       const response = await fetch(`https://quimex.sistemataup.online/api/ordenes_compra/rechazar/${ordenId}`, {

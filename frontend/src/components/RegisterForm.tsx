@@ -16,7 +16,7 @@ const ROLES_DISPONIBLES = [
 ] as const;
 type UserRole = typeof ROLES_DISPONIBLES[number]['value'];
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://quimex.sistemataup.online";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://quimex.sistemataup.online/api";
 
 const RegisterForm: React.FC = () => {
     const router = useRouter();

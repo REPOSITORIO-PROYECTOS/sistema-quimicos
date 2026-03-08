@@ -46,7 +46,7 @@ export default function OrdenesRecibidasPage() {
 
   const fetchOrdenesRecibidas = useCallback(async (currentPage: number) => {
     try {
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("authToken");
       if (!token) throw new Error("Usuario no autenticado.");
       
       const response = await fetch(`https://quimex.sistemataup.online/api/ordenes_compra/obtener_todas?page=${currentPage}&per_page=20`, {

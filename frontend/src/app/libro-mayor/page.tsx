@@ -9,10 +9,10 @@ type OrdenResumen = { id:number; fecha_creacion:string; estado:string; proveedor
 type ItemDetalle = { id_linea:number; producto_id:number; producto_nombre?:string; cantidad_solicitada:number; precio_unitario_estimado:number; importe_linea_estimado:number };
 type ItemAPI = { id_linea:number|string; producto_id:number|string; producto_nombre?:string; cantidad_solicitada?: number|string; precio_unitario_estimado?: number|string; importe_linea_estimado?: number|string };
 
-const API = 'https://quimex.sistemataup.online';
+const API = 'https://quimex.sistemataup.online/api';
 
 export default function LibroMayorPage(){
-  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+  const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string|null>(null);
   const [dashboard, setDashboard] = useState<{deuda_total:number; pagos_total:number; resumen_proveedores:ResumenProveedor[]}>({deuda_total:0,pagos_total:0,resumen_proveedores:[]});

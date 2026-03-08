@@ -127,7 +127,7 @@ export default function ProductPriceTable() {
 
   const [deletingItem, setDeletingItem] = useState<DisplayItem | null>(null);
 
-  const token = typeof window !== 'undefined' ? localStorage.getItem("token") : null;
+  const token = typeof window !== 'undefined' ? localStorage.getItem("authToken") : null;
 
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -356,7 +356,7 @@ export default function ProductPriceTable() {
 
     try {
         // La URL completa del backend + la ruta del endpoint CORRECTO
-        const response = await fetch('https://quimex.sistemataup.online/reportes/lista_precios/excel', {
+        const response = await fetch('https://quimex.sistemataup.online/api/reportes/lista_precios/excel', {
             method: 'GET',
             headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -405,7 +405,7 @@ export default function ProductPriceTable() {
     if (!token) { setErrorCategorias("Token no disponible."); return; }
     setLoadingCategorias(true); setErrorCategorias(null);
     try {
-      const res = await fetch('https://quimex.sistemataup.online/categorias/?activo=true', { 
+      const res = await fetch('https://quimex.sistemataup.online/api/categorias/?activo=true', { 
         headers: { "Authorization": `Bearer ${token}` } 
       });
       if (!res.ok) throw new Error(`Error ${res.status}`);
@@ -443,7 +443,7 @@ export default function ProductPriceTable() {
     try {
       const [productsResponse, combosResponse] = await Promise.all([
         fetch(`https://quimex.sistemataup.online/api/productos/obtener_todos_paginado?page=1&per_page=10000`, { headers: { "Authorization": `Bearer ${token}` } }),
-        fetch('https://quimex.sistemataup.online/combos/obtener-todos?incluir_info_usd=true&incluir_componentes=false', { headers: { "Authorization": `Bearer ${token}` } })
+        fetch('https://quimex.sistemataup.online/api/combos/obtener-todos?incluir_info_usd=true&incluir_componentes=false', { headers: { "Authorization": `Bearer ${token}` } })
       ]);
 
       if (!productsResponse.ok) throw new Error(`Productos: Error ${productsResponse.status}`);
@@ -513,7 +513,7 @@ const handleDownloadFormulas = async () => {
     setIsDownloadingFormulas(true);
     setDownloadFormulasError(null);
     try {
-        const response = await fetch('https://quimex.sistemataup.online/reportes/formulas-excel', {
+        const response = await fetch('https://quimex.sistemataup.online/api/reportes/formulas-excel', {
             method: 'GET',
             headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -565,7 +565,7 @@ const handleDownloadFormulas = async () => {
     setUpdateAllRecipesError(null);
 
     try {
-      const response = await fetch('https://quimex.sistemataup.online/recetas/actualizar-costos-recetas', {
+      const response = await fetch('https://quimex.sistemataup.online/api/recetas/actualizar-costos-recetas', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -599,7 +599,7 @@ const handleDownloadFormulas = async () => {
     setCreateCategoryError(null);
 
     try {
-      const response = await fetch('https://quimex.sistemataup.online/categorias/', {
+      const response = await fetch('https://quimex.sistemataup.online/api/categorias/', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -662,7 +662,7 @@ const handleDownloadFormulas = async () => {
         return;
       }
 
-      const response = await fetch('https://quimex.sistemataup.online/categoria_productos/asignar_por_nombres', {
+      const response = await fetch('https://quimex.sistemataup.online/api/categoria_productos/asignar_por_nombres', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -733,7 +733,7 @@ const handleDownloadFormulas = async () => {
         return;
       }
 
-      const response = await fetch('https://quimex.sistemataup.online/categoria_productos/asignar_masivo', {
+      const response = await fetch('https://quimex.sistemataup.online/api/categoria_productos/asignar_masivo', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -796,7 +796,7 @@ const handleDownloadFormulas = async () => {
         return;
       }
 
-      const response = await fetch('https://quimex.sistemataup.online/categoria_productos/quitar_categoria_masivo', {
+      const response = await fetch('https://quimex.sistemataup.online/api/categoria_productos/quitar_categoria_masivo', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1090,7 +1090,7 @@ const handleDeleteProduct = async (itemToDelete: DisplayItem) => {
     setIsUploading(true); setUploadErrorMsg(null); setUploadSuccess(null);
     const formData = new FormData(); formData.append('csvFile', selectedFile);
     try {
-      const response = await fetch('https://quimex.sistemataup.online/import_csv/generar_sql', { method: 'POST', headers: { "Authorization": `Bearer ${token}` }, body: formData });
+      const response = await fetch('https://quimex.sistemataup.online/api/import_csv/generar_sql', { method: 'POST', headers: { "Authorization": `Bearer ${token}` }, body: formData });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || result.details || `Error ${response.status}`);
       setUploadSuccess(result.message || "Archivo CSV procesado."); setSelectedFile(null);

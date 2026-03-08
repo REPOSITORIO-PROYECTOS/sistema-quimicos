@@ -222,6 +222,19 @@ def verify_token(current_user):
     """Endpoint protegido para verificar si el token actual es válido."""
     return jsonify({'message': 'Token válido', 'user_id': current_user.id, 'rol': current_user.rol}), 200
 
+# --- ENDPOINT: Obtener datos del usuario autenticado (/me) ---
+@auth_bp.route('/me', methods=['GET'])
+@token_required
+def get_current_user(current_user):
+    """Devuelve los datos del usuario actualmente autenticado."""
+    return jsonify({
+        'id': current_user.id,
+        'usuario': current_user.nombre_usuario,
+        'name': f"{current_user.nombre} {current_user.apellido}",
+        'email': current_user.email,
+        'role': current_user.rol
+    }), 200
+
 # --- ENDPOINT: Listar usuarios internos y su rol ---
 @auth_bp.route('/usuarios', methods=['GET'])
 @token_required

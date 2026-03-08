@@ -44,8 +44,8 @@ export const MainActionsMenu: React.FC<MainActionsMenuProps> = ({
     const formData = new FormData();
     formData.append('file', file);
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch('https://quimex.sistemataup.online/categoria_productos/upload_clasificacion_csv', {
+      const token = localStorage.getItem('authToken');
+      const response = await fetch('https://quimex.sistemataup.online/api/categoria_productos/upload_clasificacion_csv', {
         method: 'POST',
         headers: token ? { 'Authorization': `Bearer ${token}` } : {},
         body: formData,

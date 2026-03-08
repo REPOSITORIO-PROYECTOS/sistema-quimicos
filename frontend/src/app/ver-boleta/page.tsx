@@ -44,7 +44,7 @@ export default function ListaBoletas() {
     setLoading(true);
     setError(null);
     try {
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("authToken");
       if (!token) throw new Error("Usuario no autenticado.");
 
       const response = await fetch(`https://quimex.sistemataup.online/api/ventas/con_entrega?page=${pageToFetch}&per_page=20`, {
@@ -93,7 +93,7 @@ export default function ListaBoletas() {
     while (true) {
       paginaDeBusqueda++;
       try {
-        const token = localStorage.getItem("token");
+        const token = localStorage.getItem("authToken");
         if (!token) throw new Error("Usuario no autenticado.");
         const response = await fetch(`https://quimex.sistemataup.online/api/ventas/con_entrega?page=${paginaDeBusqueda}&per_page=20`, {
             headers: { "Authorization": `Bearer ${token}` }
@@ -134,7 +134,7 @@ export default function ListaBoletas() {
     while (paginaDeBusqueda > 1) {
         paginaDeBusqueda--;
          try {
-            const token = localStorage.getItem("token");
+            const token = localStorage.getItem("authToken");
             if (!token) throw new Error("Usuario no autenticado.");
             const response = await fetch(`https://quimex.sistemataup.online/api/ventas/con_entrega?page=${paginaDeBusqueda}&per_page=20`, {
                 headers: { "Authorization": `Bearer ${token}` }
@@ -170,7 +170,7 @@ export default function ListaBoletas() {
     if (!window.confirm(`¿Está seguro de que desea eliminar el pedido Nº ${ventaId.toString().padStart(4, '0')}?`)) return;
     setDeletingId(ventaId);
     try {
-        const token = localStorage.getItem("token");
+        const token = localStorage.getItem("authToken");
         if (!token) throw new Error("Usuario no autenticado.");
         const response = await fetch(`https://quimex.sistemataup.online/api/ventas/eliminar/${ventaId}`, {
             method: 'DELETE',

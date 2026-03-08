@@ -60,7 +60,7 @@ export default function RegistrarPedidoPage() {
   // Función para búsqueda remota usada por AsyncSelect
   const fetchClientesRemoto = async (inputValue: string): Promise<{ value: Cliente; label: string }[]> => {
     if (!inputValue || inputValue.trim().length === 0) return [];
-    const token = localStorage.getItem("token");
+    const token = localStorage.getItem("authToken");
     const url = `https://quimex.sistemataup.online/api/clientes/buscar_todos?search_term=${encodeURIComponent(inputValue)}`;
     const response = await fetch(url, { headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` } });
     if (!response.ok) return [];
@@ -109,7 +109,7 @@ export default function RegistrarPedidoPage() {
         return;
       }
       setIsCalculatingTotal(true);
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("authToken");
       if (!token) {
         setErrorMessage("No autenticado.");
         setIsCalculatingTotal(false);
@@ -151,7 +151,7 @@ export default function RegistrarPedidoPage() {
   }, [formData.montoPagado, displayTotal, formData.formaPago]);
 
   const recalculatePricesForProducts = useCallback(async (currentProducts: ProductoVenta[], clienteId: number | null) => {
-    const token = localStorage.getItem("token");
+    const token = localStorage.getItem("authToken");
     if (!token) {
       setErrorMessage("No autenticado.");
       return;
@@ -296,7 +296,7 @@ export default function RegistrarPedidoPage() {
     if (productos.every(p => p.producto === 0 || p.qx === 0)) { setErrorMessage("Añada al menos un producto."); return; }
 
     setIsSubmitting(true);
-    const token = localStorage.getItem("token");
+    const token = localStorage.getItem("authToken");
     const usuarioId = localStorage.getItem("usuario_id");
     if (!token || !usuarioId) { setErrorMessage("Sesión inválida."); setIsSubmitting(false); return; }
     const montoFinalCalculado = displayTotal;

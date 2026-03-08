@@ -40,7 +40,7 @@ export default function RegistrarIngreso() {
   const [pedidos, setPedidos] = useState<IPedido[]>([]);
   const [errorApi, setErrorApi] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const token = typeof window !== 'undefined' ? localStorage.getItem("token") : null;
+  const token = typeof window !== 'undefined' ? localStorage.getItem("authToken") : null;
   const LAST_PAYLOAD_KEY = 'ultimoPedidoCompraPayload';
 
   useEffect(() => {

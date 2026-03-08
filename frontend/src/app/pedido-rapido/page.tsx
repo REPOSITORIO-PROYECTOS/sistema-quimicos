@@ -86,8 +86,8 @@ export default function PedidoRapidoAdmin() {
     // Traer Tipo de Cambio Oficial
     const fetchTC = async () => {
       try {
-        const API_BASE_URL = 'https://quimex.sistemataup.online';
-        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+        const API_BASE_URL = 'https://quimex.sistemataup.online/api';
+        const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
         const headers: Record<string,string> = token ? { Authorization: `Bearer ${token}` } : {};
         const res = await fetch(`${API_BASE_URL}/tipos_cambio/obtener/Oficial`, { headers });
         if (!res.ok) throw new Error('No se pudo obtener TC Oficial');
@@ -155,7 +155,7 @@ export default function PedidoRapidoAdmin() {
     setError("");
     setPagoError("");
     try {
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("authToken");
       const userItem = sessionStorage.getItem("user");
       const user = userItem ? JSON.parse(userItem) : null;
       if (!token || !user) throw new Error("Autenticación requerida.");
@@ -331,7 +331,7 @@ export default function PedidoRapidoAdmin() {
     setError("");
     setPagoError("");
     try {
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("authToken");
       const userItem = sessionStorage.getItem("user");
       const user = userItem ? JSON.parse(userItem) : null;
       if (!token || !user) throw new Error("Autenticación requerida.");

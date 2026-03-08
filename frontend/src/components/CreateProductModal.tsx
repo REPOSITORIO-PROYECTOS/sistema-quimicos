@@ -84,7 +84,7 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({
         };
     }, []);
     const isEditMode = !!productIdToEdit;
-    const token = localStorage.getItem("token");
+    const token = localStorage.getItem("authToken");
 
     // --- ESTADO REFACTORIZADO ---
     const [formData, setFormData] = useState<FormData>(initialFormData);
@@ -145,7 +145,7 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({
                         skuCombo: '', descripcionCombo: '', margenCombo: '',
                     });
                     if (productData.es_receta) {
-                        const recipeRes = await fetch(`https://quimex.sistemataup.online/recetas/obtener/por-producto/${productIdToEdit}`, { headers: { "Authorization": `Bearer ${token}` } });
+                        const recipeRes = await fetch(`https://quimex.sistemataup.online/api/recetas/obtener/por-producto/${productIdToEdit}`, { headers: { "Authorization": `Bearer ${token}` } });
                         if (recipeRes.ok) {
                             const recipeData = await recipeRes.json();
                             setRecetaIdOriginal(recipeData.id || null);
@@ -165,7 +165,7 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({
     const fetchCategoriasLocal = useCallback(async () => {
         if (!token) return;
         try {
-            const res = await fetch('https://quimex.sistemataup.online/categorias/?activo=true', { headers: { 'Authorization': `Bearer ${token}` } });
+            const res = await fetch('https://quimex.sistemataup.online/api/categorias/?activo=true', { headers: { 'Authorization': `Bearer ${token}` } });
             if (!res.ok) return;
             const data = await res.json();
             setCategoriasList(data.categorias || []);
@@ -178,7 +178,7 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({
         if (!newCategoryNameLocal.trim() || !token) return;
         setIsCreatingCategoryLocal(true); setCreateCategoryErrorLocal(null);
         try {
-            const response = await fetch('https://quimex.sistemataup.online/categorias/', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ nombre: newCategoryNameLocal.trim(), descripcion: newCategoryDescriptionLocal.trim() || null, activo: true }) });
+            const response = await fetch('https://quimex.sistemataup.online/api/categorias/', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ nombre: newCategoryNameLocal.trim(), descripcion: newCategoryDescriptionLocal.trim() || null, activo: true }) });
             const result = await response.json();
             if (!response.ok) throw new Error(result.error || result.detalle || 'Error creando categoría');
             // refresh list and select new
@@ -272,7 +272,7 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({
                 if (formData.esReceta && effectiveProductId) {
                     if (ingredients.some(i => !i.ingrediente_id || !i.porcentaje || parseFloat(i.porcentaje) <= 0)) throw new Error("Ingredientes de receta incompletos.");
                     const recipePayload = { producto_final_id: effectiveProductId, items: ingredients.map(i => ({ ingrediente_id: Number(i.ingrediente_id), porcentaje: parseFloat(i.porcentaje) || 0 })) };
-                    const recipeApiUrl = (isEditMode && recetaIdOriginal) ? `https://quimex.sistemataup.online/recetas/actualizar/por-producto/${effectiveProductId}` : 'https://quimex.sistemataup.online/recetas/crear';
+                    const recipeApiUrl = (isEditMode && recetaIdOriginal) ? `https://quimex.sistemataup.online/api/recetas/actualizar/por-producto/${effectiveProductId}` : 'https://quimex.sistemataup.online/api/recetas/crear';
                     const recipeApiMethod = (isEditMode && recetaIdOriginal) ? 'PUT' : 'POST';
                     await fetch(recipeApiUrl, { method: recipeApiMethod, headers: { 'Content-Type': 'application/json', "Authorization": `Bearer ${token}` }, body: JSON.stringify(recipePayload) });
                 }

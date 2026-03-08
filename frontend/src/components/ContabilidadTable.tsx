@@ -89,7 +89,7 @@ export default function ContabilidadTable() {
 
     useEffect(() => {
         if (typeof window !== "undefined") {
-            const storedToken = localStorage.getItem("token");
+            const storedToken = localStorage.getItem("authToken");
             setToken(storedToken);
             if (!storedToken) {
                 setError("Token de autenticación no encontrado. Por favor, inicie sesión.");

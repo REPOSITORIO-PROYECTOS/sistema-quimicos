@@ -43,7 +43,7 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
   // ajusteTC removido: se deduce desde showTc
 
   let problema = false;
-  const token = typeof window !== 'undefined' ? localStorage.getItem("token") : null;
+  const token = typeof window !== 'undefined' ? localStorage.getItem("authToken") : null;
   const router = useRouter();
 
   const ESTADO_KEY = `solicitud_estado_${String(id)}`;
@@ -145,8 +145,8 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
   useEffect(() => {
     const fetchTC = async () => {
       try {
-        const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://quimex.sistemataup.online';
-        const tkn = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+        const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://quimex.sistemataup.online/api';
+        const tkn = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
         const headers: Record<string,string> = tkn ? { Authorization: `Bearer ${tkn}` } : {};
         const res = await fetch(`${API_BASE_URL}/tipos_cambio/obtener/Oficial`, { headers });
         if (!res.ok) return;

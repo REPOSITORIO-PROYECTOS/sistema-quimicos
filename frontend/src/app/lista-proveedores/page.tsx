@@ -4,7 +4,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import FormularioProveedorModal from '@/components/FormularioProveedorModal'; // Asegúrate que la ruta sea correcta
 import BotonVolver from '@/components/BotonVolver';
-const API_BASE_URL = 'https://quimex.sistemataup.online'; // Tu URL base de la API
+const API_BASE_URL = 'https://quimex.sistemataup.online/api'; // Tu URL base de la API
 
 // Interfaz para los datos del proveedor como vienen de la API de listar y de detalle
 interface Proveedor {
@@ -44,7 +44,7 @@ export default function ListaProveedoresPage() {
   const [globalSuccessMessage, setGlobalSuccessMessage] = useState<string | null>(null); // Para mensajes de éxito globales (ej. al cambiar estado)
 
 
-  const token = typeof window !== 'undefined' ? localStorage.getItem("token") : null;
+  const token = typeof window !== 'undefined' ? localStorage.getItem("authToken") : null;
 
   const fetchProveedores = useCallback(async () => {
     setIsLoading(true);

@@ -55,7 +55,7 @@ const UploaderCSV: React.FC<UploaderProps> = ({ title, endpoint, fileKey, instru
     const formData = new FormData();
     formData.append(fileKey, selectedFile);
     try {
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("authToken");
       if (!token) throw new Error("Usuario no autenticado.");
       const response = await fetch(`https://quimex.sistemataup.online${endpoint}`, {
         method: 'POST',

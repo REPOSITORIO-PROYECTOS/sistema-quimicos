@@ -120,7 +120,7 @@ export default function RegistrarPedidoPuertaPage() {
     const montoBaseProductos = useMemo(() => productos.reduce((sum, item) => sum + (item.total || 0), 0), [productos]);
 
     const recalculatePricesForProducts = useCallback(async (currentProducts: ProductoVenta[]) => {
-        const token = localStorage.getItem("token");
+        const token = localStorage.getItem("authToken");
         if (!token) { setErrorMessage("No autenticado."); return; }
 
         const productQuantities = new Map<number, { totalQuantity: number; indices: number[] }>();
@@ -174,7 +174,7 @@ export default function RegistrarPedidoPuertaPage() {
         const recalcularTodo = async () => {
             if (montoBaseProductos <= 0) { setTotalCalculadoApi(null); setFormData(prev => ({ ...prev, vuelto: 0 })); return; }
             setIsCalculatingTotal(true); setErrorMessage('');
-            const token = localStorage.getItem("token"); if (!token) { setErrorMessage("No autenticado."); setIsCalculatingTotal(false); return; }
+            const token = localStorage.getItem("authToken"); if (!token) { setErrorMessage("No autenticado."); setIsCalculatingTotal(false); return; }
             try {
                 const payload = {
                     monto_base: montoBaseProductos,
@@ -265,7 +265,7 @@ export default function RegistrarPedidoPuertaPage() {
         e.preventDefault(); setIsSubmitting(true); setSuccessMessage(''); setErrorMessage('');
         if (!nombreVendedor.trim()) { setErrorMessage("Seleccione un vendedor."); setIsSubmitting(false); return; }
         if (productos.every(p => p.producto === 0 || p.qx === 0)) { setErrorMessage("Añada al menos un producto."); setIsSubmitting(false); return; }
-        const token = localStorage.getItem("token"); const usuarioId = localStorage.getItem("usuario_id");
+        const token = localStorage.getItem("authToken"); const usuarioId = localStorage.getItem("usuario_id");
         if (!token || !usuarioId) { setErrorMessage("Sesión inválida."); setIsSubmitting(false); return; }
 
         // CAMBIO: Se calcula el total final para enviarlo a la API
@@ -318,7 +318,7 @@ export default function RegistrarPedidoPuertaPage() {
     };
     // --- Buscar o crear cliente por teléfono ---
     const crearClienteRapidoConTelefono = async (telefono: string): Promise<{ cliente: ClienteApi | null; existed: boolean }> => {
-        const token = localStorage.getItem("token");
+        const token = localStorage.getItem("authToken");
         if (!token) { throw new Error("No autenticado."); }
 
         // 1) Intentar obtener cliente existente por teléfono
@@ -359,7 +359,7 @@ export default function RegistrarPedidoPuertaPage() {
     // --- Agregar observación al cliente (información privada, no en ticket) ---
     const agregarObservacionACliente = async (cliente: ClienteApi | null, textoObservacion: string) => {
         if (!cliente || !cliente.id) return;
-        const token = localStorage.getItem("token");
+        const token = localStorage.getItem("authToken");
         if (!token) { throw new Error("No autenticado."); }
         const observacionesPrevias = (cliente.observaciones || "").trim();
         const nuevasObservaciones = [observacionesPrevias, textoObservacion].filter(Boolean).join("\n");
@@ -588,7 +588,7 @@ export default function RegistrarPedidoPuertaPage() {
                                 onClick={async () => {
                                     // Imprimir sin registrar teléfono: REGISTRAR venta y luego imprimir
                                     setPhoneError('');
-                                    const token = localStorage.getItem("token");
+                                    const token = localStorage.getItem("authToken");
                                     if (!token) { setPhoneError('Sesión inválida.'); return; }
                                     const payload = pendingSalePayload;
                                     if (!payload) {
@@ -636,7 +636,7 @@ export default function RegistrarPedidoPuertaPage() {
                                         const texto = `Cliente por teléfono ${tel} ${existed ? '(existente)' : '(creado)'} ID ${cliente?.id ?? 'N/A'} | Monto ${montoStr} | Fecha ${fechaStr}`;
                                         await agregarObservacionACliente(cliente, texto);
                                         // Registrar venta y luego imprimir
-                                        const token = localStorage.getItem("token");
+                                        const token = localStorage.getItem("authToken");
                                         if (!token) { throw new Error('Sesión inválida.'); }
                                         const payload = pendingSalePayload ? pendingSalePayload : null;
                                         if (!payload) { throw new Error('No hay venta pendiente para registrar.'); }

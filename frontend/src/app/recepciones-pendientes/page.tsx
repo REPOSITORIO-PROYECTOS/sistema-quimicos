@@ -45,7 +45,7 @@ export default function RecepcionesPendientesPage() {
       setLoading(true);
       setError(null);
       try {
-        const token = localStorage.getItem("token");
+        const token = localStorage.getItem("authToken");
         if (!token) throw new Error("Usuario no autenticado.");
         const url = `https://quimex.sistemataup.online/api/ordenes_compra/obtener_todas?page=1&per_page=50`;
         const response = await fetch(url, {
@@ -114,7 +114,7 @@ export default function RecepcionesPendientesPage() {
     setItems(null);
     const fetchItems = async () => {
       try {
-        const token = localStorage.getItem("token");
+        const token = localStorage.getItem("authToken");
         if (!token) throw new Error("Usuario no autenticado.");
         const url = `https://quimex.sistemataup.online/api/ordenes_compra/obtener/${ordenSeleccionada.id}`;
         const response = await fetch(url, {
@@ -150,7 +150,7 @@ export default function RecepcionesPendientesPage() {
   // Registrar recepción en backend y actualizar UI
   const registrarRecepcion = async (resultados: { id: number; cantidadRecibida: number; incidencia: 'Falta' | 'Sobra' | 'OK'; observaciones: string; accionResto?: 'pendiente' | 'cancelar' | 'ninguno'; }[]) => {
     try {
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("authToken");
       const userItem = sessionStorage.getItem("user");
       const user = userItem ? JSON.parse(userItem) : null;
       if (!token || !user) throw new Error("Usuario no autenticado.");

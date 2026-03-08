@@ -69,7 +69,7 @@ function CalculadoraMargen({ precioBase, tipoCambioOficial, moneda, productoId, 
         moneda_objetivo: monedaInput
       };
       // Intentar enviar token en Authorization header si está disponible
-      const token = typeof window !== 'undefined' ? localStorage.getItem("token") : null;
+      const token = typeof window !== 'undefined' ? localStorage.getItem("authToken") : null;
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
@@ -152,7 +152,7 @@ import BotonVolver from './BotonVolver';
 // Interfaz para un item de precio especial en el estado del formulario
 // Base de la API centralizada. Usa la variable de entorno NEXT_PUBLIC_API_URL si existe; 
 // en caso contrario cae al dominio de producción para evitar 'undefined' en las rutas.
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://quimex.sistemataup.online';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://quimex.sistemataup.online/api';
 
 interface ProductoPrecioEspecialItem {
   id_precio_especial?: number;
@@ -238,7 +238,7 @@ function PrecioPreviewConMargen({ productoId, margen }: { productoId: string | n
     setLoading(true);
     setError(null);
     
-    const token = typeof window !== 'undefined' ? localStorage.getItem("token") : null;
+    const token = typeof window !== 'undefined' ? localStorage.getItem("authToken") : null;
     const headers: Record<string, string> = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
 
@@ -394,7 +394,7 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
     setForm(initialFormState); 
   // Eliminado: setPreciosEspecialesOriginales([]);
 
-    const token = typeof window !== 'undefined' ? localStorage.getItem("token") : null;
+    const token = typeof window !== 'undefined' ? localStorage.getItem("authToken") : null;
     if (!token) {
         setErrorCarga("No se encontró token de autenticación.");
         setIsLoading(false);
@@ -577,7 +577,7 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
       return;
     }
     const item = form.precios_especiales_form[modalIndex];
-    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
     if (!token) {
       setModalError('No se encontró token');
       return;
@@ -662,7 +662,7 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
       closeModal();
       return;
     }
-    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
     if (!token) {
       setModalError('No se encontró token');
       return;
@@ -696,7 +696,7 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
     setSubmitSuccessMessage(null);
     setSubmitErrorMessage(null);
 
-    const token = typeof window !== 'undefined' ? localStorage.getItem("token") : null;
+    const token = typeof window !== 'undefined' ? localStorage.getItem("authToken") : null;
     if (!token) {
         setSubmitErrorMessage("Error: No se encontró token de autenticación.");
         setIsSubmitting(false);

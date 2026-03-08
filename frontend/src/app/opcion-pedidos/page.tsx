@@ -99,7 +99,7 @@ export default function TotalPedidos() {
     if (!fechaSeleccionada) return;
     setLoading(true);
     setError(null);
-    const token = localStorage.getItem("token");
+    const token = localStorage.getItem("authToken");
     if (!token) { setError("No autenticado."); setLoading(false); return; }
     try {
       const params = new URLSearchParams({
@@ -171,7 +171,7 @@ export default function TotalPedidos() {
     if (selectedBoletas.size === 0) return;
     setIsUpdatingStatus(true);
     setError(null);
-    const token = localStorage.getItem("token");
+    const token = localStorage.getItem("authToken");
     try {
         const response = await fetch('https://quimex.sistemataup.online/api/ventas/actualizar-estado-lote', {
             method: 'POST',
@@ -199,7 +199,7 @@ const handlePrint = async (tipo: 'comprobante' | 'orden_de_trabajo') => {
     }
     setLoading(true);
     setError(null);
-    const token = localStorage.getItem("token");
+    const token = localStorage.getItem("authToken");
 
     try {
       // 1. Llamada al endpoint de lote (esto está perfecto)

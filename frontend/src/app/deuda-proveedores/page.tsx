@@ -10,10 +10,10 @@ type ItemDetalle = { id_linea:number; producto_id:number; producto_nombre?:strin
 type ItemAPI = { id_linea:number|string; producto_id:number|string; producto_nombre?:string; cantidad_solicitada?: number|string; cantidad_recibida?: number|string; precio_unitario_estimado?: number|string; importe_linea_estimado?: number|string };
 type Movimiento = { id:number; proveedor_id:number; orden_id:number|null; tipo:'DEBITO'|'CREDITO'; monto:number; fecha:string };
 
-const API = 'https://quimex.sistemataup.online';
+const API = 'https://quimex.sistemataup.online/api';
 
 export default function DeudaProveedoresPage() {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+  const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string|null>(null);
   const [ordenes, setOrdenes] = useState<OrdenResumen[]>([]);

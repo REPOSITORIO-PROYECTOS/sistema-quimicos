@@ -12,7 +12,7 @@ import FormularioProveedorFields, { ProveedorFieldsData } from '@/components/For
 //   description: 'Formulario para registrar un nuevo proveedor en el sistema.',
 // };
 
-const API_BASE_URL = 'https://quimex.sistemataup.online'; // O usa variable de entorno
+const API_BASE_URL = 'https://quimex.sistemataup.online/api'; // O usa variable de entorno
 
 const initialPageFormData: ProveedorFieldsData = {
   nombre: '',
@@ -29,7 +29,7 @@ export default function RegistrarProveedorPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const token = typeof window !== 'undefined' ? localStorage.getItem("token") : null;
+  const token = typeof window !== 'undefined' ? localStorage.getItem("authToken") : null;
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
