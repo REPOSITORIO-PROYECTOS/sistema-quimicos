@@ -22,9 +22,9 @@ export default function Home() {
     const [userRole, setUserRole] = useState<UserRole | null>(null);
 
     useEffect(() => {
-        // Solo ejecutar en el cliente donde sessionStorage está disponible
+        // Solo ejecutar en el cliente donde localStorage está disponible
         if (typeof window !== "undefined") {
-            const userItem = sessionStorage.getItem("user");
+            const userItem = localStorage.getItem("user");
             if (userItem) {
                 try {
                     const user = JSON.parse(userItem);
@@ -54,12 +54,12 @@ export default function Home() {
                         setIsLoading(false);
                     }
                 } catch (error) {
-                    console.error("Failed to parse user from sessionStorage:", error);
+                    console.error("Failed to parse user from localStorage:", error);
                     setUserRole("GUEST"); // Tratar como GUEST si hay error
                     router.replace('/login'); // Redirigir a login en caso de error
                 }
             } else {
-                // No hay usuario en sessionStorage, AppShell debería haber manejado esto.
+                // No hay usuario en localStorage, AppShell debería haber manejado esto.
                 // Como medida de seguridad, redirigir a login.
                 setUserRole("GUEST");
                 router.replace('/login');

@@ -1,6 +1,7 @@
 // context/ProductsContextActivos.tsx
 "use client"
 import { createContext, useContext, useEffect, useState } from 'react';
+import { apiGet } from '@/lib/api';
 
 export type Producto = {
   id: number;
@@ -32,8 +33,7 @@ export const ProductsActivosProvider = ({ children }: any) => {
       setLoading(true);
       setError(null);
 
-      const res = await fetch('https://quimex.sistemataup.online/api/productos/obtener_todos_activos');
-      const data = await res.json();
+      const data = await apiGet('/api/productos/obtener_todos_activos');
       setProductos(data);
       // eslint-disable-next-line
     } catch (err: any) {

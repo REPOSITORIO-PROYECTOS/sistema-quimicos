@@ -46,11 +46,12 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://quimex.sistemat
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [user, setUser] = useState<User>(null);
-    const [isLoading, setIsLoading] = useState(true); // Inicia como true, para efecto de carga inicial
+    const [isLoading, setIsLoading] = useState(true);
     const router = useRouter();
 
-    // Efecto para cargar desde localStorage al inicio
+    // Efecto para cargar desde localStorage al inicio (solo en cliente)
     useEffect(() => {
+        // Cargar estado desde localStorage después de que React se monte en el cliente
 
         try {
             const storedUser = localStorage.getItem("user");
@@ -66,7 +67,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     ROLES_DISPONIBLES_VALUES.includes(parsedUser.role as UserRole)
                 ) {
                     setUser(parsedUser as User);
-                    //foundUser = true;
                 } else {
                     console.warn(
                         "AuthProvider useEffect: Datos de usuario en localStorage no válidos o rol desconocido:",
@@ -81,7 +81,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             localStorage.removeItem("user");
             localStorage.removeItem("authToken");
         } finally {
-            setIsLoading(false); // CRÍTICO: Asegurar que isLoading se ponga en false
+            setIsLoading(false);
         }
     }, []); // Se ejecuta solo una vez al montar el provider
 

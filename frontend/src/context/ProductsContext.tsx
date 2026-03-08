@@ -1,6 +1,7 @@
 // context/ProductsContext.js
 "use client"
 import { createContext, useContext, useEffect, useState } from 'react';
+import { apiGet } from '@/lib/api';
 
 export type Producto = {
   id: number;
@@ -33,8 +34,7 @@ export const ProductsProvider = ({ children }: any) => {
       setLoading(true);
       setError(null);
 
-      const res = await fetch('https://quimex.sistemataup.online/api/productos/obtener_todos');
-      const data = await res.json();
+      const data = await apiGet('/api/productos/obtener_todos');
       setProductos(data);
       // eslint-disable-next-line
     } catch (err: any) {

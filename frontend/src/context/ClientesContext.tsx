@@ -1,6 +1,7 @@
 // context/ClientesContext.js // <-- RECOMIENDO Renombrar el archivo también
 "use client"
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react'; // Importa ReactNode
+import { apiGet } from '@/lib/api';
 
 type Cliente = {
   activo: boolean,
@@ -58,11 +59,9 @@ export const ClientesProvider = ({ children }: ClientesProviderProps) => {
       params.append('page', String(page));
       params.append('per_page', String(perPage));
       if (searchTerm) params.append('search_term', searchTerm);
-      const res = await fetch(`https://quimex.sistemataup.online/api/clientes/obtener_todos?${params.toString()}`);
-      if (!res.ok) {
-        throw new Error(`Error ${res.status}: ${res.statusText}`);
-      }
-      const data = await res.json();
+      
+      const data = await apiGet(`/api/clientes/obtener_todos?${params.toString()}`);
+      
       if (!Array.isArray(data.clientes)) {
         throw new Error("La respuesta de la API no es un array de clientes");
       }

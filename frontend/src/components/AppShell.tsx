@@ -17,51 +17,35 @@ const PUBLIC_ROUTES = ['/login', '/register']; // Añade otras si es necesario
 
 const AppShell: React.FC<AppShellProps> = ({ children }) => {
   const { user, isLoading } = useAuth();
-  const pathname = usePathname(); // <-- OBTENER RUTA ACTUAL
+  const pathname = usePathname();
 
-  // ✨ NUEVO: Comprobar si la ruta actual es pública
   const isPublicRoute = PUBLIC_ROUTES.includes(pathname || "");
 
-  // 1. Estado de Carga Inicial
+  // 1. Mientras cargue el contexto, mostrar spinner
   if (isLoading) {
-    // ... (código del spinner) ...
-     return <div className="flex items-center justify-center min-h-screen">Cargando...</div>;
+    return <div className="flex items-center justify-center min-h-screen">Cargando...</div>;
   }
 
-  // 2. Si es Ruta Pública O el usuario está autenticado -> Mostrar contenido
+  // 2. Si es ruta pública O usuario autenticado -> mostrar contenido
   if (isPublicRoute || user) {
-     // Si es una ruta pública, mostramos directamente los children (la página pública)
-     // Si es una ruta privada PERO el usuario está autenticado, mostramos el layout completo + children
     if (isPublicRoute) {
-        // Para rutas públicas, quizás no quieras mostrar Header/Navbar
-        // O quizás sí, depende de tu diseño. Aquí mostramos solo children:
-        return <>{children}</>;
-        // Alternativa: Mostrar layout simple para públicas:
-        // return (
-        //   <div>
-        //      <MinimalHeader /> {/* Un header simple si quieres */}
-        //      {children}
-        //   </div>
-        // );
+      return <>{children}</>;
     } else {
-        // Usuario autenticado en ruta privada: Mostrar layout completo
-        return (
-            <div className="flex flex-col min-h-screen">
-            <Header />
-            <Navbar />
-            <div className="flex-grow">
-                {children}
-            </div>
-            {/* Footer opcional */}
-            </div>
-        );
+      // Usuario autenticado en ruta privada
+      return (
+        <div className="flex flex-col min-h-screen">
+          <Header />
+          <Navbar />
+          <div className="flex-grow">
+            {children}
+          </div>
+        </div>
+      );
     }
   }
 
-  // 3. Si NO es Ruta Pública Y el usuario NO está autenticado -> Mostrar Login
-  // Esta condición solo se alcanza si !isPublicRoute && !user
+  // 3. No autenticado en ruta privada
   return <LoginForm />;
-
 };
 
 export default AppShell;
