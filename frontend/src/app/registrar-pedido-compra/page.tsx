@@ -278,7 +278,7 @@ export default function RegistrarIngreso() {
                       setIsLoading(true);
                       try {
                         const userText = sessionStorage.getItem("user");
-                        const user = userText ? (JSON.parse(userText) as { role?: string; id?: number | string }) : null;
+                        const user = userText ? (JSON.parse(userText) as { role?: string; id?: number | string; name?: string; usuario?: string }) : null;
                         const response = await fetch('https://quimex.sistemataup.online/api/ordenes_compra/crear', {
                           method: 'POST',
                           headers: {

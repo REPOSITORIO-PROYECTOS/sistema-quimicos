@@ -131,7 +131,10 @@ export default function PedidoRapidoAdmin() {
     // Intentar obtener rol desde localStorage
     if (!rolItem) {
       rolItem = localStorage.getItem('rol');
-    } else if (!rolItem) {
+    }
+
+    // Si aún no hay rol, intentar sessionStorage
+    if (!rolItem) {
       rolItem = sessionStorage.getItem('rol');
     }
 
