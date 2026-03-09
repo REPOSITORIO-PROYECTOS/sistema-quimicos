@@ -52,11 +52,12 @@ export default function PedidoRapidoAdmin() {
         subtotal = cantNum * precioNum;
       }
       let total = subtotal;
+      // Aplicar impuestos de forma encadenada (multiplicar porcentajes)
       if (showIva && iva && !isNaN(parseFloat(iva))) {
-        total += subtotal * (parseFloat(iva) / 100);
+        total *= (1 + parseFloat(iva) / 100);
       }
       if (showIibb && iibb && !isNaN(parseFloat(iibb))) {
-        total += subtotal * (parseFloat(iibb) / 100);
+        total *= (1 + parseFloat(iibb) / 100);
       }
       setImporteTotal(total.toFixed(2));
       if (pagoCompleto) {
@@ -168,7 +169,7 @@ export default function PedidoRapidoAdmin() {
     );
   }
 
-  const apiBase = process.env.NEXT_PUBLIC_API_URL || 'https://quimex.sistemataup.online';
+  const apiBase = process.env.NEXT_PUBLIC_API_URL || 'https://quimex.sistemataup.online/api';
   type ApiErrorShape = { error?: string; mensaje?: string; detail?: string };
   const apiRequest = async <T = unknown>(url: string, init: RequestInit): Promise<T> => {
     const resp = await fetch(url, init);
@@ -190,8 +191,17 @@ export default function PedidoRapidoAdmin() {
     setError("");
     setPagoError("");
     try {
-      const token = localStorage.getItem("authToken");
-      const userItem = sessionStorage.getItem("user");
+      // Obtener token (intentar localStorage primero, luego sessionStorage)
+      let token = localStorage.getItem("authToken");
+      if (!token) {
+        token = sessionStorage.getItem("authToken");
+      }
+
+      // Obtener user (intentar localStorage primero, luego sessionStorage)
+      let userItem = localStorage.getItem("user");
+      if (!userItem) {
+        userItem = sessionStorage.getItem("user");
+      }
       const user = userItem ? JSON.parse(userItem) : null;
       if (!token || !user) throw new Error("Autenticación requerida.");
 
@@ -208,8 +218,9 @@ export default function PedidoRapidoAdmin() {
         if (!isNaN(cantNum) && !isNaN(precioNum) && cantNum > 0 && precioNum >= 0) {
           subtotal = (showTc && !isNaN(tcNum) && tcNum > 0) ? (cantNum * precioNum * tcNum) : (cantNum * precioNum);
           let total = subtotal;
-          if (showIva && iva && !isNaN(parseFloat(iva))) total += subtotal * (parseFloat(iva) / 100);
-          if (showIibb && iibb && !isNaN(parseFloat(iibb))) total += subtotal * (parseFloat(iibb) / 100);
+          // Aplicar impuestos de forma encadenada (multiplicar porcentajes)
+          if (showIva && iva && !isNaN(parseFloat(iva))) total *= (1 + parseFloat(iva) / 100);
+          if (showIibb && iibb && !isNaN(parseFloat(iibb))) total *= (1 + parseFloat(iibb) / 100);
           return total;
         }
         return 0;
@@ -230,17 +241,11 @@ export default function PedidoRapidoAdmin() {
 
       // 1) Crear OC
       // Calcular observaciones de pago para registrar en la creación
-      let importeAbonadoCrear = pagoCompleto ? totalCalculadoForm : (parseFloat(importeAbonado || '0') || 0);
-      if (isFinite(totalCalculadoForm)) {
-        const t = Math.max(0, Number(totalCalculadoForm.toFixed(2)));
-        let a = Math.max(0, Number(importeAbonadoCrear.toFixed(2)));
-        if (a > t) a = t;
-        importeAbonadoCrear = a;
-      }
-      const deudaRestanteCrear = Math.max(0, totalCalculadoForm - importeAbonadoCrear);
+      const importeAbonadoCrear = pagoCompleto ? 0 : (parseFloat(importeAbonado || '0') || 0);
+      const deudaRestanteCrear = pagoCompleto ? 0 : importeAbonadoCrear;
       const observacionesPagoCrear = pagoCompleto
         ? 'Pago completo'
-        : `Pago parcial: abonado=${importeAbonadoCrear.toFixed(2)}, deuda restante=${deudaRestanteCrear.toFixed(2)}`;
+        : `Pago parcial: abonado=${(typeof deudaRestanteCrear === 'number' ? deudaRestanteCrear : 0).toFixed(2)}`;
       const observacionesChequeCrear = formaPago === 'Cheque'
         ? ` | Cheque: Emisor=${chequeEmisor}; Banco=${chequeBanco}; N°=${chequeNumero}; Fecha=${chequeFecha}`
         : '';
@@ -289,7 +294,6 @@ export default function PedidoRapidoAdmin() {
       const id_linea = itemPrincipal?.id_linea ? Number(itemPrincipal.id_linea) : 0;
       const cantidad_solicitada = itemPrincipal?.cantidad_solicitada ? Number(itemPrincipal.cantidad_solicitada) : Number(cantidad);
       const precio_unitario_estimado = itemPrincipal?.precio_unitario_estimado ? Number(itemPrincipal.precio_unitario_estimado) : parseFloat(precioUnitario) || 0;
-      const importe_total_estimado = parseFloat(importeTotal) || (cantidad_solicitada * precio_unitario_estimado);
 
       // 3) Aprobar OC automáticamente (solo si está en estado 'Solicitado')
       if (estadoCreado !== 'Solicitado') {
@@ -305,17 +309,8 @@ export default function PedidoRapidoAdmin() {
         return;
       }
 
-      const totalCalculado = parseFloat(importeTotal || '0');
-      let importe_abonado = pagoCompleto ? totalCalculado : (parseFloat(importeAbonado || '0') || 0);
-      if (isFinite(totalCalculado)) {
-        const t = Math.max(0, Number(totalCalculado.toFixed(2)));
-        let a = Math.max(0, Number(importe_abonado.toFixed(2)));
-        if (a > t) a = t;
-        importe_abonado = a;
-      }
-      const deuda_restante = Math.max(0, totalCalculado - importe_abonado);
-      // Incluir detalles de cheque en observaciones si corresponde
-      const observacionesPago = pagoCompleto ? 'Pago completo' : `Pago parcial: abonado=${importe_abonado.toFixed(2)}, deuda restante=${deuda_restante.toFixed(2)}`;
+      const importe_abonado = pagoCompleto ? 0 : (parseFloat(importeAbonado || '0') || 0);
+      const observacionesPago = pagoCompleto ? 'Pago completo' : `Pago parcial: abonado=${(typeof importe_abonado === 'number' ? importe_abonado : 0).toFixed(2)}`;
       const observacionesCheque = formaPago === 'Cheque'
         ? ` | Cheque: Emisor=${chequeEmisor}; Banco=${chequeBanco}; N°=${chequeNumero}; Fecha=${chequeFecha}`
         : '';
@@ -332,9 +327,7 @@ export default function PedidoRapidoAdmin() {
         tipo_caja: tipoCaja,
         forma_pago: formaPago,
         items: [{ id_linea, cantidad_solicitada, precio_unitario_estimado }],
-        importe_total_estimado,
-        // Campo opcional para lógica de deuda (si el backend lo soporta)
-        importe_abonado,
+        importe_abonado: importe_abonado || 0,
         cheque_perteneciente_a: formaPago === 'Cheque' ? chequeEmisor : undefined,
       };
 
@@ -344,19 +337,15 @@ export default function PedidoRapidoAdmin() {
           headers: { 'Content-Type': 'application/json', 'X-User-Role': user.role, 'X-User-Name': user.usuario || user.name, 'Authorization': `Bearer ${token}` },
           body: JSON.stringify(aprobarPayload)
         });
-      } catch (err) {
-        try {
-          await apiRequest(`${apiBase}/ordenes_compra/rechazar/${nuevaOCId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json', 'X-User-Role': user.role, 'X-User-Name': user.usuario || user.name, 'Authorization': `Bearer ${token}` },
-            body: JSON.stringify({ motivo_rechazo: 'Auto-reversión por fallo de aprobación' })
-          });
-        } catch { }
-        throw err instanceof Error ? err : new Error('Error aprobando OC');
+        alert('Pedido Rápido creado y aprobado correctamente.');
+        router.push('/recepciones-pendientes');
+      } catch (approvalErr) {
+        const approvalMsg = approvalErr instanceof Error ? approvalErr.message : 'Error desconocido';
+        console.error('Error al aprobar OC:', { nuevaOCId, approvalMsg, error: approvalErr });
+        // La orden se creó pero no se aprobó - informar al usuario
+        alert(`Orden creada (OC-${nuevaOCId}) pero hubo un error al aprobarla automáticamente: ${approvalMsg}\n\nLa orden está en estado SOLICITADO y deberá ser aprobada manualmente.`);
+        router.push('/recepciones-pendientes');
       }
-
-      alert('Pedido Rápido creado y aprobado correctamente.');
-      router.push('/recepciones-pendientes');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Error al crear Pedido Rápido');
     }
@@ -366,28 +355,25 @@ export default function PedidoRapidoAdmin() {
     setError("");
     setPagoError("");
     try {
-      const token = localStorage.getItem("authToken");
-      const userItem = sessionStorage.getItem("user");
+      // Obtener token (intentar localStorage primero, luego sessionStorage)
+      let token = localStorage.getItem("authToken");
+      if (!token) {
+        token = sessionStorage.getItem("authToken");
+      }
+
+      // Obtener user (intentar localStorage primero, luego sessionStorage)
+      let userItem = localStorage.getItem("user");
+      if (!userItem) {
+        userItem = sessionStorage.getItem("user");
+      }
       const user = userItem ? JSON.parse(userItem) : null;
       if (!token || !user) throw new Error("Autenticación requerida.");
       if (!proveedorId || !productoId || !cantidad || !precioUnitario) throw new Error("Complete proveedor, producto, cantidad y precio.");
       const cantNum = parseFloat(cantidad);
       const precioNum = parseFloat(precioUnitario);
-      const tcNum = parseFloat(tc);
-      let subtotal = 0;
       if (!isNaN(cantNum) && !isNaN(precioNum) && cantNum > 0 && precioNum >= 0) {
-        subtotal = (showTc && !isNaN(tcNum) && tcNum > 0) ? (cantNum * precioNum * tcNum) : (cantNum * precioNum);
-        let total = subtotal;
-        if (showIva && iva && !isNaN(parseFloat(iva))) total += subtotal * (parseFloat(iva) / 100);
-        if (showIibb && iibb && !isNaN(parseFloat(iibb))) total += subtotal * (parseFloat(iibb) / 100);
-        let importeAbonadoCrear = pagoCompleto ? total : (parseFloat(importeAbonado || '0') || 0);
-        if (isFinite(total)) {
-          const t = Math.max(0, Number(total.toFixed(2)));
-          let a = Math.max(0, Number(importeAbonadoCrear.toFixed(2)));
-          if (a > t) a = t;
-          importeAbonadoCrear = a;
-        }
-        const observacionesPagoCrear = pagoCompleto ? 'Pago completo' : `Pago parcial: abonado=${importeAbonadoCrear.toFixed(2)}`;
+        const importeAbonadoCrear = pagoCompleto ? 0 : (parseFloat(importeAbonado || '0') || 0);
+        const observacionesPagoCrear = pagoCompleto ? 'Pago completo' : `Pago parcial: abonado=${(typeof importeAbonadoCrear === 'number' ? importeAbonadoCrear : 0).toFixed(2)}`;
         const observacionesChequeCrear = formaPago === 'Cheque' ? ` | Cheque: Emisor=${chequeEmisor}; Banco=${chequeBanco}; N°=${chequeNumero}; Fecha=${chequeFecha}` : '';
         const observacionesFinalCrear = `${observaciones || ''}${observaciones ? ' | ' : ''}${observacionesPagoCrear}${observacionesChequeCrear}`.trim();
         const crearPayload = {
@@ -416,10 +402,16 @@ export default function PedidoRapidoAdmin() {
         const id_linea = itemPrincipal?.id_linea ? Number(itemPrincipal.id_linea) : 0;
         const cantidad_solicitada = itemPrincipal?.cantidad_solicitada ? Number(itemPrincipal.cantidad_solicitada) : Number(cantidad);
         const precio_unitario_estimado = itemPrincipal?.precio_unitario_estimado ? Number(itemPrincipal.precio_unitario_estimado) : parseFloat(precioUnitario) || 0;
-        const importe_total_estimado = Number(total.toFixed(2));
         if (String(user.role).toUpperCase() === 'ADMIN') {
-          const aprobarPayload = { proveedor_id: Number(proveedorId), cuenta, iibb: showIibb ? iibb : '', iva: showIva ? iva : '', tc: showTc ? tc : '', ajuste_tc: showTc ? true : false, observaciones_solicitud: observacionesFinalCrear, tipo_caja: tipoCaja, forma_pago: formaPago, items: [{ id_linea, cantidad_solicitada, precio_unitario_estimado }], importe_total_estimado, importe_abonado: importeAbonadoCrear, cheque_perteneciente_a: formaPago === 'Cheque' ? chequeEmisor : undefined };
-          await apiRequest(`${apiBase}/ordenes_compra/aprobar/${nuevaOCId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-User-Role': user.role, 'X-User-Name': user.usuario || user.name, 'Authorization': `Bearer ${token}` }, body: JSON.stringify(aprobarPayload) });
+          const aprobarPayload = { proveedor_id: Number(proveedorId), cuenta, iibb: showIibb ? iibb : '', iva: showIva ? iva : '', tc: showTc ? tc : '', ajuste_tc: showTc ? true : false, observaciones_solicitud: observacionesFinalCrear, tipo_caja: tipoCaja, forma_pago: formaPago, items: [{ id_linea, cantidad_solicitada, precio_unitario_estimado }], importe_abonado: importeAbonadoCrear, cheque_perteneciente_a: formaPago === 'Cheque' ? chequeEmisor : undefined };
+          try {
+            await apiRequest(`${apiBase}/ordenes_compra/aprobar/${nuevaOCId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-User-Role': user.role, 'X-User-Name': user.usuario || user.name, 'Authorization': `Bearer ${token}` }, body: JSON.stringify(aprobarPayload) });
+          } catch (approvalErr) {
+            const approvalMsg = approvalErr instanceof Error ? approvalErr.message : 'Error desconocido';
+            console.warn('Error al aprobar OC en recepcionar:', { nuevaOCId, approvalMsg });
+            // Continuar de todas formas - intentar recibir la orden
+            alert(`Advertencia: Error al aprobar OC-${nuevaOCId}: ${approvalMsg}\n\nContinuando con la recepción...`);
+          }
         }
         const itemsRecibidos = [{ id_linea, cantidad_recibida: Number(cantidad_solicitada), producto_codigo: String(itemPrincipal?.producto_codigo || ''), costo_unitario_ars: precio_unitario_estimado, notas_item: '' }];
         const estadoRecepcion = 'Completa';
@@ -427,7 +419,6 @@ export default function PedidoRapidoAdmin() {
           proveedor_id: Number(proveedorId),
           cantidad: Number(cantidad_solicitada),
           precio_unitario: precio_unitario_estimado,
-          importe_total: importe_total_estimado,
           cuenta,
           iibb: showIibb ? Number(iibb) : undefined,
           iva: showIva ? Number(iva) : undefined,
@@ -435,7 +426,7 @@ export default function PedidoRapidoAdmin() {
           ajuste_tc: showTc ? true : false,
           nro_remito_proveedor: '',
           estado_recepcion: estadoRecepcion,
-          importe_abonado: pagoCompleto ? importe_total_estimado : (parseFloat(importeAbonado || '0') || 0),
+          importe_abonado: pagoCompleto ? 0 : (parseFloat(importeAbonado || '0') || 0),
           forma_pago: formaPago,
           cheque_perteneciente_a: formaPago === 'Cheque' ? chequeEmisor : '',
           tipo_caja: tipoCaja,

@@ -212,8 +212,8 @@ def _extract_user_info(current_user):
             urole = current_user.get('role')
         else:
             uid = getattr(current_user, 'id', None)
-            uname = getattr(current_user, 'username', None) or getattr(current_user, 'name', None)
-            urole = getattr(current_user, 'role', None)
+            uname = getattr(current_user, 'nombre_usuario', None) or getattr(current_user, 'nombre', None)
+            urole = getattr(current_user, 'rol', None)
     except Exception:
         # no debe romper si la estructura del current_user es inesperada
         return None, None, None

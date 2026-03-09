@@ -28,7 +28,11 @@ type ItemRecepcion = {
 };
 
 export default function RecepcionesPendientesPage() {
-  const userItem = typeof window !== 'undefined' ? localStorage.getItem('user') || sessionStorage.getItem('user') : null;
+  // Obtener user y token de forma consistente
+  let userItem = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
+  if (!userItem && typeof window !== 'undefined') {
+    userItem = sessionStorage.getItem('user');
+  }
   const user = userItem ? JSON.parse(userItem) : null;
   const [ordenes, setOrdenes] = useState<OrdenCompra[]>([]);
   const [itemsPorOrden, setItemsPorOrden] = useState<Record<number, { nombre: string, cantidad: number }[]>>({});
@@ -47,7 +51,10 @@ export default function RecepcionesPendientesPage() {
       setLoading(true);
       setError(null);
       try {
-        const token = localStorage.getItem("authToken");
+        let token = localStorage.getItem("authToken");
+        if (!token) {
+          token = sessionStorage.getItem("authToken");
+        }
         if (!token) throw new Error("Usuario no autenticado.");
         const url = `https://quimex.sistemataup.online/api/ordenes_compra/obtener_todas?page=1&per_page=50`;
         const response = await fetch(url, {
@@ -116,7 +123,10 @@ export default function RecepcionesPendientesPage() {
     setItems(null);
     const fetchItems = async () => {
       try {
-        const token = localStorage.getItem("authToken");
+        let token = localStorage.getItem("authToken");
+        if (!token) {
+          token = sessionStorage.getItem("authToken");
+        }
         if (!token) throw new Error("Usuario no autenticado.");
         const url = `https://quimex.sistemataup.online/api/ordenes_compra/obtener/${ordenSeleccionada.id}`;
         const response = await fetch(url, {
@@ -152,10 +162,16 @@ export default function RecepcionesPendientesPage() {
   // Registrar recepción en backend y actualizar UI
   const registrarRecepcion = async (resultados: { id: number; cantidadRecibida: number; incidencia: 'Falta' | 'Sobra' | 'OK'; observaciones: string; accionResto?: 'pendiente' | 'cancelar' | 'ninguno'; }[]) => {
     try {
-      const token = localStorage.getItem("authToken");
-      const userItem = sessionStorage.getItem("user");
-      const user = userItem ? JSON.parse(userItem) : null;
-      if (!token || !user) throw new Error("Usuario no autenticado.");
+      let token = localStorage.getItem("authToken");
+      if (!token) {
+        token = sessionStorage.getItem("authToken");
+      }
+      let userItem = localStorage.getItem("user");
+      if (!userItem) {
+        userItem = sessionStorage.getItem("user");
+      }
+      const userParsed = userItem ? JSON.parse(userItem) : null;
+      if (!token || !userParsed) throw new Error("Usuario no autenticado.");
 
       const itemsRecibidos = resultados.map((res) => {
         const meta = items?.find(i => i.id === res.id);
@@ -215,8 +231,8 @@ export default function RecepcionesPendientesPage() {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'X-User-Role': user.role,
-          'X-User-Name': user.usuario || user.name,
+          'X-User-Role': userParsed?.role || '',
+          'X-User-Name': userParsed?.usuario || userParsed?.name || '',
           "Authorization": `Bearer ${token}`
         },
         body: JSON.stringify(payload),
@@ -231,7 +247,7 @@ export default function RecepcionesPendientesPage() {
       setLoading(true);
       setError(null);
       try {
-        const refresco = await fetch(`https://quimex.sistemataup.online/api/ordenes_compra/obtener_todas?page=1&per_page=50`, { headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` } });
+        const refresco = await fetch(`https://quimex.sistemataup.online/api/ordenes_compra/obtener_todas?page=1&per_page=50`, { headers: { "Content-Type": "application/json", 'X-User-Role': userParsed?.role || '', 'X-User-Name': userParsed?.usuario || userParsed?.name || '', "Authorization": `Bearer ${token}` } });
         const nuevo = await refresco.json();
         setOrdenes((nuevo.ordenes || []).filter((o: OrdenCompra) => {
           const estado = String(o.estado || '').toUpperCase();
