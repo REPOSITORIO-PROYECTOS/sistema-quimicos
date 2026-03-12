@@ -500,44 +500,6 @@ def crear_orden_compra(current_user):
 
         db.session.add(nueva_orden)
         db.session.commit()
-        try:
-            total_crear = nueva_orden.importe_total_estimado or Decimal('0')
-            abonado_crear = nueva_orden.importe_abonado or Decimal('0')
-            if rol_usuario and rol_usuario.upper() == "ADMIN" and total_crear > 0 and abonado_crear < total_crear:
-                nueva_orden.estado = 'CON DEUDA'
-                db.session.commit()
-                debito_existente = db.session.query(MovimientoProveedor).filter(
-                    MovimientoProveedor.orden_id == nueva_orden.id,
-                    MovimientoProveedor.tipo == 'DEBITO'
-                ).first()
-                if not debito_existente:
-                    monto_deuda = (total_crear - abonado_crear)
-                    # Convertir deuda a ARS si la orden está en USD
-                    monto_deuda_ars = _convert_to_ars(monto_deuda, nueva_orden.ajuste_tc)
-                    mov_debito_crear = MovimientoProveedor(
-                        proveedor_id=nueva_orden.proveedor_id,
-                        orden_id=nueva_orden.id,
-                        tipo='DEBITO',
-                        monto=monto_deuda_ars,
-                        descripcion=f"OC {nueva_orden.id} - Deuda al crear ({total_crear} {('USD' if nueva_orden.ajuste_tc else 'ARS')})",
-                        usuario=usuario_nombre
-                    )
-                    db.session.add(mov_debito_crear)
-                    db.session.commit()
-                # Registrar crédito si se abonó al crear
-                if abonado_crear > Decimal('0'):
-                    mov_credito_crear = MovimientoProveedor(
-                        proveedor_id=nueva_orden.proveedor_id,
-                        orden_id=nueva_orden.id,
-                        tipo='CREDITO',
-                        monto=_convert_to_ars(abonado_crear, nueva_orden.ajuste_tc),
-                        descripcion=f"OC {nueva_orden.id} - Pago al crear",
-                        usuario=usuario_nombre
-                    )
-                    db.session.add(mov_credito_crear)
-                    db.session.commit()
-        except Exception:
-            logger.warning("No se pudo registrar deuda al crear OC %s", nueva_orden.id)
 
         try:
             log = AuditLog(
@@ -587,9 +549,9 @@ def obtener_ordenes_compra(current_user):
         # --- Aplicar Filtros ---
         estado_filtro = request.args.get('estado')
         if estado_filtro:
-            if estado_filtro not in ESTADOS_ORDEN:  # Validar estado
+            if estado_filtro.upper() not in [e.upper() for e in ESTADOS_ORDEN]:  # Validar estado (case-insensitive)
                 return jsonify({"error": f"Estado de filtro inválido: '{estado_filtro}'"}), 400
-            query = query.filter(OrdenCompra.estado == estado_filtro)
+            query = query.filter(db.func.upper(OrdenCompra.estado) == estado_filtro.upper())  # Filtro case-insensitive
             logger.debug("Filtrando por estado: %s", estado_filtro)
 
         proveedor_id_filtro = request.args.get('proveedor_id', type=int)
@@ -1017,7 +979,8 @@ def recibir_orden_compra(current_user, orden_id):
                 if detalle_para_recepcion:
                     cantidad_recibida_ahora = Decimal(str(item_data.get('cantidad_recibida', '0')))
                     # Solo permitir recepción si está aprobada o ya parcialmente recibida o con deuda
-                    if orden_db.estado not in ['APROBADO', 'RECIBIDA_PARCIAL', 'CON DEUDA', 'EN_ESPERA_RECEPCION'] and cantidad_recibida_ahora > 0:
+                    estado_upper = (orden_db.estado or '').upper()
+                    if estado_upper not in ['APROBADO', 'RECIBIDA_PARCIAL', 'CON DEUDA', 'EN_ESPERA_RECEPCION'] and cantidad_recibida_ahora > 0:
                         return jsonify({"error": f"No se puede recibir mercadería para una orden con estado: {orden_db.estado}"}), 409
                     cantidad_previa = detalle_para_recepcion.cantidad_recibida or Decimal('0')
                     detalle_para_recepcion.cantidad_recibida = cantidad_previa + cantidad_recibida_ahora

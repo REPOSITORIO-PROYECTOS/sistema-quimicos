@@ -36,6 +36,11 @@ const navItemsConfig: NavItemConfig[] = [
   },
   // Ventas/Pedidos/Puerta según rol
   {
+    href: "/dashboard-pedidos",
+    label: "Dashboard",
+    roles: ["VENTAS_PEDIDOS"],
+  },
+  {
     href: "/acciones",
     label: "Pedidos",
     roles: ["ADMIN", "VENTAS_PEDIDOS"],

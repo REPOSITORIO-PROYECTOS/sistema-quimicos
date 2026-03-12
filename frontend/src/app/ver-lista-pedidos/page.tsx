@@ -382,10 +382,6 @@ export default function ListaOrdenesCompra() {
                 </li>
 
                 {ordenesFiltradas.length > 0 ? ordenesFiltradas.map((orden) => {
-                  // Fecha se muestra directamente más abajo
-
-                  const isProcessingCurrent = processingId === orden.id;
-                  const puedeActuar = orden.estado === 'Solicitado' && !processingId;
 
                   return (
                     <li key={orden.id} className="grid grid-cols-[1fr_1.5fr_1fr_2fr_1fr_1fr] gap-x-3 items-center bg-white hover:bg-gray-50 p-3 text-sm">
@@ -417,41 +413,28 @@ export default function ListaOrdenesCompra() {
                         })()
                       }</span>
                       <span>{Number(resumenItems[orden.id]?.cantidad || 0).toLocaleString('es-AR', { maximumFractionDigits: 2 })}</span>
-                      <div className="flex items-center justify-center gap-2">
-                        <button
-                          title="Ver/Procesar Orden"
-                          className="text-blue-600 hover:text-blue-800 p-1 rounded focus:outline-none disabled:opacity-50"
-                          onClick={() => setIdOrdenSeleccionada(orden.id)}
+                      <div className="flex items-center justify-center">
+                        <select
+                          className="text-xs border border-gray-300 rounded px-2 py-1 cursor-pointer bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                          defaultValue=""
                           disabled={!!processingId}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            e.currentTarget.value = "";
+                            if (val === 'ver') setIdOrdenSeleccionada(orden.id);
+                            else if (val === 'aprobar') handleAprobarOrden(orden.id);
+                            else if (val === 'rechazar') handleRechazarOrden(orden.id);
+                          }}
                         >
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                          </svg>
-                        </button>
-                        {user && user.role && user.role.toUpperCase() === 'ADMIN' && orden.estado === 'Solicitado' && (
-                          <>
-                            <button
-                              title="Aprobar Orden"
-                              onClick={() => handleAprobarOrden(orden.id)}
-                              disabled={!puedeActuar || isProcessingCurrent}
-                              className={`p-1 rounded text-green-500 hover:text-green-700 disabled:text-gray-400 disabled:cursor-not-allowed ${isProcessingCurrent ? 'animate-pulse' : ''}`}
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                              </svg>
-                            </button>
-                            <button
-                              title="Rechazar Orden"
-                              onClick={() => handleRechazarOrden(orden.id)}
-                              disabled={!puedeActuar || isProcessingCurrent}
-                              className={`p-1 rounded text-red-500 hover:text-red-700 disabled:text-gray-400 disabled:cursor-not-allowed ${isProcessingCurrent ? 'animate-pulse' : ''}`}
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                              </svg>
-                            </button>
-                          </>
-                        )}
+                          <option value="" disabled>Acción...</option>
+                          <option value="ver">Ver detalle</option>
+                          {user && user.role && user.role.toUpperCase() === 'ADMIN' && orden.estado === 'Solicitado' && (
+                            <>
+                              <option value="aprobar">✓ Aprobar</option>
+                              <option value="rechazar">✗ Rechazar</option>
+                            </>
+                          )}
+                        </select>
                       </div>
                     </li>
                   );

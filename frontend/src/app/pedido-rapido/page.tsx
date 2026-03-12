@@ -397,12 +397,15 @@ export default function PedidoRapidoAdmin() {
         const crearData = await apiRequest<CreateOcResponse>(`${apiBase}/ordenes_compra/crear`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-User-Role': user.role, 'X-User-Name': user.usuario || user.name, 'Authorization': `Bearer ${token}` }, body: JSON.stringify(crearPayload) });
         const nuevaOCId = crearData?.orden?.id || crearData?.id || crearData?.orden_id;
         if (!nuevaOCId) throw new Error('No se pudo obtener ID de la OC creada.');
+        const estadoCreado = crearData?.orden?.estado || crearData?.estado || 'Solicitado';
         const obtenerData = await apiRequest<{ items?: Array<{ id_linea?: number; cantidad_solicitada?: number; precio_unitario_estimado?: number; producto_codigo?: string }> }>(`${apiBase}/ordenes_compra/obtener/${nuevaOCId}`, { headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` } });
         const itemPrincipal = Array.isArray(obtenerData.items) ? obtenerData.items[0] : null;
         const id_linea = itemPrincipal?.id_linea ? Number(itemPrincipal.id_linea) : 0;
         const cantidad_solicitada = itemPrincipal?.cantidad_solicitada ? Number(itemPrincipal.cantidad_solicitada) : Number(cantidad);
         const precio_unitario_estimado = itemPrincipal?.precio_unitario_estimado ? Number(itemPrincipal.precio_unitario_estimado) : parseFloat(precioUnitario) || 0;
-        if (String(user.role).toUpperCase() === 'ADMIN') {
+
+        // Solo intentar aprobar si la orden está en SOLICITADO (no si ya está APROBADO)
+        if (String(user.role).toUpperCase() === 'ADMIN' && estadoCreado === 'SOLICITADO') {
           const aprobarPayload = { proveedor_id: Number(proveedorId), cuenta, iibb: showIibb ? iibb : '', iva: showIva ? iva : '', tc: showTc ? tc : '', ajuste_tc: showTc ? true : false, observaciones_solicitud: observacionesFinalCrear, tipo_caja: tipoCaja, forma_pago: formaPago, items: [{ id_linea, cantidad_solicitada, precio_unitario_estimado }], importe_abonado: importeAbonadoCrear, cheque_perteneciente_a: formaPago === 'Cheque' ? chequeEmisor : undefined };
           try {
             await apiRequest(`${apiBase}/ordenes_compra/aprobar/${nuevaOCId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-User-Role': user.role, 'X-User-Name': user.usuario || user.name, 'Authorization': `Bearer ${token}` }, body: JSON.stringify(aprobarPayload) });

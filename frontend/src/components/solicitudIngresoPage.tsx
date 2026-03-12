@@ -31,7 +31,7 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
   const [chequePerteneceA, setChequePerteneceA] = useState('');
   const [tipoCaja, setTipoCaja] = useState('caja diaria');
   const [pagoCompletoUI, setPagoCompletoUI] = useState(false);
-  
+
   const { productos: productosDelContexto } = useProductsContext();
   const { proveedores, loading: proveedoresLoading } = useProveedoresContext();
   const [errorMensaje, setErrorMensaje] = useState('');
@@ -48,7 +48,7 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
 
   const ESTADO_KEY = `solicitud_estado_${String(id)}`;
   const actualizarEstadoPersistente = (estado: string) => {
-    try { localStorage.setItem(ESTADO_KEY, estado); } catch {}
+    try { localStorage.setItem(ESTADO_KEY, estado); } catch { }
     setEstadoSolicitud(estado);
   };
   const cargarEstadoPersistente = useCallback(() => {
@@ -56,14 +56,14 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       const key = `solicitud_estado_${String(id)}`;
       const saved = localStorage.getItem(key);
       if (saved) setEstadoSolicitud(saved);
-    } catch {}
+    } catch { }
   }, [id]);
 
 
 
-  const cargarCamposProducto = useCallback(async (id_producto:number) => {
+  const cargarCamposProducto = useCallback(async (id_producto: number) => {
     try {
-      const response = await fetch(`https://quimex.sistemataup.online/api/productos/obtener/${id_producto}`,{headers: { "Authorization": `Bearer ${token}` }});
+      const response = await fetch(`https://quimex.sistemataup.online/api/productos/obtener/${id_producto}`, { headers: { "Authorization": `Bearer ${token}` } });
       if (!response.ok) return;
       const dataProd = await response.json();
       const unidad = dataProd.unidad_venta;
@@ -78,11 +78,11 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
   const cargarFormulario = useCallback(async () => {
     try {
       setErrorMensaje('');
-      const response = await fetch(`https://quimex.sistemataup.online/api/ordenes_compra/obtener/${id}`,{headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }});
+      const response = await fetch(`https://quimex.sistemataup.online/api/ordenes_compra/obtener/${id}`, { headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` } });
       if (!response.ok) throw new Error(`Error al traer la orden`);
       const data = await response.json();
       if (!data?.items?.length) throw new Error("No se encontraron items en la OC.");
-      
+
       const itemPrincipal = data.items[0];
 
       setMontoYaAbonadoOC(parseFloat(data.importe_abonado) || 0);
@@ -112,18 +112,18 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       setChequePerteneceA(data.cheque_perteneciente_a?.toString() ?? '');
       setTipoCaja(data.tipo_caja);
       setCantidadYaRecibida(parseFloat(itemPrincipal.cantidad_recibida) || 0);
-      
+
       setEstadoRecepcion('Completa');
       setCantidadRecepcionada('');
       setImporteAbonado('');
       setFormaPago(data.forma_pago || 'Efectivo');
-      
+
       if (itemPrincipal.unidad_medida) {
         setTipo(String(itemPrincipal.unidad_medida));
       } else if (itemPrincipal.producto_id) {
         await cargarCamposProducto(itemPrincipal.producto_id);
       }
-      
+
     } catch (err: unknown) {
       if (err instanceof Error) {
         setErrorMensaje(err.message);
@@ -147,16 +147,16 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       try {
         const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://quimex.sistemataup.online/api';
         const tkn = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
-        const headers: Record<string,string> = tkn ? { Authorization: `Bearer ${tkn}` } : {};
+        const headers: Record<string, string> = tkn ? { Authorization: `Bearer ${tkn}` } : {};
         const res = await fetch(`${API_BASE_URL}/tipos_cambio/obtener/Oficial`, { headers });
         if (!res.ok) return;
-        const data = await res.json().catch(()=>({}));
+        const data = await res.json().catch(() => ({}));
         const valor = Number((data && (data.valor ?? data.data?.valor)) ?? NaN);
         if (isFinite(valor) && valor > 0) {
           setTc(String(valor));
           setShowTc(true);
         }
-      } catch {}
+      } catch { }
     };
     fetchTC();
   }, []);
@@ -194,10 +194,10 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
   const formatearFecha = (fechaOriginal: string | Date | undefined): string => {
     if (!fechaOriginal) return '';
     try {
-        const fecha = new Date(fechaOriginal);
-        return fecha.toISOString().split('T')[0];
+      const fecha = new Date(fechaOriginal);
+      return fecha.toISOString().split('T')[0];
     } catch {
-        return '';
+      return '';
     }
   };
   // Tipos para payload de recepción
@@ -232,7 +232,7 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       if (nuevoAbonoFloat < 0) {
         throw new Error('El importe abonado no puede ser negativo.');
       }
-      
+
       const payload = {
         proveedor_id: Number(solicitud.proveedor_id),
         cantidad: Number(solicitud.cantidad),
@@ -271,10 +271,10 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
         })),
       };
 
-      const userText = sessionStorage.getItem("user");
+      const userText = localStorage.getItem("user") || sessionStorage.getItem("user");
       const user = userText ? (JSON.parse(userText) as { role?: string; usuario?: string; name?: string }) : null;
       if (!user || !token) throw new Error("Error de autenticación.");
-      
+
       const response = await fetch(`https://quimex.sistemataup.online/api/ordenes_compra/recibir/${id}`, {
         method: 'PUT',
         headers: {
@@ -293,16 +293,16 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       const deuda = Math.max(0, total - (abonadoPrevio + abonadoAhora));
       actualizarEstadoPersistente(deuda > 0 ? 'Con deuda' : 'Aprobado');
 
-  } catch (error: unknown) {
-    problema = true;
-    if (error instanceof Error) {
-      setErrorMensaje(error.message);
-    } else if (typeof error === 'string') {
-      setErrorMensaje(error);
-    } else {
-      setErrorMensaje("Ocurrió un error desconocido.");
+    } catch (error: unknown) {
+      problema = true;
+      if (error instanceof Error) {
+        setErrorMensaje(error.message);
+      } else if (typeof error === 'string') {
+        setErrorMensaje(error);
+      } else {
+        setErrorMensaje("Ocurrió un error desconocido.");
+      }
     }
-  }
   };
 
   // Enviar aprobación (guardar todos los campos editables)
@@ -353,16 +353,16 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
         importe_total_estimado,
         importe_abonado: parseFloat(importeAbonado || '0') || 0,
       };
-      const userItem = sessionStorage.getItem("user");
+      const userItem = localStorage.getItem("user") || sessionStorage.getItem("user");
       const user = userItem ? JSON.parse(userItem) : null;
       if (!user || !token) throw new Error("Error de autenticación.");
       const response = await fetch(`https://quimex.sistemataup.online/api/ordenes_compra/aprobar/${id}`, {
         method: 'PUT',
         headers: {
-            'Content-Type': 'application/json',
-            'X-User-Role' : user.role || 'USER',
-            'X-User-Name' : user.usuario || user.name,
-            "Authorization": `Bearer ${token}`
+          'Content-Type': 'application/json',
+          'X-User-Role': user.role || 'USER',
+          'X-User-Name': user.usuario || user.name,
+          "Authorization": `Bearer ${token}`
         },
         body: JSON.stringify(payload),
       });
@@ -423,15 +423,15 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
         importe_total_estimado: importe_total_est_val,
         importe_abonado: importe_abonado_val,
       };
-      const userItem = sessionStorage.getItem("user");
+      const userItem = localStorage.getItem("user") || sessionStorage.getItem("user");
       const user = userItem ? JSON.parse(userItem) : null;
       if (!user || !token) throw new Error("Error de autenticación.");
       const response = await fetch(`https://quimex.sistemataup.online/api/ordenes_compra/editar/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'X-User-Role' : user.role || 'USER',
-          'X-User-Name' : user.usuario || user.name,
+          'X-User-Role': user.role || 'USER',
+          'X-User-Name': user.usuario || user.name,
           "Authorization": `Bearer ${token}`
         },
         body: JSON.stringify(payload),
@@ -464,17 +464,17 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       tc: showTc ? tc : '',
       tipo, importeTotal,
       estado_recepcion,
-        items_recibidos: [{
-         id_linea: idLineaOCOriginal,
-         cantidad_recibida: Number(cantidad_recepcionada || cantidad || '0'),
-         producto_codigo: codigo,
+      items_recibidos: [{
+        id_linea: idLineaOCOriginal,
+        cantidad_recibida: Number(cantidad_recepcionada || cantidad || '0'),
+        producto_codigo: codigo,
       }],
       ajuste_tc: showTc ? true : false,
       importeAbonado, formaPago, chequePerteneceA,
       tipo_caja: tipoCaja,
     };
     await enviarSolicitudAPI(nuevaSolicitud);
-    if(!problema) {
+    if (!problema) {
       const total = parseFloat(importeTotal || '0') || 0;
       const abonadoPrevio = montoYaAbonadoOC || 0;
       const abonadoAhora = parseFloat(importeAbonado || '0') || 0;
@@ -498,16 +498,16 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
     doc.setFontSize(12);
 
     const agregarCampo = (label: string, value: string) => {
-        doc.text(label, 20, y); doc.text(value || 'N/A', 90, y); y += 8;
+      doc.text(label, 20, y); doc.text(value || 'N/A', 90, y); y += 8;
     };
-    
+
     agregarCampo('Fecha OC:', fecha);
     agregarCampo('Proveedor:', proveedorInfo?.nombre || 'N/A');
     agregarCampo('Estado OC:', estadoOC);
     agregarCampo('Cuenta Contable:', cuenta);
     agregarCampo('Percepción IIBB (%):', iibb);
     y += 5; doc.line(20, y, 190, y); y += 10;
-    
+
     doc.setFontSize(14); doc.text('Detalles del Pedido:', 20, y); y += 8; doc.setFontSize(12);
 
     agregarCampo('Producto:', `${productoInfo?.nombre || 'N/A'} (${codigo})`);
@@ -527,7 +527,7 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
   const disabledInputClass = "disabled:bg-gray-200 disabled:text-gray-600 disabled:cursor-not-allowed";
   const labelClass = "block text-sm font-medium mb-1 text-white";
   const opcionesFormaPago = ["Cheque", "Efectivo", "Transferencia", "Cuenta Corriente"];
-  
+
   let placeholderParaImporteAbonado = "Ej: 100.00";
   if (estadoOC === "Con Deuda") {
     const totalDeLaOC = parseFloat(importeTotal) || 0;
@@ -559,7 +559,7 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
         <div role="status" aria-live="polite" className="w-full max-w-5xl mb-4">
           <div className={`flex items-center gap-2 p-3 rounded ${estadoSolicitud === 'Recepción pendiente' ? 'bg-blue-100 text-blue-800' : estadoSolicitud === 'Con deuda' ? 'bg-orange-100 text-orange-800' : 'bg-green-100 text-green-800'}`}>
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-              {estadoSolicitud === 'Recepción pendiente' ? <path d="M2 10a8 8 0 1116 0A8 8 0 012 10zm8-4a1 1 0 011 1v2.382l1.447.724a1 1 0 01-.894 1.788l-2.5-1.25A1 1 0 018 10V7a1 1 0 011-1z"/> : estadoSolicitud === 'Con deuda' ? <path d="M10 18a8 8 0 100-16 8 8 0 000 16zm-1-5h2v2H9v-2zm0-8h2v6H9V5z"/> : <path d="M10 18a8 8 0 100-16 8 8 0 000 16zm-1.293-7.293l-2-2a1 1 0 011.414-1.414L9 8.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0z"/>}
+              {estadoSolicitud === 'Recepción pendiente' ? <path d="M2 10a8 8 0 1116 0A8 8 0 012 10zm8-4a1 1 0 011 1v2.382l1.447.724a1 1 0 01-.894 1.788l-2.5-1.25A1 1 0 018 10V7a1 1 0 011-1z" /> : estadoSolicitud === 'Con deuda' ? <path d="M10 18a8 8 0 100-16 8 8 0 000 16zm-1-5h2v2H9v-2zm0-8h2v6H9V5z" /> : <path d="M10 18a8 8 0 100-16 8 8 0 000 16zm-1.293-7.293l-2-2a1 1 0 011.414-1.414L9 8.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0z" />}
             </svg>
             <span className="font-semibold">Estado Solicitud:</span>
             <span>{estadoSolicitud}</span>
@@ -639,8 +639,8 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
             <div>
               <label htmlFor="tipoCaja" className={labelClass}>Tipo de Caja</label>
               <select id="tipoCaja" value={tipoCaja ?? ''} onChange={(e) => setTipoCaja(e.target.value)} className={baseInputClass}>
-                  <option value="caja diaria">Caja Diaria</option>
-                  <option value="caja mayor">Caja Mayor</option>
+                <option value="caja diaria">Caja Diaria</option>
+                <option value="caja mayor">Caja Mayor</option>
               </select>
             </div>
           </div>
@@ -652,7 +652,7 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label htmlFor="producto" className={labelClass}>Producto (Principal)</label>
-              <input id="producto" value={`${productosDelContexto.find(p=>p.id.toString() === producto)?.nombre || 'N/A'} (${codigo})`} className={`${baseInputClass} ${disabledInputClass}`} disabled />
+              <input id="producto" value={`${productosDelContexto.find(p => p.id.toString() === producto)?.nombre || 'N/A'} (${codigo})`} className={`${baseInputClass} ${disabledInputClass}`} disabled />
             </div>
             <div>
               <label htmlFor="cantidad" className={labelClass}>Cant. Solicitada</label>
@@ -693,48 +693,48 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-2">
             <div className="flex flex-col items-center bg-yellow-100 rounded-lg p-3 shadow">
               <span className="text-xs text-gray-700 font-semibold mb-1">Importe Total OC</span>
-              <span className="text-2xl font-bold text-yellow-700">{importeTotalNum.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
+              <span className="text-2xl font-bold text-yellow-700">{importeTotalNum.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
             <div className="flex flex-col items-center bg-green-100 rounded-lg p-3 shadow">
               <span className="text-xs text-gray-700 font-semibold mb-1">Ya Abonado</span>
-              <span className="text-2xl font-bold text-green-700">{montoAbonadoNum.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
+              <span className="text-2xl font-bold text-green-700">{montoAbonadoNum.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
             <div className="flex flex-col items-center bg-blue-100 rounded-lg p-3 shadow">
               <span className="text-xs text-gray-700 font-semibold mb-1">A Abonar Ahora</span>
-              <span className="text-2xl font-bold text-blue-700">{importeAbonadoNum.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
+              <span className="text-2xl font-bold text-blue-700">{importeAbonadoNum.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-2">
             <div className="flex flex-col items-center bg-green-200 rounded-lg p-3 shadow">
               <span className="text-xs text-gray-700 font-semibold mb-1">Total Abonado</span>
-              <span className="text-2xl font-bold text-green-900">{totalAbonado.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
+              <span className="text-2xl font-bold text-green-900">{totalAbonado.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
             <div className={`flex flex-col items-center rounded-lg p-3 shadow ${deudaPendiente > 0 ? 'bg-red-200' : 'bg-green-100'}`}>
               <span className="text-xs text-gray-700 font-semibold mb-1">Deuda Pendiente</span>
-              <span className={`text-2xl font-bold ${deudaPendiente > 0 ? 'text-red-700' : 'text-green-700'}`}>{(deudaPendiente > 0 ? deudaPendiente : 0).toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
+              <span className={`text-2xl font-bold ${deudaPendiente > 0 ? 'text-red-700' : 'text-green-700'}`}>{(deudaPendiente > 0 ? deudaPendiente : 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
             <div>
               <label htmlFor="importeAbonado" className={labelClass}>A Abonar Ahora</label>
-              <input id="importeAbonado" type="number" step="0.01" min="0" value={importeAbonado} onChange={(e) => setImporteAbonado(e.target.value)} className={baseInputClass + ' mt-2'} placeholder={placeholderParaImporteAbonado}/>
+              <input id="importeAbonado" type="number" step="0.01" min="0" value={importeAbonado} onChange={(e) => setImporteAbonado(e.target.value)} className={baseInputClass + ' mt-2'} placeholder={placeholderParaImporteAbonado} />
               {estadoOC === "Con Deuda" && montoYaAbonadoOC > 0 && (<p className="text-xs text-gray-300 mt-1">Ya abonado: ${montoYaAbonadoOC.toFixed(2)}</p>)}
               <div className="mt-2 flex items-center gap-2">
-                <input id="pagoCompletoUI" type="checkbox" className="w-4 h-4" checked={pagoCompletoUI} onChange={()=> setPagoCompletoUI(!pagoCompletoUI)} />
+                <input id="pagoCompletoUI" type="checkbox" className="w-4 h-4" checked={pagoCompletoUI} onChange={() => setPagoCompletoUI(!pagoCompletoUI)} />
                 <label htmlFor="pagoCompletoUI" className="text-white text-sm">Pago completo (usar total)</label>
-                <button type="button" className="px-2 py-1 text-xs rounded bg-green-600 text-white hover:bg-green-700" onClick={()=> { setPagoCompletoUI(true); }}>Usar total</button>
+                <button type="button" className="px-2 py-1 text-xs rounded bg-green-600 text-white hover:bg-green-700" onClick={() => { setPagoCompletoUI(true); }}>Usar total</button>
               </div>
             </div>
             <div>
               <label htmlFor="formaPago" className={labelClass}>Forma de Pago</label>
               <select id="formaPago" value={formaPago} onChange={(e) => setFormaPago(e.target.value)} className={baseInputClass}>
-                  {opcionesFormaPago.map(opcion => <option key={opcion} value={opcion}>{opcion}</option>)}
+                {opcionesFormaPago.map(opcion => <option key={opcion} value={opcion}>{opcion}</option>)}
               </select>
             </div>
             {formaPago === 'Cheque' && (
               <div>
                 <label htmlFor="chequePerteneceA" className={labelClass}>Cheque Perteneciente a</label>
-                <input id="chequePerteneceA" type="text" value={chequePerteneceA} onChange={(e) => setChequePerteneceA(e.target.value)} className={baseInputClass}/>
+                <input id="chequePerteneceA" type="text" value={chequePerteneceA} onChange={(e) => setChequePerteneceA(e.target.value)} className={baseInputClass} />
               </div>
             )}
           </div>

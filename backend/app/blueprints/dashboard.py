@@ -247,7 +247,7 @@ def get_dashboard_kpis(current_user):
 
 @dashboard_bp.route('/ventas-pedidos', methods=['GET'])
 @token_required
-@roles_required(ROLES['VENTAS_PEDIDOS'])
+@roles_required(ROLES['VENTAS_PEDIDOS'], ROLES['ADMIN'])
 def get_dashboard_ventas_pedidos(current_user):
     """
     Dashboard SIMPLIFICADO para vendedores de pedidos (VENTAS_PEDIDOS).
@@ -266,6 +266,16 @@ def get_dashboard_ventas_pedidos(current_user):
         # Filtro: Solo pedidos (con dirección de entrega)
         filtro_pedido = (Venta.direccion_entrega.isnot(None)) & (Venta.direccion_entrega != '')
         filtro_pendiente = filtro_pedido & ~Venta.nombre_vendedor.ilike('%ENTREGADO%')
+        # Filtro: Solo puerta (sin dirección de entrega)
+        filtro_puerta = (Venta.direccion_entrega.is_(None)) | (Venta.direccion_entrega == '')
+
+        # 0. Ingresos puerta hoy
+        ingresos_puerta_hoy = db.session.query(
+            func.sum(Venta.monto_final_con_recargos)
+        ).filter(
+            filtro_puerta,
+            Venta.fecha_pedido.between(today_start_dt, today_end_dt)
+        ).scalar() or Decimal('0.0')
 
         # 1. Ingresos del día - Pedidos
         ingresos_pedido_hoy = db.session.query(
@@ -303,9 +313,9 @@ def get_dashboard_ventas_pedidos(current_user):
 
         response_data = {
             "hoy": {
-                "ingresos": float(ingresos_pedido_hoy),
                 "cantidad_pedidos": cantidad_pedidos_hoy,
-                "cantidad_kilos": float(kgs_hoy)
+                "cantidad_kilos": float(kgs_hoy),
+                "ingreso_puerta_hoy": float(ingresos_puerta_hoy)
             },
             "pendiente_entrega": {
                 "cantidad_pedidos": cantidad_pendientes,

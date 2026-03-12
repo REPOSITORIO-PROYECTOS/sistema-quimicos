@@ -35,7 +35,7 @@ export default function RecepcionesPendientesPage() {
   }
   const user = userItem ? JSON.parse(userItem) : null;
   const [ordenes, setOrdenes] = useState<OrdenCompra[]>([]);
-  const [itemsPorOrden, setItemsPorOrden] = useState<Record<number, { nombre: string, cantidad: number }[]>>({});
+  const [itemsPorOrden, setItemsPorOrden] = useState<Record<number, { nombre: string, cantidad: number, cantidadRecibida: number }[]>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [ordenSeleccionada, setOrdenSeleccionada] = useState<OrdenCompra | null>(null);
@@ -66,23 +66,12 @@ export default function RecepcionesPendientesPage() {
         }
         const data = await response.json();
         setOrdenes((data.ordenes || []).filter((o: OrdenCompra) => {
-          // Mostrar órdenes que:
-          // - Están en estado 'Aprobado' (pendiente de recepción)
-          // - Tienen estado_recepcion 'EN_ESPERA_RECEPCION' (esperando más recepciones)
-          // - Tienen estado_recepcion 'PARCIAL' (recepción incompleta, esperando más)
-          // - Tienen estado 'CON DEUDA' y estado_recepcion está pendiente
           const estado = String(o.estado || '').toUpperCase();
-          const estadoRecepcion = String(o.estado_recepcion || '').toUpperCase();
-
-          return (
-            estado === 'APROBADO' ||
-            estadoRecepcion === 'EN_ESPERA_RECEPCION' ||
-            estadoRecepcion === 'PARCIAL' ||
-            (estado === 'CON DEUDA' && (estadoRecepcion === 'EN_ESPERA_RECEPCION' || estadoRecepcion === 'PARCIAL'))
-          );
+          // Mostrar: APROBADO, CON DEUDA, RECIBIDA_PARCIAL. Excluir: RECIBIDO, RECHAZADO, SOLICITADO
+          return estado !== 'RECIBIDO' && estado !== 'RECHAZADO' && estado !== 'SOLICITADO';
         }));
         // Mapear ítems por orden para mostrar en la lista
-        const itemsMap: Record<number, { nombre: string, cantidad: number }[]> = {};
+        const itemsMap: Record<number, { nombre: string, cantidad: number, cantidadRecibida: number }[]> = {};
         (data.ordenes || []).forEach((orden: Record<string, unknown>) => {
           if (orden.items && Array.isArray(orden.items)) {
             itemsMap[Number(orden.id)] = (orden.items as Record<string, unknown>[]).map((item) => {
@@ -96,7 +85,11 @@ export default function RecepcionesPendientesPage() {
               } else {
                 nombre = 'Producto';
               }
-              return { nombre, cantidad: item.cantidad_solicitada as number };
+              return {
+                nombre,
+                cantidad: item.cantidad_solicitada as number,
+                cantidadRecibida: (item.cantidad_recibida as number) || 0,
+              };
             });
           }
         });
@@ -252,14 +245,28 @@ export default function RecepcionesPendientesPage() {
         setOrdenes((nuevo.ordenes || []).filter((o: OrdenCompra) => {
           const estado = String(o.estado || '').toUpperCase();
           const estadoRecepcion = String(o.estado_recepcion || '').toUpperCase();
-
           return (
             estado === 'APROBADO' ||
+            estado === 'RECIBIDA_PARCIAL' ||
             estadoRecepcion === 'EN_ESPERA_RECEPCION' ||
             estadoRecepcion === 'PARCIAL' ||
             (estado === 'CON DEUDA' && (estadoRecepcion === 'EN_ESPERA_RECEPCION' || estadoRecepcion === 'PARCIAL'))
           );
         }));
+        // Actualizar itemsPorOrden con cantidades recibidas actualizadas
+        const newItemsMap: Record<number, { nombre: string, cantidad: number, cantidadRecibida: number }[]> = {};
+        (nuevo.ordenes || []).forEach((orden: Record<string, unknown>) => {
+          if (orden.items && Array.isArray(orden.items)) {
+            newItemsMap[Number(orden.id)] = (orden.items as Record<string, unknown>[]).map((item) => {
+              let nombre = '';
+              if (typeof item.producto_nombre === 'string') nombre = item.producto_nombre;
+              else if (item.producto && typeof item.producto === 'object' && (item.producto as Record<string, unknown>).nombre) nombre = (item.producto as Record<string, unknown>).nombre as string;
+              else nombre = item.producto_id ? `ID: ${item.producto_id}` : 'Producto';
+              return { nombre, cantidad: item.cantidad_solicitada as number, cantidadRecibida: (item.cantidad_recibida as number) || 0 };
+            });
+          }
+        });
+        setItemsPorOrden(newItemsMap);
       } catch (err) {
         console.warn('No se pudo refrescar la lista de recepciones', err);
       }
@@ -396,15 +403,32 @@ export default function RecepcionesPendientesPage() {
                     <span>
                       {Array.isArray(itemsPorOrden[orden.id]) && itemsPorOrden[orden.id].length > 0 ? (
                         <ul className="list-disc ml-3">
-                          {itemsPorOrden[orden.id].map((item, idx) => (
-                            <li key={idx}>{item.nombre} — Cantidad: {item.cantidad}</li>
-                          ))}
+                          {itemsPorOrden[orden.id].map((item, idx) => {
+                            const esParcial = String(orden.estado || '').toUpperCase().includes('PARCIAL');
+                            const pendiente = item.cantidad - item.cantidadRecibida;
+                            return (
+                              <li key={idx}>
+                                {item.nombre}
+                                {esParcial && item.cantidadRecibida > 0 ? (
+                                  <span>
+                                    {' '}— <span className="text-green-700 font-medium">Recibido: {item.cantidadRecibida}</span>
+                                    {pendiente > 0 && <span className="text-orange-600 font-semibold"> · Falta: {pendiente}</span>}
+                                  </span>
+                                ) : (
+                                  <span> — Cantidad: {item.cantidad}</span>
+                                )}
+                              </li>
+                            );
+                          })}
                         </ul>
                       ) : (
                         <span className="text-gray-400 italic">Sin ítems</span>
                       )}
                     </span>
                     <div className="flex items-center justify-center gap-2">
+                      {String(orden.estado || '').toUpperCase().includes('PARCIAL') && (
+                        <span className="bg-orange-100 text-orange-700 text-xs font-semibold px-2 py-0.5 rounded-full border border-orange-300">Parcial</span>
+                      )}
                       <button
                         className="bg-green-600 text-white px-4 py-1 rounded hover:bg-green-700 flex items-center gap-1"
                         onClick={() => setOrdenSeleccionada(orden)}

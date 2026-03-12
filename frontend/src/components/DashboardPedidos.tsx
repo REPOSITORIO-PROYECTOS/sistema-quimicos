@@ -5,33 +5,14 @@ import { useEffect, useState } from "react";
 import { DollarSign, Package, Truck, AlertTriangle } from 'lucide-react';
 
 interface DashboardPedidosData {
-  primera_fila: {
-    compras_por_recibir: number;
-    deuda_proveedores: number;
-    ingreso_pedido_hoy: number;
-    ingreso_pedido_manana: number;
+  hoy: {
+    cantidad_pedidos: number;
+    cantidad_kilos: number;
     ingreso_puerta_hoy: number;
-    kgs_manana: number;
-    pedidos_pendientes_manana: number;
   };
-  segunda_fila: {
-    costos_fijos_mes: number;
-    costos_variables_mes: number;
-    ventas_mes: number;
-  };
-  tercera_fila: {
-    relacion_ingresos: {
-      pedidos: number;
-      puerta: number;
-    };
-    relacion_pagos: {
-      efectivo: number;
-      otros: number;
-    };
-  };
-  pendientes: {
-    kgs_pendientes: number;
-    pedidos_pendientes: number;
+  pendiente_entrega: {
+    cantidad_pedidos: number;
+    cantidad_kilos: number;
   };
 }
 
@@ -133,7 +114,7 @@ export default function DashboardPedidos() {
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-orange-900">
-              {formatNumber(data?.pendientes?.kgs_pendientes ?? 0)}
+              {formatNumber(data?.pendiente_entrega?.cantidad_kilos ?? 0)}
             </div>
             <p className="text-xs text-orange-700 mt-1">pendientes</p>
           </CardContent>
@@ -148,7 +129,7 @@ export default function DashboardPedidos() {
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-blue-900">
-              {data?.pendientes?.pedidos_pendientes ?? 0}
+              {data?.pendiente_entrega?.cantidad_pedidos ?? 0}
             </div>
             <p className="text-xs text-blue-700 mt-1">de entrega</p>
           </CardContent>
@@ -163,9 +144,9 @@ export default function DashboardPedidos() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-900">
-              {formatCurrency(data?.primera_fila?.ingreso_puerta_hoy ?? 0)}
+              {formatCurrency(data?.hoy?.ingreso_puerta_hoy ?? 0)}
             </div>
-            <p className="text-xs text-green-700 mt-1">vendido</p>
+            <p className="text-xs text-green-700 mt-1">vendido en puerta</p>
           </CardContent>
         </Card>
       </div>
