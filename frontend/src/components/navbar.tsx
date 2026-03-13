@@ -53,7 +53,7 @@ const navItemsConfig: NavItemConfig[] = [
   { href: "/lista", label: "Lista", roles: ["ADMIN"] },
   { href: "/compras", label: "Compras", roles: ["ADMIN", "ALMACEN", "CONTABLE"] },
   { href: "/movimientos", label: "Movimientos", roles: ["ADMIN", "CONTABLE"] },
-  { href: "/proveedores-acciones", label: "Proveedores", roles: ["ADMIN", "ALMACEN"] },
+  { href: "/proveedores-acciones", label: "Proveedores", roles: ["ADMIN"] },
   { href: "/usuarios", label: "Usuarios", roles: ["ADMIN"] },
 ];
 
@@ -229,6 +229,13 @@ export function Navbar() {
 
           {user && (
             <div className="space-x-4 flex items-center">
+              {userRole === "VENTAS_PEDIDOS" && (
+                <Button asChild className="bg-green-600 hover:bg-green-800 hidden md:inline-flex">
+                  <Link href="/dashboard-pedidos">
+                    Dashboard Pedidos
+                  </Link>
+                </Button>
+              )}
               <Button asChild className="bg-blue-600 hover:bg-blue-800 hidden md:inline-flex">
                 <a
                   href="https://docs.google.com/document/d/12KQzz4cuZpppyin51XasedYbP6R_ZhFHPSDcyoU2UHY/edit?usp=sharing"
