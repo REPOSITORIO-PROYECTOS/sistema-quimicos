@@ -6,8 +6,18 @@ import { useProveedoresContext } from "@/context/ProveedoresContext";
 
 export default function PedidoRapidoAdmin() {
   const router = useRouter();
-  const { productos } = useProductsContext();
-  const { proveedores, loading: proveedoresLoading } = useProveedoresContext();
+  const {
+    productos,
+    loading: productosLoading,
+    error: productosError,
+    refetch: refetchProductos,
+  } = useProductsContext();
+  const {
+    proveedores,
+    loading: proveedoresLoading,
+    error: proveedoresError,
+    fetchProveedores,
+  } = useProveedoresContext();
 
   const [error, setError] = useState<string>("");
   const [proveedorId, setProveedorId] = useState<string>("");
@@ -38,6 +48,78 @@ export default function PedidoRapidoAdmin() {
   const [chequeBanco, setChequeBanco] = useState<string>("");
   const [chequeNumero, setChequeNumero] = useState<string>("");
   const [chequeFecha, setChequeFecha] = useState<string>("");
+
+  const selectedProducto = useMemo(
+    () => productos.find((item) => String(item.id) === String(productoId)) || null,
+    [productos, productoId]
+  );
+  const selectedProveedor = useMemo(
+    () => proveedores.find((item) => String(item.id) === String(proveedorId)) || null,
+    [proveedores, proveedorId]
+  );
+
+  const bloqueosCatalogo = useMemo(() => {
+    const bloqueos: string[] = [];
+
+    if (productosLoading) {
+      bloqueos.push('Los productos todavia se estan cargando.');
+    } else if (productosError) {
+      bloqueos.push(`No se pudo cargar el catalogo de productos: ${productosError}`);
+    } else if (!productos.length) {
+      bloqueos.push('No hay productos cargados para generar el pedido rapido.');
+    }
+
+    if (proveedoresLoading) {
+      bloqueos.push('Los proveedores todavia se estan cargando.');
+    } else if (proveedoresError) {
+      bloqueos.push(`No se pudo cargar el catalogo de proveedores: ${proveedoresError}`);
+    } else if (!proveedores.length) {
+      bloqueos.push('No hay proveedores cargados para generar el pedido rapido.');
+    }
+
+    return bloqueos;
+  }, [productosLoading, productosError, productos.length, proveedoresLoading, proveedoresError, proveedores.length]);
+
+  const obtenerErroresFormulario = () => {
+    const errores: string[] = [];
+    const cantidadNum = Number.parseFloat(cantidad);
+    const precioNum = Number.parseFloat(precioUnitario);
+    const ivaNum = Number.parseFloat(iva);
+    const iibbNum = Number.parseFloat(iibb);
+    const tcNum = Number.parseFloat(tc);
+    const importeAbonadoNum = Number.parseFloat(importeAbonado || '0');
+    const totalNum = Number.parseFloat(importeTotal || '0') || 0;
+
+    if (!proveedorId) errores.push('Proveedor');
+    if (!productoId || productoId === '0') errores.push('Producto');
+    if (!cantidad) errores.push('Cantidad');
+    if (!precioUnitario) errores.push('Precio unitario');
+    if (!unidadMedida) errores.push('Unidad de medida');
+    if (showIva && (!iva || Number.isNaN(ivaNum) || ivaNum < 0)) errores.push('IVA valido');
+    if (showIibb && (!iibb || Number.isNaN(iibbNum) || iibbNum < 0)) errores.push('IIBB valido');
+    if (showTc && (!tc || Number.isNaN(tcNum) || tcNum <= 0)) errores.push('Tipo de cambio valido');
+    if (!selectedProveedor && proveedorId) errores.push('Proveedor existente');
+    if (!selectedProducto && productoId !== '0') errores.push('Producto existente');
+    if (!Number.isFinite(cantidadNum) || cantidadNum <= 0) errores.push('Cantidad positiva');
+    if (!Number.isFinite(precioNum) || precioNum < 0) errores.push('Precio unitario valido');
+
+    if (!pagoCompleto) {
+      if (Number.isNaN(importeAbonadoNum) || importeAbonadoNum < 0) {
+        errores.push('Importe abonado valido');
+      } else if (importeAbonadoNum > totalNum) {
+        errores.push('Importe abonado menor o igual al total');
+      }
+    }
+
+    if (formaPago === 'Cheque') {
+      if (!chequeEmisor.trim()) errores.push('Emisor del cheque');
+      if (!chequeBanco.trim()) errores.push('Banco del cheque');
+      if (!chequeNumero.trim()) errores.push('Numero de cheque');
+      if (!chequeFecha) errores.push('Fecha del cheque');
+    }
+
+    return errores;
+  };
 
   // Cálculo de importe total (similar a SolicitudIngreso)
   useEffect(() => {
@@ -205,8 +287,13 @@ export default function PedidoRapidoAdmin() {
       const user = userItem ? JSON.parse(userItem) : null;
       if (!token || !user) throw new Error("Autenticación requerida.");
 
-      if (!proveedorId || !productoId || !cantidad || !precioUnitario) {
-        throw new Error("Complete proveedor, producto, cantidad y precio.");
+      if (bloqueosCatalogo.length > 0) {
+        throw new Error(bloqueosCatalogo.join(' '));
+      }
+
+      const erroresFormulario = obtenerErroresFormulario();
+      if (erroresFormulario.length > 0) {
+        throw new Error(`Revise los siguientes datos: ${erroresFormulario.join(', ')}.`);
       }
 
       // Validaciones de pago
@@ -369,7 +456,9 @@ export default function PedidoRapidoAdmin() {
       }
       const user = userItem ? JSON.parse(userItem) : null;
       if (!token || !user) throw new Error("Autenticación requerida.");
-      if (!proveedorId || !productoId || !cantidad || !precioUnitario) throw new Error("Complete proveedor, producto, cantidad y precio.");
+      if (bloqueosCatalogo.length > 0) throw new Error(bloqueosCatalogo.join(' '));
+      const erroresFormulario = obtenerErroresFormulario();
+      if (erroresFormulario.length > 0) throw new Error(`Revise los siguientes datos: ${erroresFormulario.join(', ')}.`);
       const cantNum = parseFloat(cantidad);
       const precioNum = parseFloat(precioUnitario);
       if (!isNaN(cantNum) && !isNaN(precioNum) && cantNum > 0 && precioNum >= 0) {
@@ -457,7 +546,30 @@ export default function PedidoRapidoAdmin() {
       {error && (
         <div className="w-full max-w-4xl mb-4 bg-red-100 border-red-400 text-red-700 px-4 py-3 rounded" role="alert">{error}</div>
       )}
+      {bloqueosCatalogo.length > 0 && (
+        <div className="w-full max-w-5xl mb-4 rounded border border-amber-300 bg-amber-50 px-4 py-3 text-amber-900">
+          <p className="font-semibold">Faltan datos maestros para generar el pedido rapido</p>
+          <ul className="mt-2 list-disc pl-5 text-sm">
+            {bloqueosCatalogo.map((bloqueo) => (
+              <li key={bloqueo}>{bloqueo}</li>
+            ))}
+          </ul>
+          <button
+            type="button"
+            onClick={() => {
+              refetchProductos();
+              fetchProveedores();
+            }}
+            className="mt-3 rounded bg-amber-500 px-3 py-1 text-sm font-medium text-white hover:bg-amber-600"
+          >Recargar datos</button>
+        </div>
+      )}
       <form onSubmit={handleSubmit} className="w-full max-w-5xl bg-white/20 rounded-lg p-6 shadow flex flex-col gap-6">
+        {selectedProveedor && selectedProducto && (
+          <div className="rounded border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+            Pedido listo para generar con proveedor <strong>{selectedProveedor.nombre}</strong> y producto <strong>{selectedProducto.nombre}</strong>.
+          </div>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
           <div>
             <label htmlFor="proveedorId" className={label}>Proveedor</label>
@@ -467,15 +579,17 @@ export default function PedidoRapidoAdmin() {
                 <option key={p.id} value={p.id}>{p.nombre}</option>
               ))}
             </select>
+            {proveedoresError && <p className="mt-1 text-xs text-red-200">{proveedoresError}</p>}
           </div>
           <div>
             <label htmlFor="productoId" className={label}>Producto</label>
-            <select id="productoId" value={productoId} onChange={(e) => setProductoId(e.target.value)} className={baseInput}>
+            <select id="productoId" value={productoId} onChange={(e) => setProductoId(e.target.value)} className={baseInput} disabled={productosLoading}>
               <option value="0">Seleccionar Producto</option>
               {productos.map((p) => (
                 <option key={p.id} value={p.id}>{p.nombre}</option>
               ))}
             </select>
+            {productosError && <p className="mt-1 text-xs text-red-200">{productosError}</p>}
           </div>
           <div>
             {/* Campo de Código Interno removido del formulario; se autocompleta según el producto seleccionado */}
@@ -678,8 +792,8 @@ export default function PedidoRapidoAdmin() {
         )}
 
         <div className="flex gap-3 justify-center">
-          <button type="submit" className="px-6 py-3 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700">Crear y Aprobar</button>
-          <button type="button" className="px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700" onClick={handleSubmitRecepcionar}>Crear, Aprobar y Recepcionar</button>
+          <button type="submit" disabled={bloqueosCatalogo.length > 0} className="px-6 py-3 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60">Crear y Aprobar</button>
+          <button type="button" disabled={bloqueosCatalogo.length > 0} className="px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60" onClick={handleSubmitRecepcionar}>Crear, Aprobar y Recepcionar</button>
           <button type="button" className="px-6 py-3 bg-gray-200 rounded-lg font-semibold hover:bg-gray-300" onClick={() => router.push('/compras')}>Cancelar</button>
         </div>
       </form>

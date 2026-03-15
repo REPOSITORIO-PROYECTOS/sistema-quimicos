@@ -1,6 +1,10 @@
-FROM node:18-alpine
+FROM node:20-alpine
 
 WORKDIR /app
+
+# API URL se bake en tiempo de build (Next.js NEXT_PUBLIC_* son compile-time)
+ARG NEXT_PUBLIC_API_URL=https://quimex.sistemataup.online
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 
 # Copiar archivos de dependencias
 COPY package*.json ./

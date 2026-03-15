@@ -1,8 +1,9 @@
 'use client';
 import BotonVolver from '@/components/BotonVolver';
 import { useProductsContext } from '@/context/ProductsContext';
+import { useProveedoresContext } from '@/context/ProveedoresContext';
 import { useRouter } from 'next/navigation';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 
 // Se simplifica la interface local, ya que el componente no maneja estos estados
 interface IPedido {
@@ -31,8 +32,13 @@ export default function RegistrarIngreso() {
   const [chequePerteneciente, setChequePerteneciente] = useState('');
   const [unidadMedida, setUnidadMedida] = useState('');
   const irAccionesPuerta = () => router.push('/compras');
-  const { productos, loading: productsLoading, error: productsError } = useProductsContext();
-  // Se eliminó el contexto de proveedores
+  const { productos, loading: productsLoading, error: productsError, refetch: refetchProductos } = useProductsContext();
+  const {
+    proveedores,
+    loading: proveedoresLoading,
+    error: proveedoresError,
+    fetchProveedores,
+  } = useProveedoresContext();
   const router = useRouter();
   const [observaciones_solicitud, setObservacionesSolicitud] = useState('');
   const [esAlmacen, setEsAlmacen] = useState(false);
@@ -84,10 +90,71 @@ export default function RegistrarIngreso() {
     }
   }, [cantidad, precioEstimado]);
 
+  const proveedorPredeterminado = useMemo(() => {
+    if (!proveedores.length) {
+      return null;
+    }
+
+    const candidatos = ['VARIOS', 'INTERNO', 'GENERAL', 'MOSTRADOR'];
+    const proveedorPreferido = proveedores.find((proveedor) => {
+      const nombre = String(proveedor.nombre || '').toUpperCase();
+      return candidatos.some((candidato) => nombre.includes(candidato));
+    });
+
+    return proveedorPreferido || proveedores.find((proveedor) => proveedor.activo) || proveedores[0];
+  }, [proveedores]);
+
+  const bloqueosCatalogo = useMemo(() => {
+    const bloqueos: string[] = [];
+
+    if (productsLoading) {
+      bloqueos.push('Los productos todavia se estan cargando.');
+    } else if (productsError) {
+      bloqueos.push(`No se pudo cargar el catalogo de productos: ${productsError}`);
+    } else if (!productos.length) {
+      bloqueos.push('No hay productos cargados para solicitar la compra.');
+    }
+
+    if (proveedoresLoading) {
+      bloqueos.push('Los proveedores todavia se estan cargando.');
+    } else if (proveedoresError) {
+      bloqueos.push(`No se pudo cargar el catalogo de proveedores: ${proveedoresError}`);
+    } else if (!proveedores.length) {
+      bloqueos.push('No hay proveedores cargados. Debe existir al menos un proveedor base para registrar la compra.');
+    } else if (!proveedorPredeterminado) {
+      bloqueos.push('No se encontro un proveedor base para registrar la compra.');
+    }
+
+    return bloqueos;
+  }, [productsLoading, productsError, productos.length, proveedoresLoading, proveedoresError, proveedores.length, proveedorPredeterminado]);
+
+  const obtenerFaltantesFormulario = () => {
+    const faltantes: string[] = [];
+
+    if (!fecha) faltantes.push('Fecha');
+    if (!producto) faltantes.push('Producto');
+    if (!cantidad) faltantes.push('Cantidad');
+    if (!unidadMedida) faltantes.push('Unidad de medida');
+    if (!esAlmacen && !precioEstimado) faltantes.push('Precio estimado');
+    if (!esAlmacen && !observaciones_solicitud.trim()) faltantes.push('Clasificacion');
+
+    return faltantes;
+  };
+
   const handleAgregar = async () => {
-    // Validaciones de campos obligatorios
-    if (!fecha || !producto || !cantidad || (!esAlmacen && !precioEstimado)) {
-      setErrorApi(esAlmacen ? "Completa: Fecha, Producto y Cantidad." : "Completa: Fecha, Producto, Cantidad y Precio Estimado.");
+    const faltantes = obtenerFaltantesFormulario();
+    if (faltantes.length > 0) {
+      setErrorApi(`Faltan datos obligatorios: ${faltantes.join(', ')}.`);
+      return;
+    }
+
+    if (bloqueosCatalogo.length > 0) {
+      setErrorApi(bloqueosCatalogo.join(' '));
+      return;
+    }
+
+    if (!proveedorPredeterminado) {
+      setErrorApi('No se pudo resolver el proveedor base para registrar la compra.');
       return;
     }
 
@@ -114,6 +181,11 @@ export default function RegistrarIngreso() {
       setErrorApi("El importe abonado no puede ser negativo.");
       return;
     }
+    if (fechaLimite && fecha && fechaLimite < fecha) {
+      setIsLoading(false);
+      setErrorApi('La fecha limite no puede ser anterior a la fecha del pedido.');
+      return;
+    }
     if (!isNaN(importeAbonadoNum)) {
       const totalNum = (() => {
         const t = Number(importeTotal);
@@ -122,9 +194,10 @@ export default function RegistrarIngreso() {
         const p = Number(String(precioEstimado).replace(',', '.'));
         return (!isNaN(c) && !isNaN(p) && c > 0 && p >= 0) ? Number((c * p).toFixed(2)) : 0;
       })();
-      const abonadoClamped = Math.min(Math.max(0, importeAbonadoNum), totalNum);
-      if (abonadoClamped !== importeAbonadoNum) {
-        setImporteAbonado(String(abonadoClamped.toFixed(2)));
+      if (importeAbonadoNum > totalNum) {
+        setIsLoading(false);
+        setErrorApi('El importe abonado no puede superar el total estimado.');
+        return;
       }
     }
 
@@ -164,7 +237,7 @@ export default function RegistrarIngreso() {
         precio_unitario_estimado: esAlmacen ? 0 : precioNum,
         unidad_medida: unidadMedida || 'Unidades'
       }],
-      proveedor_id: 1, // Se envía un ID de proveedor fijo (Ej: 1 para "Varios" o "Interno"). ¡Ajustar si es necesario!
+      proveedor_id: Number(proveedorPredeterminado.id),
       fecha_limite: fechaLimite,
     };
     if (!isNaN(importeAbonadoNum)) {
@@ -175,8 +248,7 @@ export default function RegistrarIngreso() {
         const p2 = Number(String(precioEstimado).replace(',', '.'));
         return (!isNaN(c2) && !isNaN(p2) && c2 > 0 && p2 >= 0) ? Number((c2 * p2).toFixed(2)) : 0;
       })();
-      const abonadoClamped = Math.min(Math.max(0, importeAbonadoNum), totalNum);
-      ventaPayload.importe_abonado = abonadoClamped;
+      ventaPayload.importe_abonado = Math.max(0, importeAbonadoNum > totalNum ? totalNum : importeAbonadoNum);
     }
     console.log("Payload enviado a la API:", ventaPayload);
     // Guardar último intento para recuperación
@@ -203,7 +275,7 @@ export default function RegistrarIngreso() {
           console.error('Error en la respuesta:', errorData);
           errorMsg = errorData?.mensaje || errorData?.detail || errorData?.error || errorMsg;
           if (String(errorMsg).includes("Proveedor") && String(errorMsg).includes("no encontrado")) {
-            errorMsg = `${errorMsg}. Verifica el ID de proveedor predeterminado (actual: 1).`;
+            errorMsg = `${errorMsg}. Revisar el proveedor base configurado para compras rapidas.`;
           }
           if (String(errorMsg).toLowerCase().includes("precio") || String(errorMsg).toLowerCase().includes("cantidad")) {
             errorMsg += " Revisa la cantidad y el precio estimado.";
@@ -324,6 +396,33 @@ export default function RegistrarIngreso() {
                 className="bg-gray-300 text-gray-800 px-3 py-1 rounded hover:bg-gray-400"
               >Restablecer formulario</button>
             </div>
+          </div>
+        )}
+
+        {bloqueosCatalogo.length > 0 && (
+          <div className="mb-4 rounded border border-amber-300 bg-amber-50 px-4 py-3 text-amber-900">
+            <p className="font-semibold">Datos faltantes para registrar la compra</p>
+            <ul className="mt-2 list-disc pl-5 text-sm">
+              {bloqueosCatalogo.map((bloqueo) => (
+                <li key={bloqueo}>{bloqueo}</li>
+              ))}
+            </ul>
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  refetchProductos();
+                  fetchProveedores();
+                }}
+                className="rounded bg-amber-500 px-3 py-1 text-sm font-medium text-white hover:bg-amber-600"
+              >Recargar datos</button>
+            </div>
+          </div>
+        )}
+
+        {proveedorPredeterminado && bloqueosCatalogo.length === 0 && (
+          <div className="mb-4 rounded border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-900 text-sm">
+            Se registrara con el proveedor base: <strong>{proveedorPredeterminado.nombre}</strong>.
           </div>
         )}
 
@@ -469,7 +568,7 @@ export default function RegistrarIngreso() {
           <BotonVolver />
           <button
             onClick={handleAgregar}
-            disabled={isLoading || productsLoading}
+            disabled={isLoading || productsLoading || proveedoresLoading || bloqueosCatalogo.length > 0}
             className="bg-indigo-500 text-white font-semibold px-6 py-2 rounded-md hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-opacity-75 transition duration-150 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isLoading ? 'Agregando...' : 'Agregar Pedido'}
