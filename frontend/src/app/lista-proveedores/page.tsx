@@ -19,22 +19,28 @@ interface Proveedor {
   activo: boolean;
 }
 
+type ResumenProveedorFinanzas = {
+  proveedor_id: number;
+  deuda: number;
+};
+
 // Interfaz para los datos que necesita el formulario modal
 interface ProveedorFormData {
-    id?: number;
-    nombre: string;
-    cuit: string;
-    direccion: string;
-    telefono: string;
-    email: string;
-    contacto: string;
-    condiciones_pago: string;
-    activo?: boolean; // El modal podría o no manejar esto directamente
+  id?: number;
+  nombre: string;
+  cuit: string;
+  direccion: string;
+  telefono: string;
+  email: string;
+  contacto: string;
+  condiciones_pago: string;
+  activo?: boolean; // El modal podría o no manejar esto directamente
 }
 
 
 export default function ListaProveedoresPage() {
   const [proveedores, setProveedores] = useState<Proveedor[]>([]);
+  const [deudaPorProveedor, setDeudaPorProveedor] = useState<Record<number, number>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [, setModalErrorMessage] = useState<string | null>(null); // Mensaje de error específico para el modal si es necesario
@@ -51,23 +57,44 @@ export default function ListaProveedoresPage() {
     setError(null); // Limpiar error general
     // setGlobalSuccessMessage(null); // Limpiar mensaje de éxito global al recargar
     if (!token) {
-        setError("No autenticado. Por favor, inicie sesión.");
-        setIsLoading(false);
-        return;
+      setError("No autenticado. Por favor, inicie sesión.");
+      setIsLoading(false);
+      return;
     }
     try {
       const response = await fetch(`${API_BASE_URL}/proveedores/obtener-todos`, {
         headers: { "Authorization": `Bearer ${token}` },
       });
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({message: "Error al cargar proveedores."}));
+        const errorData = await response.json().catch(() => ({ message: "Error al cargar proveedores." }));
         throw new Error(errorData.message || `Error ${response.status}`);
       }
       const data: Proveedor[] = await response.json();
       setProveedores(data);
 
+      try {
+        const finResp = await fetch(`${API_BASE_URL}/finanzas/dashboard`, {
+          headers: { "Authorization": `Bearer ${token}` },
+        });
+        if (finResp.ok) {
+          const finData = await finResp.json();
+          const resumen: ResumenProveedorFinanzas[] = Array.isArray(finData?.resumen_proveedores)
+            ? finData.resumen_proveedores
+            : [];
+          const mapa: Record<number, number> = {};
+          resumen.forEach((r) => {
+            mapa[Number(r.proveedor_id)] = Number(r.deuda || 0);
+          });
+          setDeudaPorProveedor(mapa);
+        } else {
+          setDeudaPorProveedor({});
+        }
+      } catch {
+        setDeudaPorProveedor({});
+      }
+
     } //eslint-disable-next-line
-      catch (err: any) {
+    catch (err: any) {
       setError(err.message);
       setProveedores([]); // Limpiar proveedores en caso de error
     } finally {
@@ -81,41 +108,41 @@ export default function ListaProveedoresPage() {
 
   const handleOpenEditModal = async (proveedorId: number) => {
     if (!token) {
-        setError("No autenticado. No se pueden cargar datos para editar.");
-        return;
+      setError("No autenticado. No se pueden cargar datos para editar.");
+      return;
     }
     setModalErrorMessage(null); // Limpiar errores previos del modal
     setGlobalSuccessMessage(null); // Limpiar mensajes globales al abrir modal
     try {
-        const response = await fetch(`${API_BASE_URL}/proveedores/obtener/${proveedorId}`, {
-            headers: { "Authorization": `Bearer ${token}` },
-        });
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({message: "Error al obtener datos del proveedor para editar."}));
-            throw new Error(errorData.message || `Error ${response.status}`);
-        }
-        const proveedorData: Proveedor = await response.json();
-        
-        const formData: ProveedorFormData = {
-            id: proveedorData.id,
-            nombre: proveedorData.nombre || '',
-            cuit: proveedorData.cuit || '',
-            direccion: proveedorData.direccion || '',
-            telefono: proveedorData.telefono || '',
-            email: proveedorData.email || '',
-            contacto: proveedorData.contacto || '',
-            condiciones_pago: proveedorData.condiciones_pago || '',
-            activo: proveedorData.activo,
-        };
+      const response = await fetch(`${API_BASE_URL}/proveedores/obtener/${proveedorId}`, {
+        headers: { "Authorization": `Bearer ${token}` },
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: "Error al obtener datos del proveedor para editar." }));
+        throw new Error(errorData.message || `Error ${response.status}`);
+      }
+      const proveedorData: Proveedor = await response.json();
 
-        setProveedorAEditar(formData);
-        setIsModalOpen(true);
-        //eslint-disable-next-line
+      const formData: ProveedorFormData = {
+        id: proveedorData.id,
+        nombre: proveedorData.nombre || '',
+        cuit: proveedorData.cuit || '',
+        direccion: proveedorData.direccion || '',
+        telefono: proveedorData.telefono || '',
+        email: proveedorData.email || '',
+        contacto: proveedorData.contacto || '',
+        condiciones_pago: proveedorData.condiciones_pago || '',
+        activo: proveedorData.activo,
+      };
+
+      setProveedorAEditar(formData);
+      setIsModalOpen(true);
+      //eslint-disable-next-line
     } catch (err: any) {
-        // Mostrar error específico si falla la carga para el modal, o un error general en la página
-        setError(`Error al cargar datos del proveedor para editar: ${err.message}`);
-        // setModalErrorMessage(`Error al cargar datos del proveedor: ${err.message}`); // Opción para error dentro del modal
-        setProveedorAEditar(null);
+      // Mostrar error específico si falla la carga para el modal, o un error general en la página
+      setError(`Error al cargar datos del proveedor para editar: ${err.message}`);
+      // setModalErrorMessage(`Error al cargar datos del proveedor: ${err.message}`); // Opción para error dentro del modal
+      setProveedorAEditar(null);
     }
   };
 
@@ -137,21 +164,21 @@ export default function ListaProveedoresPage() {
     setError(null);
     setGlobalSuccessMessage(null);
     if (!token) {
-        setError("No autenticado.");
-        setAccionLoading(null);
-        return;
+      setError("No autenticado.");
+      setAccionLoading(null);
+      return;
     }
-    const endpoint = nuevoEstado === 'activar' 
-        ? `${API_BASE_URL}/proveedores/activar/${proveedorId}/activar` 
-        : `${API_BASE_URL}/proveedores/desactivar/${proveedorId}/desactivar`;
-    
+    const endpoint = nuevoEstado === 'activar'
+      ? `${API_BASE_URL}/proveedores/activar/${proveedorId}/activar`
+      : `${API_BASE_URL}/proveedores/desactivar/${proveedorId}/desactivar`;
+
     try {
       const response = await fetch(endpoint, {
         method: 'PATCH',
         headers: { "Authorization": `Bearer ${token}` },
       });
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({message: `Error al ${nuevoEstado} proveedor.`}));
+        const errorData = await response.json().catch(() => ({ message: `Error al ${nuevoEstado} proveedor.` }));
         throw new Error(errorData.message || `Error ${response.status}`);
       }
       const result = await response.json();
@@ -181,12 +208,12 @@ export default function ListaProveedoresPage() {
         </div>
       )}
       {globalSuccessMessage && (
-          <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative mb-4" role="alert">
-            <strong className="font-bold">Éxito: </strong>
-            <span className="block sm:inline">{globalSuccessMessage}</span>
-          </div>
+        <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative mb-4" role="alert">
+          <strong className="font-bold">Éxito: </strong>
+          <span className="block sm:inline">{globalSuccessMessage}</span>
+        </div>
       )}
-      
+
       <div className="overflow-x-auto bg-white shadow-md rounded-lg">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
@@ -194,19 +221,20 @@ export default function ListaProveedoresPage() {
               <th scope="col" className="px-6 py-3 text-left text-s font-bold text-gray-800 uppercase tracking-wider">Nombre</th>
               <th scope="col" className="px-6 py-3 text-left text-s font-bold text-gray-800 uppercase tracking-wider">CUIT</th>
               <th scope="col" className="px-6 py-3 text-left text-s font-bold text-gray-800 uppercase tracking-wider">Teléfono</th>
+              <th scope="col" className="px-6 py-3 text-left text-s font-bold text-gray-800 uppercase tracking-wider">Deuda</th>
               <th scope="col" className="px-6 py-3 text-left text-s font-bold text-gray-800 uppercase tracking-wider">Activo</th>
               <th scope="col" className="px-6 py-3 text-left text-s font-boldtext-gray-800 uppercase tracking-wider">Acciones</th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             {isLoading && proveedores.length > 0 && ( // Muestra "Actualizando" si ya hay datos pero se está recargando
-                <tr>
-                    <td colSpan={5} className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 text-center">Actualizando lista...</td>
-                </tr>
+              <tr>
+                <td colSpan={6} className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 text-center">Actualizando lista...</td>
+              </tr>
             )}
             {!isLoading && proveedores.length === 0 && !error && (
               <tr>
-                <td colSpan={5} className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 text-center">
+                <td colSpan={6} className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 text-center">
                   No se encontraron proveedores.
                 </td>
               </tr>
@@ -225,9 +253,19 @@ export default function ListaProveedoresPage() {
                   <div className="text-sm text-gray-900">{proveedor.telefono || 'N/A'}</div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
-                  <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                    proveedor.activo ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                  }`}>
+                  {(() => {
+                    const deuda = Number(deudaPorProveedor[proveedor.id] || 0);
+                    const clase = deuda > 0 ? 'text-red-700' : 'text-green-700';
+                    return (
+                      <span className={`text-sm font-semibold tabular-nums ${clase}`}>
+                        ${deuda.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    );
+                  })()}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${proveedor.activo ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                    }`}>
                     {proveedor.activo ? 'Sí' : 'No'}
                   </span>
                 </td>
@@ -265,7 +303,7 @@ export default function ListaProveedoresPage() {
           </tbody>
         </table>
       </div>
-    <BotonVolver />
+      <BotonVolver />
       {isModalOpen && proveedorAEditar && ( // Asegurarse que proveedorAEditar no sea null
         <FormularioProveedorModal
           proveedorToEdit={proveedorAEditar}

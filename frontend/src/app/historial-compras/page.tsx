@@ -23,6 +23,15 @@ type OrdenCompra = {
   proveedor_nombre?: string;
 };
 
+type MovimientoPago = {
+  id: number;
+  orden_id: number | null;
+  tipo: 'DEBITO' | 'CREDITO';
+  monto: number;
+  fecha?: string | null;
+  descripcion?: string | null;
+};
+
 type Pagination = {
   total_items: number;
   total_pages: number;
@@ -46,6 +55,20 @@ export default function OrdenesRecibidasPage() {
   const [filtroProveedorDeuda, setFiltroProveedorDeuda] = useState<boolean>(false);
   const [filtroProductoPendiente, setFiltroProductoPendiente] = useState<boolean>(false);
   const [tipoCambio, setTipoCambio] = useState<number>(0);
+  const [movimientosPago, setMovimientosPago] = useState<MovimientoPago[]>([]);
+
+  const formatearFechaPago = (valor?: string | null) => {
+    if (!valor) return 'Sin fecha';
+    const fechaValor = new Date(valor);
+    if (Number.isNaN(fechaValor.getTime())) return 'Sin fecha';
+    return fechaValor.toLocaleString('es-AR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
 
   const fetchOrdenesRecibidas = useCallback(async (currentPage: number) => {
     try {
@@ -110,11 +133,37 @@ export default function OrdenesRecibidasPage() {
     }
   }, [estadoFiltro, filtroDesde, filtroHasta, filtroProveedorDeuda, filtroProductoPendiente]);
 
+  const fetchMovimientosPago = useCallback(async () => {
+    try {
+      const token = localStorage.getItem("authToken");
+      if (!token) throw new Error("Usuario no autenticado.");
+      const userRaw = localStorage.getItem('user') || sessionStorage.getItem('user');
+      const user = userRaw ? JSON.parse(userRaw) : null;
+      const response = await fetch('https://quimex.sistemataup.online/api/finanzas/movimientos', {
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+          'X-User-Role': user?.role || '',
+          'X-User-Name': user?.usuario || user?.name || ''
+        }
+      });
+      if (!response.ok) throw new Error(`Error ${response.status}`);
+      const data = await response.json().catch(() => ({}));
+      setMovimientosPago((data.movimientos || []).filter((mov: MovimientoPago) => mov.tipo === 'CREDITO'));
+    } catch (err) {
+      console.error('FetchMovimientosPago Error:', err);
+    }
+  }, []);
+
   useEffect(() => {
     setLoading(true); // Iniciar la carga
     setError(null);
     fetchOrdenesRecibidas(page);
   }, [page, fetchOrdenesRecibidas]);
+
+  useEffect(() => {
+    fetchMovimientosPago();
+  }, [fetchMovimientosPago]);
 
   useEffect(() => {
     const fetchTC = async () => {
@@ -261,6 +310,13 @@ export default function OrdenesRecibidasPage() {
                   const abonado = Number(orden.importe_abonado || 0);
                   const moneda = orden.moneda || 'ARS';
                   const estatusPago = total === 0 ? 'N/A' : abonado >= total ? 'Pagado' : abonado > 0 ? 'Pago parcial' : 'Con deuda';
+                  const pagosOrden = movimientosPago
+                    .filter((mov) => mov.orden_id === orden.id)
+                    .sort((a, b) => {
+                      const fechaA = a.fecha ? new Date(a.fecha).getTime() : 0;
+                      const fechaB = b.fecha ? new Date(b.fecha).getTime() : 0;
+                      return fechaB - fechaA;
+                    });
 
                   return (
                     <li
@@ -289,6 +345,17 @@ export default function OrdenesRecibidasPage() {
                         {moneda === 'USD' && tipoCambio > 0 && (
                           <span className="block text-xs text-gray-400">≈ ${(abonado * tipoCambio).toLocaleString('es-AR', { maximumFractionDigits: 0 })} ARS</span>
                         )}
+                        {pagosOrden.length > 0 && (
+                          <span className="mt-1 block text-left text-[11px] leading-4 text-gray-500">
+                            {pagosOrden.slice(0, 3).map((pago) => (
+                              <span key={pago.id} className="block">
+                                {formatearFechaPago(pago.fecha)} · ${Number(pago.monto || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                {pago.descripcion ? ` · ${pago.descripcion}` : ''}
+                              </span>
+                            ))}
+                            {pagosOrden.length > 3 && <span className="block text-gray-400">+{pagosOrden.length - 3} pago(s) más</span>}
+                          </span>
+                        )}
                       </span>
                       <span className={`px-2 py-1 rounded-full text-xs font-semibold text-center ${estatusPago === 'Pagado' ? 'bg-green-100 text-green-800' :
                         estatusPago === 'Pago parcial' ? 'bg-yellow-100 text-yellow-800' :
@@ -298,12 +365,12 @@ export default function OrdenesRecibidasPage() {
                         {estatusPago}
                       </span>
                       <span className={`px-2 py-1 rounded-full text-xs font-semibold text-center ${(() => {
-                          const s = String(orden.estado_recepcion || '').toUpperCase();
-                          if (s === 'COMPLETA' || s === 'RECIBIDO') return 'bg-green-100 text-green-800';
-                          if (s === 'PARCIAL' || s === 'RECIBIDA_PARCIAL') return 'bg-orange-100 text-orange-800';
-                          if (s === 'EN_ESPERA_RECEPCION' || s === 'PENDIENTE') return 'bg-blue-100 text-blue-800';
-                          return 'bg-gray-100 text-gray-500';
-                        })()
+                        const s = String(orden.estado_recepcion || '').toUpperCase();
+                        if (s === 'COMPLETA' || s === 'RECIBIDO') return 'bg-green-100 text-green-800';
+                        if (s === 'PARCIAL' || s === 'RECIBIDA_PARCIAL') return 'bg-orange-100 text-orange-800';
+                        if (s === 'EN_ESPERA_RECEPCION' || s === 'PENDIENTE') return 'bg-blue-100 text-blue-800';
+                        return 'bg-gray-100 text-gray-500';
+                      })()
                         }`}>
                         {(() => {
                           const s = String(orden.estado_recepcion || '').toUpperCase();

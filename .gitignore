@@ -70,3 +70,7 @@ node_modules
 
 # Mantener Cypress e2e local (no subir al repo)
 frontend/e2e/
+
+# Reportes y artefactos Playwright
+frontend/playwright-report/
+frontend/test-results/

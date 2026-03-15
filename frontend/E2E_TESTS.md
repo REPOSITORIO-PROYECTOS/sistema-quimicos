@@ -87,7 +87,20 @@ e2e/
     ├── Redireccionamiento por rol
     ├── Mantener datos entre navegación
     └── Manejo de errores de login
+  └── compras-flow.spec.ts
+    ├── Accesos por rol en /compras
+    ├── Deuda proveedores consolidada y formato de montos
+    ├── Recepciones pendientes con cantidades faltantes
+    └── Mocks API para flujo estable en local/CI
 ```
+
+  ### Suite de compras
+
+  ```bash
+  npx playwright test e2e/compras-flow.spec.ts
+  ```
+
+  La suite de compras usa mocks de API para validar comportamiento de UI sin depender del backend real.
 
 ## Qué se valida
 

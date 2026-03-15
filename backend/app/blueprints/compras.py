@@ -32,6 +32,10 @@ compras_bp = Blueprint('compras', __name__, url_prefix='/api/ordenes_compra')
 logger = logging.getLogger(__name__)
 
 
+def _normalizar_estado_texto(estado):
+    return str(estado or '').strip().upper()
+
+
 def _convert_to_ars(amount, ajuste_tc_flag, moneda_origen=None):
     """Convierte `amount` (Decimal) a ARS según la moneda origen.
     Si `ajuste_tc_flag` es True (orden en USD) o `moneda_origen` es 'USD', convierte de USD a ARS.
@@ -91,6 +95,81 @@ def _parse_percentage_rate(value):
         return parsed if parsed <= 1 else (parsed / Decimal('100'))
     except Exception:
         return Decimal('0')
+
+
+def _descripcion_pago_orden(orden_id, contexto, forma_pago=None, referencia=None):
+    partes = [f"OC {orden_id} - {contexto}"]
+    if forma_pago:
+        partes.append(f"Forma: {forma_pago}")
+    referencia_limpia = str(referencia or '').strip()
+    if referencia_limpia:
+        partes.append(f"Referencia: {referencia_limpia}")
+    return " | ".join(partes)
+
+
+def _serializar_historial_pagos(orden_id):
+    pagos_db = db.session.query(MovimientoProveedor).filter(
+        MovimientoProveedor.orden_id == orden_id,
+        MovimientoProveedor.tipo == 'CREDITO'
+    ).order_by(MovimientoProveedor.fecha.desc(), MovimientoProveedor.id.desc()).all()
+
+    historial = []
+    for pago in pagos_db:
+        historial.append({
+            'id': pago.id,
+            'monto': float(pago.monto) if pago.monto is not None else 0,
+            'fecha': pago.fecha.isoformat() if pago.fecha else None,
+            'descripcion': pago.descripcion,
+            'usuario': pago.usuario
+        })
+    return historial
+
+
+def _actualizar_movimiento_deuda(orden_db, usuario_actualiza=None, descripcion=None):
+    restante = (orden_db.importe_total_estimado or Decimal('0')) - (orden_db.importe_abonado or Decimal('0'))
+    restante = restante if restante > Decimal('0') else Decimal('0')
+    debito = db.session.query(MovimientoProveedor).filter(
+        MovimientoProveedor.orden_id == orden_db.id,
+        MovimientoProveedor.tipo == 'DEBITO'
+    ).first()
+    descripcion_final = descripcion or f"OC {orden_db.id} - Deuda recalculada"
+    monto_debito = _convert_to_ars(restante, orden_db.ajuste_tc)
+
+    if debito:
+        debito.monto = monto_debito
+        debito.descripcion = descripcion_final
+        if usuario_actualiza:
+            debito.usuario = usuario_actualiza
+    elif monto_debito > Decimal('0'):
+        mov = MovimientoProveedor(
+            proveedor_id=orden_db.proveedor_id,
+            orden_id=orden_db.id,
+            tipo='DEBITO',
+            monto=monto_debito,
+            descripcion=descripcion_final,
+            usuario=usuario_actualiza
+        )
+        db.session.add(mov)
+
+    return restante
+
+
+def _estado_orden_post_pago(orden_db):
+    total = orden_db.importe_total_estimado or Decimal('0')
+    abonado = orden_db.importe_abonado or Decimal('0')
+    estado_recepcion = _normalizar_estado_texto(orden_db.estado_recepcion)
+    estado_actual = _normalizar_estado_texto(orden_db.estado)
+
+    if estado_recepcion == 'COMPLETA':
+        return 'RECIBIDO' if abonado >= total else 'RECIBIDA_PARCIAL'
+
+    if total > Decimal('0') and abonado < total:
+        return 'CON DEUDA'
+
+    if estado_actual in ('SOLICITADO', 'RECHAZADO'):
+        return estado_actual
+
+    return 'APROBADO'
 
 
 def _recalcular_importe_y_actualizar_deuda(orden_db, usuario_actualiza=None, iva_flag=None, iva_rate=None, iibb_payload=None):
@@ -165,33 +244,11 @@ def _recalcular_importe_y_actualizar_deuda(orden_db, usuario_actualiza=None, iva
         nuevo_total = (base + iva_amt + iibb_amt).quantize(Decimal('0.01'))
         orden_db.importe_total_estimado = nuevo_total
         
-        # Actualizar deuda: DEBITO debe ser la cantidad adeudada (total - pagado)
-        restante = (orden_db.importe_total_estimado or Decimal('0')) - (orden_db.importe_abonado or Decimal('0'))
-        restante = restante if restante > Decimal('0') else Decimal('0')
-        
-        # Buscar movimiento DEBITO existente y actualizarlo
-        debito = db.session.query(MovimientoProveedor).filter(
-            MovimientoProveedor.orden_id == orden_db.id,
-            MovimientoProveedor.tipo == 'DEBITO'
-        ).first()
-        
-        # Convertir deuda a ARS si es necesario
-        monto_debito = _convert_to_ars(restante, orden_db.ajuste_tc)
-        
-        if debito:
-            debito.monto = monto_debito
-            debito.descripcion = f"OC {orden_db.id} - Deuda recalculada"
-        else:
-            if monto_debito > Decimal('0'):
-                mov = MovimientoProveedor(
-                    proveedor_id=orden_db.proveedor_id,
-                    orden_id=orden_db.id,
-                    tipo='DEBITO',
-                    monto=monto_debito,
-                    descripcion=f"OC {orden_db.id} - Deuda recalculada",
-                    usuario=usuario_actualiza
-                )
-                db.session.add(mov)
+        _actualizar_movimiento_deuda(
+            orden_db,
+            usuario_actualiza=usuario_actualiza,
+            descripcion=f"OC {orden_db.id} - Deuda recalculada"
+        )
         return True
     except Exception:
         logger.exception("Error recalculando importe y deuda para orden %s", getattr(orden_db, 'id', 'N/A'))
@@ -237,7 +294,7 @@ FORMAS_PAGO = ["Cheque", "Efectivo", "Transferencia", "Cuenta Corriente"]
 # (Adaptada para usar objetos SQLAlchemy y campos del modelo)
 # app/blueprints/compras.py
 
-def formatear_orden_por_rol(orden_db, rol="almacen"):
+def formatear_orden_por_rol(orden_db, rol="almacen", incluir_pagos=False):
     """Filtra campos sensibles según el rol desde el objeto DB.
     
     Incluye información clara sobre la moneda:
@@ -316,6 +373,14 @@ def formatear_orden_por_rol(orden_db, rol="almacen"):
             "importe_abonado": float(orden_db.importe_abonado) if orden_db.importe_abonado is not None else None,
             "forma_pago": orden_db.forma_pago,
             "cheque_perteneciente_a": orden_db.cheque_perteneciente_a,
+        })
+
+    if incluir_pagos:
+        historial_pagos = _serializar_historial_pagos(orden_db.id)
+        orden_dict.update({
+            "historial_pagos": historial_pagos,
+            "cantidad_pagos": len(historial_pagos),
+            "ultimo_pago": historial_pagos[0] if historial_pagos else None,
         })
 
     return orden_dict
@@ -521,7 +586,7 @@ def crear_orden_compra(current_user):
         return jsonify({
             "status": "success",
             "message": "Orden de compra solicitada exitosamente.",
-            "orden": formatear_orden_por_rol(nueva_orden, rol="ADMIN")
+            "orden": formatear_orden_por_rol(nueva_orden, rol="ADMIN", incluir_pagos=True)
         }), 201
 
     except (ValueError, TypeError, InvalidOperation) as e:
@@ -645,7 +710,7 @@ def obtener_orden_compra_por_id(current_user, orden_id):
         if not orden_db:
             return jsonify({"error": "Orden de compra no encontrada"}), 404
 
-        orden_formateada = formatear_orden_por_rol(orden_db, rol_usuario)
+        orden_formateada = formatear_orden_por_rol(orden_db, rol_usuario, incluir_pagos=True)
         logger.info("Devolviendo orden %s para rol %s", orden_id, rol_usuario)
         return jsonify(orden_formateada)
 
@@ -700,19 +765,19 @@ def aprobar_orden_compra(current_user, orden_id):
                 detalle = next((item for item in orden_db.items if item.id == id_linea), None)
                 if detalle:
                     if 'cantidad_solicitada' in item_data:
-                        detalle.cantidad_solicitada = item_data['cantidad_solicitada']
+                        detalle.cantidad_solicitada = Decimal(str(item_data.get('cantidad_solicitada', detalle.cantidad_solicitada or 0)))
                     if 'precio_unitario_estimado' in item_data:
-                        detalle.precio_unitario_estimado = item_data['precio_unitario_estimado']
+                        detalle.precio_unitario_estimado = Decimal(str(item_data.get('precio_unitario_estimado', detalle.precio_unitario_estimado or 0)))
                     # Recalcular importe línea si ambos presentes
                     if 'cantidad_solicitada' in item_data and 'precio_unitario_estimado' in item_data:
-                        detalle.importe_linea_estimado = item_data['cantidad_solicitada'] * item_data['precio_unitario_estimado']
+                        detalle.importe_linea_estimado = detalle.cantidad_solicitada * detalle.precio_unitario_estimado
 
         # Actualizar el importe total de la orden con el del payload o recalcular
         if 'importe_total_estimado' in data:
-            orden_db.importe_total_estimado = data['importe_total_estimado']
+            orden_db.importe_total_estimado = Decimal(str(data.get('importe_total_estimado', '0')))
         else:
             # Recalcular si no viene
-            total = sum([item.importe_linea_estimado or 0 for item in orden_db.items])
+            total = sum([item.importe_linea_estimado or Decimal('0') for item in orden_db.items])
             orden_db.importe_total_estimado = total
 
         # Calcular total INCLUYENDO IVA e IIBB antes de validar importe_abonado
@@ -790,7 +855,12 @@ def aprobar_orden_compra(current_user, orden_id):
                     orden_id=orden_db.id,
                     tipo='CREDITO',
                     monto=_convert_to_ars(abonado_aprob, orden_db.ajuste_tc),
-                    descripcion=f"OC {orden_db.id} - Pago al aprobar",
+                    descripcion=_descripcion_pago_orden(
+                        orden_db.id,
+                        'Pago al aprobar',
+                        forma_pago=orden_db.forma_pago,
+                        referencia=data.get('referencia_pago')
+                    ),
                     usuario=usuario_aprobador
                 )
                 db.session.add(mov_credito_aprob)
@@ -825,7 +895,7 @@ def aprobar_orden_compra(current_user, orden_id):
                 usuario=usuario_aprobador
             )
             log.set_previos(prev)
-            log.set_nuevos(formatear_orden_por_rol(orden_db, rol_usuario))
+            log.set_nuevos(formatear_orden_por_rol(orden_db, rol_usuario, incluir_pagos=True))
             db.session.add(log)
             db.session.commit()
         except Exception:
@@ -835,13 +905,126 @@ def aprobar_orden_compra(current_user, orden_id):
         return jsonify({
             "status": "success",
             "message": "Orden de compra aprobada.",
-            "orden": formatear_orden_por_rol(orden_db, rol_usuario) # Devolver estado actualizado
+            "orden": formatear_orden_por_rol(orden_db, rol_usuario, incluir_pagos=True) # Devolver estado actualizado
         })
 
     except Exception as e:
         db.session.rollback()
         logger.exception("Excepción inesperada al aprobar orden %s", orden_id)
         return jsonify({"error": "Error interno del servidor al aprobar la orden"}), 500
+
+
+@compras_bp.route('/pagos/<int:orden_id>', methods=['POST'])
+@token_required
+@roles_required(ROLES['ADMIN'], ROLES['CONTABLE'])
+def registrar_pago_orden(current_user, orden_id):
+    logger.info("Recibida solicitud POST en /ordenes_compra/%s/pagos", orden_id)
+    rol_usuario = request.headers.get("X-User-Role", "contable")
+    usuario_pago = request.headers.get("X-User-Name", "Sistema")
+    data = request.get_json() or {}
+
+    try:
+        orden_db = db.session.get(OrdenCompra, orden_id)
+        if not orden_db:
+            return jsonify({"error": "Orden de compra no encontrada"}), 404
+
+        estado_actual = _normalizar_estado_texto(orden_db.estado)
+        if estado_actual in ('SOLICITADO', 'RECHAZADO'):
+            return jsonify({"error": f"No se pueden registrar pagos para una orden en estado {orden_db.estado}"}), 409
+
+        try:
+            monto_pago = Decimal(str(data.get('monto', '0')))
+        except (InvalidOperation, TypeError):
+            return jsonify({"error": "Monto de pago inválido"}), 400
+
+        if monto_pago <= Decimal('0'):
+            return jsonify({"error": "El monto del pago debe ser mayor a cero"}), 400
+
+        total_estimado = orden_db.importe_total_estimado or Decimal('0')
+        abonado_previo = orden_db.importe_abonado or Decimal('0')
+        abonado_nuevo = abonado_previo + monto_pago
+        if total_estimado > Decimal('0') and abonado_nuevo > total_estimado:
+            restante = total_estimado - abonado_previo
+            return jsonify({
+                "error": "El pago excede el saldo pendiente de la orden",
+                "saldo_pendiente": float(restante if restante > Decimal('0') else Decimal('0'))
+            }), 400
+
+        referencia_pago = data.get('referencia_pago') or data.get('descripcion')
+        forma_pago = data.get('forma_pago', orden_db.forma_pago)
+        cheque_perteneciente_a = data.get('cheque_perteneciente_a')
+        fecha_pago = None
+        fecha_pago_raw = data.get('fecha_pago')
+        if fecha_pago_raw:
+            try:
+                fecha_pago_texto = str(fecha_pago_raw).strip().replace('Z', '+00:00')
+                fecha_pago = datetime.datetime.fromisoformat(fecha_pago_texto)
+            except Exception:
+                return jsonify({"error": "Fecha de pago inválida"}), 400
+
+        prev = formatear_orden_por_rol(orden_db, rol_usuario, incluir_pagos=True)
+        orden_db.importe_abonado = abonado_nuevo
+        orden_db.forma_pago = forma_pago
+        if forma_pago == 'Cheque':
+            orden_db.cheque_perteneciente_a = cheque_perteneciente_a or orden_db.cheque_perteneciente_a
+        elif 'cheque_perteneciente_a' in data:
+            orden_db.cheque_perteneciente_a = None
+
+        orden_db.estado = _estado_orden_post_pago(orden_db)
+        _actualizar_movimiento_deuda(
+            orden_db,
+            usuario_actualiza=usuario_pago,
+            descripcion=f"OC {orden_db.id} - Deuda recalculada por pago"
+        )
+
+        movimiento_pago = MovimientoProveedor(
+            proveedor_id=orden_db.proveedor_id,
+            orden_id=orden_db.id,
+            tipo='CREDITO',
+            monto=_convert_to_ars(monto_pago, orden_db.ajuste_tc),
+            descripcion=_descripcion_pago_orden(
+                orden_db.id,
+                'Pago parcial registrado',
+                forma_pago=forma_pago,
+                referencia=referencia_pago
+            ),
+            usuario=usuario_pago
+        )
+        if fecha_pago:
+            movimiento_pago.fecha = fecha_pago
+        db.session.add(movimiento_pago)
+        db.session.commit()
+
+        try:
+            log = AuditLog(
+                entidad='OrdenCompra',
+                entidad_id=orden_id,
+                accion='REGISTRAR_PAGO',
+                usuario=usuario_pago
+            )
+            log.set_previos(prev)
+            log.set_nuevos(formatear_orden_por_rol(orden_db, rol_usuario, incluir_pagos=True))
+            db.session.add(log)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+
+        return jsonify({
+            "status": "success",
+            "message": "Pago registrado correctamente.",
+            "orden": formatear_orden_por_rol(orden_db, rol_usuario, incluir_pagos=True),
+            "pago": {
+                "id": movimiento_pago.id,
+                "monto": float(movimiento_pago.monto),
+                "fecha": movimiento_pago.fecha.isoformat() if movimiento_pago.fecha else None,
+                "descripcion": movimiento_pago.descripcion,
+                "usuario": movimiento_pago.usuario
+            }
+        }), 201
+    except Exception:
+        db.session.rollback()
+        logger.exception("Excepción inesperada al registrar pago de la orden %s", orden_id)
+        return jsonify({"error": "Error interno del servidor al registrar el pago"}), 500
 
 
 # --- Endpoint: Rechazar Orden de Compra ---
@@ -938,7 +1121,7 @@ def recibir_orden_compra(current_user, orden_id):
                     detalle.importe_linea_estimado = (detalle.cantidad_solicitada or Decimal('0')) * (detalle.precio_unitario_estimado or Decimal('0'))
 
         # Si no vienen items para actualización, permitir payload simple para una sola línea (compatibilidad)
-        if not items_payload_update and orden_db.items:
+        if not items_payload_update and not data.get('items_recibidos') and orden_db.items:
             # intentar leer campos simples 'cantidad' y 'precio_unitario' para compatibilidad
             try:
                 cantidad_solicitada = Decimal(str(data.get('cantidad', '0')))
@@ -1066,7 +1249,12 @@ def recibir_orden_compra(current_user, orden_id):
                     orden_id=orden_db.id,
                     tipo='CREDITO',
                     monto=monto_credito_ars,
-                    descripcion=f"OC {orden_db.id} - Pago en recepción",
+                    descripcion=_descripcion_pago_orden(
+                        orden_db.id,
+                        'Pago en recepción',
+                        forma_pago=orden_db.forma_pago,
+                        referencia=data.get('referencia_pago')
+                    ),
                     usuario=usuario_receptor
                 )
                 db.session.add(mov_credito)
@@ -1082,7 +1270,7 @@ def recibir_orden_compra(current_user, orden_id):
                 usuario=usuario_receptor
             )
             log.set_previos(prev)
-            log.set_nuevos(formatear_orden_por_rol(orden_db, rol_usuario))
+            log.set_nuevos(formatear_orden_por_rol(orden_db, rol_usuario, incluir_pagos=True))
             db.session.add(log)
             db.session.commit()
         except Exception:
@@ -1091,7 +1279,7 @@ def recibir_orden_compra(current_user, orden_id):
         return jsonify({
             "status": "success",
             "message": "Mercadería registrada y orden actualizada correctamente.",
-            "orden": formatear_orden_por_rol(orden_db, rol_usuario)
+            "orden": formatear_orden_por_rol(orden_db, rol_usuario, incluir_pagos=True)
         })
 
     except (InvalidOperation, TypeError) as e:

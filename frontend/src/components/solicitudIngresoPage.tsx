@@ -5,6 +5,28 @@ import { useProveedoresContext } from "@/context/ProveedoresContext";
 import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import jsPDF from 'jspdf';
+
+const normalizarEstado = (estado?: string | null) => String(estado || '').trim().toUpperCase();
+
+type HistorialPago = {
+  id: number;
+  monto: number;
+  fecha?: string | null;
+  descripcion?: string | null;
+  usuario?: string | null;
+};
+
+const derivarEstadoSolicitud = (estado?: string | null, estadoRecepcion?: string | null) => {
+  const e = normalizarEstado(estado);
+  const er = normalizarEstado(estadoRecepcion);
+
+  if (e === 'CON DEUDA') return 'Con deuda';
+  if (er === 'PARCIAL' || er === 'EN_ESPERA_RECEPCION') return 'Recepción pendiente';
+  if (e === 'RECIBIDO' || er === 'COMPLETA') return 'Aprobado';
+  if (e === 'SOLICITADO') return 'Pendiente de aprobación';
+  return 'Recepción pendiente';
+};
+
 export default function SolicitudIngresoPage({ id }: { id: number | string }) {
   const [fecha, setFecha] = useState('');
   const [proveedorId, setProveedorId] = useState('');
@@ -29,6 +51,8 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
   const [importeAbonado, setImporteAbonado] = useState('');
   const [formaPago, setFormaPago] = useState('Efectivo');
   const [chequePerteneceA, setChequePerteneceA] = useState('');
+  const [referenciaPago, setReferenciaPago] = useState('');
+  const [fechaPago, setFechaPago] = useState('');
   const [tipoCaja, setTipoCaja] = useState('caja diaria');
   const [pagoCompletoUI, setPagoCompletoUI] = useState(false);
 
@@ -36,10 +60,12 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
   const { proveedores, loading: proveedoresLoading } = useProveedoresContext();
   const [errorMensaje, setErrorMensaje] = useState('');
   const [estadoOC, setEstadoOC] = useState('');
+  const [estadoRecepcionActual, setEstadoRecepcionActual] = useState('');
   const [estadoSolicitud, setEstadoSolicitud] = useState<string>('');
   const [montoYaAbonadoOC, setMontoYaAbonadoOC] = useState<number>(0);
   const [idLineaOCOriginal, setIdLineaOCOriginal] = useState<string | number>('');
   const [cantidadYaRecibida, setCantidadYaRecibida] = useState<number>(0);
+  const [historialPagos, setHistorialPagos] = useState<HistorialPago[]>([]);
   // ajusteTC removido: se deduce desde showTc
 
   let problema = false;
@@ -86,6 +112,7 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       const itemPrincipal = data.items[0];
 
       setMontoYaAbonadoOC(parseFloat(data.importe_abonado) || 0);
+      setHistorialPagos(Array.isArray(data.historial_pagos) ? data.historial_pagos : []);
       setFecha(formatearFecha(data.fecha_creacion));
       setProveedorId(data.proveedor_id?.toString() ?? '');
       setProducto(itemPrincipal.producto_id?.toString() ?? '0');
@@ -106,6 +133,7 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
         : (typeof itemPrincipal.importe_linea_estimado === 'number' ? itemPrincipal.importe_linea_estimado : 0);
       setImporteTotal(totalOC.toFixed(2));
       setEstadoOC(data.estado || '');
+      setEstadoRecepcionActual(data.estado_recepcion || '');
       setIdLineaOCOriginal(itemPrincipal.id_linea || '');
       // ajusteTC removido: estado derivado de showTc
       setNroRemitoProveedor(data.nro_remito_proveedor || '');
@@ -116,6 +144,8 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       setEstadoRecepcion('Completa');
       setCantidadRecepcionada('');
       setImporteAbonado('');
+      setReferenciaPago('');
+      setFechaPago('');
       setFormaPago(data.forma_pago || 'Efectivo');
 
       if (itemPrincipal.unidad_medida) {
@@ -123,6 +153,8 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       } else if (itemPrincipal.producto_id) {
         await cargarCamposProducto(itemPrincipal.producto_id);
       }
+
+      actualizarEstadoPersistente(derivarEstadoSolicitud(data.estado, data.estado_recepcion));
 
     } catch (err: unknown) {
       if (err instanceof Error) {
@@ -134,6 +166,30 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       }
     }
   }, [id, token, cargarCamposProducto]);
+
+  const aplicarOrdenActualizada = useCallback((orden: Record<string, unknown>) => {
+    const estadoNuevo = String(orden.estado || estadoOC);
+    const estadoRecepcionNuevo = String(orden.estado_recepcion || estadoRecepcionActual);
+    const totalNuevo = parseFloat(String(orden.importe_total_estimado ?? importeTotal)) || 0;
+    const abonadoNuevo = parseFloat(String(orden.importe_abonado ?? montoYaAbonadoOC)) || 0;
+
+    setEstadoOC(estadoNuevo);
+    setEstadoRecepcionActual(estadoRecepcionNuevo);
+    setMontoYaAbonadoOC(abonadoNuevo);
+    setImporteTotal(totalNuevo.toFixed(2));
+    setFormaPago(String(orden.forma_pago || formaPago || 'Efectivo'));
+    setChequePerteneceA(String(orden.cheque_perteneciente_a || ''));
+    setHistorialPagos(Array.isArray(orden.historial_pagos) ? (orden.historial_pagos as HistorialPago[]) : []);
+    if (Array.isArray(orden.items) && orden.items.length > 0) {
+      const itemPrincipal = orden.items[0] as Record<string, unknown>;
+      setCantidadYaRecibida(parseFloat(String(itemPrincipal.cantidad_recibida || 0)) || 0);
+    }
+    setImporteAbonado('');
+    setReferenciaPago('');
+    setFechaPago('');
+    setPagoCompletoUI(false);
+    actualizarEstadoPersistente(derivarEstadoSolicitud(estadoNuevo, estadoRecepcionNuevo));
+  }, [estadoOC, estadoRecepcionActual, importeTotal, montoYaAbonadoOC, formaPago]);
 
   useEffect(() => {
     if (id && token) {
@@ -220,6 +276,7 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
     importeAbonado?: string | number;
     formaPago?: string;
     chequePerteneceA?: string;
+    referenciaPago?: string;
     tipo_caja?: string;
     items_recibidos: ItemRecibidoInput[];
   }
@@ -248,6 +305,7 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
         importe_abonado: nuevoAbonoFloat,
         forma_pago: solicitud.formaPago,
         cheque_perteneciente_a: solicitud.chequePerteneceA,
+        referencia_pago: solicitud.referenciaPago,
         tipo_caja: solicitud.tipo_caja,
         items_recibidos: solicitud.items_recibidos.map((item) => ({
           id_linea: Number(item.id_linea),
@@ -287,11 +345,8 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data?.error || data?.mensaje || `Error ${response.status}`);
-      const total = parseFloat(String(solicitud.importeTotal)) || 0;
-      const abonadoPrevio = montoYaAbonadoOC || 0;
-      const abonadoAhora = nuevoAbonoFloat;
-      const deuda = Math.max(0, total - (abonadoPrevio + abonadoAhora));
-      actualizarEstadoPersistente(deuda > 0 ? 'Con deuda' : 'Aprobado');
+      const orden = data?.orden || {};
+      aplicarOrdenActualizada(orden as Record<string, unknown>);
 
     } catch (error: unknown) {
       problema = true;
@@ -352,6 +407,7 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
         ],
         importe_total_estimado,
         importe_abonado: parseFloat(importeAbonado || '0') || 0,
+        referencia_pago: typeof solicitud.referencia_pago === 'string' ? solicitud.referencia_pago : referenciaPago,
       };
       const userItem = localStorage.getItem("user") || sessionStorage.getItem("user");
       const user = userItem ? JSON.parse(userItem) : null;
@@ -368,11 +424,8 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data?.error || data?.mensaje || `Error ${response.status}`);
-      const total = typeof solicitud.importeTotal === 'string' ? parseFloat(solicitud.importeTotal) : 0;
-      const abonadoPrevio = montoYaAbonadoOC || 0;
-      const abonadoAhora = parseFloat(importeAbonado || '0') || 0;
-      const deuda = Math.max(0, total - (abonadoPrevio + abonadoAhora));
-      actualizarEstadoPersistente(deuda > 0 ? 'Con deuda' : 'Aprobado');
+      const orden = data?.orden || {};
+      aplicarOrdenActualizada(orden as Record<string, unknown>);
     } catch (error: unknown) {
       problema = true;
       if (error instanceof Error) {
@@ -438,14 +491,51 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result?.error || result?.mensaje || `Error ${response.status}`);
-      const total = parseFloat(importeTotal || '0') || 0;
-      const abonadoPrevio = montoYaAbonadoOC || 0;
-      const abonadoAhora = parseFloat(importeAbonado || '0') || 0;
-      const deuda = Math.max(0, total - (abonadoPrevio + abonadoAhora));
-      actualizarEstadoPersistente(deuda > 0 ? 'Con deuda' : 'Aprobado');
+      const orden = result?.orden || {};
+      aplicarOrdenActualizada(orden as Record<string, unknown>);
     } catch (error: unknown) {
       problema = true;
       setErrorMensaje(error instanceof Error ? error.message : 'Error guardando cambios.');
+    }
+  };
+
+  const registrarPagoAPI = async () => {
+    try {
+      problema = false;
+      setErrorMensaje('');
+      const montoPago = parseFloat(importeAbonado || '0') || 0;
+      if (montoPago <= 0) {
+        throw new Error('Ingrese un monto a pagar mayor a cero.');
+      }
+
+      const userItem = localStorage.getItem('user') || sessionStorage.getItem('user');
+      const user = userItem ? JSON.parse(userItem) : null;
+      if (!user || !token) throw new Error('Error de autenticación.');
+
+      const response = await fetch(`https://quimex.sistemataup.online/api/ordenes_compra/pagos/${id}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-User-Role': user.role || 'USER',
+          'X-User-Name': user.usuario || user.name,
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          monto: montoPago,
+          forma_pago: formaPago,
+          cheque_perteneciente_a: formaPago === 'Cheque' ? chequePerteneceA : null,
+          referencia_pago: referenciaPago,
+          fecha_pago: fechaPago || undefined
+        })
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.error || data?.mensaje || `Error ${response.status}`);
+      aplicarOrdenActualizada((data?.orden || {}) as Record<string, unknown>);
+      alert('Pago registrado correctamente.');
+    } catch (error: unknown) {
+      problema = true;
+      setErrorMensaje(error instanceof Error ? error.message : 'Error registrando pago.');
     }
   };
 
@@ -470,7 +560,7 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
         producto_codigo: codigo,
       }],
       ajuste_tc: showTc ? true : false,
-      importeAbonado, formaPago, chequePerteneceA,
+      importeAbonado, formaPago, chequePerteneceA, referenciaPago,
       tipo_caja: tipoCaja,
     };
     await enviarSolicitudAPI(nuevaSolicitud);
@@ -481,7 +571,7 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       const deuda = Math.max(0, total - (abonadoPrevio + abonadoAhora));
       actualizarEstadoPersistente(deuda > 0 ? 'Con deuda' : 'Aprobado');
       alert("Ingreso registrado correctamente.");
-      router.back();
+      router.push('/compras');
     }
   };
 
@@ -529,7 +619,7 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
   const opcionesFormaPago = ["Cheque", "Efectivo", "Transferencia", "Cuenta Corriente"];
 
   let placeholderParaImporteAbonado = "Ej: 100.00";
-  if (estadoOC === "Con Deuda") {
+  if (normalizarEstado(estadoOC) === "CON DEUDA") {
     const totalDeLaOC = parseFloat(importeTotal) || 0;
     const deudaActual = totalDeLaOC - montoYaAbonadoOC;
     if (deudaActual > 0) {
@@ -550,11 +640,44 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
   const importeAbonadoNum = parseFloat(importeAbonado) || 0;
   const totalAbonado = montoAbonadoNum + importeAbonadoNum;
   const deudaPendiente = importeTotalNum - totalAbonado;
+  const pagosOrdenados = [...historialPagos].sort((a, b) => {
+    const fechaA = a.fecha ? new Date(a.fecha).getTime() : 0;
+    const fechaB = b.fecha ? new Date(b.fecha).getTime() : 0;
+    return fechaB - fechaA;
+  });
+
+  const formatearFechaPago = (valor?: string | null) => {
+    if (!valor) return 'Sin fecha';
+    const fechaValor = new Date(valor);
+    if (Number.isNaN(fechaValor.getTime())) return 'Sin fecha';
+    return fechaValor.toLocaleString('es-AR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
 
   return (
     <div className="min-h-screen flex flex-col items-center bg-[#20119d] px-4 py-10">
       <h1 className="text-white text-3xl font-bold mb-8 text-center">Solicitud de Ingreso (OC: {id})</h1>
-      {estadoOC && (<p className="text-white text-lg mb-4">Estado Orden de Compra: <span className={`font-semibold ${estadoOC === 'Aprobado' ? 'text-green-300' : estadoOC === 'Con Deuda' ? 'text-orange-300' : 'text-yellow-300'}`}>{estadoOC}</span></p>)}
+      {estadoOC && (
+        <p className="text-white text-lg mb-2">
+          Estado Orden de Compra:{' '}
+          <span className={`font-semibold ${normalizarEstado(estadoOC) === 'APROBADO' || normalizarEstado(estadoOC) === 'RECIBIDO' ? 'text-green-300' : normalizarEstado(estadoOC) === 'CON DEUDA' ? 'text-orange-300' : 'text-yellow-300'}`}>
+            {estadoOC}
+          </span>
+        </p>
+      )}
+      {estadoRecepcionActual && (
+        <p className="text-white text-base mb-4">
+          Estado Recepción:{' '}
+          <span className={`font-semibold ${normalizarEstado(estadoRecepcionActual) === 'COMPLETA' ? 'text-green-300' : normalizarEstado(estadoRecepcionActual) === 'PARCIAL' ? 'text-orange-300' : 'text-blue-300'}`}>
+            {estadoRecepcionActual}
+          </span>
+        </p>
+      )}
       {estadoSolicitud && (
         <div role="status" aria-live="polite" className="w-full max-w-5xl mb-4">
           <div className={`flex items-center gap-2 p-3 rounded ${estadoSolicitud === 'Recepción pendiente' ? 'bg-blue-100 text-blue-800' : estadoSolicitud === 'Con deuda' ? 'bg-orange-100 text-orange-800' : 'bg-green-100 text-green-800'}`}>
@@ -569,7 +692,7 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       {errorMensaje && <div className="w-full max-w-4xl mb-4 bg-red-100 border-red-400 text-red-700 px-4 py-3 rounded" role="alert">{errorMensaje}</div>}
       <div className="w-full max-w-5xl">
         {/* --- Bloque 1: Proveedor y OC --- */}
-        <div className="mb-8 bg白/20 rounded-lg p-6 shadow flex flex-col gap-4">
+        <div className="mb-8 bg-white/20 rounded-lg p-6 shadow flex flex-col gap-4">
           <h2 className="text-lg font-bold text-white mb-2">Datos del Proveedor y Orden</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
@@ -718,7 +841,7 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
             <div>
               <label htmlFor="importeAbonado" className={labelClass}>A Abonar Ahora</label>
               <input id="importeAbonado" type="number" step="0.01" min="0" value={importeAbonado} onChange={(e) => setImporteAbonado(e.target.value)} className={baseInputClass + ' mt-2'} placeholder={placeholderParaImporteAbonado} />
-              {estadoOC === "Con Deuda" && montoYaAbonadoOC > 0 && (<p className="text-xs text-gray-300 mt-1">Ya abonado: ${montoYaAbonadoOC.toFixed(2)}</p>)}
+              {normalizarEstado(estadoOC) === "CON DEUDA" && montoYaAbonadoOC > 0 && (<p className="text-xs text-gray-300 mt-1">Ya abonado: ${montoYaAbonadoOC.toFixed(2)}</p>)}
               <div className="mt-2 flex items-center gap-2">
                 <input id="pagoCompletoUI" type="checkbox" className="w-4 h-4" checked={pagoCompletoUI} onChange={() => setPagoCompletoUI(!pagoCompletoUI)} />
                 <label htmlFor="pagoCompletoUI" className="text-white text-sm">Pago completo (usar total)</label>
@@ -731,11 +854,41 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
                 {opcionesFormaPago.map(opcion => <option key={opcion} value={opcion}>{opcion}</option>)}
               </select>
             </div>
+            <div>
+              <label htmlFor="fechaPago" className={labelClass}>Fecha del Pago</label>
+              <input id="fechaPago" type="datetime-local" value={fechaPago} onChange={(e) => setFechaPago(e.target.value)} className={baseInputClass} />
+            </div>
+            <div>
+              <label htmlFor="referenciaPago" className={labelClass}>Referencia / Detalle del Pago</label>
+              <input id="referenciaPago" type="text" value={referenciaPago} onChange={(e) => setReferenciaPago(e.target.value)} className={baseInputClass} placeholder="Ej: Recibo 123 / Transferencia banco" />
+            </div>
             {formaPago === 'Cheque' && (
               <div>
                 <label htmlFor="chequePerteneceA" className={labelClass}>Cheque Perteneciente a</label>
                 <input id="chequePerteneceA" type="text" value={chequePerteneceA} onChange={(e) => setChequePerteneceA(e.target.value)} className={baseInputClass} />
               </div>
+            )}
+          </div>
+          <div className="mt-4 rounded-lg bg-slate-900/40 p-4">
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <h3 className="text-sm font-semibold text-white">Historial de Pagos</h3>
+              <span className="text-xs text-slate-200">{pagosOrdenados.length} pago(s) registrados</span>
+            </div>
+            {pagosOrdenados.length > 0 ? (
+              <div className="space-y-2">
+                {pagosOrdenados.map((pago) => (
+                  <div key={pago.id} className="rounded-md border border-white/10 bg-white/10 px-3 py-2 text-sm text-white">
+                    <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                      <span className="font-semibold">${Number(pago.monto || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      <span className="text-xs text-slate-200">{formatearFechaPago(pago.fecha)}</span>
+                    </div>
+                    <div className="text-xs text-slate-200 mt-1">{pago.descripcion || 'Pago sin detalle adicional'}</div>
+                    {pago.usuario && <div className="text-[11px] text-slate-300 mt-1">Registrado por: {pago.usuario}</div>}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-slate-200">Todavía no hay pagos registrados para esta orden.</p>
             )}
           </div>
         </div>
@@ -744,13 +897,14 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
           <button onClick={handleDescargarPDF} type="button" className="bg-blue-500 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-600 transition">Descargar</button>
           <div className="flex flex-col md:flex-row gap-4 w-full md:w-auto">
             <button onClick={async () => {
-              if (estadoOC === 'Solicitado') {
+              if (normalizarEstado(estadoOC) === 'SOLICITADO') {
                 actualizarEstadoPersistente('Recepción pendiente');
                 await enviarAprobacionAPI({
                   proveedor_id: proveedorId,
                   cuenta,
                   iibb: showIibb ? iibb : '',
                   tc: showTc ? tc : '',
+                  referencia_pago: referenciaPago,
                   observaciones_solicitud: '',
                   tipo_caja: tipoCaja,
                   items_recibidos: [{
@@ -766,9 +920,17 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
                 }
               } else {
                 await handleAgregar();
-                router.push('/compras');
               }
-            }} className="bg-green-500 text-white px-6 py-3 rounded-lg font-semibold hover:bg-green-600">Aprobar Orden</button>
+            }} className="bg-green-500 text-white px-6 py-3 rounded-lg font-semibold hover:bg-green-600">{normalizarEstado(estadoOC) === 'SOLICITADO' ? 'Aprobar Orden' : 'Registrar ingreso'}</button>
+            {normalizarEstado(estadoOC) !== 'SOLICITADO' && normalizarEstado(estadoOC) !== 'RECHAZADO' && (
+              <button
+                onClick={registrarPagoAPI}
+                className="bg-emerald-700 text-white px-6 py-3 rounded-lg font-semibold hover:bg-emerald-800"
+                type="button"
+              >
+                Registrar pago
+              </button>
+            )}
             <button
               onClick={async () => {
                 setErrorMensaje('');

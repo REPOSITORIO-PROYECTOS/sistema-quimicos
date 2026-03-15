@@ -28,6 +28,8 @@ type Pagination = {
   has_prev: boolean;
 };
 
+const normalizarEstado = (estado?: string | null) => String(estado || '').trim().toUpperCase();
+
 export default function ListaOrdenesCompra() {
   // Obtener usuario
   const userItem = typeof window !== 'undefined' ? localStorage.getItem('user') || sessionStorage.getItem('user') : null;
@@ -55,10 +57,11 @@ export default function ListaOrdenesCompra() {
 
   // Si el filtro es 'Aprobado' o 'Solicitado', filtrar solo las órdenes correspondientes
   function filtrarPorEstado(ordenes: OrdenCompra[], estado: string) {
+    const estadoFiltro = normalizarEstado(estado);
     if (estado === 'Aprobado') {
-      return ordenes.filter((o: OrdenCompra) => o.estado === 'Aprobado' || !!o.fecha_aprobacion);
+      return ordenes.filter((o: OrdenCompra) => normalizarEstado(o.estado) === 'APROBADO' || !!o.fecha_aprobacion);
     }
-    return ordenes.filter((o: OrdenCompra) => o.estado === estado);
+    return ordenes.filter((o: OrdenCompra) => normalizarEstado(o.estado) === estadoFiltro);
   }
   const [ordenes, setOrdenes] = useState<OrdenCompra[]>([]);
   const [pagination, setPagination] = useState<Pagination | null>(null);
@@ -329,8 +332,7 @@ export default function ListaOrdenesCompra() {
 
   const ordenesFiltradas = (() => {
     const base = (['Aprobado', 'Solicitado'].includes(filtroEstado) ? filtrarPorEstado(ordenes, filtroEstado) : ordenes);
-    const soloSolicitado = esAdmin ? base.filter(o => o.estado === 'Solicitado') : base;
-    const porId = filtroId ? soloSolicitado.filter(o => String(o.id).includes(filtroId.trim())) : soloSolicitado;
+    const porId = filtroId ? base.filter(o => String(o.id).includes(filtroId.trim())) : base;
     const porMes = filtroMes ? porId.filter(o => {
       const d = new Date(String(o.fecha_creacion));
       const y = d.getFullYear();
@@ -345,7 +347,7 @@ export default function ListaOrdenesCompra() {
       <div className="bg-white p-6 md:p-8 rounded-lg shadow-xl w-full max-w-4xl lg:max-w-5xl">
         <BotonVolver />
         <h2 className="text-2xl md:text-3xl font-semibold mb-6 text-center text-indigo-800">
-          Lista de Órdenes de Compra
+          {filtroEstado === 'Solicitado' ? 'Pendientes de Aprobación' : 'Lista de Órdenes de Compra'}
         </h2>
 
         <div className="flex flex-col md:flex-row justify-center items-end gap-3 mb-6 border-b pb-4">
@@ -382,24 +384,37 @@ export default function ListaOrdenesCompra() {
                 </li>
 
                 {ordenesFiltradas.length > 0 ? ordenesFiltradas.map((orden) => {
+                  const estadoUpper = normalizarEstado(orden.estado);
+                  const estadoRecepcionUpper = normalizarEstado(orden.estado_recepcion);
+                  const etiquetaEstado = estadoUpper === 'SOLICITADO'
+                    ? 'Pendiente de aprobación'
+                    : estadoUpper === 'CON DEUDA'
+                      ? 'Con Deuda'
+                      : estadoUpper === 'RECIBIDA_PARCIAL'
+                        ? 'Recibida Parcial'
+                        : estadoUpper.charAt(0) + estadoUpper.slice(1).toLowerCase();
+                  const claseEstado =
+                    estadoUpper === 'APROBADO' ? 'bg-green-100 text-green-800' :
+                      estadoUpper === 'RECHAZADO' ? 'bg-red-100 text-red-800' :
+                        estadoUpper === 'SOLICITADO' ? 'bg-yellow-100 text-yellow-800' :
+                          estadoUpper === 'CON DEUDA' ? 'bg-orange-100 text-orange-800' :
+                            estadoUpper === 'RECIBIDA_PARCIAL' ? 'bg-blue-100 text-blue-800' :
+                              'bg-gray-100 text-gray-800';
 
                   return (
                     <li key={orden.id} className="grid grid-cols-[1fr_1.5fr_1fr_2fr_1fr_1fr] gap-x-3 items-center bg-white hover:bg-gray-50 p-3 text-sm">
                       <span>{`Nº ${orden.id.toString().padStart(4, '0')}`}</span>
                       <span>{new Date(orden.fecha_creacion).toLocaleDateString("es-AR")}</span>
                       <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full 
-                        ${orden.estado === 'Aprobado' ? 'bg-green-100 text-green-800' :
-                          orden.estado === 'Rechazado' ? 'bg-red-100 text-red-800' :
-                            orden.estado === 'Solicitado' ? 'bg-yellow-100 text-yellow-800' :
-                              orden.estado === 'Con Deuda' ? 'bg-orange-100 text-orange-800' : 'bg-gray-100 text-gray-800'}`}>
-                        {orden.estado}
+                        ${claseEstado}`}>
+                        {etiquetaEstado}
                       </span>
                       {!!orden.fecha_aprobacion && (
                         <span className="ml-2 px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
                           Aprobado
                         </span>
                       )}
-                      {String(orden.estado_recepcion || '').toLowerCase() === 'pendiente' && (
+                      {(estadoRecepcionUpper === 'EN_ESPERA_RECEPCION' || estadoRecepcionUpper === 'PARCIAL') && (
                         <span className="ml-2 px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
                           Recepción Pendiente
                         </span>
@@ -428,7 +443,7 @@ export default function ListaOrdenesCompra() {
                         >
                           <option value="" disabled>Acción...</option>
                           <option value="ver">Ver detalle</option>
-                          {user && user.role && user.role.toUpperCase() === 'ADMIN' && orden.estado === 'Solicitado' && (
+                          {user && user.role && user.role.toUpperCase() === 'ADMIN' && estadoUpper === 'SOLICITADO' && (
                             <>
                               <option value="aprobar">✓ Aprobar</option>
                               <option value="rechazar">✗ Rechazar</option>

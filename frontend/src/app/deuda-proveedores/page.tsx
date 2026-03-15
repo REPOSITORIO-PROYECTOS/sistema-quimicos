@@ -2,15 +2,30 @@
 
 import BotonVolver from '@/components/BotonVolver';
 import SolicitudIngresoPage from '@/components/solicitudIngresoPage';
+import { ProductsProvider } from '@/context/ProductsContext';
+import { ProveedoresProvider } from '@/context/ProveedoresContext';
 import { useEffect, useMemo, useState } from 'react';
 import jsPDF from 'jspdf';
 
 type OrdenResumen = { id: number; fecha_creacion: string; estado: string; proveedor_id: number; importe_total_estimado?: number; importe_abonado?: number; estado_recepcion?: string };
 type ItemDetalle = { id_linea: number; producto_id: number; producto_nombre?: string; cantidad_solicitada: number; cantidad_recibida?: number; precio_unitario_estimado: number; importe_linea_estimado: number };
 type ItemAPI = { id_linea: number | string; producto_id: number | string; producto_nombre?: string; cantidad_solicitada?: number | string; cantidad_recibida?: number | string; precio_unitario_estimado?: number | string; importe_linea_estimado?: number | string };
-type Movimiento = { id: number; proveedor_id: number; orden_id: number | null; tipo: 'DEBITO' | 'CREDITO'; monto: number; fecha: string };
+type Movimiento = { id: number; proveedor_id: number; orden_id: number | null; tipo: 'DEBITO' | 'CREDITO'; monto: number; fecha: string; descripcion?: string | null; usuario?: string | null };
 
 const API = 'https://quimex.sistemataup.online/api';
+const formatMoney = (value: number) => `$${Number(value || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const formatPaymentDate = (value?: string | null) => {
+  if (!value) return 'Sin fecha';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Sin fecha';
+  return date.toLocaleString('es-AR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+};
 
 export default function DeudaProveedoresPage() {
   const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
@@ -33,13 +48,32 @@ export default function DeudaProveedoresPage() {
 
   const fetchDeudaOrdenes = async () => {
     if (!token) throw new Error('No autenticado');
-    const res = await fetch(`${API}/ordenes_compra/obtener_todas?estado=CON%20DEUDA&page=1&per_page=50`, { headers: { 'Authorization': `Bearer ${token}`, 'X-User-Role': user?.role || '', 'X-User-Name': user?.usuario || user?.name || '', 'Content-Type': 'application/json' } });
-    const data = await res.json();
-    const lista: OrdenResumen[] = (data.ordenes || []).map((o: OrdenResumen) => ({ id: o.id, fecha_creacion: o.fecha_creacion, estado: o.estado, proveedor_id: o.proveedor_id, importe_total_estimado: o.importe_total_estimado ?? 0, importe_abonado: o.importe_abonado ?? 0 }));
+    const headers = { 'Authorization': `Bearer ${token}`, 'X-User-Role': user?.role || '', 'X-User-Name': user?.usuario || user?.name || '', 'Content-Type': 'application/json' };
+    const lista: OrdenResumen[] = [];
+    let currentPage = 1;
+    let hasNext = true;
+
+    while (hasNext) {
+      const res = await fetch(`${API}/ordenes_compra/obtener_todas?page=${currentPage}&per_page=100`, { headers });
+      const data = await res.json();
+      const pagina: OrdenResumen[] = (data.ordenes || []).map((o: OrdenResumen) => ({
+        id: o.id,
+        fecha_creacion: o.fecha_creacion,
+        estado: o.estado,
+        proveedor_id: o.proveedor_id,
+        importe_total_estimado: o.importe_total_estimado ?? 0,
+        importe_abonado: o.importe_abonado ?? 0,
+        estado_recepcion: o.estado_recepcion
+      }));
+      lista.push(...pagina);
+      hasNext = Boolean(data?.pagination?.has_next);
+      currentPage += 1;
+    }
+
     setOrdenes(lista);
     const detalles: Record<number, ItemDetalle[]> = {};
-    const proveedoresSet = new Set<{ id: number, nombre: string }>();
-    const productosSet = new Set<{ id: number, nombre: string }>();
+    const proveedoresMap = new Map<number, string>();
+    const productosMap = new Map<number, string>();
 
     for (const oc of lista) {
       const rd = await fetch(`${API}/ordenes_compra/obtener/${oc.id}`, { headers: { 'Authorization': `Bearer ${token}`, 'X-User-Role': user?.role || '', 'X-User-Name': user?.usuario || user?.name || '', 'Content-Type': 'application/json' } });
@@ -58,22 +92,22 @@ export default function DeudaProveedoresPage() {
 
       // Llenar proveedores disponibles
       if (provNombre) {
-        proveedoresSet.add({ id: oc.proveedor_id, nombre: provNombre });
+        proveedoresMap.set(oc.proveedor_id, provNombre);
       }
 
       // Llenar productos disponibles si hay items pendientes de recepción
       if (dd.estado_recepcion !== 'COMPLETA') {
         detalles[oc.id].forEach(item => {
           if (item.producto_nombre) {
-            productosSet.add({ id: item.producto_id, nombre: item.producto_nombre });
+            productosMap.set(item.producto_id, item.producto_nombre);
           }
         });
       }
     }
     setItemsPorOrden(detalles);
     setProveedorPorOrden({ ...proveedorPorOrden });
-    setProveedoresDisponibles(Array.from(proveedoresSet).sort((a, b) => a.nombre.localeCompare(b.nombre)));
-    setProductosDisponibles(Array.from(productosSet).sort((a, b) => a.nombre.localeCompare(b.nombre)));
+    setProveedoresDisponibles(Array.from(proveedoresMap.entries()).map(([id, nombre]) => ({ id, nombre })).sort((a, b) => a.nombre.localeCompare(b.nombre)));
+    setProductosDisponibles(Array.from(productosMap.entries()).map(([id, nombre]) => ({ id, nombre })).sort((a, b) => a.nombre.localeCompare(b.nombre)));
   };
 
   const fetchMovs = async () => {
@@ -104,13 +138,15 @@ export default function DeudaProveedoresPage() {
   }, [filtroDesde, filtroHasta]);
 
   const filasOrdenes = useMemo(() => {
-    const rows: { ocId: number; total: number; abonado: number; pendiente: number; ultimoPago?: string; fecha: string; proveedor: string; items: ItemDetalle[] }[] = [];
+    const rows: { ocId: number; total: number; abonado: number; pendiente: number; ultimoPago?: string; fecha: string; proveedor: string; items: ItemDetalle[]; pagos: Movimiento[] }[] = [];
     for (const oc of ordenes) {
       const items = itemsPorOrden[oc.id] || [];
       const totalOC = Number(oc.importe_total_estimado || 0) || items.reduce((acc, it) => acc + (it.importe_linea_estimado || (it.cantidad_solicitada * it.precio_unitario_estimado)), 0);
       const abonadoOC = Number(oc.importe_abonado || 0);
       const pendienteOC = Math.max(0, totalOC - abonadoOC);
-      const movsOC = movimientos.filter(m => m.tipo === 'CREDITO' && m.orden_id === oc.id);
+      const movsOC = movimientos
+        .filter(m => m.tipo === 'CREDITO' && m.orden_id === oc.id)
+        .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
       const ultimoPago = movsOC.length > 0 ? new Date(Math.max(...movsOC.map(m => new Date(m.fecha).getTime()))).toLocaleDateString('es-AR') : undefined;
       const d = new Date(oc.fecha_creacion);
       const okDesde = filtroDesde ? d >= new Date(filtroDesde) : true;
@@ -119,12 +155,28 @@ export default function DeudaProveedoresPage() {
       const okProveedor = filtroProveedor ? proveedor === filtroProveedor : true;
       const okProducto = filtroProducto ? items.some(item => item.producto_nombre === filtroProducto) : true;
       if (!(okDesde && okHasta && okProveedor && okProducto)) continue;
-      rows.push({ ocId: oc.id, total: totalOC, abonado: abonadoOC, pendiente: pendienteOC, ultimoPago, fecha: d.toLocaleDateString('es-AR'), proveedor, items });
+      if (pendienteOC <= 0) continue;
+      rows.push({ ocId: oc.id, total: totalOC, abonado: abonadoOC, pendiente: pendienteOC, ultimoPago, fecha: d.toLocaleDateString('es-AR'), proveedor, items, pagos: movsOC });
     }
     if (ordenarPor === 'pendiente') rows.sort((a, b) => b.pendiente - a.pendiente);
     if (ordenarPor === 'orden') rows.sort((a, b) => a.ocId - b.ocId);
     return rows;
   }, [ordenes, itemsPorOrden, movimientos, ordenarPor, filtroDesde, filtroHasta, filtroProveedor, filtroProducto, proveedorPorOrden]);
+
+  const deudaPorProveedor = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const row of filasOrdenes) {
+      map.set(row.proveedor, (map.get(row.proveedor) || 0) + row.pendiente);
+    }
+    return Array.from(map.entries())
+      .map(([proveedor, deuda]) => ({ proveedor, deuda }))
+      .sort((a, b) => b.deuda - a.deuda);
+  }, [filasOrdenes]);
+
+  const totalPendienteFiltrado = useMemo(
+    () => filasOrdenes.reduce((acc, row) => acc + row.pendiente, 0),
+    [filasOrdenes]
+  );
 
   const exportCSV = () => {
     const headers = [
@@ -134,7 +186,7 @@ export default function DeudaProveedoresPage() {
       'Total',
       'Abonado',
       'Pendiente',
-      'Último Pago',
+      'Pagos Registrados',
       'Producto',
       'Cant. Solicitada',
       'Cant. Recibida',
@@ -158,7 +210,9 @@ export default function DeudaProveedoresPage() {
             r.total.toFixed(2),
             r.abonado.toFixed(2),
             r.pendiente.toFixed(2),
-            r.ultimoPago || '-',
+            r.pagos.length > 0
+              ? r.pagos.map(pago => `${formatPaymentDate(pago.fecha)} | ${pago.monto.toFixed(2)} | ${pago.descripcion || 'Sin detalle'}`).join(' / ')
+              : '-',
             item.producto_nombre || `ID ${item.producto_id}`,
             item.cantidad_solicitada || 0,
             cantRecibida,
@@ -175,7 +229,9 @@ export default function DeudaProveedoresPage() {
           r.total.toFixed(2),
           r.abonado.toFixed(2),
           r.pendiente.toFixed(2),
-          r.ultimoPago || '-',
+          r.pagos.length > 0
+            ? r.pagos.map(pago => `${formatPaymentDate(pago.fecha)} | ${pago.monto.toFixed(2)} | ${pago.descripcion || 'Sin detalle'}`).join(' / ')
+            : '-',
           'Sin items',
           '0',
           '0',
@@ -201,7 +257,13 @@ export default function DeudaProveedoresPage() {
   };
 
   if (seleccionOcId) {
-    return <SolicitudIngresoPage id={seleccionOcId} />;
+    return (
+      <ProductsProvider>
+        <ProveedoresProvider>
+          <SolicitudIngresoPage id={seleccionOcId} />
+        </ProveedoresProvider>
+      </ProductsProvider>
+    );
   }
 
   return (
@@ -250,6 +312,37 @@ export default function DeudaProveedoresPage() {
         </div>
 
         {/* Listado de boletas en deuda (simple) */}
+        <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 mb-4 flex flex-wrap justify-between gap-3">
+          <div className="text-sm text-red-900">
+            Total adeudado (filtro actual): <span className="font-bold text-base tabular-nums">{formatMoney(totalPendienteFiltrado)}</span>
+          </div>
+          <div className="text-sm text-red-900">
+            Proveedores con deuda: <span className="font-bold">{deudaPorProveedor.length}</span>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto mb-6">
+          <table className="min-w-full text-sm">
+            <thead>
+              <tr className="bg-gray-100">
+                <th className="px-3 py-2 text-left">Proveedor</th>
+                <th className="px-3 py-2 text-right">Deuda Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {deudaPorProveedor.map((r) => (
+                <tr key={r.proveedor} className="border-b hover:bg-gray-50">
+                  <td className="px-3 py-2">{r.proveedor}</td>
+                  <td className="px-3 py-2 text-right font-semibold text-red-700 tabular-nums whitespace-nowrap">{formatMoney(r.deuda)}</td>
+                </tr>
+              ))}
+              {deudaPorProveedor.length === 0 && (
+                <tr><td className="px-3 py-2" colSpan={2}>Sin deuda para los filtros seleccionados.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
         <div className="overflow-x-auto mb-6">
           <table className="min-w-full text-sm">
             <thead>
@@ -259,7 +352,7 @@ export default function DeudaProveedoresPage() {
                 <th className="px-3 py-2 text-right">Monto Total</th>
                 <th className="px-3 py-2 text-right">Monto Abonado</th>
                 <th className="px-3 py-2 text-right">Monto Pendiente</th>
-                <th className="px-3 py-2 text-left">Último Pago</th>
+                <th className="px-3 py-2 text-left">Pagos Registrados</th>
                 <th className="px-3 py-2 text-left">Fecha</th>
                 <th className="px-3 py-2 text-left">Ítems Solicitados</th>
               </tr>
@@ -276,10 +369,24 @@ export default function DeudaProveedoresPage() {
                 >
                   <td className="px-3 py-2">OC {String(r.ocId).padStart(4, '0')}</td>
                   <td className="px-3 py-2">{r.proveedor || '-'}</td>
-                  <td className="px-3 py-2 text-right">${r.total.toFixed(2)}</td>
-                  <td className="px-3 py-2 text-right">${r.abonado.toFixed(2)}</td>
-                  <td className={`px-3 py-2 text-right ${r.pendiente > 0 ? 'text-red-700' : 'text-green-700'}`}>${r.pendiente.toFixed(2)}</td>
-                  <td className="px-3 py-2">{r.ultimoPago || '-'}</td>
+                  <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">{formatMoney(r.total)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">{formatMoney(r.abonado)}</td>
+                  <td className={`px-3 py-2 text-right tabular-nums whitespace-nowrap ${r.pendiente > 0 ? 'text-red-700' : 'text-green-700'}`}>{formatMoney(r.pendiente)}</td>
+                  <td className="px-3 py-2">
+                    {r.pagos.length > 0 ? (
+                      <div className="space-y-1">
+                        {r.pagos.slice(0, 3).map((pago) => (
+                          <div key={pago.id} className="text-xs leading-4">
+                            <div className="font-medium text-gray-800">{formatPaymentDate(pago.fecha)} · {formatMoney(pago.monto)}</div>
+                            <div className="text-gray-500">{pago.descripcion || 'Pago sin detalle adicional'}</div>
+                          </div>
+                        ))}
+                        {r.pagos.length > 3 && <div className="text-xs text-gray-400">+{r.pagos.length - 3} pago(s) más</div>}
+                      </div>
+                    ) : (
+                      '-'
+                    )}
+                  </td>
                   <td className="px-3 py-2">{r.fecha}</td>
                   <td className="px-3 py-2">
                     {r.items.length > 0 ? (
@@ -294,7 +401,7 @@ export default function DeudaProveedoresPage() {
                 </tr>
               ))}
               {filasOrdenes.length === 0 && (
-                <tr><td className="px-3 py-2" colSpan={7}>Sin órdenes en deuda para el período seleccionado.</td></tr>
+                <tr><td className="px-3 py-2" colSpan={8}>Sin órdenes en deuda para el período seleccionado.</td></tr>
               )}
             </tbody>
           </table>

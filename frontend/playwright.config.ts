@@ -1,5 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
+const playwrightPort = process.env.PLAYWRIGHT_PORT || "3000";
+const playwrightUrl = process.env.PLAYWRIGHT_URL || `http://localhost:${playwrightPort}`;
+
 /**
  * Configuración E2E Tests - Quimex
  *
@@ -19,7 +22,7 @@ export default defineConfig({
     reporter: "html",
 
     use: {
-        baseURL: process.env.PLAYWRIGHT_URL || "http://localhost:3000",
+        baseURL: playwrightUrl,
         trace: "on-first-retry",
         screenshot: "only-on-failure",
         video: "retain-on-failure",
@@ -41,9 +44,9 @@ export default defineConfig({
     ],
 
     webServer: {
-        command: "npm run dev",
-        url: "http://localhost:3000",
-        reuseExistingServer: !process.env.CI,
+        command: `npm run dev -- --port ${playwrightPort}`,
+        url: playwrightUrl,
+        reuseExistingServer: process.env.PLAYWRIGHT_REUSE_SERVER === "1",
         timeout: 120000,
     },
 });

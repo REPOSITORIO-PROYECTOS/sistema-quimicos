@@ -15,7 +15,11 @@ type OrdenCompra = {
   forma_pago?: string;
   cheque_perteneciente_a?: string;
   estado_recepcion?: string;
-  items?: { precio_unitario_estimado?: number }[];
+  items?: {
+    precio_unitario_estimado?: number;
+    cantidad_solicitada?: number;
+    cantidad_recibida?: number;
+  }[];
 };
 
 type ItemRecepcion = {
@@ -25,6 +29,31 @@ type ItemRecepcion = {
   cantidadRecibida: number;
   productoCodigo?: string;
   costoUnitarioARS?: number;
+};
+
+const normalizarEstado = (estado?: string | null) => String(estado || '').trim().toUpperCase();
+
+const tienePendientesRecepcion = (orden: OrdenCompra) => {
+  const estado = normalizarEstado(orden.estado);
+  const estadoRecepcion = normalizarEstado(orden.estado_recepcion);
+
+  if (estado === 'RECHAZADO' || estado === 'RECIBIDO' || estado === 'SOLICITADO') {
+    return false;
+  }
+
+  if (estadoRecepcion === 'EN_ESPERA_RECEPCION' || estadoRecepcion === 'PARCIAL') {
+    return true;
+  }
+
+  if (Array.isArray(orden.items) && orden.items.length > 0) {
+    return orden.items.some((item) => {
+      const solicitada = Number(item.cantidad_solicitada || 0);
+      const recibida = Number(item.cantidad_recibida || 0);
+      return solicitada > recibida;
+    });
+  }
+
+  return estado === 'APROBADO' || estado === 'RECIBIDA_PARCIAL' || estado === 'EN_ESPERA_RECEPCION' || estado === 'CON DEUDA';
 };
 
 export default function RecepcionesPendientesPage() {
@@ -65,11 +94,7 @@ export default function RecepcionesPendientesPage() {
           throw new Error(errData.message || "Error al traer órdenes.");
         }
         const data = await response.json();
-        setOrdenes((data.ordenes || []).filter((o: OrdenCompra) => {
-          const estado = String(o.estado || '').toUpperCase();
-          // Mostrar: APROBADO, CON DEUDA, RECIBIDA_PARCIAL. Excluir: RECIBIDO, RECHAZADO, SOLICITADO
-          return estado !== 'RECIBIDO' && estado !== 'RECHAZADO' && estado !== 'SOLICITADO';
-        }));
+        setOrdenes((data.ordenes || []).filter((o: OrdenCompra) => tienePendientesRecepcion(o)));
         // Mapear ítems por orden para mostrar en la lista
         const itemsMap: Record<number, { nombre: string, cantidad: number, cantidadRecibida: number }[]> = {};
         (data.ordenes || []).forEach((orden: Record<string, unknown>) => {
@@ -242,17 +267,7 @@ export default function RecepcionesPendientesPage() {
       try {
         const refresco = await fetch(`https://quimex.sistemataup.online/api/ordenes_compra/obtener_todas?page=1&per_page=50`, { headers: { "Content-Type": "application/json", 'X-User-Role': userParsed?.role || '', 'X-User-Name': userParsed?.usuario || userParsed?.name || '', "Authorization": `Bearer ${token}` } });
         const nuevo = await refresco.json();
-        setOrdenes((nuevo.ordenes || []).filter((o: OrdenCompra) => {
-          const estado = String(o.estado || '').toUpperCase();
-          const estadoRecepcion = String(o.estado_recepcion || '').toUpperCase();
-          return (
-            estado === 'APROBADO' ||
-            estado === 'RECIBIDA_PARCIAL' ||
-            estadoRecepcion === 'EN_ESPERA_RECEPCION' ||
-            estadoRecepcion === 'PARCIAL' ||
-            (estado === 'CON DEUDA' && (estadoRecepcion === 'EN_ESPERA_RECEPCION' || estadoRecepcion === 'PARCIAL'))
-          );
-        }));
+        setOrdenes((nuevo.ordenes || []).filter((o: OrdenCompra) => tienePendientesRecepcion(o)));
         // Actualizar itemsPorOrden con cantidades recibidas actualizadas
         const newItemsMap: Record<number, { nombre: string, cantidad: number, cantidadRecibida: number }[]> = {};
         (nuevo.ordenes || []).forEach((orden: Record<string, unknown>) => {
@@ -404,18 +419,20 @@ export default function RecepcionesPendientesPage() {
                       {Array.isArray(itemsPorOrden[orden.id]) && itemsPorOrden[orden.id].length > 0 ? (
                         <ul className="list-disc ml-3">
                           {itemsPorOrden[orden.id].map((item, idx) => {
-                            const esParcial = String(orden.estado || '').toUpperCase().includes('PARCIAL');
                             const pendiente = item.cantidad - item.cantidadRecibida;
                             return (
                               <li key={idx}>
                                 {item.nombre}
-                                {esParcial && item.cantidadRecibida > 0 ? (
+                                {item.cantidadRecibida > 0 ? (
                                   <span>
                                     {' '}— <span className="text-green-700 font-medium">Recibido: {item.cantidadRecibida}</span>
                                     {pendiente > 0 && <span className="text-orange-600 font-semibold"> · Falta: {pendiente}</span>}
                                   </span>
                                 ) : (
-                                  <span> — Cantidad: {item.cantidad}</span>
+                                  <span>
+                                    {' '}— Cantidad: {item.cantidad}
+                                    {pendiente > 0 && <span className="text-orange-600 font-semibold"> · Falta: {pendiente}</span>}
+                                  </span>
                                 )}
                               </li>
                             );
@@ -426,7 +443,7 @@ export default function RecepcionesPendientesPage() {
                       )}
                     </span>
                     <div className="flex items-center justify-center gap-2">
-                      {String(orden.estado || '').toUpperCase().includes('PARCIAL') && (
+                      {(normalizarEstado(orden.estado).includes('PARCIAL') || normalizarEstado(orden.estado_recepcion).includes('PARCIAL')) && (
                         <span className="bg-orange-100 text-orange-700 text-xs font-semibold px-2 py-0.5 rounded-full border border-orange-300">Parcial</span>
                       )}
                       <button
