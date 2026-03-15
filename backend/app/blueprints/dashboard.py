@@ -265,7 +265,11 @@ def get_dashboard_ventas_pedidos(current_user):
 
         # Filtro: Solo pedidos (con dirección de entrega)
         filtro_pedido = (Venta.direccion_entrega.isnot(None)) & (Venta.direccion_entrega != '')
-        filtro_pendiente = filtro_pedido & ~Venta.nombre_vendedor.ilike('%ENTREGADO%')
+        filtro_pendiente = (
+            filtro_pedido
+            & Venta.fecha_pedido.between(today_start_dt, today_end_dt)
+            & ~Venta.nombre_vendedor.ilike('%ENTREGADO%')
+        )
         # Filtro: Solo puerta (sin dirección de entrega)
         filtro_puerta = (Venta.direccion_entrega.is_(None)) | (Venta.direccion_entrega == '')
 

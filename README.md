@@ -134,6 +134,13 @@ python test_compilation.py
 # Ver estado de servicios
 docker compose ps
 
+# Backup manual seguro (recomendado antes de cambios)
+./scripts/backup_mysql.sh
+
+# Wrapper seguro para operaciones de compose
+./scripts/compose_safe.sh up -d --build
+./scripts/compose_safe.sh down
+
 # Ver logs de un servicio
 docker compose logs -f quimex-backend
 docker compose logs -f quimex-frontend
@@ -145,9 +152,25 @@ docker compose exec quimex-db mysql -u quimex -p
 # Reconstruir una imagen
 docker compose build --no-cache quimex-frontend
 
-# Limpiar (cuidado: elimina datos)
-docker compose down -v
+# Limpiar volúmenes (PELIGRO: elimina datos)
+# Solo con confirmación explícita:
+ALLOW_VOLUME_DELETE=YES_I_KNOW ./scripts/compose_safe.sh down -v
 ```
+
+## 🛡️ Prevención De Pérdida De Datos
+
+Recomendado en producción:
+
+```bash
+# 1) Backup cada madrugada (02:30)
+30 2 * * * /home/dev_taup/proyectos/quimex/scripts/backup_mysql.sh >> /home/dev_taup/proyectos/quimex/backups/cron_backup.log 2>&1
+
+# 2) Nunca usar down -v directo
+# Usar siempre:
+cd /home/dev_taup/proyectos/quimex && ./scripts/compose_safe.sh up -d --build
+```
+
+Los backups se guardan en `backups/` y tienen retención automática de 14 días.
 
 ## 🌐 Nginx
 

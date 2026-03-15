@@ -460,7 +460,9 @@ def obtener_ventas(current_user):
                 return jsonify({"error": "Formato 'fecha_hasta' (YYYY-MM-DD)"}), 400
 
         # Ordenar (sin cambios)
-        query = query.order_by(Venta.fecha_registro.desc())
+        # Mostrar primero los pedidos más recientes por fecha de entrega/pedido,
+        # ya que la pantalla "Ver boleta" y el dashboard se guían por fecha_pedido.
+        query = query.order_by(Venta.fecha_pedido.desc(), Venta.id.desc())
 
         # Paginación (sin cambios)
         page = request.args.get('page', 1, type=int)

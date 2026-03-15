@@ -17,6 +17,20 @@ venv/
 *.sqlite3
 *.db
 *.sql
+*.sql.gz
+*.dump
+
+# Backups y volcados de datos sensibles
+backups/
+**/backups/
+*backup*.sql
+*backup*.sql.gz
+*backup*.dump
+dump*.sql
+dump*.sql.gz
+backend/backup_ventas_completo.sql
+backup_bases_datos_*.sql
+backup_bases_datos_*.sql.gz
 
 # Archivos de logs
 *.log
