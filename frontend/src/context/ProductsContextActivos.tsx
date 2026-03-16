@@ -33,7 +33,7 @@ export const ProductsActivosProvider = ({ children }: any) => {
       setLoading(true);
       setError(null);
 
-      const data = await apiGet('/api/productos/obtener_todos_activos');
+      const data = await apiGet('/productos/obtener_todos_activos');
       setProductos(data);
       // eslint-disable-next-line
     } catch (err: any) {

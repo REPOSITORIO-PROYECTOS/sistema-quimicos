@@ -59,9 +59,9 @@ export const ClientesProvider = ({ children }: ClientesProviderProps) => {
       params.append('page', String(page));
       params.append('per_page', String(perPage));
       if (searchTerm) params.append('search_term', searchTerm);
-      
-      const data = await apiGet(`/api/clientes/obtener_todos?${params.toString()}`);
-      
+
+      const data = await apiGet(`/clientes/obtener_todos?${params.toString()}`);
+
       if (!Array.isArray(data.clientes)) {
         throw new Error("La respuesta de la API no es un array de clientes");
       }

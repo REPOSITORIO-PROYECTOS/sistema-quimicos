@@ -34,7 +34,7 @@ export const ProductsProvider = ({ children }: any) => {
       setLoading(true);
       setError(null);
 
-      const data = await apiGet('/api/productos/obtener_todos');
+      const data = await apiGet('/productos/obtener_todos');
       setProductos(data);
       // eslint-disable-next-line
     } catch (err: any) {

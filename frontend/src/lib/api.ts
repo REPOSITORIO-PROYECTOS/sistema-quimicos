@@ -2,7 +2,7 @@
  * API Helper - Centraliza todas las llamadas a la API con autenticación automática
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://quimex.sistemataup.online";
+const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || "https://quimex.sistemataup.online/api").replace(/\/$/, "");
 
 export interface FetchOptions extends RequestInit {
   requireAuth?: boolean;
@@ -36,7 +36,10 @@ export async function apiFetch(endpoint: string, options: FetchOptions = {}) {
     headersList["Authorization"] = `Bearer ${token}`;
   }
 
-  const url = endpoint.startsWith("http") ? endpoint : `${API_BASE_URL}${endpoint}`;
+  const normalizedEndpoint = endpoint.startsWith("/api/")
+    ? endpoint.replace(/^\/api/, "")
+    : endpoint;
+  const url = endpoint.startsWith("http") ? endpoint : `${API_BASE_URL}${normalizedEndpoint}`;
 
   const response = await fetch(url, {
     ...fetchOptions,

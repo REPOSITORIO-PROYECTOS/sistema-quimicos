@@ -72,7 +72,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: https://quimex.sistemataup.online
+        NEXT_PUBLIC_API_URL: https://quimex.sistemataup.online/api
     container_name: quimex-frontend
     restart: unless-stopped
     environment:
@@ -84,7 +84,7 @@ services:
     networks:
       - quimex
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:3000', (r) => {if (r.statusCode !== 200) throw new Error(r.statusCode)})"]
+      test: ["CMD", "node", "-e", "const req=require('http').get('http://127.0.0.1:3000', (r)=>{r.resume();r.on('end',()=>process.exit(r.statusCode===200?0:1));});req.on('error',()=>process.exit(1));req.setTimeout(4000,()=>{req.destroy();process.exit(1);});"]
       interval: 10s
       timeout: 5s
       retries: 3
