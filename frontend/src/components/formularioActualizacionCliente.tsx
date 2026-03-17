@@ -10,7 +10,7 @@ function CalculadoraMargen({ precioBase, tipoCambioOficial, moneda, productoId, 
   const [margenCalculado, setMargenCalculado] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [monedaInput, setMonedaInput] = useState<'ARS'|'USD'>(moneda || 'ARS');
+  const [monedaInput, setMonedaInput] = useState<'ARS' | 'USD'>(moneda || 'ARS');
 
   // Calcula en cliente si no hay productoId (o si el servidor no está disponible)
   const calcularCliente = useCallback(() => {
@@ -19,8 +19,8 @@ function CalculadoraMargen({ precioBase, tipoCambioOficial, moneda, productoId, 
       setError(null);
       return;
     }
-  const objetivoNum = precioObjetivo.replace(',', '.');
-  const objetivo = parseFloat(objetivoNum);
+    const objetivoNum = precioObjetivo.replace(',', '.');
+    const objetivo = parseFloat(objetivoNum);
     if (isNaN(objetivo)) {
       setError('Ingrese un número válido');
       setMargenCalculado(null);
@@ -53,8 +53,8 @@ function CalculadoraMargen({ precioBase, tipoCambioOficial, moneda, productoId, 
       setMargenCalculado(null);
       return;
     }
-  const objetivoNum = precioObjetivo.replace(',', '.');
-  const objetivo = parseFloat(objetivoNum);
+    const objetivoNum = precioObjetivo.replace(',', '.');
+    const objetivo = parseFloat(objetivoNum);
     if (isNaN(objetivo)) {
       setError('Ingrese un número válido');
       setMargenCalculado(null);
@@ -63,7 +63,7 @@ function CalculadoraMargen({ precioBase, tipoCambioOficial, moneda, productoId, 
     setLoading(true);
     setError(null);
     try {
-      const payload: { producto_id: number; precio_objetivo: number; moneda_objetivo: 'ARS'|'USD' } = {
+      const payload: { producto_id: number; precio_objetivo: number; moneda_objetivo: 'ARS' | 'USD' } = {
         producto_id: Number(productoId),
         precio_objetivo: objetivo,
         moneda_objetivo: monedaInput
@@ -114,7 +114,7 @@ function CalculadoraMargen({ precioBase, tipoCambioOficial, moneda, productoId, 
           value={precioObjetivo}
           onChange={e => setPrecioObjetivo(e.target.value)}
         />
-        <select value={monedaInput} onChange={e => setMonedaInput(e.target.value as 'ARS'|'USD')} className="p-1 border rounded text-xs">
+        <select value={monedaInput} onChange={e => setMonedaInput(e.target.value as 'ARS' | 'USD')} className="p-1 border rounded text-xs">
           <option value="ARS">ARS</option>
           <option value="USD">USD</option>
         </select>
@@ -225,19 +225,19 @@ function PrecioPreviewConMargen({ productoId, margen }: { productoId: string | n
 
   useEffect(() => {
     // Validaciones más estrictas
-    if (!productoId || 
-        productoId === '' || 
-        margen === undefined || 
-        margen === null || 
-        isNaN(Number(margen))) {
+    if (!productoId ||
+      productoId === '' ||
+      margen === undefined ||
+      margen === null ||
+      isNaN(Number(margen))) {
       setPreviewData(null);
       setError(null);
       return;
     }
-    
+
     setLoading(true);
     setError(null);
-    
+
     const token = typeof window !== 'undefined' ? localStorage.getItem("authToken") : null;
     const headers: Record<string, string> = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -260,7 +260,7 @@ function PrecioPreviewConMargen({ productoId, margen }: { productoId: string | n
         // La respuesta puede tener diferentes estructuras según el endpoint
         let precioBase = 0;
         let precioFinal = 0;
-        
+
         if (data.calculos) {
           // Estructura nueva del endpoint de preview
           precioBase = Number(data.calculos.precio_base_ars || 0);
@@ -272,7 +272,7 @@ function PrecioPreviewConMargen({ productoId, margen }: { productoId: string | n
         } else {
           throw new Error('Estructura de respuesta no reconocida');
         }
-        
+
         if (precioFinal > 0) {
           setPreviewData({
             precio_base: precioBase,
@@ -296,7 +296,7 @@ function PrecioPreviewConMargen({ productoId, margen }: { productoId: string | n
       🔄 Calculando precio...
     </div>
   );
-  
+
   if (error) return (
     <div className="bg-red-50 border border-red-200 rounded-lg p-2 mt-1">
       <div className="text-xs text-red-700">
@@ -391,19 +391,19 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
     setErrorCarga(null);
     setSubmitSuccessMessage(null);
     setSubmitErrorMessage(null);
-    setForm(initialFormState); 
-  // Eliminado: setPreciosEspecialesOriginales([]);
+    setForm(initialFormState);
+    // Eliminado: setPreciosEspecialesOriginales([]);
 
     const token = typeof window !== 'undefined' ? localStorage.getItem("authToken") : null;
     if (!token) {
-        setErrorCarga("No se encontró token de autenticación.");
-        setIsLoading(false);
-        return;
+      setErrorCarga("No se encontró token de autenticación.");
+      setIsLoading(false);
+      return;
     }
 
     try {
       // 1. Cargar datos del cliente
-  const resCliente = await fetch(`${API_BASE_URL}/clientes/obtener/${clienteId}`, {
+      const resCliente = await fetch(`${API_BASE_URL}/clientes/obtener/${clienteId}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (!resCliente.ok) {
@@ -413,22 +413,22 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
       const datosCliente = await resCliente.json();
 
       // 2. Cargar precios especiales para este cliente
-  const resPrecios = await fetch(`${API_BASE_URL}/precios_especiales/obtener-por-cliente/${clienteId}`, {
+      const resPrecios = await fetch(`${API_BASE_URL}/precios_especiales/obtener-por-cliente/${clienteId}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      
+
       let preciosDelClienteApi: PrecioEspecialDesdeAPI[] = [];
       if (resPrecios.ok) {
         // LA API DEVUELVE DIRECTAMENTE EL ARRAY
-        preciosDelClienteApi = await resPrecios.json(); 
-       
-      } else if (resPrecios.status !== 404) { 
+        preciosDelClienteApi = await resPrecios.json();
+
+      } else if (resPrecios.status !== 404) {
         const errorDataPrecios = await resPrecios.json().catch(() => ({}));
         console.error("Error API al cargar precios especiales (status no 404):", errorDataPrecios);
         throw new Error(errorDataPrecios.message || `Error al cargar precios especiales: ${resPrecios.statusText}`);
       }
 
-  // Mapear los datos de la API de precios al formato del formulario
+      // Mapear los datos de la API de precios al formato del formulario
       const preciosFormateados: ProductoPrecioEspecialItem[] = preciosDelClienteApi.map(p => ({
         id_precio_especial: p.id,                 // ID del registro de precio especial
         producto_id: String(p.producto_id),       // ID del producto (como string para el select)
@@ -436,16 +436,16 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
         activo: p.activo,
         api_producto_nombre: p.producto_nombre,    // Nombre del producto para mostrar
         api_producto_id_original_api: p.producto_id, // ID original del producto de la API de precios
-  // Si la API retorna moneda/precio original, preferirla; si no, asumimos ARS
-  moneda: (p.moneda_original && String(p.moneda_original).toUpperCase() === 'USD') ? 'USD' : 'ARS',
-    precio_original: p.precio_original !== undefined ? Number(p.precio_original) : undefined,
+        // Si la API retorna moneda/precio original, preferirla; si no, asumimos ARS
+        moneda: (p.moneda_original && String(p.moneda_original).toUpperCase() === 'USD') ? 'USD' : 'ARS',
+        precio_original: p.precio_original !== undefined ? Number(p.precio_original) : undefined,
         // Campos de margen
         usar_precio_base: p.usar_precio_base || false,
         margen_sobre_base: p.margen_sobre_base || undefined,
-      }));  
+      }));
 
-  // Guardar copia original para comparar cambios en el submit
-  setPreciosOriginales(preciosDelClienteApi.length > 0 ? preciosDelClienteApi : []);
+      // Guardar copia original para comparar cambios en el submit
+      setPreciosOriginales(preciosDelClienteApi.length > 0 ? preciosDelClienteApi : []);
 
       setForm({
         nombre_razon_social: datosCliente.nombre_razon_social || '',
@@ -460,8 +460,8 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
         observaciones: datosCliente.observaciones || '',
         precios_especiales_form: preciosFormateados.length > 0 ? preciosFormateados : [],
       });
-  // Eliminado: setPreciosEspecialesOriginales(preciosFormateados);
-  setMostrarPreciosEspeciales(preciosFormateados.length > 0); // Mostrar sección si ya tiene precios
+      // Eliminado: setPreciosEspecialesOriginales(preciosFormateados);
+      setMostrarPreciosEspeciales(preciosFormateados.length > 0); // Mostrar sección si ya tiene precios
 
     } catch (error) {
       console.error("Error en cargarDatosCompletosCliente:", error);
@@ -586,8 +586,8 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
     try {
       const precio = modalPrecioUSD === '' ? undefined : Number(modalPrecioUSD);
       // Actualizar item editado con todos los campos
-      const updatedItem = { 
-        ...item, 
+      const updatedItem = {
+        ...item,
         moneda: modalMoneda,
         usar_precio_base: modalUsarPrecioBase,
         margen_sobre_base: modalUsarPrecioBase && modalMargen !== '' ? Number(modalMargen) : undefined
@@ -607,7 +607,7 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
         if (precio !== undefined) {
           payload['precio_original'] = precio;
         }
-  const res = await fetch(`${API_BASE_URL}/precios_especiales/editar/${item.id_precio_especial}`, {
+        const res = await fetch(`${API_BASE_URL}/precios_especiales/editar/${item.id_precio_especial}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify(payload),
@@ -629,7 +629,7 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
           margen_sobre_base: modalUsarPrecioBase && modalMargen !== '' ? Number(modalMargen) / 100 : undefined,
         };
         if (precio !== undefined) body['precio_original'] = precio;
-  const res = await fetch(`${API_BASE_URL}/precios_especiales/crear`, {
+        const res = await fetch(`${API_BASE_URL}/precios_especiales/crear`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify(body),
@@ -637,6 +637,11 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
           throw new Error(err.message || 'Error creando precio especial');
+        }
+        // Capture new ID from response
+        const createdPrice = await res.json();
+        if (createdPrice && createdPrice.id) {
+          updatedItem.id_precio_especial = createdPrice.id;
         }
       }
       // Actualizar moneda en el estado local
@@ -669,7 +674,7 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
     }
     setModalLoading(true);
     try {
-  const res = await fetch(`${API_BASE_URL}/precios_especiales/eliminar/${item.id_precio_especial}`, {
+      const res = await fetch(`${API_BASE_URL}/precios_especiales/eliminar/${item.id_precio_especial}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` },
       });
@@ -698,15 +703,15 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
 
     const token = typeof window !== 'undefined' ? localStorage.getItem("authToken") : null;
     if (!token) {
-        setSubmitErrorMessage("Error: No se encontró token de autenticación.");
-        setIsSubmitting(false);
-        return;
+      setSubmitErrorMessage("Error: No se encontró token de autenticación.");
+      setIsSubmitting(false);
+      return;
     }
 
     const datosClienteActualizar = {
       nombre_razon_social: form.nombre_razon_social,
-  // Solo agrega CUIT si no está vacío ni es null
-  ...(form.cuit ? { cuit: form.cuit } : {}),
+      // Solo agrega CUIT si no está vacío ni es null
+      ...(form.cuit ? { cuit: form.cuit } : {}),
       direccion: form.direccion,
       localidad: form.localidad,
       provincia: form.provincia,
@@ -718,7 +723,7 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
     };
 
     try {
-  const resCliente = await fetch(`${API_BASE_URL}/clientes/actualizar/${id_cliente}`, {
+      const resCliente = await fetch(`${API_BASE_URL}/clientes/actualizar/${id_cliente}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify(datosClienteActualizar),
@@ -781,6 +786,11 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
               const err = await resCrear.json().catch(() => ({}));
               throw new Error(err.message || `Error al crear precio especial (producto ${item.producto_id})`);
             }
+            // Capture new ID from response and update item
+            const createdPrice = await resCrear.json();
+            if (createdPrice && createdPrice.id) {
+              item.id_precio_especial = createdPrice.id;
+            }
           }
         } else {
           // Calcular diffs
@@ -798,7 +808,7 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
             if (item.id_precio_especial) {
               actualesIds.add(item.id_precio_especial);
               const orig = originalesById.get(item.id_precio_especial);
-                if (!orig) {
+              if (!orig) {
                 // No encontramos el original, tratar como update con lo que tengamos
                 const nuevoUpd = (typeof item.nuevo_precio === 'number' && Number.isFinite(item.nuevo_precio)) ? item.nuevo_precio : undefined;
                 const payload: Record<string, unknown> = {
@@ -898,6 +908,11 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
               const err = await resCrear.json().catch(() => ({}));
               throw new Error(err.message || `Error al crear precio especial (producto ${item.producto_id})`);
             }
+            // Capture new ID from response and update item
+            const createdPrice = await resCrear.json();
+            if (createdPrice && createdPrice.id) {
+              item.id_precio_especial = createdPrice.id;
+            }
           }
 
           // Ejecutar Updates
@@ -944,7 +959,7 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
     return <div className="text-center p-10 text-red-300 bg-red-900 bg-opacity-50 rounded-md">Error al cargar: {errorCarga}</div>;
   }
 
-  
+
 
   return (
     <main className="min-h-screen bg-[#20119d] text-white p-4 sm:p-8">
@@ -955,7 +970,7 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
         </h1>
         {submitSuccessMessage && <div className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4" role="alert">{submitSuccessMessage}</div>}
         {submitErrorMessage && <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4" role="alert">{submitErrorMessage}</div>}
-  <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
+        <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
           {/* Campos del Cliente */}
           <fieldset className="border p-4 rounded-md">
             <legend className="text-xl font-semibold text-gray-700 px-2 mb-2">Datos del Cliente</legend>
@@ -966,11 +981,11 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700">CUIT <span className="text-gray-500">(opcional)</span></label>
-                <input type="text" name="cuit" value={form.cuit} onChange={handleChange} className="w-full p-2 mt-1 border border-gray-300 rounded shadow-sm focus:ring-indigo-500 focus:border-indigo-500" placeholder="Ej: 20123456789"/>
+                <input type="text" name="cuit" value={form.cuit} onChange={handleChange} className="w-full p-2 mt-1 border border-gray-300 rounded shadow-sm focus:ring-indigo-500 focus:border-indigo-500" placeholder="Ej: 20123456789" />
               </div>
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700">Dirección <span className="text-gray-500">(opcional)</span></label>
-                <input type="text" name="direccion" value={form.direccion} onChange={handleChange} className="w-full p-2 mt-1 border border-gray-300 rounded shadow-sm focus:ring-indigo-500 focus:border-indigo-500"/>
+                <input type="text" name="direccion" value={form.direccion} onChange={handleChange} className="w-full p-2 mt-1 border border-gray-300 rounded shadow-sm focus:ring-indigo-500 focus:border-indigo-500" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700">Localidad <span className="text-red-600">(obligatorio)</span></label>
@@ -978,23 +993,23 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700">Provincia <span className="text-gray-500">(opcional)</span></label>
-                <input type="text" name="provincia" value={form.provincia} onChange={handleChange} className="w-full p-2 mt-1 border border-gray-300 rounded shadow-sm focus:ring-indigo-500 focus:border-indigo-500"/>
+                <input type="text" name="provincia" value={form.provincia} onChange={handleChange} className="w-full p-2 mt-1 border border-gray-300 rounded shadow-sm focus:ring-indigo-500 focus:border-indigo-500" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700">Código Postal <span className="text-gray-500">(opcional)</span></label>
-                <input type="text" name="codigo_postal" value={form.codigo_postal} onChange={handleChange} className="w-full p-2 mt-1 border border-gray-300 rounded shadow-sm focus:ring-indigo-500 focus:border-indigo-500"/>
+                <input type="text" name="codigo_postal" value={form.codigo_postal} onChange={handleChange} className="w-full p-2 mt-1 border border-gray-300 rounded shadow-sm focus:ring-indigo-500 focus:border-indigo-500" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700">Teléfono <span className="text-gray-500">(opcional)</span></label>
-                <input type="tel" name="telefono" value={form.telefono} onChange={handleChange} className="w-full p-2 mt-1 border border-gray-300 rounded shadow-sm focus:ring-indigo-500 focus:border-indigo-500"/>
+                <input type="tel" name="telefono" value={form.telefono} onChange={handleChange} className="w-full p-2 mt-1 border border-gray-300 rounded shadow-sm focus:ring-indigo-500 focus:border-indigo-500" />
               </div>
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700">Email <span className="text-gray-500">(opcional)</span></label>
-                <input type="email" name="email" value={form.email} onChange={handleChange} className="w-full p-2 mt-1 border border-gray-300 rounded shadow-sm focus:ring-indigo-500 focus:border-indigo-500"/>
+                <input type="email" name="email" value={form.email} onChange={handleChange} className="w-full p-2 mt-1 border border-gray-300 rounded shadow-sm focus:ring-indigo-500 focus:border-indigo-500" />
               </div>
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700">Contacto Principal <span className="text-gray-500">(opcional)</span></label>
-                <input type="text" name="contacto_principal" value={form.contacto_principal} onChange={handleChange} className="w-full p-2 mt-1 border border-gray-300 rounded shadow-sm focus:ring-indigo-500 focus:border-indigo-500"/>
+                <input type="text" name="contacto_principal" value={form.contacto_principal} onChange={handleChange} className="w-full p-2 mt-1 border border-gray-300 rounded shadow-sm focus:ring-indigo-500 focus:border-indigo-500" />
               </div>
             </div>
           </fieldset>
@@ -1071,7 +1086,7 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
                               const esDescuento = margenPorcentaje < 0;
                               return (
                                 <span className={esDescuento ? "text-orange-700" : "text-green-700"}>
-                                  {esDescuento 
+                                  {esDescuento
                                     ? `Precio base ${margenPorcentaje.toFixed(1)}% (descuento)`
                                     : `Precio base +${margenPorcentaje.toFixed(1)}% (margen)`
                                   }
@@ -1091,9 +1106,9 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
                         )}
                         {item.usar_precio_base && item.producto_id && (
                           <div className="mt-2">
-                            <PrecioPreviewConMargen 
-                              productoId={item.producto_id} 
-                              margen={(item.margen_sobre_base || 0) * 100} 
+                            <PrecioPreviewConMargen
+                              productoId={item.producto_id}
+                              margen={(item.margen_sobre_base || 0) * 100}
                             />
                           </div>
                         )}
@@ -1101,9 +1116,8 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
 
                       {/* Columna: Estado */}
                       <div className="flex items-center justify-start md:justify-center">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          item.activo ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                        }`}>
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${item.activo ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                          }`}>
                           {item.activo ? 'Activo' : 'Inactivo'}
                         </span>
                       </div>
@@ -1119,8 +1133,8 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
                             setModalMoneda(item.moneda || 'ARS');
                             setModalUsarPrecioBase(!!item.usar_precio_base);
                             // Convertir de decimal a porcentaje para el modal
-                            const margenPorcentaje = item.margen_sobre_base !== undefined && item.margen_sobre_base !== null 
-                              ? item.margen_sobre_base * 100 
+                            const margenPorcentaje = item.margen_sobre_base !== undefined && item.margen_sobre_base !== null
+                              ? item.margen_sobre_base * 100
                               : '';
                             setModalMargen(margenPorcentaje);
                             setModalOpen(true);
@@ -1175,7 +1189,7 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
               <div className="bg-white text-black rounded-md p-6 w-full max-w-lg">
                 <h3 className="text-lg font-semibold mb-4">Editar Precio Especial</h3>
                 {modalError && <div className="text-red-600 mb-2">{modalError}</div>}
-                
+
                 {/* Tipo de precio */}
                 <div className="mb-4">
                   <label className="flex items-center gap-3 p-3 border rounded-md cursor-pointer hover:bg-gray-50">
@@ -1231,9 +1245,9 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
                     )}
                     {modalIndex !== null && form.precios_especiales_form[modalIndex]?.producto_id && modalMargen !== '' && (
                       <div className="mt-2">
-                        <PrecioPreviewConMargen 
-                          productoId={form.precios_especiales_form[modalIndex].producto_id} 
-                          margen={Number(modalMargen)} 
+                        <PrecioPreviewConMargen
+                          productoId={form.precios_especiales_form[modalIndex].producto_id}
+                          margen={Number(modalMargen)}
                         />
                       </div>
                     )}
@@ -1243,9 +1257,9 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
                   <>
                     <div className="mb-3">
                       <label className="block text-sm font-medium text-gray-700">Moneda</label>
-                      <select 
-                        value={modalMoneda} 
-                        onChange={e => setModalMoneda(e.target.value as 'ARS' | 'USD')} 
+                      <select
+                        value={modalMoneda}
+                        onChange={e => setModalMoneda(e.target.value as 'ARS' | 'USD')}
                         className="w-full p-2 border rounded mt-1"
                       >
                         <option value="ARS">ARS</option>
@@ -1254,10 +1268,10 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
                     </div>
                     <div className="mb-3">
                       <label className="block text-sm font-medium text-gray-700">Precio fijo ({modalMoneda})</label>
-                      <input 
-                        type="number" 
-                        value={modalPrecioUSD === '' ? '' : modalPrecioUSD} 
-                        onChange={(e) => setModalPrecioUSD(e.target.value === '' ? '' : Number(e.target.value))} 
+                      <input
+                        type="number"
+                        value={modalPrecioUSD === '' ? '' : modalPrecioUSD}
+                        onChange={(e) => setModalPrecioUSD(e.target.value === '' ? '' : Number(e.target.value))}
                         className="w-full p-2 border rounded mt-1"
                         step="0.01"
                         min="0"
@@ -1273,11 +1287,11 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
                 )}
 
                 <div className="mb-4 flex items-center gap-3">
-                  <input 
-                    id="modal-activo" 
-                    type="checkbox" 
-                    checked={modalActivo} 
-                    onChange={(e) => setModalActivo(e.target.checked)} 
+                  <input
+                    id="modal-activo"
+                    type="checkbox"
+                    checked={modalActivo}
+                    onChange={(e) => setModalActivo(e.target.checked)}
                     className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
                   />
                   <label htmlFor="modal-activo" className="text-sm font-medium text-gray-700">Precio especial activo</label>
@@ -1290,10 +1304,10 @@ export default function FormularioActualizacionCliente({ id_cliente }: { id_clie
                   <button type="button" onClick={handleModalDelete} className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700">
                     Eliminar
                   </button>
-                  <button 
-                    type="button" 
-                    onClick={handleModalSave} 
-                    disabled={modalLoading} 
+                  <button
+                    type="button"
+                    onClick={handleModalSave}
+                    disabled={modalLoading}
                     className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50"
                   >
                     {modalLoading ? 'Guardando...' : 'Guardar'}

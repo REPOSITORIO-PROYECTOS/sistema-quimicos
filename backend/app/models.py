@@ -231,7 +231,7 @@ class OrdenCompra(db.Model):
     estado_recepcion = db.Column(db.String(50), nullable=True)
     notas_recepcion = db.Column(db.Text, nullable=True)
     ajuste_tc = db.Column(db.Boolean, nullable=True)
-    importe_abonado = db.Column(db.Numeric(15,2), nullable=True)
+    importe_abonado = db.Column(db.Numeric(15,2), nullable=False, default=Decimal('0.00'))
     forma_pago = db.Column(db.String(50), nullable=True)
     cheque_perteneciente_a = db.Column(db.String(200), nullable=True)
     proveedor = db.relationship('Proveedor', back_populates='ordenes_compra')

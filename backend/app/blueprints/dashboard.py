@@ -252,8 +252,8 @@ def get_dashboard_ventas_pedidos(current_user):
     """
     Dashboard SIMPLIFICADO para vendedores de pedidos (VENTAS_PEDIDOS).
     Muestra SOLO datos del día de hoy:
-    - Ingresos del día (pedidos solamente)
-    - Cantidad de pedidos del día
+    - Ingresos del día (pedidos solamente) - CON DESGLOSE POR FORMA DE PAGO
+    - Cantidad de pedidos del día - CON DESGLOSE POR FORMA DE PAGO
     - Cantidad de kilos del día
     - Cantidad de pedidos pendientes de entrega
     - Cantidad de kilos pendientes de entrega
@@ -273,13 +273,27 @@ def get_dashboard_ventas_pedidos(current_user):
         # Filtro: Solo puerta (sin dirección de entrega)
         filtro_puerta = (Venta.direccion_entrega.is_(None)) | (Venta.direccion_entrega == '')
 
-        # 0. Ingresos puerta hoy
+        # 0. Ingresos puerta hoy - SIN DESGLOSE (total general)
         ingresos_puerta_hoy = db.session.query(
             func.sum(Venta.monto_final_con_recargos)
         ).filter(
             filtro_puerta,
             Venta.fecha_pedido.between(today_start_dt, today_end_dt)
         ).scalar() or Decimal('0.0')
+
+        # 0b. Ingresos puerta hoy - CON DESGLOSE POR FORMA DE PAGO
+        ingresos_puerta_por_pago = db.session.query(
+            Venta.forma_pago,
+            func.sum(Venta.monto_final_con_recargos)
+        ).filter(
+            filtro_puerta,
+            Venta.fecha_pedido.between(today_start_dt, today_end_dt)
+        ).group_by(Venta.forma_pago).all()
+        
+        desglose_puerta = {}
+        for forma_pago, monto in ingresos_puerta_por_pago:
+            forma_pago_key = str(forma_pago or 'Desconocido').strip()
+            desglose_puerta[forma_pago_key] = float(monto or 0)
 
         # 1. Ingresos del día - Pedidos
         ingresos_pedido_hoy = db.session.query(
@@ -289,6 +303,20 @@ def get_dashboard_ventas_pedidos(current_user):
             Venta.fecha_pedido.between(today_start_dt, today_end_dt)
         ).scalar() or Decimal('0.0')
 
+        # 1b. Ingresos pedidos hoy - CON DESGLOSE POR FORMA DE PAGO
+        ingresos_pedidos_por_pago = db.session.query(
+            Venta.forma_pago,
+            func.sum(Venta.monto_final_con_recargos)
+        ).filter(
+            filtro_pedido,
+            Venta.fecha_pedido.between(today_start_dt, today_end_dt)
+        ).group_by(Venta.forma_pago).all()
+        
+        desglose_pedidos = {}
+        for forma_pago, monto in ingresos_pedidos_por_pago:
+            forma_pago_key = str(forma_pago or 'Desconocido').strip()
+            desglose_pedidos[forma_pago_key] = float(monto or 0)
+
         # 2. Cantidad de pedidos del día
         cantidad_pedidos_hoy = db.session.query(
             func.count(Venta.id)
@@ -296,6 +324,20 @@ def get_dashboard_ventas_pedidos(current_user):
             filtro_pedido,
             Venta.fecha_pedido.between(today_start_dt, today_end_dt)
         ).scalar() or 0
+
+        # 2b. Cantidad de pedidos del día - CON DESGLOSE POR FORMA DE PAGO
+        cantidad_pedidos_por_pago = db.session.query(
+            Venta.forma_pago,
+            func.count(Venta.id)
+        ).filter(
+            filtro_pedido,
+            Venta.fecha_pedido.between(today_start_dt, today_end_dt)
+        ).group_by(Venta.forma_pago).all()
+        
+        desglose_cantidad_pedidos = {}
+        for forma_pago, cantidad in cantidad_pedidos_por_pago:
+            forma_pago_key = str(forma_pago or 'Desconocido').strip()
+            desglose_cantidad_pedidos[forma_pago_key] = int(cantidad or 0)
 
         # 3. Cantidad de kilos del día
         kgs_hoy = db.session.query(
@@ -318,8 +360,12 @@ def get_dashboard_ventas_pedidos(current_user):
         response_data = {
             "hoy": {
                 "cantidad_pedidos": cantidad_pedidos_hoy,
+                "cantidad_pedidos_por_forma_pago": desglose_cantidad_pedidos,
                 "cantidad_kilos": float(kgs_hoy),
-                "ingreso_puerta_hoy": float(ingresos_puerta_hoy)
+                "ingreso_puerta_hoy": float(ingresos_puerta_hoy),
+                "ingreso_puerta_por_forma_pago": desglose_puerta,
+                "ingreso_pedidos_hoy": float(ingresos_pedido_hoy),
+                "ingreso_pedidos_por_forma_pago": desglose_pedidos
             },
             "pendiente_entrega": {
                 "cantidad_pedidos": cantidad_pendientes,

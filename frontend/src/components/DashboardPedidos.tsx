@@ -7,8 +7,12 @@ import { DollarSign, Package, Truck, AlertTriangle } from 'lucide-react';
 interface DashboardPedidosData {
   hoy: {
     cantidad_pedidos: number;
+    cantidad_pedidos_por_forma_pago: Record<string, number>;
     cantidad_kilos: number;
     ingreso_puerta_hoy: number;
+    ingreso_puerta_por_forma_pago: Record<string, number>;
+    ingreso_pedidos_hoy: number;
+    ingreso_pedidos_por_forma_pago: Record<string, number>;
   };
   pendiente_entrega: {
     cantidad_pedidos: number;
@@ -136,17 +140,36 @@ export default function DashboardPedidos() {
         </Card>
 
         <Card className="bg-linear-to-br from-green-50 to-green-100 border-green-200">
-          <CardHeader className="pb-2">
+          <CardHeader className="pb-3">
             <CardTitle className="text-sm font-semibold text-green-900 flex items-center gap-2">
               <DollarSign className="w-4 h-4" />
-              PUERTA HOY
+              INGRESO PUERTA (HOY)
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-900">
-              {formatCurrency(data?.hoy?.ingreso_puerta_hoy ?? 0)}
+            <div className="mb-4">
+              <p className="text-4xl font-bold text-green-900">
+                {formatCurrency(data?.hoy?.ingreso_puerta_hoy ?? 0)}
+              </p>
             </div>
-            <p className="text-xs text-green-700 mt-1">vendido en puerta</p>
+
+            <div className="space-y-1.5 text-sm">
+              {Object.entries(data?.hoy?.ingreso_puerta_por_forma_pago ?? {}).length > 0 ? (
+                <>
+                  {Object.entries(data?.hoy?.ingreso_puerta_por_forma_pago ?? {}).map(([formaPago, monto]) => (
+                    <div key={formaPago} className="flex justify-between text-green-900">
+                      <span className="font-medium">{formaPago}:</span>
+                      <span className="font-bold">{formatCurrency(monto)}</span>
+                    </div>
+                  ))}
+                  <div className="text-xs text-green-600 mt-3 pt-2 border-t border-green-200">
+                    Ver montos detallados
+                  </div>
+                </>
+              ) : (
+                <p className="text-green-600 italic">Sin ventas en puerta hoy</p>
+              )}
+            </div>
           </CardContent>
         </Card>
       </div>
