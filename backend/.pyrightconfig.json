@@ -1,0 +1,7 @@
+{
+    "typeCheckingMode": "standard",
+    "reportCallIssue": "none",
+    "reportAttributeAccessIssue": "warning",
+    "reportGeneralTypeIssues": "warning",
+    "pythonVersion": "3.9"
+}

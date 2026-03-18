@@ -378,13 +378,14 @@ export default function RecepcionesPendientesPage() {
             </select>
             {filtroTipo === 'mes' && (
               <input
-                type="month"
+                type="text"
+                placeholder="YYYY-MM"
                 value={filtroMes}
                 onChange={(e) => {
                   const v = e.target.value;
                   setFiltroMes(v);
                 }}
-                aria-label="Seleccionar mes"
+                aria-label="Seleccionar mes (YYYY-MM)"
                 className="px-2 py-1 border rounded"
               />
             )}

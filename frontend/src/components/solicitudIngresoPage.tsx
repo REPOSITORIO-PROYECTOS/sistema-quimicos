@@ -66,6 +66,7 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
   const [idLineaOCOriginal, setIdLineaOCOriginal] = useState<string | number>('');
   const [cantidadYaRecibida, setCantidadYaRecibida] = useState<number>(0);
   const [historialPagos, setHistorialPagos] = useState<HistorialPago[]>([]);
+  const [deudaARS, setDeudaARS] = useState<number>(0);
   // ajusteTC removido: se deduce desde showTc
 
   let problema = false;
@@ -124,9 +125,25 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       setShowIibb(Boolean(data.iibb));
       setIva(data.iva?.toString() ?? '');
       setShowIva(Boolean(data.iva));
-      if (data.tc) {
-        setTc(String(data.tc));
-        setShowTc(true);
+      // Parse TC snapshot from notas_recepcion (format: __TC_SNAPSHOT__:{...})
+      if (data.notas_recepcion) {
+        try {
+          const snapshotMatch = data.notas_recepcion.match(/__TC_SNAPSHOT__:(.*?)(?:\n|$)/);
+          if (snapshotMatch && snapshotMatch[1]) {
+            const snapshot = JSON.parse(snapshotMatch[1]);
+            if (snapshot.tc_usado && typeof snapshot.tc_usado === 'number') {
+              setTc(String(snapshot.tc_usado));
+              setShowTc(true);
+            }
+          }
+        } catch (e) {
+          // Snapshot parsing failed, continue without TC
+        }
+      }
+      // Load IVA from database if it exists
+      if (data.iva) {
+        setIva(String(data.iva));
+        setShowIva(true);
       }
       const totalOC = typeof data.importe_total_estimado === 'number'
         ? data.importe_total_estimado
@@ -246,6 +263,26 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       setImporteAbonado(restante.toFixed(2));
     }
   }, [pagoCompletoUI]);
+
+  // Calculate debt in ARS (for USD orders, convert using TC)
+  useEffect(() => {
+    const importeTotalNum = parseFloat(importeTotal) || 0;
+    const montoAbonadoNum = montoYaAbonadoOC || 0;
+    const importeAbonadoNum = parseFloat(importeAbonado) || 0;
+    const totalAbonado = montoAbonadoNum + importeAbonadoNum;
+    
+    let deuda = importeTotalNum - totalAbonado;
+    
+    // If USD order (showTc=true), convert to ARS
+    if (showTc && tc) {
+      const tcNum = parseFloat(tc);
+      if (!isNaN(tcNum) && tcNum > 0) {
+        deuda = deuda * tcNum;
+      }
+    }
+    
+    setDeudaARS(Math.max(0, deuda));
+  }, [importeTotal, montoYaAbonadoOC, importeAbonado, showTc, tc]);
 
   const formatearFecha = (fechaOriginal: string | Date | undefined): string => {
     if (!fechaOriginal) return '';
@@ -855,9 +892,12 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
               <span className="text-xs text-gray-700 font-semibold mb-1">Total Abonado</span>
               <span className="text-2xl font-bold text-green-900">{totalAbonado.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
-            <div className={`flex flex-col items-center rounded-lg p-3 shadow ${deudaPendiente > 0 ? 'bg-red-200' : 'bg-green-100'}`}>
-              <span className="text-xs text-gray-700 font-semibold mb-1">Deuda Pendiente</span>
-              <span className={`text-2xl font-bold ${deudaPendiente > 0 ? 'text-red-700' : 'text-green-700'}`}>{(deudaPendiente > 0 ? deudaPendiente : 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            <div className={`flex flex-col items-center rounded-lg p-3 shadow ${deudaARS > 0 ? 'bg-red-200' : 'bg-green-100'}`}>
+              <span className="text-xs text-gray-700 font-semibold mb-1">Deuda Pendiente (ARS)</span>
+              <span className={`text-2xl font-bold ${deudaARS > 0 ? 'text-red-700' : 'text-green-700'}`}>${(deudaARS > 0 ? deudaARS : 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              {showTc && tc && (
+                <span className="text-xs text-gray-600 mt-1">(Convertida a ARS con TC: {tc})</span>
+              )}
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">

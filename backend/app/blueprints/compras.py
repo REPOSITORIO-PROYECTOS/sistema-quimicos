@@ -141,7 +141,7 @@ def _actualizar_movimiento_deuda(orden_db, usuario_actualiza=None, descripcion=N
         if usuario_actualiza:
             debito.usuario = usuario_actualiza
     elif monto_debito > Decimal('0'):
-        mov = MovimientoProveedor(
+        mov = MovimientoProveedor(  # type: ignore [call-arg]
             proveedor_id=orden_db.proveedor_id,
             orden_id=orden_db.id,
             tipo='DEBITO',
@@ -446,7 +446,7 @@ def crear_orden_compra(current_user):
             importe_total_estimado_calc += importe_linea_estimado
 
             # Crear objeto DetalleOrdenCompra
-            detalle = DetalleOrdenCompra(
+            detalle = DetalleOrdenCompra(  # type: ignore [call-arg]
                 producto_id=producto.id,
                 cantidad_solicitada=cantidad,
                 precio_unitario_estimado=precio_estimado,
@@ -500,7 +500,7 @@ def crear_orden_compra(current_user):
 
         # Si el usuario es Admin, la OC se crea directamente como 'APROBADO' y se registra el aprobador
         if rol_usuario and rol_usuario.upper() == "ADMIN":
-            nueva_orden = OrdenCompra(
+            nueva_orden = OrdenCompra(  # type: ignore [call-arg]
                 nro_solicitud_interno=nro_interno_solicitud,
                 proveedor_id=proveedor_id,
                 forma_pago=data.get("forma_pago"),
@@ -513,7 +513,7 @@ def crear_orden_compra(current_user):
                 ajuste_tc=ajuste_tc_payload
             )
         else:
-            nueva_orden = OrdenCompra(
+            nueva_orden = OrdenCompra(  # type: ignore [call-arg]
                 nro_solicitud_interno=nro_interno_solicitud,
                 proveedor_id=proveedor_id,
                 forma_pago=data.get("forma_pago"),
@@ -524,8 +524,10 @@ def crear_orden_compra(current_user):
                 ajuste_tc=ajuste_tc_payload
             )
 
-        # Asociar detalles a la orden
-        nueva_orden.items = detalles_db # SQLAlchemy maneja la FK
+        # Asociar detalles a la orden (no usar direct assignment a relationship)
+        # En su lugar, usar la relación inversa: establecer la FK en cada detalle
+        for detalle in detalles_db:
+            detalle.orden = nueva_orden  # SQLAlchemy maneja la FK automáticamente
 
         # Campos adicionales de cabecera si vienen en el payload
         nueva_orden.cuenta = data.get('cuenta', nueva_orden.cuenta)
@@ -553,8 +555,8 @@ def crear_orden_compra(current_user):
             from ..models import TipoCambio
             o = TipoCambio.query.filter_by(nombre='Oficial').first()
             snap = {
-                'TC_Oficial': float(o.valor) if o and o.valor else None,
-                'fecha': datetime.datetime.utcnow().isoformat()
+                'tc_usado': float(o.valor) if o and o.valor else None,
+                'fecha_snapshot': datetime.datetime.utcnow().isoformat()
             }
             s = "__TC_SNAPSHOT__:" + json.dumps(snap, ensure_ascii=False)
             obs = nueva_orden.observaciones_solicitud or ''
@@ -567,7 +569,7 @@ def crear_orden_compra(current_user):
         db.session.commit()
 
         try:
-            log = AuditLog(
+            log = AuditLog(  # type: ignore [call-arg]
                 entidad='OrdenCompra',
                 entidad_id=nueva_orden.id,
                 accion='CREAR',
@@ -752,6 +754,7 @@ def aprobar_orden_compra(current_user, orden_id):
         orden_db.proveedor_id = data.get('proveedor_id', orden_db.proveedor_id)
         orden_db.cuenta = data.get('cuenta', orden_db.cuenta)
         orden_db.iibb = data.get('iibb', orden_db.iibb)
+        orden_db.iva = data.get('iva', orden_db.iva)
         orden_db.observaciones_solicitud = data.get('observaciones_solicitud', orden_db.observaciones_solicitud)
         if 'ajuste_tc' in data:
             ajuste_valor = data.get('ajuste_tc')
@@ -812,8 +815,8 @@ def aprobar_orden_compra(current_user, orden_id):
             from ..models import TipoCambio
             o = TipoCambio.query.filter_by(nombre='Oficial').first()
             snap = {
-                'TC_Oficial': float(o.valor) if o and o.valor else None,
-                'fecha': datetime.datetime.utcnow().isoformat()
+                'tc_usado': float(o.valor) if o and o.valor else None,
+                'fecha_snapshot': datetime.datetime.utcnow().isoformat()
             }
             s = "__TC_SNAPSHOT__:" + json.dumps(snap, ensure_ascii=False)
             obs = orden_db.observaciones_solicitud or ''
@@ -850,7 +853,7 @@ def aprobar_orden_compra(current_user, orden_id):
         try:
             # Registrar crédito si se abonó en la aprobación (convertir a ARS si OC está en USD)
             if abonado_aprob and abonado_aprob > Decimal('0'):
-                mov_credito_aprob = MovimientoProveedor(
+                mov_credito_aprob = MovimientoProveedor(  # type: ignore [call-arg]
                     proveedor_id=orden_db.proveedor_id,
                     orden_id=orden_db.id,
                     tipo='CREDITO',
@@ -875,7 +878,7 @@ def aprobar_orden_compra(current_user, orden_id):
                 if not debito_existente:
                     monto_deuda = (total_aprob - abonado_aprob)
                     monto_deuda_ars = _convert_to_ars(monto_deuda, orden_db.ajuste_tc)
-                    mov_debito_aprob = MovimientoProveedor(
+                    mov_debito_aprob = MovimientoProveedor(  # type: ignore [call-arg]
                         proveedor_id=orden_db.proveedor_id,
                         orden_id=orden_id,
                         tipo='DEBITO',
@@ -888,7 +891,7 @@ def aprobar_orden_compra(current_user, orden_id):
         except Exception:
             logger.warning("No se pudo registrar movimiento de proveedor (aprobación) para OC %s", orden_id)
         try:
-            log = AuditLog(
+            log = AuditLog(  # type: ignore [call-arg]
                 entidad='OrdenCompra',
                 entidad_id=orden_id,
                 accion='APROBAR',
@@ -912,6 +915,91 @@ def aprobar_orden_compra(current_user, orden_id):
         db.session.rollback()
         logger.exception("Excepción inesperada al aprobar orden %s", orden_id)
         return jsonify({"error": "Error interno del servidor al aprobar la orden"}), 500
+
+
+# --- Endpoint: Editar Orden de Compra (antes de aprobación) ---
+@compras_bp.route('/editar/<int:orden_id>', methods=['PUT'])
+@token_required
+@roles_required(ROLES['ADMIN'], ROLES['ALMACEN'])
+def editar_orden_compra(current_user, orden_id):
+    """Edita datos de una orden ANTES de su aprobación (estado SOLICITADO)."""
+    logger.info("Recibida solicitud PUT en /ordenes_compra/%s/editar", orden_id)
+    rol_usuario = request.headers.get("X-User-Role", "almacen")
+    usuario_editor = request.headers.get("X-User-Name", "Sistema")
+
+    data = request.json
+    if not data:
+        return jsonify({"error": "Payload JSON vacío"}), 400
+
+    try:
+        orden_db = db.session.query(OrdenCompra).options(
+            db.selectinload(OrdenCompra.items)
+        ).get(orden_id)
+        if not orden_db:
+            return jsonify({"error": "Orden de compra no encontrada"}), 404
+
+        # Validar que esté en estado SOLICITADO (sin aprobar)
+        estado_upper = (orden_db.estado or '').upper()
+        if estado_upper not in ('SOLICITADO', 'PENDIENTE'):
+            return jsonify({"error": f"Solo se pueden editar órdenes en estado 'SOLICITADO'. Estado actual: {orden_db.estado}"}), 409
+
+        # Actualizar campos editables
+        orden_db.proveedor_id = data.get('proveedor_id', orden_db.proveedor_id)
+        orden_db.cuenta = data.get('cuenta', orden_db.cuenta)
+        orden_db.iibb = data.get('iibb', orden_db.iibb)
+        orden_db.iva = data.get('iva', orden_db.iva)
+        orden_db.tipo_caja = data.get('tipo_caja', orden_db.tipo_caja)
+
+        if 'ajuste_tc' in data:
+            ajuste_valor = data.get('ajuste_tc')
+            orden_db.ajuste_tc = str(ajuste_valor).lower() == 'true' or ajuste_valor is True
+
+        # Actualizar items si vienen
+        items_payload = data.get('items', [])
+        if items_payload and orden_db.items:
+            for item_data in items_payload:
+                id_linea = item_data.get('id_linea')
+                detalle = next((item for item in orden_db.items if item.id == id_linea), None)
+                if detalle:
+                    if 'cantidad_solicitada' in item_data:
+                        detalle.cantidad_solicitada = Decimal(str(item_data.get('cantidad_solicitada', detalle.cantidad_solicitada or 0)))
+                    if 'precio_unitario_estimado' in item_data:
+                        detalle.precio_unitario_estimado = Decimal(str(item_data.get('precio_unitario_estimado', detalle.precio_unitario_estimado or 0)))
+                    if 'cantidad_solicitada' in item_data and 'precio_unitario_estimado' in item_data:
+                        detalle.importe_linea_estimado = detalle.cantidad_solicitada * detalle.precio_unitario_estimado
+
+        # Recalcular importe total
+        if 'importe_total_estimado' in data:
+            orden_db.importe_total_estimado = Decimal(str(data.get('importe_total_estimado', '0')))
+        else:
+            total = sum([item.importe_linea_estimado or Decimal('0') for item in orden_db.items])
+            orden_db.importe_total_estimado = total
+
+        # Actualizar importe abonado si viene
+        if 'importe_abonado' in data:
+            try:
+                importe_abonado_val = Decimal(str(data.get('importe_abonado')))
+                if importe_abonado_val < 0:
+                    return jsonify({"error": "'importe_abonado' no puede ser negativo"}), 400
+                orden_db.importe_abonado = importe_abonado_val
+            except (InvalidOperation, TypeError):
+                logger.warning("importe_abonado inválido en edición, se mantiene valor previo")
+
+        orden_db.forma_pago = data.get('forma_pago', orden_db.forma_pago)
+
+        db.session.commit()
+        logger.info("Orden %s editada por %s", orden_id, usuario_editor)
+
+        return jsonify({
+            "status": "success",
+            "message": "Orden de compra editada correctamente.",
+            "orden": formatear_orden_por_rol(orden_db, rol_usuario, incluir_pagos=True)
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        logger.exception("Excepción inesperada al editar orden %s: %s", orden_id, e)
+        return jsonify({"error": "Error interno del servidor al editar la orden"}), 500
 
 
 @compras_bp.route('/pagos/<int:orden_id>', methods=['POST'])
@@ -977,7 +1065,7 @@ def registrar_pago_orden(current_user, orden_id):
             descripcion=f"OC {orden_db.id} - Deuda recalculada por pago"
         )
 
-        movimiento_pago = MovimientoProveedor(
+        movimiento_pago = MovimientoProveedor(  # type: ignore [call-arg]
             proveedor_id=orden_db.proveedor_id,
             orden_id=orden_db.id,
             tipo='CREDITO',
@@ -996,7 +1084,7 @@ def registrar_pago_orden(current_user, orden_id):
         db.session.commit()
 
         try:
-            log = AuditLog(
+            log = AuditLog(  # type: ignore [call-arg]
                 entidad='OrdenCompra',
                 entidad_id=orden_id,
                 accion='REGISTRAR_PAGO',
@@ -1055,8 +1143,8 @@ def rechazar_orden_compra(current_user, orden_id):
         # --- Actualizar Orden ---
         orden_db.estado = 'RECHAZADO'
         orden_db.fecha_rechazo = datetime.datetime.utcnow()
-        orden_db.rechazado_por = usuario_rechazador
-        orden_db.motivo_rechazo = data['motivo_rechazo']
+        # Nota: rechazado_por no es un campo del modelo, se usa motivo_rechazo para registrar quién rechazó
+        orden_db.motivo_rechazo = f"Rechazado por {usuario_rechazador}: {data['motivo_rechazo']}"
 
         db.session.commit()
         logger.info("Orden %s rechazada por %s. Motivo: %s", orden_id, usuario_rechazador, data['motivo_rechazo'])
@@ -1099,6 +1187,7 @@ def recibir_orden_compra(current_user, orden_id):
         orden_db.proveedor_id = data.get('proveedor_id', orden_db.proveedor_id)
         orden_db.cuenta = data.get('cuenta', orden_db.cuenta)
         orden_db.iibb = data.get('iibb', orden_db.iibb)
+        orden_db.iva = data.get('iva', orden_db.iva)
 
         if 'ajuste_tc' in data:
             ajuste_valor = data.get('ajuste_tc')
@@ -1211,8 +1300,8 @@ def recibir_orden_compra(current_user, orden_id):
             from ..models import TipoCambio
             o = TipoCambio.query.filter_by(nombre='Oficial').first()
             snap = {
-                'TC_Oficial': float(o.valor) if o and o.valor else None,
-                'fecha': datetime.datetime.utcnow().isoformat()
+                'tc_usado': float(o.valor) if o and o.valor else None,
+                'fecha_snapshot': datetime.datetime.utcnow().isoformat()
             }
             s = "__TC_SNAPSHOT__:" + json.dumps(snap, ensure_ascii=False)
             notas = orden_db.notas_recepcion or ''
@@ -1231,7 +1320,7 @@ def recibir_orden_compra(current_user, orden_id):
                 restante = (orden_db.importe_total_estimado or Decimal('0')) - (orden_db.importe_abonado or Decimal('0'))
                 restante = restante if restante > Decimal('0') else Decimal('0')
                 monto_deuda_ars = _convert_to_ars(restante, orden_db.ajuste_tc)
-                mov_debito = MovimientoProveedor(
+                mov_debito = MovimientoProveedor(  # type: ignore [call-arg]
                     proveedor_id=orden_db.proveedor_id,
                     orden_id=orden_db.id,
                     tipo='DEBITO',
@@ -1244,7 +1333,7 @@ def recibir_orden_compra(current_user, orden_id):
             # Registrar crédito si se abonó ahora (convertir a ARS si OC estaba en USD)
             if nuevo_abono > Decimal('0'):
                 monto_credito_ars = _convert_to_ars(nuevo_abono, orden_db.ajuste_tc)
-                mov_credito = MovimientoProveedor(
+                mov_credito = MovimientoProveedor(  # type: ignore [call-arg]
                     proveedor_id=orden_db.proveedor_id,
                     orden_id=orden_db.id,
                     tipo='CREDITO',
@@ -1263,7 +1352,7 @@ def recibir_orden_compra(current_user, orden_id):
 
         db.session.commit()
         try:
-            log = AuditLog(
+            log = AuditLog(  # type: ignore [call-arg]
                 entidad='OrdenCompra',
                 entidad_id=orden_id,
                 accion='RECIBIR',

@@ -7,7 +7,7 @@ import { ProveedoresProvider } from '@/context/ProveedoresContext';
 import { useEffect, useMemo, useState } from 'react';
 import jsPDF from 'jspdf';
 
-type OrdenResumen = { id: number; fecha_creacion: string; estado: string; proveedor_id: number; importe_total_estimado?: number; importe_abonado?: number; estado_recepcion?: string };
+type OrdenResumen = { id: number; fecha_creacion: string; estado: string; proveedor_id: number; importe_total_estimado?: number; importe_abonado?: number; estado_recepcion?: string; ajuste_tc?: boolean };
 type ItemDetalle = { id_linea: number; producto_id: number; producto_nombre?: string; cantidad_solicitada: number; cantidad_recibida?: number; precio_unitario_estimado: number; importe_linea_estimado: number };
 type ItemAPI = { id_linea: number | string; producto_id: number | string; producto_nombre?: string; cantidad_solicitada?: number | string; cantidad_recibida?: number | string; precio_unitario_estimado?: number | string; importe_linea_estimado?: number | string };
 type Movimiento = { id: number; proveedor_id: number; orden_id: number | null; tipo: 'DEBITO' | 'CREDITO'; monto: number; fecha: string; descripcion?: string | null; usuario?: string | null };
@@ -37,6 +37,7 @@ export default function DeudaProveedoresPage() {
   const [itemsPorOrden, setItemsPorOrden] = useState<Record<number, ItemDetalle[]>>({});
   const [proveedorPorOrden, setProveedorPorOrden] = useState<Record<number, string>>({});
   const [movimientos, setMovimientos] = useState<Movimiento[]>([]);
+  const [tipoCambio, setTipoCambio] = useState<number>(1); // TC oficial default
   const [filtroDesde, setFiltroDesde] = useState('');
   const [filtroHasta, setFiltroHasta] = useState('');
   const [filtroProveedor, setFiltroProveedor] = useState('');
@@ -63,7 +64,8 @@ export default function DeudaProveedoresPage() {
         proveedor_id: o.proveedor_id,
         importe_total_estimado: o.importe_total_estimado ?? 0,
         importe_abonado: o.importe_abonado ?? 0,
-        estado_recepcion: o.estado_recepcion
+        estado_recepcion: o.estado_recepcion,
+        ajuste_tc: o.ajuste_tc ?? false
       }));
       lista.push(...pagina);
       hasNext = Boolean(data?.pagination?.has_next);
@@ -120,6 +122,23 @@ export default function DeudaProveedoresPage() {
     setMovimientos(data.movimientos || []);
   };
 
+  // Fetch TC oficial on mount
+  useEffect(() => {
+    const fetchTC = async () => {
+      try {
+        const res = await fetch(`${API}/tipos_cambio/obtener/Oficial`, { headers: { 'Authorization': `Bearer ${token}` } });
+        const data = await res.json();
+        const valor = Number((data && (data.valor ?? data.data?.valor)) ?? NaN);
+        if (isFinite(valor) && valor > 0) {
+          setTipoCambio(valor);
+        }
+      } catch {
+        // Keep default TC of 1
+      }
+    };
+    if (token) fetchTC();
+  }, [token]);
+
   // Simplificado: esta página solo lista boletas con total, abonado, pendiente y último pago
 
   useEffect(() => {
@@ -138,12 +157,19 @@ export default function DeudaProveedoresPage() {
   }, [filtroDesde, filtroHasta]);
 
   const filasOrdenes = useMemo(() => {
-    const rows: { ocId: number; total: number; abonado: number; pendiente: number; ultimoPago?: string; fecha: string; proveedor: string; items: ItemDetalle[]; pagos: Movimiento[] }[] = [];
+    const rows: { ocId: number; total: number; abonado: number; pendiente: number; ultimoPago?: string; fecha: string; proveedor: string; items: ItemDetalle[]; pagos: Movimiento[]; esUSD?: boolean }[] = [];
     for (const oc of ordenes) {
       const items = itemsPorOrden[oc.id] || [];
       const totalOC = Number(oc.importe_total_estimado || 0) || items.reduce((acc, it) => acc + (it.importe_linea_estimado || (it.cantidad_solicitada * it.precio_unitario_estimado)), 0);
       const abonadoOC = Number(oc.importe_abonado || 0);
-      const pendienteOC = Math.max(0, totalOC - abonadoOC);
+      let pendienteOC = Math.max(0, totalOC - abonadoOC);
+      
+      // If USD order, convert debt to ARS using current TC
+      const esUSD = oc.ajuste_tc === true;
+      if (esUSD && tipoCambio > 0) {
+        pendienteOC = pendienteOC * tipoCambio;
+      }
+      
       const movsOC = movimientos
         .filter(m => m.tipo === 'CREDITO' && m.orden_id === oc.id)
         .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
@@ -156,12 +182,12 @@ export default function DeudaProveedoresPage() {
       const okProducto = filtroProducto ? items.some(item => item.producto_nombre === filtroProducto) : true;
       if (!(okDesde && okHasta && okProveedor && okProducto)) continue;
       if (pendienteOC <= 0) continue;
-      rows.push({ ocId: oc.id, total: totalOC, abonado: abonadoOC, pendiente: pendienteOC, ultimoPago, fecha: d.toLocaleDateString('es-AR'), proveedor, items, pagos: movsOC });
+      rows.push({ ocId: oc.id, total: totalOC, abonado: abonadoOC, pendiente: pendienteOC, ultimoPago, fecha: d.toLocaleDateString('es-AR'), proveedor, items, pagos: movsOC, esUSD });
     }
     if (ordenarPor === 'pendiente') rows.sort((a, b) => b.pendiente - a.pendiente);
     if (ordenarPor === 'orden') rows.sort((a, b) => a.ocId - b.ocId);
     return rows;
-  }, [ordenes, itemsPorOrden, movimientos, ordenarPor, filtroDesde, filtroHasta, filtroProveedor, filtroProducto, proveedorPorOrden]);
+  }, [ordenes, itemsPorOrden, movimientos, ordenarPor, filtroDesde, filtroHasta, filtroProveedor, filtroProducto, proveedorPorOrden, tipoCambio]);
 
   const deudaPorProveedor = useMemo(() => {
     const map = new Map<string, number>();
@@ -371,7 +397,10 @@ export default function DeudaProveedoresPage() {
                   <td className="px-3 py-2">{r.proveedor || '-'}</td>
                   <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">{formatMoney(r.total)}</td>
                   <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">{formatMoney(r.abonado)}</td>
-                  <td className={`px-3 py-2 text-right tabular-nums whitespace-nowrap ${r.pendiente > 0 ? 'text-red-700' : 'text-green-700'}`}>{formatMoney(r.pendiente)}</td>
+                  <td className={`px-3 py-2 text-right tabular-nums whitespace-nowrap ${r.pendiente > 0 ? 'text-red-700' : 'text-green-700'}`}>
+                    <div>{formatMoney(r.pendiente)}</div>
+                    {r.esUSD && <div className="text-xs text-gray-500">(Convertido a ARS)</div>}
+                  </td>
                   <td className="px-3 py-2">
                     {r.pagos.length > 0 ? (
                       <div className="space-y-1">

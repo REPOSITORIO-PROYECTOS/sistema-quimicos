@@ -241,13 +241,12 @@ class OrdenCompra(db.Model):
     # receptor = db.relationship('UsuarioInterno', foreign_keys=[recibido_por_id], back_populates='ordenes_compra_recibidas')
     cuenta = db.Column(db.String(100), nullable=True)
     iibb = db.Column(db.String(50), nullable=True)
+    iva = db.Column(db.String(50), nullable=True)
 
 # --- Modelo DetalleOrdenCompra ---
 class DetalleOrdenCompra(db.Model):
     __tablename__ = 'detalles_orden_compra'
-    # __table_args__ = {'extend_existing': True} # <-- Añadir si el error se mueve aquí
     id = db.Column(db.Integer, primary_key=True)
-    # ... (Pega aquí el resto de columnas y relaciones de DetalleOrdenCompra) ...
     orden_id = db.Column(db.Integer, db.ForeignKey('ordenes_compra.id', ondelete='CASCADE'), nullable=False)
     producto_id = db.Column(db.Integer, db.ForeignKey('productos.id', ondelete='RESTRICT'), nullable=False)
     cantidad_solicitada = db.Column(db.Numeric(15, 4), nullable=False)

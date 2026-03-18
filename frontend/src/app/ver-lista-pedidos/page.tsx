@@ -359,7 +359,7 @@ export default function ListaOrdenesCompra() {
               </div>
               <div>
                 <label className="text-sm text-gray-700">Mes</label>
-                <input type="month" value={filtroMes} onChange={(e) => setFiltroMes(e.target.value)} className="ml-2 px-2 py-1 border rounded" aria-label="Seleccionar mes" />
+                <input type="text" placeholder="YYYY-MM" value={filtroMes} onChange={(e) => setFiltroMes(e.target.value)} className="ml-2 px-2 py-1 border rounded" aria-label="Seleccionar mes (YYYY-MM)" />
               </div>
             </>
           )}
@@ -373,13 +373,15 @@ export default function ListaOrdenesCompra() {
         {!loading && !error && (
           <>
             <div className="overflow-x-auto">
-              <ul className="space-y-2 divide-y divide-gray-200 min-w-[900px]">
-                <li className="grid grid-cols-[1fr_1.5fr_1fr_2fr_1fr_1fr] gap-x-3 items-center bg-gray-100 p-3 rounded-t-md font-semibold text-sm text-gray-700 uppercase tracking-wider">
+              <ul className="space-y-2 divide-y divide-gray-200 min-w-[1200px]">
+                <li className="grid grid-cols-[0.8fr_1.2fr_1fr_1.5fr_1fr_1fr_1.2fr_1fr] gap-x-3 items-center bg-gray-100 p-3 rounded-t-md font-semibold text-sm text-gray-700 uppercase tracking-wider">
                   <span>Nº Orden</span>
-                  <span>Fecha Creación</span>
+                  <span>Fecha</span>
                   <span>Estado</span>
-                  <span>Producto (Principal)</span>
-                  <span>Cant. Solicitada</span>
+                  <span>Producto</span>
+                  <span>Cantidad</span>
+                  <span>Importe</span>
+                  <span>Moneda</span>
                   <span className="text-center">Acciones</span>
                 </li>
 
@@ -402,23 +404,25 @@ export default function ListaOrdenesCompra() {
                               'bg-gray-100 text-gray-800';
 
                   return (
-                    <li key={orden.id} className="grid grid-cols-[1fr_1.5fr_1fr_2fr_1fr_1fr] gap-x-3 items-center bg-white hover:bg-gray-50 p-3 text-sm">
-                      <span>{`Nº ${orden.id.toString().padStart(4, '0')}`}</span>
+                    <li key={orden.id} className="grid grid-cols-[0.8fr_1.2fr_1fr_1.5fr_1fr_1fr_1.2fr_1fr] gap-x-3 items-center bg-white hover:bg-gray-50 p-3 text-sm">
+                      <span className="font-semibold text-indigo-600">Nº {orden.id.toString().padStart(4, '0')}</span>
                       <span>{new Date(orden.fecha_creacion).toLocaleDateString("es-AR")}</span>
-                      <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full 
-                        ${claseEstado}`}>
-                        {etiquetaEstado}
-                      </span>
-                      {!!orden.fecha_aprobacion && (
-                        <span className="ml-2 px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
-                          Aprobado
+                      <div className="flex flex-col gap-1">
+                        <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full w-fit
+                          ${claseEstado}`}>
+                          {etiquetaEstado}
                         </span>
-                      )}
-                      {(estadoRecepcionUpper === 'EN_ESPERA_RECEPCION' || estadoRecepcionUpper === 'PARCIAL') && (
-                        <span className="ml-2 px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
-                          Recepción Pendiente
-                        </span>
-                      )}
+                        {!!orden.fecha_aprobacion && (
+                          <span className="px-2 py-0.5 inline-flex text-xs leading-4 font-semibold rounded-full bg-green-100 text-green-800 w-fit">
+                            ✓ Aprobado
+                          </span>
+                        )}
+                        {(estadoRecepcionUpper === 'EN_ESPERA_RECEPCION' || estadoRecepcionUpper === 'PARCIAL') && (
+                          <span className="px-2 py-0.5 inline-flex text-xs leading-4 font-semibold rounded-full bg-blue-100 text-blue-800 w-fit">
+                            📦 Pendiente
+                          </span>
+                        )}
+                      </div>
                       <span>{
                         (() => {
                           const resumen = resumenItems[orden.id];
@@ -428,6 +432,8 @@ export default function ListaOrdenesCompra() {
                         })()
                       }</span>
                       <span>{Number(resumenItems[orden.id]?.cantidad || 0).toLocaleString('es-AR', { maximumFractionDigits: 2 })}</span>
+                      <span>{Number(orden.importe_total_estimado || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      <span className="font-semibold">{orden.moneda || 'ARS'}</span>
                       <div className="flex items-center justify-center">
                         <select
                           className="text-xs border border-gray-300 rounded px-2 py-1 cursor-pointer bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400"
@@ -454,7 +460,7 @@ export default function ListaOrdenesCompra() {
                     </li>
                   );
                 }) : (
-                  <li className="text-center py-8 text-gray-500 col-span-4">
+                  <li className="text-center py-8 text-gray-500 col-span-full">
                     No hay órdenes de compra para el filtro seleccionado.
                   </li>
                 )}

@@ -5,33 +5,17 @@ import { useProveedoresContext } from '@/context/ProveedoresContext';
 import { useRouter } from 'next/navigation';
 import React, { useState, useEffect, useMemo } from 'react';
 
-// Se simplifica la interface local, ya que el componente no maneja estos estados
-interface IPedido {
-  fecha: string;
-  producto: string; // ID del producto
+// Interface para cada producto en el carrito
+interface IProductoCarrito {
+  producto_id: string;
+  producto_nombre: string;
   cantidad: string;
-  importeTotal: string;
-  importeAbonado: string;
-  chequePerteneciente: string;
-  fecha_limite: string;
-  estado?: string;
-  estado_recepcion?: string;
+  unidad_medida: string;
+  ordenId?: number; // Se llena después de crear la orden
 }
 
 export default function RegistrarIngreso() {
-
-  // --- Estados Reducidos ---
-  const [fecha, setFecha] = useState('');
-  const [fechaLimite, setFechaLimite] = useState('');
-  const [producto, setProducto] = useState('');
-  const [cantidad, setCantidad] = useState('');
-  // Estados para cálculo de deuda/importe
-  const [precioEstimado, setPrecioEstimado] = useState('');
-  const [importeTotal, setImporteTotal] = useState('');
-  const [importeAbonado, setImporteAbonado] = useState('');
-  const [chequePerteneciente, setChequePerteneciente] = useState('');
-  const [unidadMedida, setUnidadMedida] = useState('');
-  const irAccionesPuerta = () => router.push('/compras');
+  const router = useRouter();
   const { productos, loading: productsLoading, error: productsError, refetch: refetchProductos } = useProductsContext();
   const {
     proveedores,
@@ -39,16 +23,23 @@ export default function RegistrarIngreso() {
     error: proveedoresError,
     fetchProveedores,
   } = useProveedoresContext();
-  const router = useRouter();
-  const [observaciones_solicitud, setObservacionesSolicitud] = useState('');
-  const [esAlmacen, setEsAlmacen] = useState(false);
 
-  const [pedidos, setPedidos] = useState<IPedido[]>([]);
+  // --- Estados Simplificados ---
+  const [fecha, setFecha] = useState('');
+  const [productoSeleccionado, setProductoSeleccionado] = useState('');
+  const [cantidadActual, setCantidadActual] = useState('');
+  const [unidadMedidaActual, setUnidadMedidaActual] = useState('');
+  
+  // Carrito de productos (múltiples productos, múltiples órdenes)
+  const [carrito, setCarrito] = useState<IProductoCarrito[]>([]);
+  
   const [errorApi, setErrorApi] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [ordenesCreadas, setOrdenesCreadas] = useState<number[]>([]);
+  
   const token = typeof window !== 'undefined' ? localStorage.getItem("authToken") : null;
-  const LAST_PAYLOAD_KEY = 'ultimoPedidoCompraPayload';
 
+  // Obtener fecha actual al cargar
   useEffect(() => {
     const obtenerFechaActual = () => {
       const hoy = new Date();
@@ -60,91 +51,88 @@ export default function RegistrarIngreso() {
     setFecha(obtenerFechaActual());
   }, []);
 
+  // Auto-detectar unidad de medida cuando se selecciona un producto
   useEffect(() => {
+    if (!productoSeleccionado) {
+      setUnidadMedidaActual('');
+      return;
+    }
     try {
-      const userText = typeof window !== 'undefined' ? sessionStorage.getItem('user') : null;
-      const user = userText ? JSON.parse(userText) : null;
-      setEsAlmacen(Boolean(user && user.role && String(user.role).toUpperCase() === 'ALMACEN'));
-    } catch { }
-  }, []);
-
-  useEffect(() => {
-    try {
-      if (!producto) return;
-      const prod = productos.find(p => String(p.id) === String(producto));
+      const prod = productos.find(p => String(p.id) === String(productoSeleccionado));
+      if (!prod) return;
       const uv = (prod?.unidad_venta || prod?.unidad_medida || '').toUpperCase();
-      if (uv === 'LT' || uv === 'LITROS') setUnidadMedida('Litros');
-      else if (uv === 'KG' || uv === 'KILOS') setUnidadMedida('Kilos');
-      else setUnidadMedida('Unidades');
+      if (uv === 'LT' || uv === 'LITROS') setUnidadMedidaActual('Litros');
+      else if (uv === 'KG' || uv === 'KILOS') setUnidadMedidaActual('Kilos');
+      else setUnidadMedidaActual('Unidades');
     } catch { }
-  }, [producto, productos]);
+  }, [productoSeleccionado, productos]);
 
-  // Actualizar importe total estimado cuando cambia cantidad o precio
-  useEffect(() => {
-    const c = Number(String(cantidad).replace(',', '.'));
-    const p = Number(String(precioEstimado).replace(',', '.'));
-    if (!isNaN(c) && !isNaN(p) && c > 0 && p >= 0) {
-      setImporteTotal((c * p).toFixed(2));
-    } else {
-      setImporteTotal('');
-    }
-  }, [cantidad, precioEstimado]);
-
+  // Obtener proveedor predeterminado
   const proveedorPredeterminado = useMemo(() => {
-    if (!proveedores.length) {
-      return null;
-    }
-
+    if (!proveedores.length) return null;
     const candidatos = ['VARIOS', 'INTERNO', 'GENERAL', 'MOSTRADOR'];
     const proveedorPreferido = proveedores.find((proveedor) => {
       const nombre = String(proveedor.nombre || '').toUpperCase();
       return candidatos.some((candidato) => nombre.includes(candidato));
     });
-
     return proveedorPreferido || proveedores.find((proveedor) => proveedor.activo) || proveedores[0];
   }, [proveedores]);
 
+  // Bloqueos de catálogo
   const bloqueosCatalogo = useMemo(() => {
     const bloqueos: string[] = [];
-
-    if (productsLoading) {
-      bloqueos.push('Los productos todavia se estan cargando.');
-    } else if (productsError) {
-      bloqueos.push(`No se pudo cargar el catalogo de productos: ${productsError}`);
-    } else if (!productos.length) {
-      bloqueos.push('No hay productos cargados para solicitar la compra.');
-    }
-
-    if (proveedoresLoading) {
-      bloqueos.push('Los proveedores todavia se estan cargando.');
-    } else if (proveedoresError) {
-      bloqueos.push(`No se pudo cargar el catalogo de proveedores: ${proveedoresError}`);
-    } else if (!proveedores.length) {
-      bloqueos.push('No hay proveedores cargados. Debe existir al menos un proveedor base para registrar la compra.');
-    } else if (!proveedorPredeterminado) {
-      bloqueos.push('No se encontro un proveedor base para registrar la compra.');
-    }
-
+    if (productsLoading) bloqueos.push('Los productos todavía se están cargando.');
+    else if (productsError) bloqueos.push(`No se pudo cargar el catálogo de productos: ${productsError}`);
+    else if (!productos.length) bloqueos.push('No hay productos cargados para solicitar la compra.');
+    
+    if (proveedoresLoading) bloqueos.push('Los proveedores todavía se están cargando.');
+    else if (proveedoresError) bloqueos.push(`No se pudo cargar el catálogo de proveedores: ${proveedoresError}`);
+    else if (!proveedores.length) bloqueos.push('No hay proveedores cargados.');
+    else if (!proveedorPredeterminado) bloqueos.push('No se encontró un proveedor base para registrar la compra.');
+    
     return bloqueos;
   }, [productsLoading, productsError, productos.length, proveedoresLoading, proveedoresError, proveedores.length, proveedorPredeterminado]);
 
-  const obtenerFaltantesFormulario = () => {
-    const faltantes: string[] = [];
-
-    if (!fecha) faltantes.push('Fecha');
-    if (!producto) faltantes.push('Producto');
-    if (!cantidad) faltantes.push('Cantidad');
-    if (!unidadMedida) faltantes.push('Unidad de medida');
-    if (!esAlmacen && !precioEstimado) faltantes.push('Precio estimado');
-    if (!esAlmacen && !observaciones_solicitud.trim()) faltantes.push('Clasificacion');
-
-    return faltantes;
+  // Validar formulario actual
+  const validarProductoActual = () => {
+    if (!productoSeleccionado) return 'Selecciona un producto';
+    if (!cantidadActual || Number(cantidadActual) <= 0) return 'La cantidad debe ser mayor a 0';
+    if (!unidadMedidaActual) return 'Selecciona una unidad de medida';
+    return null;
   };
 
-  const handleAgregar = async () => {
-    const faltantes = obtenerFaltantesFormulario();
-    if (faltantes.length > 0) {
-      setErrorApi(`Faltan datos obligatorios: ${faltantes.join(', ')}.`);
+  // Agregar producto al carrito
+  const handleAgregarAlCarrito = () => {
+    const error = validarProductoActual();
+    if (error) {
+      setErrorApi(error);
+      return;
+    }
+
+    const nuevoProducto: IProductoCarrito = {
+      producto_id: productoSeleccionado,
+      producto_nombre: productos.find(p => String(p.id) === productoSeleccionado)?.nombre || 'Producto desconocido',
+      cantidad: cantidadActual,
+      unidad_medida: unidadMedidaActual,
+    };
+
+    setCarrito([...carrito, nuevoProducto]);
+    setErrorApi(null);
+    // Limpiar formulario
+    setProductoSeleccionado('');
+    setCantidadActual('');
+    setUnidadMedidaActual('');
+  };
+
+  // Quitar producto del carrito
+  const handleQuitarDelCarrito = (index: number) => {
+    setCarrito(carrito.filter((_, i) => i !== index));
+  };
+
+  // Crear órdenes: una por cada producto en el carrito
+  const handleCrearOrdenes = async () => {
+    if (carrito.length === 0) {
+      setErrorApi('Agrega al menos un producto al carrito');
       return;
     }
 
@@ -154,160 +142,80 @@ export default function RegistrarIngreso() {
     }
 
     if (!proveedorPredeterminado) {
-      setErrorApi('No se pudo resolver el proveedor base para registrar la compra.');
+      setErrorApi('No se pudo resolver el proveedor base.');
       return;
     }
 
     setIsLoading(true);
     setErrorApi(null);
-    console.log("Agregando pedido...");
-
-    // Validaciones numéricas
-    const cantidadNum = Number(String(cantidad).replace(',', '.'));
-    const precioNum = Number(String(precioEstimado).replace(',', '.'));
-    const importeAbonadoNum = Number(String(importeAbonado).replace(',', '.'));
-    if (isNaN(cantidadNum) || cantidadNum <= 0) {
-      setIsLoading(false);
-      setErrorApi("La cantidad debe ser un número positivo.");
-      return;
-    }
-    if (!esAlmacen && (isNaN(precioNum) || precioNum < 0)) {
-      setIsLoading(false);
-      setErrorApi("El precio estimado no puede ser negativo.");
-      return;
-    }
-    if (!isNaN(importeAbonadoNum) && importeAbonadoNum < 0) {
-      setIsLoading(false);
-      setErrorApi("El importe abonado no puede ser negativo.");
-      return;
-    }
-    if (fechaLimite && fecha && fechaLimite < fecha) {
-      setIsLoading(false);
-      setErrorApi('La fecha limite no puede ser anterior a la fecha del pedido.');
-      return;
-    }
-    if (!isNaN(importeAbonadoNum)) {
-      const totalNum = (() => {
-        const t = Number(importeTotal);
-        if (!isNaN(t) && t > 0) return t;
-        const c = Number(String(cantidad).replace(',', '.'));
-        const p = Number(String(precioEstimado).replace(',', '.'));
-        return (!isNaN(c) && !isNaN(p) && c > 0 && p >= 0) ? Number((c * p).toFixed(2)) : 0;
-      })();
-      if (importeAbonadoNum > totalNum) {
-        setIsLoading(false);
-        setErrorApi('El importe abonado no puede superar el total estimado.');
-        return;
-      }
-    }
-
-    // Objeto local para la lista de la UI, ya no contiene los campos eliminados
-    const nuevoPedido: IPedido = {
-      fecha, producto, cantidad, importeTotal, importeAbonado, chequePerteneciente,
-      fecha_limite: fechaLimite,
-    };
-    // eslint-disable-next-line
-    const userItem: any = sessionStorage.getItem("user");
-    const user = userItem ? JSON.parse(userItem) : null;
-
-    if (!user || !user.id) {
-      setErrorApi("No se pudo obtener la información del usuario. Por favor, inicie sesión de nuevo.");
-      setIsLoading(false);
-      return;
-    }
-
-    // --- Payload para la API (Clave) ---
-    // Se mantienen los campos que la API espera, pero con valores por defecto/fijos.
-    interface VentaPayload {
-      usuario_interno_id: number | string;
-      forma_pago: string;
-      observaciones_solicitud: string;
-      items: { codigo_interno: number; cantidad: number; precio_unitario_estimado: number; unidad_medida: string }[];
-      proveedor_id: number;
-      fecha_limite: string;
-      importe_abonado?: number;
-    }
-    const ventaPayload: VentaPayload = {
-      usuario_interno_id: user.id,
-      forma_pago: "",
-      observaciones_solicitud: observaciones_solicitud,
-      items: [{
-        codigo_interno: Number(producto),
-        cantidad: cantidadNum,
-        precio_unitario_estimado: esAlmacen ? 0 : precioNum,
-        unidad_medida: unidadMedida || 'Unidades'
-      }],
-      proveedor_id: Number(proveedorPredeterminado.id),
-      fecha_limite: fechaLimite,
-    };
-    if (!isNaN(importeAbonadoNum)) {
-      const totalNum = (() => {
-        const t = Number(importeTotal);
-        if (!isNaN(t) && t > 0) return t;
-        const c2 = Number(String(cantidad).replace(',', '.'));
-        const p2 = Number(String(precioEstimado).replace(',', '.'));
-        return (!isNaN(c2) && !isNaN(p2) && c2 > 0 && p2 >= 0) ? Number((c2 * p2).toFixed(2)) : 0;
-      })();
-      ventaPayload.importe_abonado = Math.max(0, importeAbonadoNum > totalNum ? totalNum : importeAbonadoNum);
-    }
-    console.log("Payload enviado a la API:", ventaPayload);
-    // Guardar último intento para recuperación
-    try { sessionStorage.setItem(LAST_PAYLOAD_KEY, JSON.stringify({ payload: ventaPayload, ts: Date.now() })); } catch { }
+    setOrdenesCreadas([]);
 
     try {
-      const response = await fetch('https://quimex.sistemataup.online/api/ordenes_compra/crear', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-User-Role': user.role,
-          'X-User-Name': user.usuario || user.name || '',
-          "Authorization": `Bearer ${token}`,
-        },
-        body: JSON.stringify(ventaPayload),
-      });
+      const userItem: any = sessionStorage.getItem('user');
+      const user = userItem ? JSON.parse(userItem) : null;
 
-      console.log("Respuesta recibida:", response.status, response.ok);
-
-      if (!response.ok) {
-        let errorMsg = `Error ${response.status}: ${response.statusText}`;
-        try {
-          const errorData = await response.json();
-          console.error('Error en la respuesta:', errorData);
-          errorMsg = errorData?.mensaje || errorData?.detail || errorData?.error || errorMsg;
-          if (String(errorMsg).includes("Proveedor") && String(errorMsg).includes("no encontrado")) {
-            errorMsg = `${errorMsg}. Revisar el proveedor base configurado para compras rapidas.`;
-          }
-          if (String(errorMsg).toLowerCase().includes("precio") || String(errorMsg).toLowerCase().includes("cantidad")) {
-            errorMsg += " Revisa la cantidad y el precio estimado.";
-          }
-        } catch (jsonError) {
-          console.error("No se pudo parsear JSON del error:", jsonError);
-        }
-        throw new Error(errorMsg);
+      if (!user || !user.id) {
+        throw new Error('No se pudo obtener la información del usuario.');
       }
 
-      const data = await response.json();
-      console.log('Compra registrada con éxito:', data);
-      alert('Pedido agregado con éxito!');
+      const ordenesExitosas: number[] = [];
+      const erroresOrdenes: string[] = [];
 
-      const estadoServidor = String(data?.orden?.estado ?? '');
-      const estadoRecepServidor = String(data?.orden?.estado_recepcion ?? '');
-      setPedidos((prev) => [...prev, { ...nuevoPedido, estado: estadoServidor, estado_recepcion: estadoRecepServidor }]);
+      // Crear una orden por cada producto en el carrito
+      for (const item of carrito) {
+        try {
+          const payload = {
+            usuario_interno_id: user.id,
+            proveedor_id: Number(proveedorPredeterminado.id),
+            items: [{
+              codigo_interno: Number(item.producto_id),
+              cantidad: Number(item.cantidad),
+              precio_unitario_estimado: 0,
+              unidad_medida: item.unidad_medida,
+            }],
+            fecha_limite: fecha,
+            // Forma de pago se omite (campo simplificado)
+          };
 
-      // Se limpia el estado de los campos restantes
-      setProducto('');
-      setCantidad('');
-      setPrecioEstimado('');
-      setImporteTotal('');
-      setImporteAbonado('');
-      setChequePerteneciente('');
-      setFechaLimite('');
-      try { sessionStorage.removeItem(LAST_PAYLOAD_KEY); } catch { }
-      irAccionesPuerta();
-      // eslint-disable-next-line
+          const response = await fetch('https://quimex.sistemataup.online/api/ordenes_compra/crear', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-User-Role': user.role || '',
+              'X-User-Name': user.usuario || user.name || '',
+              'Authorization': `Bearer ${token}`,
+            },
+            body: JSON.stringify(payload),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData?.mensaje || `Error ${response.status}`);
+          }
+
+          const data = await response.json();
+          if (data?.orden?.id) {
+            ordenesExitosas.push(data.orden.id);
+          }
+        } catch (err: any) {
+          erroresOrdenes.push(`${item.producto_nombre}: ${err.message}`);
+        }
+      }
+
+      if (ordenesExitosas.length > 0) {
+        setOrdenesCreadas(ordenesExitosas);
+        alert(`✅ Se crearon ${ordenesExitosas.length} orden(es) correctamente.`);
+        setCarrito([]);
+        // Redirigir después de 2 segundos
+        setTimeout(() => router.push('/compras'), 2000);
+      }
+
+      if (erroresOrdenes.length > 0) {
+        setErrorApi(`Errores: ${erroresOrdenes.join(', ')}`);
+      }
     } catch (error: any) {
-      console.error('Error al registrar compra:', error);
-      setErrorApi(error.message || "Ocurrió un error al registrar el pedido.");
+      console.error('Error al crear órdenes:', error);
+      setErrorApi(error.message || 'Error al crear las órdenes.');
     } finally {
       setIsLoading(false);
     }
@@ -422,49 +330,34 @@ export default function RegistrarIngreso() {
 
         {proveedorPredeterminado && bloqueosCatalogo.length === 0 && (
           <div className="mb-4 rounded border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-900 text-sm">
-            Se registrara con el proveedor base: <strong>{proveedorPredeterminado.nombre}</strong>.
+            Se registrará con el proveedor: <strong>{proveedorPredeterminado.nombre}</strong>
           </div>
         )}
 
         <div className="mb-4">
-          <label htmlFor="fecha" className={labelClass}>Fecha *</label>
+          <label htmlFor="fecha" className={labelClass}>Fecha</label>
           <input
             id="fecha"
             value={fecha}
             type="date"
-            required
-            className={`${baseInputClass} ${disabledInputClass}`}
             disabled
+            className={`${baseInputClass} ${disabledInputClass}`}
           />
         </div>
 
-        <div className="mb-4">
-          <label htmlFor="fechaLimite" className={labelClass}>Fecha Límite de Recepción</label>
-          <input
-            id="fechaLimite"
-            value={fechaLimite}
-            onChange={(e) => setFechaLimite(e.target.value)}
-            type="date"
-            className={baseInputClass}
-            min={fecha}
-          />
-        </div>
-
+        {/* FORMULARIO SIMPLIFICADO: Solo Producto + Cantidad */}
         <div className="mb-4">
           <label htmlFor="producto" className={labelClass}>Producto *</label>
           <select
             id="producto"
-            name="producto"
-            required
-            value={producto}
-            onChange={(e) => setProducto(e.target.value)}
+            value={productoSeleccionado}
+            onChange={(e) => setProductoSeleccionado(e.target.value)}
             className={baseInputClass}
             disabled={productsLoading}
           >
             <option value="" disabled>
-              {productsLoading ? "Cargando productos..." : "Seleccionar producto"}
+              {productsLoading ? 'Cargando productos...' : 'Seleccionar producto'}
             </option>
-            {productsError && <option value="" disabled>Error al cargar productos</option>}
             {!productsLoading && !productsError && productos.map((prod) => (
               <option value={prod.id} key={prod.id}>
                 {prod.nombre} ({prod.codigo})
@@ -474,28 +367,28 @@ export default function RegistrarIngreso() {
           {productsError && <p className="text-xs text-red-400 mt-1">{productsError}</p>}
         </div>
 
-        {/* CAMPO PROVEEDOR ELIMINADO */}
-
         <div className="mb-4">
           <label htmlFor="cantidad" className={labelClass}>Cantidad *</label>
           <input
             id="cantidad"
-            value={cantidad}
-            onChange={(e) => setCantidad(e.target.value)}
+            value={cantidadActual}
+            onChange={(e) => setCantidadActual(e.target.value)}
             type="number"
-            required
-            min="0"
+            min="0.01"
             step="0.01"
             placeholder="Ej: 10"
             className={baseInputClass}
           />
         </div>
+
         <div className="mb-4">
-          <label htmlFor="unidadMedida" className={labelClass}>Unidad de Medida *</label>
+          <label htmlFor="unidadMedida" className={labelClass}>
+            Unidad de Medida {unidadMedidaActual && `(Detectada: ${unidadMedidaActual})`}
+          </label>
           <select
             id="unidadMedida"
-            value={unidadMedida}
-            onChange={(e) => setUnidadMedida(e.target.value)}
+            value={unidadMedidaActual}
+            onChange={(e) => setUnidadMedidaActual(e.target.value)}
             className={baseInputClass}
           >
             <option value="">Seleccionar</option>
@@ -504,100 +397,67 @@ export default function RegistrarIngreso() {
             <option value="Unidades">Unidades</option>
           </select>
         </div>
-        {!esAlmacen && (
-          <div className="mb-4">
-            <label htmlFor="precioEstimado" className={labelClass}>Precio Unitario Estimado *</label>
-            <input
-              id="precioEstimado"
-              value={precioEstimado}
-              onChange={(e) => setPrecioEstimado(e.target.value)}
-              type="number"
-              required
-              min="0"
-              step="0.01"
-              placeholder="Ej: 150.50"
-              className={baseInputClass}
-            />
-          </div>
-        )}
-        {!esAlmacen && (
-          <div className="mb-4">
-            <label htmlFor="importeTotal" className={labelClass}>Importe Total (estimado)</label>
-            <input
-              id="importeTotal"
-              value={importeTotal}
-              readOnly
-              type="text"
-              className={`${baseInputClass} ${disabledInputClass}`}
-            />
-          </div>
-        )}
-        {!esAlmacen && (
-          <div className="mb-4">
-            <label htmlFor="importeAbonado" className={labelClass}>Importe Abonado (opcional)</label>
-            <input
-              id="importeAbonado"
-              value={importeAbonado}
-              onChange={(e) => setImporteAbonado(e.target.value)}
-              type="number"
-              min="0"
-              step="0.01"
-              placeholder="Ej: 0.00"
-              className={baseInputClass}
-            />
-          </div>
-        )}
-
-
-        {!esAlmacen && (
-          <div className="mb-4">
-            <label htmlFor="clasificacion" className={labelClass}>Clasificacion *</label>
-            <input
-              id="clasificacion"
-              value={observaciones_solicitud}
-              onChange={(e) => setObservacionesSolicitud(e.target.value)}
-              type="text"
-              required
-              className={baseInputClass}
-            />
-          </div>
-        )}
 
 
         <div className="flex flex-col sm:flex-row gap-4 justify-center mt-6">
           <BotonVolver />
           <button
-            onClick={handleAgregar}
+            onClick={handleAgregarAlCarrito}
             disabled={isLoading || productsLoading || proveedoresLoading || bloqueosCatalogo.length > 0}
+            className="bg-blue-500 text-white font-semibold px-6 py-2 rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-opacity-75 transition duration-150 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            + Agregar al Carrito
+          </button>
+          <button
+            onClick={handleCrearOrdenes}
+            disabled={isLoading || carrito.length === 0 || bloqueosCatalogo.length > 0}
             className="bg-indigo-500 text-white font-semibold px-6 py-2 rounded-md hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-opacity-75 transition duration-150 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isLoading ? 'Agregando...' : 'Agregar Pedido'}
+            {isLoading ? 'Creando...' : `✓ Crear ${carrito.length > 0 ? carrito.length : ''} Orden(es)`}
           </button>
-
         </div>
       </div>
 
-      {pedidos.length > 0 && (
-        <div className="mt-10 w-full max-w-lg bg-white p-4 md:p-6 rounded-lg shadow-md text-black">
-          <h2 className="text-lg font-semibold mb-3 text-gray-800">Pedidos Agregados:</h2>
+      {/* CARRITO DE PRODUCTOS */}
+      {carrito.length > 0 && (
+        <div className="mt-6 w-full max-w-lg bg-white p-4 md:p-6 rounded-lg shadow-md text-black">
+          <h2 className="text-lg font-semibold mb-4 text-gray-800">
+            🛒 Carrito ({carrito.length})
+          </h2>
           <ul className="divide-y divide-gray-200 max-h-64 overflow-y-auto text-sm">
-            {pedidos.map((pedido, idx) => {
-              const productoInfo = productos.find(p => p.id.toString() === pedido.producto);
-              const nombreProducto = productoInfo ? productoInfo.nombre : `ID Producto: ${pedido.producto}`;
+            {carrito.map((item, idx) => (
+              <li key={idx} className="py-3 flex justify-between items-start">
+                <div className="flex-1">
+                  <p className="font-semibold text-gray-900">{item.producto_nombre}</p>
+                  <p className="text-xs text-gray-600 mt-1">
+                    {item.cantidad} {item.unidad_medida}
+                  </p>
+                </div>
+                <button
+                  onClick={() => handleQuitarDelCarrito(idx)}
+                  className="ml-3 text-red-600 hover:text-red-800 font-semibold text-xs px-2 py-1 rounded bg-red-50 hover:bg-red-100 transition"
+                >
+                  Quitar
+                </button>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-4 pt-3 border-t border-gray-300 text-sm">
+            <strong className="text-gray-900">Total de productos en carrito: {carrito.length}</strong>
+          </div>
+        </div>
+      )}
 
-              // Se elimina la búsqueda del proveedor
-              return (
-                <li key={idx} className="py-2">
-                  <strong>{nombreProducto}</strong> - Cant: {pedido.cantidad} ({pedido.fecha})
-                  {pedido.estado && (
-                    <span className="ml-2 text-xs px-2 py-1 rounded bg-blue-100 text-blue-800">Estado: {pedido.estado}</span>
-                  )}
-                  {pedido.estado_recepcion && (
-                    <span className="ml-2 text-xs px-2 py-1 rounded bg-orange-100 text-orange-800">Recepción: {pedido.estado_recepcion}</span>
-                  )}
-                </li>
-              );
-            })}
+      {ordenesCreadas.length > 0 && (
+        <div className="mt-6 w-full max-w-lg bg-green-50 border border-green-300 p-4 md:p-6 rounded-lg shadow-md text-green-900">
+          <h2 className="text-lg font-semibold mb-3">✅ Órdenes Creadas</h2>
+          <p className="mb-3">Se crearon exitosamente:</p>
+          <ul className="space-y-2">
+            {ordenesCreadas.map((id) => (
+              <li key={id} className="text-sm bg-white/50 p-2 rounded">
+                Orden ID: <strong>#{id}</strong>
+              </li>
+            ))}
           </ul>
         </div>
       )}
