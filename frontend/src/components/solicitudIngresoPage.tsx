@@ -245,7 +245,7 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       const restante = Math.max(0, tot - (montoYaAbonadoOC || 0));
       setImporteAbonado(restante.toFixed(2));
     }
-  }, [pagoCompletoUI, importeTotal, montoYaAbonadoOC]);
+  }, [pagoCompletoUI]);
 
   const formatearFecha = (fechaOriginal: string | Date | undefined): string => {
     if (!fechaOriginal) return '';
@@ -503,9 +503,32 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
     try {
       problema = false;
       setErrorMensaje('');
+
+      // Recargar datos antes de registrar pago para asegurar que tenemos el importe_abonado correcto
+      let abonadoActual = montoYaAbonadoOC;
+      const reloadResponse = await fetch(`https://quimex.sistemataup.online/api/ordenes_compra/obtener/${id}`, {
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        }
+      });
+
+      if (reloadResponse.ok) {
+        const reloadData = await reloadResponse.json();
+        abonadoActual = parseFloat(reloadData.importe_abonado) || 0;
+        setMontoYaAbonadoOC(abonadoActual);
+      }
+
       const montoPago = parseFloat(importeAbonado || '0') || 0;
       if (montoPago <= 0) {
         throw new Error('Ingrese un monto a pagar mayor a cero.');
+      }
+
+      // Validar que el pago no exceda el saldo pendiente
+      const totalOC = parseFloat(importeTotal) || 0;
+      const saldoPendiente = Math.max(0, totalOC - abonadoActual);
+      if (montoPago > saldoPendiente) {
+        throw new Error(`El pago (${montoPago.toLocaleString('es-AR', { minimumFractionDigits: 2 })}) excede el saldo pendiente (${saldoPendiente.toLocaleString('es-AR', { minimumFractionDigits: 2 })}). Ya se han abonado ${abonadoActual.toLocaleString('es-AR', { minimumFractionDigits: 2 })}.`);
       }
 
       const userItem = localStorage.getItem('user') || sessionStorage.getItem('user');
