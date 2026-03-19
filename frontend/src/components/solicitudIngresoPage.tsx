@@ -561,12 +561,14 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
         throw new Error('Ingrese un monto a pagar mayor a cero.');
       }
 
-      // Validar que el pago no exceda el saldo pendiente
       const totalOC = parseFloat(importeTotal) || 0;
       const saldoPendiente = Math.max(0, totalOC - abonadoActual);
-      if (montoPago > saldoPendiente) {
-        throw new Error(`El pago (${montoPago.toLocaleString('es-AR', { minimumFractionDigits: 2 })}) excede el saldo pendiente (${saldoPendiente.toLocaleString('es-AR', { minimumFractionDigits: 2 })}). Ya se han abonado ${abonadoActual.toLocaleString('es-AR', { minimumFractionDigits: 2 })}.`);
+      if (saldoPendiente <= 0) {
+        throw new Error('La orden no tiene saldo pendiente.');
       }
+
+      // Si el usuario ingresa más que el saldo, se aplica solo el saldo pendiente.
+      const montoPagoAplicado = Math.min(montoPago, saldoPendiente);
 
       const userItem = localStorage.getItem('user') || sessionStorage.getItem('user');
       const user = userItem ? JSON.parse(userItem) : null;
@@ -581,7 +583,7 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
           'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
-          monto: montoPago,
+          monto: montoPagoAplicado,
           forma_pago: formaPago,
           cheque_perteneciente_a: formaPago === 'Cheque' ? chequePerteneceA : null,
           referencia_pago: referenciaPago,
@@ -592,7 +594,11 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data?.error || data?.mensaje || `Error ${response.status}`);
       aplicarOrdenActualizada((data?.orden || {}) as Record<string, unknown>);
-      alert('Pago registrado correctamente.');
+      if (data?.pago_ajustado) {
+        alert('Pago registrado. El monto se ajusto automaticamente al saldo pendiente de la orden.');
+      } else {
+        alert('Pago registrado correctamente.');
+      }
     } catch (error: unknown) {
       problema = true;
       setErrorMensaje(error instanceof Error ? error.message : 'Error registrando pago.');

@@ -260,14 +260,17 @@ def get_dashboard_ventas_pedidos(current_user):
     """
     try:
         today = datetime.date.today()
+        manana = today + datetime.timedelta(days=1)
         today_start_dt = datetime.datetime.combine(today, datetime.time.min)
         today_end_dt = datetime.datetime.combine(today, datetime.time.max)
+        manana_start_dt = datetime.datetime.combine(manana, datetime.time.min)
+        manana_end_dt = datetime.datetime.combine(manana, datetime.time.max)
 
         # Filtro: Solo pedidos (con dirección de entrega)
         filtro_pedido = (Venta.direccion_entrega.isnot(None)) & (Venta.direccion_entrega != '')
         filtro_pendiente = (
             filtro_pedido
-            & Venta.fecha_pedido.between(today_start_dt, today_end_dt)
+            & Venta.fecha_pedido.between(manana_start_dt, manana_end_dt)
             & ~Venta.nombre_vendedor.ilike('%ENTREGADO%')
         )
         # Filtro: Solo puerta (sin dirección de entrega)

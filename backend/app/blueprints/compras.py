@@ -1030,13 +1030,20 @@ def registrar_pago_orden(current_user, orden_id):
 
         total_estimado = orden_db.importe_total_estimado or Decimal('0')
         abonado_previo = orden_db.importe_abonado or Decimal('0')
+        pago_ajustado = False
+        saldo_pendiente = total_estimado - abonado_previo
+
+        if total_estimado > Decimal('0'):
+            if saldo_pendiente <= Decimal('0'):
+                return jsonify({"error": "La orden no tiene saldo pendiente"}), 409
+
+            if monto_pago > saldo_pendiente:
+                # Aplicar solo el saldo restante evita bloquear el cierre de deuda
+                # cuando el frontend envía un monto mayor al pendiente.
+                monto_pago = saldo_pendiente
+                pago_ajustado = True
+
         abonado_nuevo = abonado_previo + monto_pago
-        if total_estimado > Decimal('0') and abonado_nuevo > total_estimado:
-            restante = total_estimado - abonado_previo
-            return jsonify({
-                "error": "El pago excede el saldo pendiente de la orden",
-                "saldo_pendiente": float(restante if restante > Decimal('0') else Decimal('0'))
-            }), 400
 
         referencia_pago = data.get('referencia_pago') or data.get('descripcion')
         forma_pago = data.get('forma_pago', orden_db.forma_pago)
@@ -1100,6 +1107,7 @@ def registrar_pago_orden(current_user, orden_id):
         return jsonify({
             "status": "success",
             "message": "Pago registrado correctamente.",
+            "pago_ajustado": pago_ajustado,
             "orden": formatear_orden_por_rol(orden_db, rol_usuario, incluir_pagos=True),
             "pago": {
                 "id": movimiento_pago.id,
