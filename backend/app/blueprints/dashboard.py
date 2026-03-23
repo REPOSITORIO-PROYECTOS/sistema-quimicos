@@ -1,10 +1,16 @@
 # app/blueprints/dashboard.py
 
 from flask import Blueprint, jsonify, request
-from sqlalchemy import func, case, or_, literal
+from sqlalchemy import func, case, or_, and_, literal
 from decimal import Decimal
 import datetime
 import traceback
+
+try:
+    from zoneinfo import ZoneInfo
+    AR_TZ = ZoneInfo("America/Argentina/Buenos_Aires")
+except ImportError:
+    AR_TZ = None
 
 from .. import db
 from ..models import Venta, DetalleVenta, OrdenCompra
@@ -259,7 +265,8 @@ def get_dashboard_ventas_pedidos(current_user):
     - Cantidad de kilos pendientes de entrega
     """
     try:
-        today = datetime.date.today()
+        now_local = datetime.datetime.now(AR_TZ) if AR_TZ else datetime.datetime.now()
+        today = now_local.date()
         manana = today + datetime.timedelta(days=1)
         today_start_dt = datetime.datetime.combine(today, datetime.time.min)
         today_end_dt = datetime.datetime.combine(today, datetime.time.max)
@@ -268,10 +275,15 @@ def get_dashboard_ventas_pedidos(current_user):
 
         # Filtro: Solo pedidos (con dirección de entrega)
         filtro_pedido = (Venta.direccion_entrega.isnot(None)) & (Venta.direccion_entrega != '')
+        # Tomar solo pedidos de manana y considerar pendiente por defecto
+        # cuando no hay prefijo de estado; excluir entregados/cancelados.
         filtro_pendiente = (
             filtro_pedido
             & Venta.fecha_pedido.between(manana_start_dt, manana_end_dt)
-            & ~Venta.nombre_vendedor.ilike('%ENTREGADO%')
+            & and_(
+                ~Venta.nombre_vendedor.ilike('%ENTREGADO%'),
+                ~Venta.nombre_vendedor.ilike('%CANCELADO%')
+            )
         )
         # Filtro: Solo puerta (sin dirección de entrega)
         filtro_puerta = (Venta.direccion_entrega.is_(None)) | (Venta.direccion_entrega == '')
