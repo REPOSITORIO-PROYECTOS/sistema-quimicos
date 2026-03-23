@@ -396,13 +396,13 @@ export default function DeudaProveedoresPage() {
                           Recibida / Pedida: <span className="font-medium">{r.cantidadRecibidaTotal.toLocaleString('es-AR', { maximumFractionDigits: 2 })} / {r.cantidadSolicitadaTotal.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</span>
                         </div>
                         <ul className="space-y-1">
-                        {r.items.slice(0, 3).map(it => (
-                          <li key={`${r.ocId}-${it.id_linea}`} className="leading-4">
-                            <span>{it.producto_nombre || `ID ${it.producto_id}`}</span>{' '}
-                            <span className="text-xs text-gray-500">(Recibido: {Number(it.cantidad_recibida || 0)} / Sol: {it.cantidad_solicitada})</span>
-                          </li>
-                        ))}
-                        {r.items.length > 3 && <li className="text-xs text-gray-500">+{r.items.length - 3} más</li>}
+                          {r.items.slice(0, 3).map(it => (
+                            <li key={`${r.ocId}-${it.id_linea}`} className="leading-4">
+                              <span>{it.producto_nombre || `ID ${it.producto_id}`}</span>{' '}
+                              <span className="text-xs text-gray-500">(Recibido: {Number(it.cantidad_recibida || 0)} / Sol: {it.cantidad_solicitada})</span>
+                            </li>
+                          ))}
+                          {r.items.length > 3 && <li className="text-xs text-gray-500">+{r.items.length - 3} más</li>}
                         </ul>
                       </div>
                     ) : (<span className="text-gray-400">Sin ítems</span>)}
