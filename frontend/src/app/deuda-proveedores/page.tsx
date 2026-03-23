@@ -14,6 +14,8 @@ type Movimiento = { id: number; proveedor_id: number; orden_id: number | null; t
 
 const API = 'https://quimex.sistemataup.online/api';
 const formatMoney = (value: number) => `$${Number(value || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const MONEDA_CONTABLE = 'ARS';
+const formatMoneyWithCurrency = (value: number, currency: 'ARS' | 'USD') => `${currency} ${formatMoney(value)}`;
 const formatPaymentDate = (value?: string | null) => {
   if (!value) return 'Sin fecha';
   const date = new Date(value);
@@ -136,11 +138,30 @@ export default function DeudaProveedoresPage() {
   }, [filtroDesde, filtroHasta]);
 
   const filasOrdenes = useMemo(() => {
-    const rows: { ocId: number; total: number; abonado: number; pendiente: number; ultimoPago?: string; fecha: string; proveedor: string; items: ItemDetalle[]; pagos: Movimiento[]; esUSD?: boolean }[] = [];
+    const rows: {
+      ocId: number;
+      total: number;
+      abonado: number;
+      pendiente: number;
+      recepcionado: number;
+      saldoOperativo: number;
+      cantidadRecibidaTotal: number;
+      cantidadSolicitadaTotal: number;
+      ultimoPago?: string;
+      fecha: string;
+      proveedor: string;
+      items: ItemDetalle[];
+      pagos: Movimiento[];
+      esUSD?: boolean;
+    }[] = [];
     for (const oc of ordenes) {
       const items = itemsPorOrden[oc.id] || [];
       const totalOC = Number(oc.importe_total_estimado || 0) || items.reduce((acc, it) => acc + (it.importe_linea_estimado || (it.cantidad_solicitada * it.precio_unitario_estimado)), 0);
       const abonadoOC = Number(oc.importe_abonado || 0);
+      const recepcionadoOC = items.reduce((acc, it) => acc + ((Number(it.cantidad_recibida || 0) * Number(it.precio_unitario_estimado || 0)) || 0), 0);
+      const cantidadRecibidaTotal = items.reduce((acc, it) => acc + Number(it.cantidad_recibida || 0), 0);
+      const cantidadSolicitadaTotal = items.reduce((acc, it) => acc + Number(it.cantidad_solicitada || 0), 0);
+      const saldoOperativo = recepcionadoOC - abonadoOC;
       const movsOCAll = movimientos.filter(m => m.orden_id === oc.id);
       const debitosOC = movsOCAll
         .filter(m => m.tipo === 'DEBITO')
@@ -162,26 +183,39 @@ export default function DeudaProveedoresPage() {
       const okProveedor = filtroProveedor ? proveedor === filtroProveedor : true;
       const okProducto = filtroProducto ? items.some(item => item.producto_nombre === filtroProducto) : true;
       if (!(okDesde && okHasta && okProveedor && okProducto)) continue;
-      if (pendienteOC <= 0) continue;
-      rows.push({ ocId: oc.id, total: totalOC, abonado: abonadoOC, pendiente: pendienteOC, ultimoPago, fecha: d.toLocaleDateString('es-AR'), proveedor, items, pagos: movsOC, esUSD });
+      // Mostrar filas con deuda o con saldo operativo distinto de cero para auditar pagos/recepciones.
+      if (pendienteOC <= 0 && Math.abs(saldoOperativo) < 0.01) continue;
+      rows.push({
+        ocId: oc.id,
+        total: totalOC,
+        abonado: abonadoOC,
+        pendiente: pendienteOC,
+        recepcionado: recepcionadoOC,
+        saldoOperativo,
+        cantidadRecibidaTotal,
+        cantidadSolicitadaTotal,
+        ultimoPago,
+        fecha: d.toLocaleDateString('es-AR'),
+        proveedor,
+        items,
+        pagos: movsOC,
+        esUSD,
+      });
     }
     if (ordenarPor === 'pendiente') rows.sort((a, b) => b.pendiente - a.pendiente);
     if (ordenarPor === 'orden') rows.sort((a, b) => a.ocId - b.ocId);
     return rows;
   }, [ordenes, itemsPorOrden, movimientos, ordenarPor, filtroDesde, filtroHasta, filtroProveedor, filtroProducto, proveedorPorOrden]);
 
-  const deudaPorProveedor = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const row of filasOrdenes) {
-      map.set(row.proveedor, (map.get(row.proveedor) || 0) + row.pendiente);
-    }
-    return Array.from(map.entries())
-      .map(([proveedor, deuda]) => ({ proveedor, deuda }))
-      .sort((a, b) => b.deuda - a.deuda);
-  }, [filasOrdenes]);
-
   const totalPendienteFiltrado = useMemo(
     () => filasOrdenes.reduce((acc, row) => acc + row.pendiente, 0),
+    [filasOrdenes]
+  );
+
+  const totalAnticiposSinRecepcion = useMemo(
+    () => filasOrdenes
+      .filter((row) => row.cantidadRecibidaTotal <= 0 && row.abonado > 0)
+      .reduce((acc, row) => acc + Math.abs(Math.min(row.saldoOperativo, 0)), 0),
     [filasOrdenes]
   );
 
@@ -321,10 +355,10 @@ export default function DeudaProveedoresPage() {
         {/* Listado de boletas en deuda (simple) */}
         <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 mb-4 flex flex-wrap justify-between gap-3">
           <div className="text-sm text-red-900">
-            Total adeudado (filtro actual): <span className="font-bold text-base tabular-nums">{formatMoney(totalPendienteFiltrado)}</span>
+            Total adeudado contable (filtro actual, {MONEDA_CONTABLE}): <span className="font-bold text-base tabular-nums">{formatMoney(totalPendienteFiltrado)}</span>
           </div>
-          <div className="text-sm text-red-900">
-            Proveedores con deuda: <span className="font-bold">{deudaPorProveedor.length}</span>
+          <div className="text-sm text-amber-900">
+            Anticipos sin recepción ({MONEDA_CONTABLE}): <span className="font-bold">{formatMoney(totalAnticiposSinRecepcion)}</span>
           </div>
         </div>
 
@@ -332,36 +366,12 @@ export default function DeudaProveedoresPage() {
           <table className="min-w-full text-sm">
             <thead>
               <tr className="bg-gray-100">
+                <th className="px-3 py-2 text-left">Orden y Fecha</th>
                 <th className="px-3 py-2 text-left">Proveedor</th>
-                <th className="px-3 py-2 text-right">Deuda Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {deudaPorProveedor.map((r) => (
-                <tr key={r.proveedor} className="border-b hover:bg-gray-50">
-                  <td className="px-3 py-2">{r.proveedor}</td>
-                  <td className="px-3 py-2 text-right font-semibold text-red-700 tabular-nums whitespace-nowrap">{formatMoney(r.deuda)}</td>
-                </tr>
-              ))}
-              {deudaPorProveedor.length === 0 && (
-                <tr><td className="px-3 py-2" colSpan={2}>Sin deuda para los filtros seleccionados.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="overflow-x-auto mb-6">
-          <table className="min-w-full text-sm">
-            <thead>
-              <tr className="bg-gray-100">
-                <th className="px-3 py-2 text-left">Nº Orden</th>
-                <th className="px-3 py-2 text-left">Proveedor</th>
-                <th className="px-3 py-2 text-right">Monto Total</th>
-                <th className="px-3 py-2 text-right">Monto Abonado</th>
-                <th className="px-3 py-2 text-right">Monto Pendiente</th>
-                <th className="px-3 py-2 text-left">Pagos Registrados</th>
-                <th className="px-3 py-2 text-left">Fecha</th>
-                <th className="px-3 py-2 text-left">Ítems Solicitados</th>
+                <th className="px-3 py-2 text-left">Detalle de Compra</th>
+                <th className="px-3 py-2 text-right">Totales (Moneda OC)</th>
+                <th className="px-3 py-2 text-right">Monto Abonado (Moneda OC)</th>
+                <th className="px-3 py-2 text-right">Deuda Pendiente ({MONEDA_CONTABLE})</th>
               </tr>
             </thead>
             <tbody>
@@ -374,44 +384,43 @@ export default function DeudaProveedoresPage() {
                   onKeyDown={(e) => { if (e.key === 'Enter') setSeleccionOcId(r.ocId); }}
                   aria-label={`Ver detalle de OC ${String(r.ocId).padStart(4, '0')}`}
                 >
-                  <td className="px-3 py-2">OC {String(r.ocId).padStart(4, '0')}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    <div className="font-semibold text-gray-900">OC {String(r.ocId).padStart(4, '0')}</div>
+                    <div className="text-xs text-gray-500">{r.fecha}</div>
+                  </td>
                   <td className="px-3 py-2">{r.proveedor || '-'}</td>
-                  <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">{formatMoney(r.total)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">{formatMoney(r.abonado)}</td>
-                  <td className={`px-3 py-2 text-right tabular-nums whitespace-nowrap ${r.pendiente > 0 ? 'text-red-700' : 'text-green-700'}`}>
-                    <div>{formatMoney(r.pendiente)}</div>
-                    {r.esUSD && <div className="text-xs text-gray-500">(Convertido a ARS)</div>}
-                  </td>
-                  <td className="px-3 py-2">
-                    {r.pagos.length > 0 ? (
-                      <div className="space-y-1">
-                        {r.pagos.slice(0, 3).map((pago) => (
-                          <div key={pago.id} className="text-xs leading-4">
-                            <div className="font-medium text-gray-800">{formatPaymentDate(pago.fecha)} · {formatMoney(pago.monto)}</div>
-                            <div className="text-gray-500">{pago.descripcion || 'Pago sin detalle adicional'}</div>
-                          </div>
-                        ))}
-                        {r.pagos.length > 3 && <div className="text-xs text-gray-400">+{r.pagos.length - 3} pago(s) más</div>}
-                      </div>
-                    ) : (
-                      '-'
-                    )}
-                  </td>
-                  <td className="px-3 py-2">{r.fecha}</td>
                   <td className="px-3 py-2">
                     {r.items.length > 0 ? (
-                      <ul className="list-disc ml-4">
+                      <div className="space-y-2">
+                        <div className="text-xs text-gray-600">
+                          Recibida / Pedida: <span className="font-medium">{r.cantidadRecibidaTotal.toLocaleString('es-AR', { maximumFractionDigits: 2 })} / {r.cantidadSolicitadaTotal.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</span>
+                        </div>
+                        <ul className="space-y-1">
                         {r.items.slice(0, 3).map(it => (
-                          <li key={`${r.ocId}-${it.id_linea}`}>{it.producto_nombre || `ID ${it.producto_id}`} ({it.cantidad_solicitada})</li>
+                          <li key={`${r.ocId}-${it.id_linea}`} className="leading-4">
+                            <span>{it.producto_nombre || `ID ${it.producto_id}`}</span>{' '}
+                            <span className="text-xs text-gray-500">(Recibido: {Number(it.cantidad_recibida || 0)} / Sol: {it.cantidad_solicitada})</span>
+                          </li>
                         ))}
                         {r.items.length > 3 && <li className="text-xs text-gray-500">+{r.items.length - 3} más</li>}
-                      </ul>
+                        </ul>
+                      </div>
                     ) : (<span className="text-gray-400">Sin ítems</span>)}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">
+                    <div>{formatMoneyWithCurrency(r.total, r.esUSD ? 'USD' : 'ARS')}</div>
+                    <div className="text-xs text-gray-500">Rec: {formatMoneyWithCurrency(r.recepcionado, r.esUSD ? 'USD' : 'ARS')}</div>
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">{formatMoneyWithCurrency(r.abonado, r.esUSD ? 'USD' : 'ARS')}</td>
+                  <td className={`px-3 py-2 text-right tabular-nums whitespace-nowrap ${r.pendiente > 0 ? 'text-red-700' : 'text-green-700'}`}>
+                    <div>{formatMoney(r.pendiente)}</div>
+                    {r.saldoOperativo < 0 && <div className="text-xs text-amber-700">Anticipo: {formatMoneyWithCurrency(Math.abs(r.saldoOperativo), r.esUSD ? 'USD' : 'ARS')}</div>}
+                    {r.esUSD && <div className="text-xs text-gray-500">(Convertido a ARS)</div>}
                   </td>
                 </tr>
               ))}
               {filasOrdenes.length === 0 && (
-                <tr><td className="px-3 py-2" colSpan={8}>Sin órdenes en deuda para el período seleccionado.</td></tr>
+                <tr><td className="px-3 py-2" colSpan={6}>Sin órdenes en deuda/saldo para el período seleccionado.</td></tr>
               )}
             </tbody>
           </table>

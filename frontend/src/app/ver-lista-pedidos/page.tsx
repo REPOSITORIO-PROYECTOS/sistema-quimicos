@@ -100,6 +100,10 @@ export default function ListaOrdenesCompra() {
   const [filtroId, setFiltroId] = useState<string>("");
   const [filtroMes, setFiltroMes] = useState<string>(new Date().toISOString().slice(0, 7)); // YYYY-MM
 
+  const abrirDetalleOrden = (ordenId: number) => {
+    setIdOrdenSeleccionada(ordenId);
+  };
+
   const fetchOrdenes = async (currentPage = page, filtro = filtroEstado) => {
     setLoading(true);
     setError(null);
@@ -216,6 +220,9 @@ export default function ListaOrdenesCompra() {
       if (isFinite(importe_total_estimado)) {
         const t = Math.max(0, Number(importe_total_estimado.toFixed(2)));
         let a = Math.max(0, Number(abonadoRef.toFixed(2)));
+        if (aprobacionPagoCompleto) {
+          a = t;
+        }
         if (a > t) a = t;
         abonadoRef = a;
       }
@@ -372,9 +379,9 @@ export default function ListaOrdenesCompra() {
 
         {!loading && !error && (
           <>
-            <div className="overflow-x-auto">
-              <ul className="space-y-2 divide-y divide-gray-200 min-w-[1200px]">
-                <li className="grid grid-cols-[0.8fr_1.2fr_1fr_1.5fr_1fr_1fr_1.2fr_1fr] gap-x-3 items-center bg-gray-100 p-3 rounded-t-md font-semibold text-sm text-gray-700 uppercase tracking-wider">
+            <div className="w-full">
+              <ul className="space-y-2 divide-y divide-gray-200 w-full">
+                <li className="hidden md:grid grid-cols-[92px_112px_170px_minmax(0,1.4fr)_98px_126px_72px_220px] gap-x-2 items-center bg-gray-100 p-3 rounded-t-md font-semibold text-xs text-gray-700 uppercase tracking-wider">
                   <span>Nº Orden</span>
                   <span>Fecha</span>
                   <span>Estado</span>
@@ -403,59 +410,130 @@ export default function ListaOrdenesCompra() {
                             estadoUpper === 'RECIBIDA_PARCIAL' ? 'bg-blue-100 text-blue-800' :
                               'bg-gray-100 text-gray-800';
 
+                  const resumen = resumenItems[orden.id];
+                  const pid = resumen?.productoId;
+                  const nombreProducto = productosDelContexto.find(p => String(p.id) === String(pid))?.nombre || resumen?.codigo || '—';
+                  const puedeAprobarRechazar = user && user.role && user.role.toUpperCase() === 'ADMIN' && estadoUpper === 'SOLICITADO';
+
                   return (
-                    <li key={orden.id} className="grid grid-cols-[0.8fr_1.2fr_1fr_1.5fr_1fr_1fr_1.2fr_1fr] gap-x-3 items-center bg-white hover:bg-gray-50 p-3 text-sm">
-                      <span className="font-semibold text-indigo-600">Nº {orden.id.toString().padStart(4, '0')}</span>
-                      <span>{new Date(orden.fecha_creacion).toLocaleDateString("es-AR")}</span>
-                      <div className="flex flex-col gap-1">
-                        <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full w-fit
-                          ${claseEstado}`}>
-                          {etiquetaEstado}
-                        </span>
-                        {!!orden.fecha_aprobacion && (
-                          <span className="px-2 py-0.5 inline-flex text-xs leading-4 font-semibold rounded-full bg-green-100 text-green-800 w-fit">
-                            ✓ Aprobado
+                    <li
+                      key={orden.id}
+                      className="bg-white hover:bg-gray-50 text-sm rounded border border-gray-100"
+                    >
+                      <div
+                        className="md:hidden p-3 cursor-pointer"
+                        onClick={() => abrirDetalleOrden(orden.id)}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="font-semibold text-indigo-600">Nº {orden.id.toString().padStart(4, '0')}</span>
+                          <span className="text-xs text-gray-500">{new Date(orden.fecha_creacion).toLocaleDateString("es-AR")}</span>
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${claseEstado}`}>
+                            {etiquetaEstado}
                           </span>
-                        )}
-                        {(estadoRecepcionUpper === 'EN_ESPERA_RECEPCION' || estadoRecepcionUpper === 'PARCIAL') && (
-                          <span className="px-2 py-0.5 inline-flex text-xs leading-4 font-semibold rounded-full bg-blue-100 text-blue-800 w-fit">
-                            📦 Pendiente
-                          </span>
-                        )}
-                      </div>
-                      <span>{
-                        (() => {
-                          const resumen = resumenItems[orden.id];
-                          const pid = resumen?.productoId;
-                          const nombre = productosDelContexto.find(p => String(p.id) === String(pid))?.nombre;
-                          return nombre || resumen?.codigo || '—';
-                        })()
-                      }</span>
-                      <span>{Number(resumenItems[orden.id]?.cantidad || 0).toLocaleString('es-AR', { maximumFractionDigits: 2 })}</span>
-                      <span>{Number(orden.importe_total_estimado || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                      <span className="font-semibold">{orden.moneda || 'ARS'}</span>
-                      <div className="flex items-center justify-center">
-                        <select
-                          className="text-xs border border-gray-300 rounded px-2 py-1 cursor-pointer bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                          defaultValue=""
-                          disabled={!!processingId}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            e.currentTarget.value = "";
-                            if (val === 'ver') setIdOrdenSeleccionada(orden.id);
-                            else if (val === 'aprobar') handleAprobarOrden(orden.id);
-                            else if (val === 'rechazar') handleRechazarOrden(orden.id);
-                          }}
-                        >
-                          <option value="" disabled>Acción...</option>
-                          <option value="ver">Ver detalle</option>
-                          {user && user.role && user.role.toUpperCase() === 'ADMIN' && estadoUpper === 'SOLICITADO' && (
+                          {!!orden.fecha_aprobacion && (
+                            <span className="px-2 py-0.5 inline-flex text-xs leading-4 font-semibold rounded-full bg-green-100 text-green-800">
+                              ✓ Aprobado
+                            </span>
+                          )}
+                          {(estadoRecepcionUpper === 'EN_ESPERA_RECEPCION' || estadoRecepcionUpper === 'PARCIAL') && (
+                            <span className="px-2 py-0.5 inline-flex text-xs leading-4 font-semibold rounded-full bg-blue-100 text-blue-800">
+                              Pendiente recepción
+                            </span>
+                          )}
+                        </div>
+                        <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-gray-700">
+                          <div><span className="font-medium">Producto:</span> {nombreProducto}</div>
+                          <div><span className="font-medium">Cantidad:</span> {Number(resumenItems[orden.id]?.cantidad || 0).toLocaleString('es-AR', { maximumFractionDigits: 2 })}</div>
+                          <div><span className="font-medium">Importe:</span> {Number(orden.importe_total_estimado || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                          <div><span className="font-medium">Moneda:</span> {orden.moneda || 'ARS'}</div>
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            className="px-3 py-1.5 rounded bg-indigo-600 text-white text-xs hover:bg-indigo-700"
+                            onClick={() => abrirDetalleOrden(orden.id)}
+                          >
+                            Ver detalle
+                          </button>
+                          {puedeAprobarRechazar && (
                             <>
-                              <option value="aprobar">✓ Aprobar</option>
-                              <option value="rechazar">✗ Rechazar</option>
+                              <button
+                                type="button"
+                                className="px-3 py-1.5 rounded bg-green-600 text-white text-xs hover:bg-green-700"
+                                onClick={() => handleAprobarOrden(orden.id)}
+                                disabled={!!processingId}
+                              >
+                                Aprobar
+                              </button>
+                              <button
+                                type="button"
+                                className="px-3 py-1.5 rounded bg-red-600 text-white text-xs hover:bg-red-700"
+                                onClick={() => handleRechazarOrden(orden.id)}
+                                disabled={!!processingId}
+                              >
+                                Rechazar
+                              </button>
                             </>
                           )}
-                        </select>
+                        </div>
+                      </div>
+
+                      <div
+                        className="hidden md:grid grid-cols-[92px_112px_170px_minmax(0,1.4fr)_98px_126px_72px_220px] gap-x-2 items-center p-3 cursor-pointer"
+                        onClick={() => abrirDetalleOrden(orden.id)}
+                      >
+                        <span className="font-semibold text-indigo-600">Nº {orden.id.toString().padStart(4, '0')}</span>
+                        <span>{new Date(orden.fecha_creacion).toLocaleDateString("es-AR")}</span>
+                        <div className="flex flex-col gap-1">
+                          <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full w-fit ${claseEstado}`}>
+                            {etiquetaEstado}
+                          </span>
+                          {!!orden.fecha_aprobacion && (
+                            <span className="px-2 py-0.5 inline-flex text-xs leading-4 font-semibold rounded-full bg-green-100 text-green-800 w-fit">
+                              ✓ Aprobado
+                            </span>
+                          )}
+                          {(estadoRecepcionUpper === 'EN_ESPERA_RECEPCION' || estadoRecepcionUpper === 'PARCIAL') && (
+                            <span className="px-2 py-0.5 inline-flex text-xs leading-4 font-semibold rounded-full bg-blue-100 text-blue-800 w-fit">
+                              Pendiente recepción
+                            </span>
+                          )}
+                        </div>
+                        <span className="truncate" title={nombreProducto}>{nombreProducto}</span>
+                        <span>{Number(resumenItems[orden.id]?.cantidad || 0).toLocaleString('es-AR', { maximumFractionDigits: 2 })}</span>
+                        <span>{Number(orden.importe_total_estimado || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                        <span className="font-semibold">{orden.moneda || 'ARS'}</span>
+                        <div className="flex items-center justify-start gap-1.5 flex-wrap" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            className="px-2 py-1 rounded bg-indigo-600 text-white text-xs hover:bg-indigo-700"
+                            onClick={() => abrirDetalleOrden(orden.id)}
+                          >
+                            Ver
+                          </button>
+                          {puedeAprobarRechazar && (
+                            <>
+                              <button
+                                type="button"
+                                className="px-2 py-1 rounded bg-green-600 text-white text-xs hover:bg-green-700"
+                                onClick={() => handleAprobarOrden(orden.id)}
+                                disabled={!!processingId}
+                              >
+                                Aprobar
+                              </button>
+                              <button
+                                type="button"
+                                className="px-2 py-1 rounded bg-red-600 text-white text-xs hover:bg-red-700"
+                                onClick={() => handleRechazarOrden(orden.id)}
+                                disabled={!!processingId}
+                              >
+                                Rechazar
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </div>
                     </li>
                   );

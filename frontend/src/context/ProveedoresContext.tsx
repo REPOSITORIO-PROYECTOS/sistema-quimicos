@@ -47,10 +47,10 @@ export const ProveedoresProvider = ({ children }: ProveedoresProviderProps) => {
   const fetchProveedores = useCallback(async () => {
     // Si no hay token, no intentar el fetch y marcar error o estado vacío
     if (!token) {
-        setError("No autenticado. No se pueden cargar proveedores.");
-        setProveedores([]);
-        setLoading(false);
-        return;
+      setError("No autenticado. No se pueden cargar proveedores.");
+      setProveedores([]);
+      setLoading(false);
+      return;
     }
 
     setLoading(true);
@@ -67,8 +67,8 @@ export const ProveedoresProvider = ({ children }: ProveedoresProviderProps) => {
         // Intenta parsear el error del cuerpo si es posible
         let errorMessage = `Error ${response.status}: ${response.statusText}`;
         try {
-            const errorData = await response.json();
-            errorMessage = errorData.message || errorData.error || errorMessage;
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorData.error || errorMessage;
         } catch (e) {
           console.log(e);
         }

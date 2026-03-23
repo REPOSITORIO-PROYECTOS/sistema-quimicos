@@ -36,7 +36,7 @@ def _normalizar_estado_texto(estado):
     return str(estado or '').strip().upper()
 
 
-def _convert_to_ars(amount, ajuste_tc_flag, moneda_origen=None):
+def _convert_to_ars(amount, ajuste_tc_flag, moneda_origen=None, tc_override=None):
     """Convierte `amount` (Decimal) a ARS según la moneda origen.
     Si `ajuste_tc_flag` es True (orden en USD) o `moneda_origen` es 'USD', convierte de USD a ARS.
     Si en ARS (ajuste_tc_flag=False o moneda_origen='ARS'), devuelve el monto sin conversión.
@@ -49,8 +49,16 @@ def _convert_to_ars(amount, ajuste_tc_flag, moneda_origen=None):
         # Determinar moneda origen
         es_usd = (moneda_origen == 'USD') or (ajuste_tc_flag is True)
         
-        # Si es USD, convertir a ARS usando TC Oficial
+        # Si es USD, convertir a ARS usando TC de la orden (si existe) o TC Oficial.
         if es_usd:
+            if tc_override is not None:
+                try:
+                    tc_local = Decimal(str(tc_override))
+                    if tc_local > 0:
+                        return (amount_dec * tc_local).quantize(Decimal('0.01'))
+                except Exception:
+                    pass
+
             from ..models import TipoCambio
             tc = TipoCambio.query.filter_by(nombre='Oficial').first()
             if tc and tc.valor:
@@ -58,6 +66,86 @@ def _convert_to_ars(amount, ajuste_tc_flag, moneda_origen=None):
         return amount_dec.quantize(Decimal('0.01'))
     except Exception:
         return Decimal(str(amount)).quantize(Decimal('0.01'))
+
+
+def _extract_tc_snapshot_from_text(texto):
+    """Intenta extraer tc_usado desde el marcador __TC_SNAPSHOT__: JSON."""
+    raw = str(texto or '')
+    marker = '__TC_SNAPSHOT__:'
+    if marker not in raw:
+        return None
+    for part in raw.split('\n'):
+        if part.startswith(marker):
+            try:
+                payload = json.loads(part[len(marker):].strip())
+                tc_val = payload.get('tc_usado')
+                if tc_val is None:
+                    return None
+                tc_dec = Decimal(str(tc_val))
+                return tc_dec if tc_dec > 0 else None
+            except Exception:
+                return None
+    return None
+
+
+def _obtener_tc_para_orden(orden_db):
+    """Devuelve el TC guardado en la orden (observaciones/notas) o None."""
+    tc_obs = _extract_tc_snapshot_from_text(getattr(orden_db, 'observaciones_solicitud', None))
+    if tc_obs is not None:
+        return tc_obs
+    tc_notas = _extract_tc_snapshot_from_text(getattr(orden_db, 'notas_recepcion', None))
+    if tc_notas is not None:
+        return tc_notas
+    return None
+
+
+def _resolver_tc_snapshot_payload(data):
+    """Resuelve el TC a guardar en snapshot: primero payload.tc, luego TC Oficial."""
+    try:
+        tc_payload = data.get('tc') if isinstance(data, dict) else None
+        if tc_payload is not None and str(tc_payload).strip() != '':
+            tc_from_payload = Decimal(str(tc_payload).replace(',', '.'))
+            if tc_from_payload > 0:
+                return tc_from_payload
+    except Exception:
+        pass
+
+    try:
+        o = TipoCambio.query.filter_by(nombre='Oficial').first()
+        if o and o.valor:
+            tc_oficial = Decimal(str(o.valor))
+            return tc_oficial if tc_oficial > 0 else None
+    except Exception:
+        pass
+
+    return None
+
+
+def _upsert_tc_snapshot_text(texto_base, tc_snapshot):
+    """Inserta o reemplaza el marcador __TC_SNAPSHOT__ en un texto libre."""
+    marker = '__TC_SNAPSHOT__:'
+    snap = {
+        'tc_usado': float(tc_snapshot) if tc_snapshot is not None else None,
+        'fecha_snapshot': datetime.datetime.utcnow().isoformat()
+    }
+    new_line = marker + json.dumps(snap, ensure_ascii=False)
+
+    raw = str(texto_base or '')
+    lines = [line for line in raw.split('\n') if line]
+    out = []
+    replaced = False
+    for line in lines:
+        if line.startswith(marker):
+            if not replaced:
+                out.append(new_line)
+                replaced = True
+            continue
+        out.append(line)
+
+    if not replaced:
+        out.append(new_line)
+
+    return '\n'.join(out)
 
 
 def _parse_iibb_rate(iibb_value):
@@ -149,7 +237,11 @@ def _actualizar_movimiento_deuda(orden_db, usuario_actualiza=None, descripcion=N
         MovimientoProveedor.tipo == 'DEBITO'
     ).first()
     descripcion_final = descripcion or f"OC {orden_db.id} - Deuda por recepción recalculada"
-    monto_debito = _convert_to_ars(restante, orden_db.ajuste_tc)
+    monto_debito = _convert_to_ars(
+        restante,
+        orden_db.ajuste_tc,
+        tc_override=_obtener_tc_para_orden(orden_db)
+    )
 
     if debito:
         debito.monto = monto_debito
@@ -568,16 +660,11 @@ def crear_orden_compra(current_user):
             nueva_orden.cheque_perteneciente_a = None
 
         try:
-            from ..models import TipoCambio
-            o = TipoCambio.query.filter_by(nombre='Oficial').first()
-            snap = {
-                'tc_usado': float(o.valor) if o and o.valor else None,
-                'fecha_snapshot': datetime.datetime.utcnow().isoformat()
-            }
-            s = "__TC_SNAPSHOT__:" + json.dumps(snap, ensure_ascii=False)
-            obs = nueva_orden.observaciones_solicitud or ''
-            if '__TC_SNAPSHOT__' not in obs:
-                nueva_orden.observaciones_solicitud = (obs + ('\n' if obs else '') + s)
+            tc_snapshot = _resolver_tc_snapshot_payload(data)
+            nueva_orden.observaciones_solicitud = _upsert_tc_snapshot_text(
+                nueva_orden.observaciones_solicitud,
+                tc_snapshot
+            )
         except Exception:
             pass
 
@@ -828,16 +915,11 @@ def aprobar_orden_compra(current_user, orden_id):
             orden_db.cheque_perteneciente_a = None
 
         try:
-            from ..models import TipoCambio
-            o = TipoCambio.query.filter_by(nombre='Oficial').first()
-            snap = {
-                'tc_usado': float(o.valor) if o and o.valor else None,
-                'fecha_snapshot': datetime.datetime.utcnow().isoformat()
-            }
-            s = "__TC_SNAPSHOT__:" + json.dumps(snap, ensure_ascii=False)
-            obs = orden_db.observaciones_solicitud or ''
-            if '__TC_SNAPSHOT__' not in obs:
-                orden_db.observaciones_solicitud = (obs + ('\n' if obs else '') + s)
+            tc_snapshot = _resolver_tc_snapshot_payload(data)
+            orden_db.observaciones_solicitud = _upsert_tc_snapshot_text(
+                orden_db.observaciones_solicitud,
+                tc_snapshot
+            )
         except Exception:
             pass
 
@@ -872,7 +954,7 @@ def aprobar_orden_compra(current_user, orden_id):
                     proveedor_id=orden_db.proveedor_id,
                     orden_id=orden_db.id,
                     tipo='CREDITO',
-                    monto=_convert_to_ars(abonado_aprob, orden_db.ajuste_tc),
+                    monto=_convert_to_ars(abonado_aprob, orden_db.ajuste_tc, tc_override=_obtener_tc_para_orden(orden_db)),
                     descripcion=_descripcion_pago_orden(
                         orden_db.id,
                         'Pago al aprobar',
@@ -1095,7 +1177,7 @@ def registrar_pago_orden(current_user, orden_id):
             proveedor_id=orden_db.proveedor_id,
             orden_id=orden_db.id,
             tipo='CREDITO',
-            monto=_convert_to_ars(monto_pago, orden_db.ajuste_tc),
+            monto=_convert_to_ars(monto_pago, orden_db.ajuste_tc, tc_override=_obtener_tc_para_orden(orden_db)),
             descripcion=_descripcion_pago_orden(
                 orden_db.id,
                 'Pago parcial registrado',
@@ -1314,16 +1396,11 @@ def recibir_orden_compra(current_user, orden_id):
             orden_db.cheque_perteneciente_a = None # Limpiar si no es cheque
         orden_db.tipo_caja = data.get('tipo_caja', orden_db.tipo_caja)
         try:
-            from ..models import TipoCambio
-            o = TipoCambio.query.filter_by(nombre='Oficial').first()
-            snap = {
-                'tc_usado': float(o.valor) if o and o.valor else None,
-                'fecha_snapshot': datetime.datetime.utcnow().isoformat()
-            }
-            s = "__TC_SNAPSHOT__:" + json.dumps(snap, ensure_ascii=False)
-            notas = orden_db.notas_recepcion or ''
-            if '__TC_SNAPSHOT__' not in notas:
-                orden_db.notas_recepcion = (notas + ('\n' if notas else '') + s)
+            tc_snapshot = _resolver_tc_snapshot_payload(data)
+            orden_db.notas_recepcion = _upsert_tc_snapshot_text(
+                orden_db.notas_recepcion,
+                tc_snapshot
+            )
         except Exception:
             pass
         prev = formatear_orden_por_rol(orden_db, rol_usuario)
@@ -1337,7 +1414,7 @@ def recibir_orden_compra(current_user, orden_id):
             
             # Registrar crédito si se abonó ahora (convertir a ARS si OC estaba en USD)
             if nuevo_abono > Decimal('0'):
-                monto_credito_ars = _convert_to_ars(nuevo_abono, orden_db.ajuste_tc)
+                monto_credito_ars = _convert_to_ars(nuevo_abono, orden_db.ajuste_tc, tc_override=_obtener_tc_para_orden(orden_db))
                 mov_credito = MovimientoProveedor(  # type: ignore [call-arg]
                     proveedor_id=orden_db.proveedor_id,
                     orden_id=orden_db.id,

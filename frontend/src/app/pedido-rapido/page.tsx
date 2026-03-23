@@ -328,8 +328,11 @@ export default function PedidoRapidoAdmin() {
 
       // 1) Crear OC
       // Calcular observaciones de pago para registrar en la creación
-      const importeAbonadoCrear = pagoCompleto ? 0 : (parseFloat(importeAbonado || '0') || 0);
-      const deudaRestanteCrear = pagoCompleto ? 0 : importeAbonadoCrear;
+      const totalCalculadoRedondeado = Math.max(0, Number(totalCalculadoForm.toFixed(2)));
+      const importeAbonadoCrear = pagoCompleto
+        ? totalCalculadoRedondeado
+        : (parseFloat(importeAbonado || '0') || 0);
+      const deudaRestanteCrear = Math.max(0, totalCalculadoRedondeado - importeAbonadoCrear);
       const observacionesPagoCrear = pagoCompleto
         ? 'Pago completo'
         : `Pago parcial: abonado=${(typeof deudaRestanteCrear === 'number' ? deudaRestanteCrear : 0).toFixed(2)}`;
@@ -397,7 +400,9 @@ export default function PedidoRapidoAdmin() {
         return;
       }
 
-      const importe_abonado = pagoCompleto ? 0 : (parseFloat(importeAbonado || '0') || 0);
+      const importe_abonado = pagoCompleto
+        ? Math.max(0, Number(totalCalculadoForm.toFixed(2)))
+        : (parseFloat(importeAbonado || '0') || 0);
       const observacionesPago = pagoCompleto ? 'Pago completo' : `Pago parcial: abonado=${(typeof importe_abonado === 'number' ? importe_abonado : 0).toFixed(2)}`;
       const observacionesCheque = formaPago === 'Cheque'
         ? ` | Cheque: Emisor=${chequeEmisor}; Banco=${chequeBanco}; N°=${chequeNumero}; Fecha=${chequeFecha}`
