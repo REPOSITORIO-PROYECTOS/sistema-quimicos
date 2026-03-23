@@ -39,7 +39,7 @@ interface DashboardData {
     segunda_fila: {
         ventas_mes: number;
         costos_variables_mes: number;
-        ganancia_bruta_mes: number; 
+        ganancia_bruta_mes: number;
     };
     tercera_fila: {
         relacion_ingresos: { puerta: number; pedidos: number; };
@@ -51,7 +51,7 @@ const formatCurrency = (value: number) => new Intl.NumberFormat("es-AR", { style
 
 const getISODate = (date: Date): string => {
     const offset = date.getTimezoneOffset();
-    const adjustedDate = new Date(date.getTime() - (offset*60*1000));
+    const adjustedDate = new Date(date.getTime() - (offset * 60 * 1000));
     return adjustedDate.toISOString().split('T')[0];
 };
 
@@ -147,9 +147,9 @@ export default function DashboardPage() {
             return;
         }
         try {
-                // Usar endpoint completo para todos
-                const base = `https://quimex.sistemataup.online/api/reportes`;
-                const url = `${base}/dashboard-kpis?fecha=${fecha}`;
+            // Usar endpoint completo para todos
+            const base = `https://quimex.sistemataup.online/api/reportes`;
+            const url = `${base}/dashboard-kpis?fecha=${fecha}`;
             const response = await fetch(url, { headers: { "Authorization": `Bearer ${token}` } });
             if (!response.ok) {
                 if (response.status === 401 && typeof window !== "undefined") {
@@ -202,7 +202,7 @@ export default function DashboardPage() {
     useEffect(() => {
         fetchDashboardData(selectedDate);
     }, [selectedDate, fetchDashboardData]);
-    
+
     const handleDownloadResumen = async () => {
         if (!token) { alert("No autenticado."); return; }
         // Seguridad adicional: usuarios de pedidos no pueden descargar el resumen
@@ -223,10 +223,10 @@ export default function DashboardPage() {
             const primerDiaMes = toISODate(primerDiaMesDate);
             const ultimoDiaMes = toISODate(ultimoDiaMesDate);
             const url = `https://quimex.sistemataup.online/api/reportes/movimientos-excel?fecha_desde=${primerDiaMes}&fecha_hasta=${ultimoDiaMes}`;
-            
+
             const response = await fetch(url, { headers: { "Authorization": `Bearer ${token}` } });
             if (!response.ok) throw new Error((await response.json()).error || `Error ${response.status}`);
-            
+
             const blob = await response.blob();
             const downloadUrl = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -242,7 +242,7 @@ export default function DashboardPage() {
             setIsDownloading(false);
         }
     };
-    
+
     const relacionIngresosDataRaw = useMemo(() => {
         if (!data) return [] as { name: string; value: number }[];
         return [
@@ -281,7 +281,7 @@ export default function DashboardPage() {
     if (selectedDate === ayer) tituloDia = '(Ayer)';
 
     if (isLoading && !data) return <div className="p-8 text-center text-lg font-medium">Cargando dashboard...</div>;
-    
+
     return (
         <div className={`flex-1 space-y-6 p-4 md:p-8 transition-opacity duration-300 ${isLoading ? 'opacity-50' : 'opacity-100'}`}>
             <div className="flex flex-col md:flex-row justify-between items-center gap-4 border-b pb-4">
@@ -308,8 +308,8 @@ export default function DashboardPage() {
                                     disabled={isLoading}
                                 />
                             </div>
-                            <button 
-                                onClick={handleDownloadResumen} 
+                            <button
+                                onClick={handleDownloadResumen}
                                 disabled={isDownloading || isLoading}
                                 className="w-full sm:w-auto bg-green-600 text-white px-4 py-2 rounded-md shadow-sm hover:bg-green-700 disabled:bg-gray-400 flex items-center justify-center gap-2 transition-colors"
                             >
@@ -323,159 +323,159 @@ export default function DashboardPage() {
 
             {error && (
                 <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-md flex items-center gap-3">
-                    <AlertTriangle className="h-5 w-5"/>
+                    <AlertTriangle className="h-5 w-5" />
                     <p><span className="font-bold">Error:</span> {error}</p>
                 </div>
             )}
-            
+
             {!data && !isLoading && (
-                 <div className="p-8 text-center text-gray-500">No se encontraron datos para mostrar.</div>
+                <div className="p-8 text-center text-gray-500">No se encontraron datos para mostrar.</div>
             )}
 
             {data && (
-            <>
-                {userRole === 'ventas_pedidos' ? (
+                <>
+                    {userRole === 'ventas_pedidos' ? (
+                        <div className="grid gap-4 md:grid-cols-3">
+                            <Card>
+                                <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Ingreso Puerta {tituloDia}</CardTitle></CardHeader>
+                                <CardContent>
+                                    <p className="text-2xl font-bold">{formatCurrency(data.primera_fila.ingreso_puerta_hoy)}</p>
+                                </CardContent>
+                            </Card>
+                            <Card>
+                                <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Ingreso Pedidos {tituloDia}</CardTitle></CardHeader>
+                                <CardContent>
+                                    <p className="text-2xl font-bold">{formatCurrency(data.primera_fila.ingreso_pedido_hoy)}</p>
+                                </CardContent>
+                            </Card>
+                            <Card>
+                                <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Kgs a Entregar (Mañana)</CardTitle></CardHeader>
+                                <CardContent>
+                                    <p className="text-2xl font-bold">{data.primera_fila.kgs_manana.toFixed(2)} Kg</p>
+                                </CardContent>
+                            </Card>
+                        </div>
+                    ) : (
+                        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+                            <Card>
+                                <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Ingreso Puerta {tituloDia}</CardTitle></CardHeader>
+                                <CardContent>
+                                    <p className="text-2xl font-bold">{formatCurrency(data.primera_fila.ingreso_puerta_hoy)}</p>
+                                    <div className="mt-2 text-xs text-gray-600">
+                                        <div>Efectivo: <b>{formatCurrency(data.primera_fila.puerta_efectivo ?? 0)}</b></div>
+                                        <div>Transferencia: <b>{formatCurrency(data.primera_fila.puerta_transferencia ?? 0)}</b></div>
+                                        <div>Factura: <b>{formatCurrency(data.primera_fila.puerta_factura ?? 0)}</b></div>
+                                    </div>
+                                    <button
+                                        className="mt-2 px-3 py-1 bg-blue-100 text-blue-800 rounded text-xs hover:bg-blue-200"
+                                        onClick={() => setShowPuertaMontos((v) => !v)}
+                                    >
+                                        {showPuertaMontos ? 'Ocultar montos' : 'Ver montos detallados'}
+                                    </button>
+                                    {showPuertaMontos && (
+                                        <div className="mt-2 p-2 bg-blue-50 rounded text-sm space-y-1">
+                                            <div>
+                                                <b>Efectivo:</b> <span style={{ color: '#16a34a', fontWeight: 'bold' }}>{formatCurrency(data.primera_fila.puerta_efectivo ?? 0)}</span>
+                                                <span className="ml-2 text-xs text-gray-700">({puertaUnidades.efectivo} ventas)</span>
+                                            </div>
+                                            <div>
+                                                <b>Transferencia:</b> <span style={{ color: '#2563eb', fontWeight: 'bold' }}>{formatCurrency(data.primera_fila.puerta_transferencia ?? 0)}</span>
+                                                <span className="ml-2 text-xs text-gray-700">({puertaUnidades.transferencia} ventas)</span>
+                                            </div>
+                                            <div>
+                                                <b>Factura:</b> <span style={{ color: '#f59e42', fontWeight: 'bold' }}>{formatCurrency(data.primera_fila.puerta_factura ?? 0)}</span>
+                                                <span className="ml-2 text-xs text-gray-700">({puertaUnidades.factura} ventas)</span>
+                                            </div>
+                                        </div>
+                                    )}
+                                </CardContent>
+                            </Card>
+                            <Card>
+                                <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Ingreso Pedidos {tituloDia}</CardTitle></CardHeader>
+                                <CardContent>
+                                    <p className="text-2xl font-bold">{formatCurrency(data.primera_fila.ingreso_pedido_hoy)}</p>
+                                    <div className="mt-2 text-xs text-gray-600">
+                                        <div>Efectivo: <b>{formatCurrency(data.primera_fila.pedido_efectivo ?? 0)}</b></div>
+                                        <div>Transferencia: <b>{formatCurrency(data.primera_fila.pedido_transferencia ?? 0)}</b></div>
+                                        <div>Factura: <b>{formatCurrency(data.primera_fila.pedido_factura ?? 0)}</b></div>
+                                    </div>
+                                    <button
+                                        className="mt-2 px-3 py-1 bg-blue-100 text-blue-800 rounded text-xs hover:bg-blue-200"
+                                        onClick={() => setShowPedidoMontos((v) => !v)}
+                                    >
+                                        {showPedidoMontos ? 'Ocultar montos' : 'Ver montos detallados'}
+                                    </button>
+                                    {showPedidoMontos && (
+                                        <div className="mt-2 p-2 bg-blue-50 rounded text-sm space-y-1">
+                                            <div>
+                                                <b>Efectivo:</b> <span style={{ color: '#16a34a', fontWeight: 'bold' }}>{formatCurrency(data.primera_fila.pedido_efectivo ?? 0)}</span>
+                                                <span className="ml-2 text-xs text-gray-700">({pedidoUnidades.efectivo} ventas)</span>
+                                            </div>
+                                            <div>
+                                                <b>Transferencia:</b> <span style={{ color: '#2563eb', fontWeight: 'bold' }}>{formatCurrency(data.primera_fila.pedido_transferencia ?? 0)}</span>
+                                                <span className="ml-2 text-xs text-gray-700">({pedidoUnidades.transferencia} ventas)</span>
+                                            </div>
+                                            <div>
+                                                <b>Factura:</b> <span style={{ color: '#f59e42', fontWeight: 'bold' }}>{formatCurrency(data.primera_fila.pedido_factura ?? 0)}</span>
+                                                <span className="ml-2 text-xs text-gray-700">({pedidoUnidades.factura} ventas)</span>
+                                            </div>
+                                        </div>
+                                    )}
+                                </CardContent>
+                            </Card>
+                            <Card>
+                                <CardHeader className="pb-2">
+                                    <CardTitle className="text-sm font-medium">Pedidos Pendientes para Entregar Mañana</CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                    <p className="text-2xl font-bold">{data.primera_fila.pedidos_pendientes_manana}</p>
+                                </CardContent>
+                            </Card>
+                            <Card><CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Kgs a Entregar (Mañana)</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{data.primera_fila.kgs_manana.toFixed(2)} Kg</p></CardContent></Card>
+                            <Card><CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Deuda a Proveedores</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold text-orange-600">{formatCurrency(data.primera_fila.deuda_proveedores)}</p></CardContent></Card>
+                            <Card><CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Compras por Recibir</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{formatCurrency(data.primera_fila.compras_por_recibir)}</p></CardContent></Card>
+                        </div>
+                    )}
+
                     <div className="grid gap-4 md:grid-cols-3">
                         <Card>
-                            <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Ingreso Puerta {tituloDia}</CardTitle></CardHeader>
-                            <CardContent>
-                                <p className="text-2xl font-bold">{formatCurrency(data.primera_fila.ingreso_puerta_hoy)}</p>
-                            </CardContent>
-                        </Card>
-                        <Card>
-                            <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Ingreso Pedidos {tituloDia}</CardTitle></CardHeader>
-                            <CardContent>
-                                <p className="text-2xl font-bold">{formatCurrency(data.primera_fila.ingreso_pedido_hoy)}</p>
-                            </CardContent>
-                        </Card>
-                        <Card>
-                            <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Kgs a Entregar (Mañana)</CardTitle></CardHeader>
-                            <CardContent>
-                                <p className="text-2xl font-bold">{data.primera_fila.kgs_manana.toFixed(2)} Kg</p>
-                            </CardContent>
-                        </Card>
-                    </div>
-                ) : (
-                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-                        <Card>
-                            <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Ingreso Puerta {tituloDia}</CardTitle></CardHeader>
-                            <CardContent>
-                                <p className="text-2xl font-bold">{formatCurrency(data.primera_fila.ingreso_puerta_hoy)}</p>
-                                <div className="mt-2 text-xs text-gray-600">
-                                    <div>Efectivo: <b>{formatCurrency(data.primera_fila.puerta_efectivo ?? 0)}</b></div>
-                                    <div>Transferencia: <b>{formatCurrency(data.primera_fila.puerta_transferencia ?? 0)}</b></div>
-                                    <div>Factura: <b>{formatCurrency(data.primera_fila.puerta_factura ?? 0)}</b></div>
-                                </div>
-                                <button
-                                    className="mt-2 px-3 py-1 bg-blue-100 text-blue-800 rounded text-xs hover:bg-blue-200"
-                                    onClick={() => setShowPuertaMontos((v) => !v)}
-                                >
-                                    {showPuertaMontos ? 'Ocultar montos' : 'Ver montos detallados'}
-                                </button>
-                                {showPuertaMontos && (
-                                    <div className="mt-2 p-2 bg-blue-50 rounded text-sm space-y-1">
-                                        <div>
-                                            <b>Efectivo:</b> <span style={{color:'#16a34a', fontWeight:'bold'}}>{formatCurrency(data.primera_fila.puerta_efectivo ?? 0)}</span>
-                                            <span className="ml-2 text-xs text-gray-700">({puertaUnidades.efectivo} ventas)</span>
-                                        </div>
-                                        <div>
-                                            <b>Transferencia:</b> <span style={{color:'#2563eb', fontWeight:'bold'}}>{formatCurrency(data.primera_fila.puerta_transferencia ?? 0)}</span>
-                                            <span className="ml-2 text-xs text-gray-700">({puertaUnidades.transferencia} ventas)</span>
-                                        </div>
-                                        <div>
-                                            <b>Factura:</b> <span style={{color:'#f59e42', fontWeight:'bold'}}>{formatCurrency(data.primera_fila.puerta_factura ?? 0)}</span>
-                                            <span className="ml-2 text-xs text-gray-700">({puertaUnidades.factura} ventas)</span>
-                                        </div>
-                                    </div>
-                                )}
-                            </CardContent>
-                        </Card>
-                        <Card>
-                            <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Ingreso Pedidos {tituloDia}</CardTitle></CardHeader>
-                            <CardContent>
-                                <p className="text-2xl font-bold">{formatCurrency(data.primera_fila.ingreso_pedido_hoy)}</p>
-                                <div className="mt-2 text-xs text-gray-600">
-                                    <div>Efectivo: <b>{formatCurrency(data.primera_fila.pedido_efectivo ?? 0)}</b></div>
-                                    <div>Transferencia: <b>{formatCurrency(data.primera_fila.pedido_transferencia ?? 0)}</b></div>
-                                    <div>Factura: <b>{formatCurrency(data.primera_fila.pedido_factura ?? 0)}</b></div>
-                                </div>
-                                <button
-                                    className="mt-2 px-3 py-1 bg-blue-100 text-blue-800 rounded text-xs hover:bg-blue-200"
-                                    onClick={() => setShowPedidoMontos((v) => !v)}
-                                >
-                                    {showPedidoMontos ? 'Ocultar montos' : 'Ver montos detallados'}
-                                </button>
-                                {showPedidoMontos && (
-                                    <div className="mt-2 p-2 bg-blue-50 rounded text-sm space-y-1">
-                                        <div>
-                                            <b>Efectivo:</b> <span style={{color:'#16a34a', fontWeight:'bold'}}>{formatCurrency(data.primera_fila.pedido_efectivo ?? 0)}</span>
-                                            <span className="ml-2 text-xs text-gray-700">({pedidoUnidades.efectivo} ventas)</span>
-                                        </div>
-                                        <div>
-                                            <b>Transferencia:</b> <span style={{color:'#2563eb', fontWeight:'bold'}}>{formatCurrency(data.primera_fila.pedido_transferencia ?? 0)}</span>
-                                            <span className="ml-2 text-xs text-gray-700">({pedidoUnidades.transferencia} ventas)</span>
-                                        </div>
-                                        <div>
-                                            <b>Factura:</b> <span style={{color:'#f59e42', fontWeight:'bold'}}>{formatCurrency(data.primera_fila.pedido_factura ?? 0)}</span>
-                                            <span className="ml-2 text-xs text-gray-700">({pedidoUnidades.factura} ventas)</span>
-                                        </div>
-                                    </div>
-                                )}
-                            </CardContent>
-                        </Card>
-                        <Card>
-                            <CardHeader className="pb-2">
-                                <CardTitle className="text-sm font-medium">Pedidos Pendientes para Entregar Mañana</CardTitle>
+                            <CardHeader className="pb-2 flex flex-row items-center justify-between">
+                                <CardTitle className="text-sm font-medium">Ventas del Mes</CardTitle>
+                                <DollarSign className="h-4 w-4 text-muted-foreground" />
                             </CardHeader>
                             <CardContent>
-                                <p className="text-2xl font-bold">{data.primera_fila.pedidos_pendientes_manana}</p>
+                                <p className="text-2xl font-bold">{showFinanzas ? formatCurrency(data.segunda_fila.ventas_mes) : '***'}</p>
                             </CardContent>
                         </Card>
-                        <Card><CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Kgs a Entregar (Mañana)</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{data.primera_fila.kgs_manana.toFixed(2)} Kg</p></CardContent></Card>
-                        <Card><CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Deuda a Proveedores</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold text-orange-600">{formatCurrency(data.primera_fila.deuda_proveedores)}</p></CardContent></Card>
-                        <Card><CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Compras por Recibir</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{formatCurrency(data.primera_fila.compras_por_recibir)}</p></CardContent></Card>
+                        <Card>
+                            <CardHeader className="pb-2 flex flex-row items-center justify-between">
+                                <CardTitle className="text-sm font-medium">Costo Mercadería Vendida</CardTitle>
+                                <ShoppingCart className="h-4 w-4 text-muted-foreground" />
+                            </CardHeader>
+                            <CardContent>
+                                <p className="text-2xl font-bold">{showFinanzas ? formatCurrency(data.segunda_fila.costos_variables_mes) : '***'}</p>
+                            </CardContent>
+                        </Card>
+                        <Card>
+                            <CardHeader className="pb-2 flex flex-row items-center justify-between">
+                                <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                            </CardHeader>
+                            <CardContent>
+                                <p className={`text-2xl font-bold ${data.segunda_fila.ganancia_bruta_mes < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                                    {showFinanzas ? formatCurrency(data.segunda_fila.ganancia_bruta_mes) : '***'}
+                                </p>
+                                {showFinanzas && <p className="text-xs text-muted-foreground">Ventas - Costo de Mercadería</p>}
+                            </CardContent>
+                        </Card>
                     </div>
-                )}
 
-                <div className="grid gap-4 md:grid-cols-3">
-                    <Card>
-                        <CardHeader className="pb-2 flex flex-row items-center justify-between">
-                            <CardTitle className="text-sm font-medium">Ventas del Mes</CardTitle>
-                            <DollarSign className="h-4 w-4 text-muted-foreground" />
-                        </CardHeader>
-                        <CardContent>
-                            <p className="text-2xl font-bold">{showFinanzas ? formatCurrency(data.segunda_fila.ventas_mes) : '***'}</p>
-                        </CardContent>
-                    </Card>
-                    <Card>
-                        <CardHeader className="pb-2 flex flex-row items-center justify-between">
-                            <CardTitle className="text-sm font-medium">Costo Mercadería Vendida</CardTitle>
-                            <ShoppingCart className="h-4 w-4 text-muted-foreground" />
-                        </CardHeader>
-                        <CardContent>
-                            <p className="text-2xl font-bold">{showFinanzas ? formatCurrency(data.segunda_fila.costos_variables_mes) : '***'}</p>
-                        </CardContent>
-                    </Card>
-                    <Card>
-                        <CardHeader className="pb-2 flex flex-row items-center justify-between">
-                                    <TrendingUp className="h-4 w-4 text-muted-foreground" />
-                        </CardHeader>
-                        <CardContent>
-                            <p className={`text-2xl font-bold ${data.segunda_fila.ganancia_bruta_mes < 0 ? 'text-red-600' : 'text-green-600'}`}>
-                                {showFinanzas ? formatCurrency(data.segunda_fila.ganancia_bruta_mes) : '***'}
-                            </p>
-                            {showFinanzas && <p className="text-xs text-muted-foreground">Ventas - Costo de Mercadería</p>}
-                        </CardContent>
-                    </Card>
-                </div>
-
-                <DashboardCharts
-                    relacionIngresosData={relacionIngresosData}
-                    relacionPagosData={relacionPagosData}
-                    showFinanzas={showFinanzas}
-                    formatCurrency={formatCurrency}
-                />
-            </>
+                    <DashboardCharts
+                        relacionIngresosData={relacionIngresosData}
+                        relacionPagosData={relacionPagosData}
+                        showFinanzas={showFinanzas}
+                        formatCurrency={formatCurrency}
+                    />
+                </>
             )}
         </div>
     );
