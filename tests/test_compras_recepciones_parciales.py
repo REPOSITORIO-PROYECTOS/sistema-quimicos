@@ -90,8 +90,14 @@ def test_update_existing_debito_on_partial_payment(monkeypatch):
             self.ajuste_tc = False
 
     orden = DummyOrder()
-    # Provide items so base is computed from lines (realistic scenario)
-    orden.items = [_types.SimpleNamespace(importe_linea_estimado=Decimal('100'))]
+    # Sin recepción efectiva, la deuda debe quedar en 0 aunque la OC tenga total estimado.
+    orden.items = [
+        _types.SimpleNamespace(
+            importe_linea_estimado=Decimal('100'),
+            cantidad_recibida=Decimal('0'),
+            precio_unitario_estimado=Decimal('10')
+        )
+    ]
 
     # existing debito object
     class ExistingDebito:
@@ -115,8 +121,8 @@ def test_update_existing_debito_on_partial_payment(monkeypatch):
 
     ok = compras._recalcular_importe_y_actualizar_deuda(orden, usuario_actualiza='u', iva_flag=False, iva_rate=None, iibb_payload=None)
     assert ok is True
-    # importe unchanged, restante = 200 - 50 = 150 -> existing debito monto should be updated to 150.00
-    assert existing.monto == Decimal('150.00')
+    # No hay recepción, por lo tanto el DEBITO se actualiza a 0.00
+    assert existing.monto == Decimal('0.00')
 
 
 def test_convert_to_ars_uses_tipo_cambio(monkeypatch):
@@ -154,8 +160,14 @@ def test_recalcular_creates_and_updates_debito_and_credit(monkeypatch):
             self.ajuste_tc = False
 
     orden = DummyOrder()
-    # add items to ensure base is derived from lines
-    orden.items = [_types.SimpleNamespace(importe_linea_estimado=Decimal('100'))]
+    # Se calcula deuda por recepción: cantidad_recibida * precio_unitario_estimado
+    orden.items = [
+        _types.SimpleNamespace(
+            importe_linea_estimado=Decimal('100'),
+            cantidad_recibida=Decimal('5'),
+            precio_unitario_estimado=Decimal('20')
+        )
+    ]
     fake_db = _types.SimpleNamespace()
     session = FakeSession()
     session.expect_orden_id = 301
@@ -178,17 +190,33 @@ def test_recalcular_creates_and_updates_debito_and_credit(monkeypatch):
     # First call: crea debito
     ok = compras._recalcular_importe_y_actualizar_deuda(orden, usuario_actualiza='u', iva_flag=True, iva_rate=Decimal('0.10'), iibb_payload='2%')
     assert ok is True
-    # new total = 100 + 10 (iva) + 2 (iibb) = 112 -> restante 112 -> DEBITO created
+    # Aunque se recalcule total con impuestos, la deuda se basa en lo recepcionado: 5*20 = 100
     assert len(session.added) == 1
     mov = session.added[0]
     assert mov.tipo == 'DEBITO'
-    assert mov.monto == Decimal('112.00')
+    assert mov.monto == Decimal('100.00')
 
     # Simulate payment partial
     orden.importe_abonado = Decimal('40')
     # Second call should update existing debito instead of creating another
     ok2 = compras._recalcular_importe_y_actualizar_deuda(orden, usuario_actualiza='u2', iva_flag=True, iva_rate=Decimal('0.10'), iibb_payload='2%')
     assert ok2 is True
-    # Behavior: helper recalculates from possibly-updated base; verify movement updated accordingly
+    # Deuda restante: recepcionado(100) - abonado(40) = 60
     assert len(session.added) == 1
-    assert session.added[0].monto == Decimal('85.44')
+    assert session.added[0].monto == Decimal('60.00')
+
+
+def test_importe_recepcionado_estimado_usa_cantidad_recibida_y_precio(monkeypatch):
+    class DummyOrder:
+        def __init__(self):
+            self.id = 400
+
+    orden = DummyOrder()
+    orden.items = [
+        _types.SimpleNamespace(cantidad_recibida=Decimal('3'), precio_unitario_estimado=Decimal('12.5')),
+        _types.SimpleNamespace(cantidad_recibida=Decimal('1.2'), precio_unitario_estimado=Decimal('10')),
+        _types.SimpleNamespace(cantidad_recibida=None, precio_unitario_estimado=Decimal('8')),
+    ]
+
+    total = compras._importe_recepcionado_estimado(orden)
+    assert total == Decimal('49.50')

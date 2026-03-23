@@ -125,14 +125,30 @@ def _serializar_historial_pagos(orden_id):
     return historial
 
 
+def _importe_recepcionado_estimado(orden_db):
+    """Calcula el total recepcionado acumulado con precio estimado por línea.
+    Fórmula: sum(cantidad_recibida * precio_unitario_estimado).
+    """
+    total = Decimal('0')
+    try:
+        for item in getattr(orden_db, 'items', []) or []:
+            cantidad_recibida = Decimal(str(item.cantidad_recibida or 0))
+            precio_estimado = Decimal(str(item.precio_unitario_estimado or 0))
+            total += (cantidad_recibida * precio_estimado)
+    except Exception:
+        logger.exception("No se pudo calcular importe recepcionado estimado para OC %s", getattr(orden_db, 'id', 'N/A'))
+    return total.quantize(Decimal('0.01'))
+
+
 def _actualizar_movimiento_deuda(orden_db, usuario_actualiza=None, descripcion=None):
-    restante = (orden_db.importe_total_estimado or Decimal('0')) - (orden_db.importe_abonado or Decimal('0'))
+    importe_recepcionado = _importe_recepcionado_estimado(orden_db)
+    restante = importe_recepcionado - (orden_db.importe_abonado or Decimal('0'))
     restante = restante if restante > Decimal('0') else Decimal('0')
     debito = db.session.query(MovimientoProveedor).filter(
         MovimientoProveedor.orden_id == orden_db.id,
         MovimientoProveedor.tipo == 'DEBITO'
     ).first()
-    descripcion_final = descripcion or f"OC {orden_db.id} - Deuda recalculada"
+    descripcion_final = descripcion or f"OC {orden_db.id} - Deuda por recepción recalculada"
     monto_debito = _convert_to_ars(restante, orden_db.ajuste_tc)
 
     if debito:
@@ -155,15 +171,15 @@ def _actualizar_movimiento_deuda(orden_db, usuario_actualiza=None, descripcion=N
 
 
 def _estado_orden_post_pago(orden_db):
-    total = orden_db.importe_total_estimado or Decimal('0')
+    total_recepcionado = _importe_recepcionado_estimado(orden_db)
     abonado = orden_db.importe_abonado or Decimal('0')
     estado_recepcion = _normalizar_estado_texto(orden_db.estado_recepcion)
     estado_actual = _normalizar_estado_texto(orden_db.estado)
 
     if estado_recepcion == 'COMPLETA':
-        return 'RECIBIDO' if abonado >= total else 'RECIBIDA_PARCIAL'
+        return 'RECIBIDO' if abonado >= total_recepcionado else 'RECIBIDA_PARCIAL'
 
-    if total > Decimal('0') and abonado < total:
+    if total_recepcionado > Decimal('0') and abonado < total_recepcionado:
         return 'CON DEUDA'
 
     if estado_actual in ('SOLICITADO', 'RECHAZADO'):
@@ -825,7 +841,7 @@ def aprobar_orden_compra(current_user, orden_id):
         except Exception:
             pass
 
-        # Si el payload incluye cambios en IVA o IIBB, recalcular importe y actualizar deuda
+        # Si el payload incluye cambios en IVA o IIBB, recalcular importe
         try:
             iva_flag = data.get('iva') if 'iva' in data else None
             iva_rate = data.get('iva_rate') if 'iva_rate' in data else None
@@ -836,14 +852,13 @@ def aprobar_orden_compra(current_user, orden_id):
                                                    iva_rate=iva_rate,
                                                    iibb_payload=iibb_payload)
         except Exception:
-            logger.warning("No se pudo recalcular importe/deuda al aprobar OC %s", orden_id)
+            logger.warning("No se pudo recalcular importe al aprobar OC %s", orden_id)
 
         # --- Actualizar estado y aprobador ---
-        total_aprob = orden_db.importe_total_estimado or Decimal('0')
         abonado_aprob = orden_db.importe_abonado or Decimal('0')
         # Estados multidimensionales: recepción pendiente y deuda (usar UPPERCASE)
         orden_db.estado_recepcion = 'EN_ESPERA_RECEPCION'
-        orden_db.estado = 'CON DEUDA' if total_aprob > abonado_aprob else 'APROBADO'
+        orden_db.estado = 'APROBADO'
         orden_db.fecha_aprobacion = datetime.datetime.utcnow()
         orden_db.aprobado_por = usuario_aprobador
         # fecha_actualizacion se actualiza via onupdate
@@ -869,25 +884,6 @@ def aprobar_orden_compra(current_user, orden_id):
                 db.session.add(mov_credito_aprob)
                 db.session.commit()
             
-            # Registrar deuda si hay saldo pendiente
-            if total_aprob > abonado_aprob:
-                debito_existente = db.session.query(MovimientoProveedor).filter(
-                    MovimientoProveedor.orden_id == orden_id,
-                    MovimientoProveedor.tipo == 'DEBITO'
-                ).first()
-                if not debito_existente:
-                    monto_deuda = (total_aprob - abonado_aprob)
-                    monto_deuda_ars = _convert_to_ars(monto_deuda, orden_db.ajuste_tc)
-                    mov_debito_aprob = MovimientoProveedor(  # type: ignore [call-arg]
-                        proveedor_id=orden_db.proveedor_id,
-                        orden_id=orden_id,
-                        tipo='DEBITO',
-                        monto=monto_deuda_ars,
-                        descripcion=f"OC {orden_id} - Deuda al aprobar ({orden_db.importe_total_estimado} {('USD' if orden_db.ajuste_tc else 'ARS')})",
-                        usuario=usuario_aprobador
-                    )
-                    db.session.add(mov_debito_aprob)
-                    db.session.commit()
         except Exception:
             logger.warning("No se pudo registrar movimiento de proveedor (aprobación) para OC %s", orden_id)
         try:
@@ -1028,7 +1024,7 @@ def registrar_pago_orden(current_user, orden_id):
         if monto_pago <= Decimal('0'):
             return jsonify({"error": "El monto del pago debe ser mayor a cero"}), 400
 
-        total_estimado = orden_db.importe_total_estimado or Decimal('0')
+        total_estimado = _importe_recepcionado_estimado(orden_db)
         abonado_previo = orden_db.importe_abonado or Decimal('0')
         pago_ajustado = False
         saldo_pendiente = total_estimado - abonado_previo
@@ -1260,19 +1256,6 @@ def recibir_orden_compra(current_user, orden_id):
         # Actualizar el importe total de la orden con el del payload o el recalculado
         orden_db.importe_total_estimado = Decimal(str(data.get('importe_total', total_estimado_recalculado)))
 
-        # Si el payload incluye cambios en IVA o IIBB, recalcular importe y actualizar deuda
-        try:
-            iva_flag = data.get('iva') if 'iva' in data else None
-            iva_rate = data.get('iva_rate') if 'iva_rate' in data else None
-            iibb_payload = data.get('iibb') if 'iibb' in data else None
-            _recalcular_importe_y_actualizar_deuda(orden_db,
-                                                   usuario_actualiza=usuario_receptor,
-                                                   iva_flag=iva_flag,
-                                                   iva_rate=iva_rate,
-                                                   iibb_payload=iibb_payload)
-        except Exception:
-            logger.warning("No se pudo recalcular importe/deuda al recibir OC %s", orden_id)
-
         # 3. Procesar la recepción de items
         items_recibidos = data.get('items_recibidos', [])
         if items_recibidos:
@@ -1310,15 +1293,18 @@ def recibir_orden_compra(current_user, orden_id):
         nuevo_abono = Decimal(str(data.get('importe_abonado', '0')))
         importe_abonado_previo = orden_db.importe_abonado or Decimal('0')
         orden_db.importe_abonado = importe_abonado_previo + nuevo_abono
+        total_recepcionado = _importe_recepcionado_estimado(orden_db)
+        saldo_recepcion = total_recepcionado - (orden_db.importe_abonado or Decimal('0'))
+        saldo_recepcion = saldo_recepcion if saldo_recepcion > Decimal('0') else Decimal('0')
 
         # Estado final de la orden según recepción y pagos
-        if all_received and orden_db.importe_abonado >= orden_db.importe_total_estimado:
+        if all_received and orden_db.importe_abonado >= total_recepcionado:
             orden_db.estado = 'RECIBIDO'
-        elif all_received and orden_db.importe_abonado < orden_db.importe_total_estimado:
+        elif all_received and orden_db.importe_abonado < total_recepcionado:
             orden_db.estado = 'RECIBIDA_PARCIAL'
         else:
-            # Si no fue recibida completamente, mantén en deuda o en estado correspondiente
-            orden_db.estado = 'CON DEUDA' if orden_db.importe_abonado < orden_db.importe_total_estimado else orden_db.estado
+            # Con recepción parcial, solo hay deuda si lo recepcionado supera lo abonado.
+            orden_db.estado = 'CON DEUDA' if saldo_recepcion > Decimal('0') else 'APROBADO'
         
         # 6. Actualizar datos de pago
         orden_db.forma_pago = data.get('forma_pago', orden_db.forma_pago)
@@ -1341,25 +1327,13 @@ def recibir_orden_compra(current_user, orden_id):
         except Exception:
             pass
         prev = formatear_orden_por_rol(orden_db, rol_usuario)
-        # 7. Registrar movimientos de proveedor (DEBITO una vez por OC, CREDITO por pagos)
+        # 7. Registrar movimientos de proveedor (deuda por recepción efectiva + créditos por pagos)
         try:
-            debito_existente = db.session.query(MovimientoProveedor).filter(
-                MovimientoProveedor.orden_id == orden_db.id,
-                MovimientoProveedor.tipo == 'DEBITO'
-            ).first()
-            if not debito_existente:
-                restante = (orden_db.importe_total_estimado or Decimal('0')) - (orden_db.importe_abonado or Decimal('0'))
-                restante = restante if restante > Decimal('0') else Decimal('0')
-                monto_deuda_ars = _convert_to_ars(restante, orden_db.ajuste_tc)
-                mov_debito = MovimientoProveedor(  # type: ignore [call-arg]
-                    proveedor_id=orden_db.proveedor_id,
-                    orden_id=orden_db.id,
-                    tipo='DEBITO',
-                    monto=monto_deuda_ars,
-                    descripcion=f"OC {orden_db.id} - Deuda por recepción ({orden_db.importe_total_estimado} {('USD' if orden_db.ajuste_tc else 'ARS')})",
-                    usuario=usuario_receptor
-                )
-                db.session.add(mov_debito)
+            _actualizar_movimiento_deuda(
+                orden_db,
+                usuario_actualiza=usuario_receptor,
+                descripcion=f"OC {orden_db.id} - Deuda por recepción efectiva"
+            )
             
             # Registrar crédito si se abonó ahora (convertir a ARS si OC estaba en USD)
             if nuevo_abono > Decimal('0'):

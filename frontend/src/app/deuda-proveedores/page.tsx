@@ -37,7 +37,6 @@ export default function DeudaProveedoresPage() {
   const [itemsPorOrden, setItemsPorOrden] = useState<Record<number, ItemDetalle[]>>({});
   const [proveedorPorOrden, setProveedorPorOrden] = useState<Record<number, string>>({});
   const [movimientos, setMovimientos] = useState<Movimiento[]>([]);
-  const [tipoCambio, setTipoCambio] = useState<number>(1); // TC oficial default
   const [filtroDesde, setFiltroDesde] = useState('');
   const [filtroHasta, setFiltroHasta] = useState('');
   const [filtroProveedor, setFiltroProveedor] = useState('');
@@ -114,30 +113,10 @@ export default function DeudaProveedoresPage() {
 
   const fetchMovs = async () => {
     if (!token) return;
-    const params = new URLSearchParams();
-    if (filtroDesde) params.set('fecha_desde', filtroDesde);
-    if (filtroHasta) params.set('fecha_hasta', filtroHasta);
-    const res = await fetch(`${API}/finanzas/movimientos?${params.toString()}`, { headers: { 'Authorization': `Bearer ${token}`, 'X-User-Role': user?.role || '', 'X-User-Name': user?.usuario || user?.name || '', 'Content-Type': 'application/json' } });
+    const res = await fetch(`${API}/finanzas/movimientos`, { headers: { 'Authorization': `Bearer ${token}`, 'X-User-Role': user?.role || '', 'X-User-Name': user?.usuario || user?.name || '', 'Content-Type': 'application/json' } });
     const data = await res.json();
     setMovimientos(data.movimientos || []);
   };
-
-  // Fetch TC oficial on mount
-  useEffect(() => {
-    const fetchTC = async () => {
-      try {
-        const res = await fetch(`${API}/tipos_cambio/obtener/Oficial`, { headers: { 'Authorization': `Bearer ${token}` } });
-        const data = await res.json();
-        const valor = Number((data && (data.valor ?? data.data?.valor)) ?? NaN);
-        if (isFinite(valor) && valor > 0) {
-          setTipoCambio(valor);
-        }
-      } catch {
-        // Keep default TC of 1
-      }
-    };
-    if (token) fetchTC();
-  }, [token]);
 
   // Simplificado: esta página solo lista boletas con total, abonado, pendiente y último pago
 
@@ -162,16 +141,18 @@ export default function DeudaProveedoresPage() {
       const items = itemsPorOrden[oc.id] || [];
       const totalOC = Number(oc.importe_total_estimado || 0) || items.reduce((acc, it) => acc + (it.importe_linea_estimado || (it.cantidad_solicitada * it.precio_unitario_estimado)), 0);
       const abonadoOC = Number(oc.importe_abonado || 0);
-      let pendienteOC = Math.max(0, totalOC - abonadoOC);
-      
-      // If USD order, convert debt to ARS using current TC
+      const movsOCAll = movimientos.filter(m => m.orden_id === oc.id);
+      const debitosOC = movsOCAll
+        .filter(m => m.tipo === 'DEBITO')
+        .reduce((acc, mov) => acc + Number(mov.monto || 0), 0);
+      const creditosOC = movsOCAll
+        .filter(m => m.tipo === 'CREDITO')
+        .reduce((acc, mov) => acc + Number(mov.monto || 0), 0);
+      const pendienteOC = Math.max(0, debitosOC - creditosOC);
+
       const esUSD = oc.ajuste_tc === true;
-      if (esUSD && tipoCambio > 0) {
-        pendienteOC = pendienteOC * tipoCambio;
-      }
-      
-      const movsOC = movimientos
-        .filter(m => m.tipo === 'CREDITO' && m.orden_id === oc.id)
+      const movsOC = movsOCAll
+        .filter(m => m.tipo === 'CREDITO')
         .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
       const ultimoPago = movsOC.length > 0 ? new Date(Math.max(...movsOC.map(m => new Date(m.fecha).getTime()))).toLocaleDateString('es-AR') : undefined;
       const d = new Date(oc.fecha_creacion);
@@ -187,7 +168,7 @@ export default function DeudaProveedoresPage() {
     if (ordenarPor === 'pendiente') rows.sort((a, b) => b.pendiente - a.pendiente);
     if (ordenarPor === 'orden') rows.sort((a, b) => a.ocId - b.ocId);
     return rows;
-  }, [ordenes, itemsPorOrden, movimientos, ordenarPor, filtroDesde, filtroHasta, filtroProveedor, filtroProducto, proveedorPorOrden, tipoCambio]);
+  }, [ordenes, itemsPorOrden, movimientos, ordenarPor, filtroDesde, filtroHasta, filtroProveedor, filtroProducto, proveedorPorOrden]);
 
   const deudaPorProveedor = useMemo(() => {
     const map = new Map<string, number>();
