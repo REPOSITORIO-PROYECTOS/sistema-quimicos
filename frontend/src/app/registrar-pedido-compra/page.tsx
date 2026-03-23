@@ -26,6 +26,7 @@ export default function RegistrarIngreso() {
 
   // --- Estados Simplificados ---
   const [fecha, setFecha] = useState('');
+  const [busquedaProducto, setBusquedaProducto] = useState('');
   const [productoSeleccionado, setProductoSeleccionado] = useState('');
   const [cantidadActual, setCantidadActual] = useState('');
   const [unidadMedidaActual, setUnidadMedidaActual] = useState('');
@@ -37,8 +38,31 @@ export default function RegistrarIngreso() {
   const [isLoading, setIsLoading] = useState(false);
   const [ordenesCreadas, setOrdenesCreadas] = useState<number[]>([]);
 
-  const token = typeof window !== 'undefined' ? localStorage.getItem("authToken") : null;
+  const token = typeof window !== 'undefined'
+    ? (localStorage.getItem("authToken") || sessionStorage.getItem("authToken"))
+    : null;
   const LAST_PAYLOAD_KEY = 'oc_last_payload_retry';
+
+  const getStoredUser = () => {
+    if (typeof window === 'undefined') return null;
+    const raw = localStorage.getItem('user') || sessionStorage.getItem('user');
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as {
+        id?: number | string;
+        role?: string;
+        rol?: string;
+        usuario?: string;
+        name?: string;
+      };
+    } catch {
+      return null;
+    }
+  };
+
+  const userActual = getStoredUser();
+  const rolActual = String(userActual?.role || userActual?.rol || (typeof window !== 'undefined' ? localStorage.getItem('rol') : '') || '').toUpperCase();
+  const esAdmin = rolActual === 'ADMIN';
 
   // Obtener fecha actual al cargar
   useEffect(() => {
@@ -79,6 +103,36 @@ export default function RegistrarIngreso() {
     return proveedorPreferido || proveedores.find((proveedor) => proveedor.activo) || proveedores[0];
   }, [proveedores]);
 
+  const proveedorBaseInterno = useMemo(() => {
+    if (!proveedores.length) return null;
+    const candidatos = ['VARIOS', 'INTERNO', 'GENERAL', 'MOSTRADOR'];
+    return proveedores.find((proveedor) => {
+      const nombre = String(proveedor.nombre || '').toUpperCase();
+      return candidatos.some((candidato) => nombre.includes(candidato));
+    }) || null;
+  }, [proveedores]);
+
+  const proveedorParaSolicitud = esAdmin ? proveedorPredeterminado : proveedorBaseInterno;
+
+  const productosFiltrados = useMemo(() => {
+    const termino = busquedaProducto
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+
+    if (!termino) return productos;
+
+    return productos.filter((producto) => {
+      const nombre = String(producto.nombre || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+      const codigo = String(producto.codigo || '').toLowerCase();
+      return nombre.includes(termino) || codigo.includes(termino);
+    });
+  }, [productos, busquedaProducto]);
+
   // Bloqueos de catálogo
   const bloqueosCatalogo = useMemo(() => {
     const bloqueos: string[] = [];
@@ -89,10 +143,21 @@ export default function RegistrarIngreso() {
     if (proveedoresLoading) bloqueos.push('Los proveedores todavía se están cargando.');
     else if (proveedoresError) bloqueos.push(`No se pudo cargar el catálogo de proveedores: ${proveedoresError}`);
     else if (!proveedores.length) bloqueos.push('No hay proveedores cargados.');
-    else if (!proveedorPredeterminado) bloqueos.push('No se encontró un proveedor base para registrar la compra.');
+    else if (esAdmin && !proveedorPredeterminado) bloqueos.push('No se encontró un proveedor base para registrar la compra.');
+    else if (!esAdmin && !proveedorBaseInterno) bloqueos.push('No se encontró proveedor base interno (VARIOS/INTERNO/GENERAL/MOSTRADOR). Debe configurarlo un ADMIN.');
 
     return bloqueos;
-  }, [productsLoading, productsError, productos.length, proveedoresLoading, proveedoresError, proveedores.length, proveedorPredeterminado]);
+  }, [
+    productsLoading,
+    productsError,
+    productos.length,
+    proveedoresLoading,
+    proveedoresError,
+    proveedores.length,
+    proveedorPredeterminado,
+    proveedorBaseInterno,
+    esAdmin,
+  ]);
 
   // Validar formulario actual
   const validarProductoActual = () => {
@@ -120,6 +185,7 @@ export default function RegistrarIngreso() {
     setCarrito([...carrito, nuevoProducto]);
     setErrorApi(null);
     // Limpiar formulario
+    setBusquedaProducto('');
     setProductoSeleccionado('');
     setCantidadActual('');
     setUnidadMedidaActual('');
@@ -142,7 +208,7 @@ export default function RegistrarIngreso() {
       return;
     }
 
-    if (!proveedorPredeterminado) {
+    if (!proveedorParaSolicitud) {
       setErrorApi('No se pudo resolver el proveedor base.');
       return;
     }
@@ -152,12 +218,14 @@ export default function RegistrarIngreso() {
     setOrdenesCreadas([]);
 
     try {
-      const userItem = sessionStorage.getItem('user');
-      const user = userItem ? JSON.parse(userItem) : null;
+      const user = getStoredUser();
 
       if (!user || !user.id) {
         throw new Error('No se pudo obtener la información del usuario.');
       }
+
+      const role = user.role || user.rol || localStorage.getItem('rol') || '';
+      const userName = user.usuario || user.name || localStorage.getItem('user_name') || '';
 
       const ordenesExitosas: number[] = [];
       const erroresOrdenes: string[] = [];
@@ -167,7 +235,7 @@ export default function RegistrarIngreso() {
         try {
           const payload = {
             usuario_interno_id: user.id,
-            proveedor_id: Number(proveedorPredeterminado.id),
+            proveedor_id: Number(proveedorParaSolicitud.id),
             items: [{
               codigo_interno: Number(item.producto_id),
               cantidad: Number(item.cantidad),
@@ -182,8 +250,8 @@ export default function RegistrarIngreso() {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'X-User-Role': user.role || '',
-              'X-User-Name': user.usuario || user.name || '',
+              'X-User-Role': role,
+              'X-User-Name': userName,
               'Authorization': `Bearer ${token}`,
             },
             body: JSON.stringify(payload),
@@ -260,14 +328,15 @@ export default function RegistrarIngreso() {
                     (async () => {
                       setIsLoading(true);
                       try {
-                        const userText = sessionStorage.getItem("user");
-                        const user = userText ? (JSON.parse(userText) as { role?: string; id?: number | string; name?: string; usuario?: string }) : null;
+                        const user = getStoredUser();
+                        const role = user?.role || user?.rol || localStorage.getItem('rol') || '';
+                        const userName = user?.usuario || user?.name || localStorage.getItem('user_name') || '';
                         const response = await fetch('https://quimex.sistemataup.online/api/ordenes_compra/crear', {
                           method: 'POST',
                           headers: {
                             'Content-Type': 'application/json',
-                            'X-User-Role': user?.role ?? '',
-                            'X-User-Name': user?.usuario || user?.name || '',
+                            'X-User-Role': role,
+                            'X-User-Name': userName,
                             "Authorization": `Bearer ${token}`,
                           },
                           body: JSON.stringify(parsed.payload),
@@ -328,9 +397,15 @@ export default function RegistrarIngreso() {
           </div>
         )}
 
-        {proveedorPredeterminado && bloqueosCatalogo.length === 0 && (
+        {bloqueosCatalogo.length === 0 && esAdmin && proveedorParaSolicitud && (
           <div className="mb-4 rounded border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-900 text-sm">
-            Se registrará con el proveedor: <strong>{proveedorPredeterminado.nombre}</strong>
+            Se registrará con el proveedor: <strong>{proveedorParaSolicitud.nombre}</strong>
+          </div>
+        )}
+
+        {bloqueosCatalogo.length === 0 && !esAdmin && (
+          <div className="mb-4 rounded border border-blue-200 bg-blue-50 px-4 py-3 text-blue-900 text-sm">
+            El proveedor final será asignado por un usuario ADMIN al momento de la aprobación.
           </div>
         )}
 
@@ -348,6 +423,15 @@ export default function RegistrarIngreso() {
         {/* FORMULARIO SIMPLIFICADO: Solo Producto + Cantidad */}
         <div className="mb-4">
           <label htmlFor="producto" className={labelClass}>Producto *</label>
+          <input
+            id="buscarProducto"
+            value={busquedaProducto}
+            onChange={(e) => setBusquedaProducto(e.target.value)}
+            type="text"
+            placeholder="Buscar por nombre o código"
+            className={`${baseInputClass} mb-2`}
+            disabled={productsLoading}
+          />
           <select
             id="producto"
             value={productoSeleccionado}
@@ -356,9 +440,13 @@ export default function RegistrarIngreso() {
             disabled={productsLoading}
           >
             <option value="" disabled>
-              {productsLoading ? 'Cargando productos...' : 'Seleccionar producto'}
+              {productsLoading
+                ? 'Cargando productos...'
+                : productosFiltrados.length
+                  ? 'Seleccionar producto'
+                  : 'Sin resultados para la búsqueda'}
             </option>
-            {!productsLoading && !productsError && productos.map((prod) => (
+            {!productsLoading && !productsError && productosFiltrados.map((prod) => (
               <option value={prod.id} key={prod.id}>
                 {prod.nombre} ({prod.codigo})
               </option>
