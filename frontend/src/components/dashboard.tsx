@@ -146,6 +146,21 @@ export default function DashboardPage() {
             setIsLoading(false);
             return;
         }
+
+        const getLiteFallbackData = async () => {
+            const liteUrl = `https://quimex.sistemataup.online/api/reportes/dashboard-kpis-lite?fecha=${fecha}`;
+            const liteResponse = await fetch(liteUrl, { headers: { "Authorization": `Bearer ${token}` } });
+            if (!liteResponse.ok) {
+                const liteErr = await liteResponse.json().catch(() => ({ error: "Error en fallback lite" }));
+                throw new Error(liteErr.error || liteErr.message || `Error ${liteResponse.status}`);
+            }
+            const liteData: DashboardData = await liteResponse.json();
+            setData(liteData);
+            writeCachedDashboard(fecha, liteData);
+            setError("El servidor demoró demasiado en KPIs completos. Mostrando vista resumida.");
+            return;
+        };
+
         try {
             // Usar endpoint completo para todos
             const base = `https://quimex.sistemataup.online/api/reportes`;
@@ -155,6 +170,13 @@ export default function DashboardPage() {
                 if (response.status === 401 && typeof window !== "undefined") {
                     window.dispatchEvent(new CustomEvent("auth:expired", { detail: { message: "Sesion expirada" } }));
                 }
+
+                if (response.status === 504) {
+                    await getLiteFallbackData();
+                    setIsLoading(false);
+                    return;
+                }
+
                 const errorData = await response.json().catch(() => ({ error: "Error de servidor" }));
                 // Si el backend responde 403 y el usuario es VENTAS_PEDIDOS, ofrecer un fallback mínimo
                 if (response.status === 403 && userRole === 'ventas_pedidos') {

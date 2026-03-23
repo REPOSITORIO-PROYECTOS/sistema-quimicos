@@ -56,9 +56,12 @@ export default function DashboardPedidos() {
         );
 
         if (!response.ok) {
+          if (response.status === 401 && typeof window !== "undefined") {
+            window.dispatchEvent(new CustomEvent("auth:expired", { detail: { message: "Sesion expirada" } }));
+          }
           const errData = await response.json().catch(() => ({}));
           console.error("Dashboard error response:", response.status, errData);
-          throw new Error(errData.error || `Error ${response.status}`);
+          throw new Error(errData.error || errData.message || `Error ${response.status}`);
         }
 
         const result = await response.json();
