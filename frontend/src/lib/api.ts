@@ -4,6 +4,11 @@
 
 const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || "https://quimex.sistemataup.online/api").replace(/\/$/, "");
 
+function emitAuthExpired(message?: string) {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent("auth:expired", { detail: { message } }));
+}
+
 export interface FetchOptions extends RequestInit {
   requireAuth?: boolean;
 }
@@ -48,7 +53,20 @@ export async function apiFetch(endpoint: string, options: FetchOptions = {}) {
 
   // Si no es 2xx, lanzar error
   if (!response.ok) {
+    if (response.status === 401) {
+      emitAuthExpired("Sesion expirada o token invalido");
+    }
+
     const errorData = await response.json().catch(() => ({ message: "Error desconocido" }));
+
+    if (
+      response.status === 403 &&
+      typeof errorData?.message === "string" &&
+      /token|sesion|expirad|vencid|unauthoriz/i.test(errorData.message)
+    ) {
+      emitAuthExpired(errorData.message);
+    }
+
     throw new Error(errorData.message || `HTTP ${response.status}`);
   }
 

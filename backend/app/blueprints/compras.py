@@ -1048,6 +1048,29 @@ def registrar_pago_orden(current_user, orden_id):
         referencia_pago = data.get('referencia_pago') or data.get('descripcion')
         forma_pago = data.get('forma_pago', orden_db.forma_pago)
         cheque_perteneciente_a = data.get('cheque_perteneciente_a')
+        cheques_payload = data.get('cheques')
+        cheques_norm = []
+        if isinstance(cheques_payload, list):
+            for item in cheques_payload:
+                if not isinstance(item, dict):
+                    continue
+                numero = str(item.get('numero') or '').strip()
+                pertenece_a = str(item.get('pertenece_a') or item.get('perteneceA') or item.get('titular') or '').strip()
+                if numero or pertenece_a:
+                    if not numero or not pertenece_a:
+                        return jsonify({"error": "Cada cheque debe tener numero y titular."}), 400
+                    cheques_norm.append({"numero": numero, "pertenece_a": pertenece_a})
+
+        if forma_pago == 'Cheque' and cheques_norm:
+            titulares_unicos = []
+            for chq in cheques_norm:
+                titular = chq['pertenece_a']
+                if titular not in titulares_unicos:
+                    titulares_unicos.append(titular)
+            cheque_perteneciente_a = ', '.join(titulares_unicos)
+            detalle_cheques = ', '.join([f"N° {chq['numero']} ({chq['pertenece_a']})" for chq in cheques_norm])
+            referencia_pago = ' | '.join([part for part in [referencia_pago, f"Cheques: {detalle_cheques}"] if part])
+
         fecha_pago = None
         fecha_pago_raw = data.get('fecha_pago')
         if fecha_pago_raw:

@@ -132,7 +132,7 @@ export default function RecepcionesPendientesPage() {
       }
     };
     fetchOrdenes();
-  }, []);
+  }, [user?.name, user?.role, user?.usuario]);
 
   // Fetch items reales de la orden seleccionada
   useEffect(() => {
@@ -175,7 +175,7 @@ export default function RecepcionesPendientesPage() {
       }
     };
     fetchItems();
-  }, [ordenSeleccionada]);
+  }, [ordenSeleccionada, user?.name, user?.role, user?.usuario]);
 
   // Registrar recepción en backend y actualizar UI
   const registrarRecepcion = async (resultados: { id: number; cantidadRecibida: number; incidencia: 'Falta' | 'Sobra' | 'OK'; observaciones: string; accionResto?: 'pendiente' | 'cancelar' | 'ninguno'; }[]) => {

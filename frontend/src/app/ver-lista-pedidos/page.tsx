@@ -175,7 +175,7 @@ export default function ListaOrdenesCompra() {
       }
     };
     cargarResumen();
-  }, [ordenes, filtroEstado, resumenItems]);
+  }, [ordenes, filtroEstado, resumenItems, user?.name, user?.role, user?.usuario]);
 
   // Eliminado control de botones de filtro para vista de pendientes
 

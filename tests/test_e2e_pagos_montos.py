@@ -93,10 +93,11 @@ def main() -> int:
     print(f"BASE_URL: {BASE_URL}")
 
     with app.app_context():
-        orden = None
+        ordenes_creadas: list[int] = []
         try:
             user, token = _pick_user_and_token()
             orden = _create_order_with_debt()
+            ordenes_creadas.append(orden.id)
 
             print(f"Usuario de prueba: id={user.id}, rol={user.rol}, nombre={user.nombre_usuario}")
             print(
@@ -157,6 +158,38 @@ def main() -> int:
                 f"Esperado 409 cuando no hay saldo, recibido {res_no_balance.status_code}"
             )
 
+            # Caso 4: pago con multiples cheques (numero + titular)
+            orden_cheques = _create_order_with_debt()
+            ordenes_creadas.append(orden_cheques.id)
+            res_cheques = requests.post(
+                f"{BASE_URL}/api/ordenes_compra/pagos/{orden_cheques.id}",
+                headers=headers,
+                json={
+                    "monto": 300,
+                    "forma_pago": "Cheque",
+                    "cheques": [
+                        {"numero": "000123", "pertenece_a": "Juan Perez"},
+                        {"numero": "000124", "pertenece_a": "Ana Gomez"},
+                    ],
+                    "referencia_pago": "Pago con cheques E2E",
+                },
+                timeout=15,
+            )
+            data_cheques = res_cheques.json()
+            print(f"Caso 4 (cheques multiples): status={res_cheques.status_code}")
+            assert res_cheques.status_code in (200, 201), (
+                f"Esperado 200/201, recibido {res_cheques.status_code}"
+            )
+            desc_pago = str((data_cheques.get("pago") or {}).get("descripcion") or "")
+            assert "000123" in desc_pago and "000124" in desc_pago, (
+                f"No se encontraron numeros de cheque en descripcion: {desc_pago}"
+            )
+            orden_cheques_resp = data_cheques.get("orden") or {}
+            titulares = str(orden_cheques_resp.get("cheque_perteneciente_a") or "")
+            assert "Juan Perez" in titulares and "Ana Gomez" in titulares, (
+                f"Titulares de cheque no persistidos correctamente: {titulares}"
+            )
+
             print("\nRESULTADO: OK - E2E de montos en pagos aprobado")
             return 0
 
@@ -165,12 +198,12 @@ def main() -> int:
             return 1
 
         finally:
-            if orden is not None:
+            for orden_id in ordenes_creadas:
                 try:
-                    _delete_order_and_movements(orden.id)
-                    print(f"Limpieza OK: orden {orden.id} y movimientos eliminados")
+                    _delete_order_and_movements(orden_id)
+                    print(f"Limpieza OK: orden {orden_id} y movimientos eliminados")
                 except Exception as cleanup_exc:
-                    print(f"Advertencia en limpieza: {cleanup_exc}")
+                    print(f"Advertencia en limpieza para orden {orden_id}: {cleanup_exc}")
 
 
 if __name__ == "__main__":

@@ -29,15 +29,16 @@ export default function RegistrarIngreso() {
   const [productoSeleccionado, setProductoSeleccionado] = useState('');
   const [cantidadActual, setCantidadActual] = useState('');
   const [unidadMedidaActual, setUnidadMedidaActual] = useState('');
-  
+
   // Carrito de productos (múltiples productos, múltiples órdenes)
   const [carrito, setCarrito] = useState<IProductoCarrito[]>([]);
-  
+
   const [errorApi, setErrorApi] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [ordenesCreadas, setOrdenesCreadas] = useState<number[]>([]);
-  
+
   const token = typeof window !== 'undefined' ? localStorage.getItem("authToken") : null;
+  const LAST_PAYLOAD_KEY = 'oc_last_payload_retry';
 
   // Obtener fecha actual al cargar
   useEffect(() => {
@@ -84,12 +85,12 @@ export default function RegistrarIngreso() {
     if (productsLoading) bloqueos.push('Los productos todavía se están cargando.');
     else if (productsError) bloqueos.push(`No se pudo cargar el catálogo de productos: ${productsError}`);
     else if (!productos.length) bloqueos.push('No hay productos cargados para solicitar la compra.');
-    
+
     if (proveedoresLoading) bloqueos.push('Los proveedores todavía se están cargando.');
     else if (proveedoresError) bloqueos.push(`No se pudo cargar el catálogo de proveedores: ${proveedoresError}`);
     else if (!proveedores.length) bloqueos.push('No hay proveedores cargados.');
     else if (!proveedorPredeterminado) bloqueos.push('No se encontró un proveedor base para registrar la compra.');
-    
+
     return bloqueos;
   }, [productsLoading, productsError, productos.length, proveedoresLoading, proveedoresError, proveedores.length, proveedorPredeterminado]);
 
@@ -151,7 +152,7 @@ export default function RegistrarIngreso() {
     setOrdenesCreadas([]);
 
     try {
-      const userItem: any = sessionStorage.getItem('user');
+      const userItem = sessionStorage.getItem('user');
       const user = userItem ? JSON.parse(userItem) : null;
 
       if (!user || !user.id) {
@@ -197,8 +198,9 @@ export default function RegistrarIngreso() {
           if (data?.orden?.id) {
             ordenesExitosas.push(data.orden.id);
           }
-        } catch (err: any) {
-          erroresOrdenes.push(`${item.producto_nombre}: ${err.message}`);
+        } catch (err: unknown) {
+          const mensaje = err instanceof Error ? err.message : 'Error desconocido';
+          erroresOrdenes.push(`${item.producto_nombre}: ${mensaje}`);
         }
       }
 
@@ -213,9 +215,10 @@ export default function RegistrarIngreso() {
       if (erroresOrdenes.length > 0) {
         setErrorApi(`Errores: ${erroresOrdenes.join(', ')}`);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error al crear órdenes:', error);
-      setErrorApi(error.message || 'Error al crear las órdenes.');
+      const mensaje = error instanceof Error ? error.message : 'Error al crear las órdenes.';
+      setErrorApi(mensaje);
     } finally {
       setIsLoading(false);
     }
@@ -276,7 +279,7 @@ export default function RegistrarIngreso() {
                         alert('Pedido agregado con éxito!');
                         setErrorApi(null);
                         try { sessionStorage.removeItem(LAST_PAYLOAD_KEY); } catch { }
-                        irAccionesPuerta();
+                        router.push('/compras');
                       } catch (e: unknown) {
                         setErrorApi(e instanceof Error ? e.message : 'Error al reintentar.');
                       } finally {
@@ -292,13 +295,10 @@ export default function RegistrarIngreso() {
               <button
                 type="button"
                 onClick={() => {
-                  setProducto('');
-                  setCantidad('');
-                  setPrecioEstimado('');
-                  setImporteTotal('');
-                  setImporteAbonado('');
-                  setChequePerteneciente('');
-                  setFechaLimite('');
+                  setProductoSeleccionado('');
+                  setCantidadActual('');
+                  setUnidadMedidaActual('');
+                  setCarrito([]);
                   setErrorApi(null);
                 }}
                 className="bg-gray-300 text-gray-800 px-3 py-1 rounded hover:bg-gray-400"

@@ -2,7 +2,7 @@
 "use client";
 
 import type React from "react";
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 /**
@@ -66,11 +66,43 @@ function isValidUser(obj: unknown): obj is Exclude<User, null> {
     );
 }
 
+function clearAuthStorage() {
+    localStorage.removeItem("user");
+    localStorage.removeItem("authToken");
+    localStorage.removeItem("user_name");
+    localStorage.removeItem("usuario_id");
+    localStorage.removeItem("rol");
+    localStorage.removeItem("isAdmin");
+}
+
+function getJwtPayload(token: string): Record<string, unknown> | null {
+    try {
+        const parts = token.split(".");
+        if (parts.length < 2) return null;
+        const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+        const json = atob(base64);
+        return JSON.parse(json) as Record<string, unknown>;
+    } catch {
+        return null;
+    }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [user, setUser] = useState<User>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isHydrated, setIsHydrated] = useState(false);
     const router = useRouter();
+
+    const forceLogoutToLogin = useCallback(() => {
+        try {
+            clearAuthStorage();
+        } catch (error) {
+            console.error("AuthProvider: Error limpiando storage en expiracion de sesion", error);
+        }
+        setUser(null);
+        setIsLoading(false);
+        router.replace("/login");
+    }, [router]);
 
     /**
      * Efecto para cargar desde localStorage al montar (solo en cliente)
@@ -89,6 +121,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
                         // Validar que el usuario tenga la estructura correcta
                         if (isValidUser(parsedUser)) {
+                            const payload = getJwtPayload(storedToken);
+                            const exp = typeof payload?.exp === "number" ? payload.exp : null;
+                            if (exp && Date.now() >= exp * 1000) {
+                                clearAuthStorage();
+                                setUser(null);
+                                return;
+                            }
+
                             // Confiar en los datos guardados locales
                             // Si el token es inválido, lo descubriremos cuando hagamos requests a la API
                             setUser(parsedUser as User);
@@ -147,6 +187,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         window.addEventListener("storage", handleStorageChange);
         return () => window.removeEventListener("storage", handleStorageChange);
     }, []);
+
+    useEffect(() => {
+        const onAuthExpired = () => {
+            forceLogoutToLogin();
+        };
+
+        window.addEventListener("auth:expired", onAuthExpired);
+        return () => window.removeEventListener("auth:expired", onAuthExpired);
+    }, [forceLogoutToLogin]);
+
+    useEffect(() => {
+        if (!isHydrated) return;
+
+        const validateTokenExpiry = () => {
+            const token = localStorage.getItem("authToken");
+            if (!token) return;
+
+            const payload = getJwtPayload(token);
+            const exp = typeof payload?.exp === "number" ? payload.exp : null;
+            if (exp && Date.now() >= exp * 1000) {
+                forceLogoutToLogin();
+            }
+        };
+
+        validateTokenExpiry();
+        const intervalId = window.setInterval(validateTokenExpiry, 30000);
+        return () => window.clearInterval(intervalId);
+    }, [isHydrated, forceLogoutToLogin]);
 
     /**
      * Función de login
@@ -268,17 +336,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
      */
     const logout = () => {
         try {
-            localStorage.removeItem("user");
-            localStorage.removeItem("authToken");
-            localStorage.removeItem("user_name");
-            localStorage.removeItem("usuario_id");
-            localStorage.removeItem("rol");
-            localStorage.removeItem("isAdmin");
+            clearAuthStorage();
         } catch (error) {
             console.error("AuthProvider logout: Error limpiando localStorage", error);
         }
         setUser(null);
-        router.push("/login");
+        router.replace("/login");
     };
 
     /**

@@ -1,9 +1,17 @@
 "use client";
 
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import dynamic from "next/dynamic";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useEffect, useState, useMemo, useCallback } from "react";
-import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { DollarSign, TrendingUp, ShoppingCart, Download, AlertTriangle } from 'lucide-react';
+
+const DashboardCharts = dynamic(() => import("@/components/DashboardCharts"), {
+    ssr: false,
+    loading: () => <div className="h-[300px] w-full animate-pulse rounded-md bg-slate-100" />,
+});
+
+const DASHBOARD_CACHE_KEY_PREFIX = "dashboard-kpis:";
+const DASHBOARD_CACHE_TTL_MS = 2 * 60 * 1000;
 
 interface DashboardData {
     primera_fila: {
@@ -40,7 +48,6 @@ interface DashboardData {
 }
 
 const formatCurrency = (value: number) => new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(value);
-const PIE_COLORS = { ingresos: ['#0088FE', '#00C49F'], pagos: ['#FFBB28', '#FF8042'] };
 
 const getISODate = (date: Date): string => {
     const offset = date.getTimezoneOffset();
@@ -88,6 +95,35 @@ export default function DashboardPage() {
 
     const [userRole, setUserRole] = useState<string | null>(null);
 
+    const readCachedDashboard = useCallback((fecha: string): DashboardData | null => {
+        if (typeof window === "undefined") return null;
+        try {
+            const raw = sessionStorage.getItem(`${DASHBOARD_CACHE_KEY_PREFIX}${fecha}`);
+            if (!raw) return null;
+            const parsed = JSON.parse(raw) as { timestamp?: number; data?: DashboardData };
+            if (!parsed?.timestamp || !parsed?.data) return null;
+            if (Date.now() - parsed.timestamp > DASHBOARD_CACHE_TTL_MS) {
+                sessionStorage.removeItem(`${DASHBOARD_CACHE_KEY_PREFIX}${fecha}`);
+                return null;
+            }
+            return parsed.data;
+        } catch {
+            return null;
+        }
+    }, []);
+
+    const writeCachedDashboard = useCallback((fecha: string, payload: DashboardData) => {
+        if (typeof window === "undefined") return;
+        try {
+            sessionStorage.setItem(
+                `${DASHBOARD_CACHE_KEY_PREFIX}${fecha}`,
+                JSON.stringify({ timestamp: Date.now(), data: payload })
+            );
+        } catch {
+            // Ignorar errores de cuota de almacenamiento.
+        }
+    }, []);
+
     useEffect(() => {
         if (typeof window === 'undefined') return;
         const role = getUserRoleFromToken(localStorage.getItem('authToken'));
@@ -98,6 +134,13 @@ export default function DashboardPage() {
     const fetchDashboardData = useCallback(async (fecha: string) => {
         setIsLoading(true);
         setError(null);
+
+        const cached = readCachedDashboard(fecha);
+        if (cached) {
+            setData(cached);
+            setIsLoading(false);
+        }
+
         if (!token) {
             setError("No autenticado. Por favor, inicie sesión.");
             setIsLoading(false);
@@ -109,6 +152,9 @@ export default function DashboardPage() {
                 const url = `${base}/dashboard-kpis?fecha=${fecha}`;
             const response = await fetch(url, { headers: { "Authorization": `Bearer ${token}` } });
             if (!response.ok) {
+                if (response.status === 401 && typeof window !== "undefined") {
+                    window.dispatchEvent(new CustomEvent("auth:expired", { detail: { message: "Sesion expirada" } }));
+                }
                 const errorData = await response.json().catch(() => ({ error: "Error de servidor" }));
                 // Si el backend responde 403 y el usuario es VENTAS_PEDIDOS, ofrecer un fallback mínimo
                 if (response.status === 403 && userRole === 'ventas_pedidos') {
@@ -133,6 +179,7 @@ export default function DashboardPage() {
                         },
                     };
                     setData(minimal);
+                    writeCachedDashboard(fecha, minimal);
                     setError(errorData.message || errorData.error || "No autorizado para KPIs avanzados. Mostrando métricas esenciales si están disponibles.");
                     setIsLoading(false);
                     return;
@@ -143,13 +190,14 @@ export default function DashboardPage() {
 
             const kpiData: DashboardData = await response.json();
             setData(kpiData);
+            writeCachedDashboard(fecha, kpiData);
         } catch (err) {
             if (err instanceof Error) setError(err.message);
             else setError("Ocurrió un error desconocido.");
         } finally {
             setIsLoading(false);
         }
-    }, [token, userRole]);
+    }, [token, userRole, readCachedDashboard, writeCachedDashboard]);
 
     useEffect(() => {
         fetchDashboardData(selectedDate);
@@ -421,36 +469,12 @@ export default function DashboardPage() {
                     </Card>
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-2">
-                    <Card>
-                        <CardHeader><CardTitle>Relación Ingresos (Puerta / Pedidos)</CardTitle><CardDescription>Del mes actual</CardDescription></CardHeader>
-                        <CardContent className="h-[300px]">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <PieChart>
-                                    <Pie data={relacionIngresosData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={({ name }) => name}>
-                                        {relacionIngresosData.map((entry, index) => <Cell key={`cell-ing-${index}`} fill={PIE_COLORS.ingresos[index % PIE_COLORS.ingresos.length]} />)}
-                                    </Pie>
-                                    <Tooltip formatter={(value: number) => showFinanzas ? formatCurrency(value) : '***'} />
-                                    <Legend />
-                                </PieChart>
-                            </ResponsiveContainer>
-                        </CardContent>
-                    </Card>
-                    <Card>
-                        <CardHeader><CardTitle>Relación Ingresos (Efectivo / Otros)</CardTitle><CardDescription>Del mes actual</CardDescription></CardHeader>
-                        <CardContent className="h-[300px]">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <PieChart>
-                                    <Pie data={relacionPagosData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={({ name }) => name}>
-                                        {relacionPagosData.map((entry, index) => <Cell key={`cell-pagos-${index}`} fill={PIE_COLORS.pagos[index % PIE_COLORS.pagos.length]} />)}
-                                    </Pie>
-                                    <Tooltip formatter={(value: number) => showFinanzas ? formatCurrency(value) : '***'} />
-                                    <Legend />
-                                </PieChart>
-                            </ResponsiveContainer>
-                        </CardContent>
-                    </Card>
-                </div>
+                <DashboardCharts
+                    relacionIngresosData={relacionIngresosData}
+                    relacionPagosData={relacionPagosData}
+                    showFinanzas={showFinanzas}
+                    formatCurrency={formatCurrency}
+                />
             </>
             )}
         </div>
