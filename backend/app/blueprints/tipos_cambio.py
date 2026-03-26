@@ -50,6 +50,9 @@ def obtener_tipos_cambio():
 def obtener_tipo_cambio_por_nombre(nombre):
     # Usar .first() y manejar None, o .one() y capturar NoResultFound
     tc = TipoCambio.query.filter_by(nombre=nombre).first()
+    # Alias de compatibilidad: en frontend antiguo se consulta "USD"
+    if not tc and str(nombre).upper() == 'USD':
+        tc = TipoCambio.query.filter_by(nombre='Oficial').first() or TipoCambio.query.filter_by(nombre='Empresa').first()
     if not tc:
         return jsonify({"error": f"Tipo de cambio '{nombre}' no encontrado"}), 404
     return jsonify(tipo_cambio_a_dict(tc))

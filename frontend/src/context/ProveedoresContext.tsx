@@ -41,7 +41,9 @@ export const ProveedoresProvider = ({ children }: ProveedoresProviderProps) => {
   // Asumimos que el token se maneja fuera del contexto por ahora,
   // o se podría pasar como prop si fuera necesario para el fetch.
   // Alternativamente, leerlo de localStorage aquí.
-  const token = typeof window !== 'undefined' ? localStorage.getItem("authToken") : null;
+  const token = typeof window !== 'undefined'
+    ? (localStorage.getItem("authToken") || sessionStorage.getItem("authToken"))
+    : null;
 
 
   const fetchProveedores = useCallback(async () => {
@@ -68,7 +70,7 @@ export const ProveedoresProvider = ({ children }: ProveedoresProviderProps) => {
         let errorMessage = `Error ${response.status}: ${response.statusText}`;
         try {
           const errorData = await response.json();
-          errorMessage = errorData.message || errorData.error || errorMessage;
+          errorMessage = errorData.error || errorData.message || errorData.mensaje || errorMessage;
         } catch (e) {
           console.log(e);
         }

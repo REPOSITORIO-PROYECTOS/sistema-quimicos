@@ -142,7 +142,8 @@ def obtener_clientes():
         }), 200
 
     except Exception as e:
-        # traceback.print_exc() # Descomentar para depuración si es necesario
+        print(f"ERROR [obtener_clientes]: {e}")
+        traceback.print_exc()
         return jsonify({"error": "Error interno al obtener los clientes"}), 500
 
 

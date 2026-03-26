@@ -73,6 +73,9 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
   const [montoYaAbonadoOC, setMontoYaAbonadoOC] = useState<number>(0);
   const [idLineaOCOriginal, setIdLineaOCOriginal] = useState<string | number>('');
   const [cantidadYaRecibida, setCantidadYaRecibida] = useState<number>(0);
+  const [cantidadTotalSolicitada, setCantidadTotalSolicitada] = useState<number>(0);
+  const [cantidadTotalRecibida, setCantidadTotalRecibida] = useState<number>(0);
+  const [cantidadTotalPendienteRecepcion, setCantidadTotalPendienteRecepcion] = useState<number>(0);
   const [historialPagos, setHistorialPagos] = useState<HistorialPago[]>([]);
   // ajusteTC removido: se deduce desde showTc
 
@@ -118,9 +121,25 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       if (!data?.items?.length) throw new Error("No se encontraron items en la OC.");
 
       const itemPrincipal = data.items[0];
+      const items = Array.isArray(data.items) ? data.items : [];
+      const totalSolicitadaApi = Number(data.cantidad_total_solicitada);
+      const totalRecibidaApi = Number(data.cantidad_total_recibida);
+      const totalPendienteApi = Number(data.cantidad_total_pendiente_recepcion);
+      const totalSolicitada = Number.isFinite(totalSolicitadaApi)
+        ? totalSolicitadaApi
+        : items.reduce((acc: number, item: Record<string, unknown>) => acc + (parseFloat(String(item.cantidad_solicitada || 0)) || 0), 0);
+      const totalRecibida = Number.isFinite(totalRecibidaApi)
+        ? totalRecibidaApi
+        : items.reduce((acc: number, item: Record<string, unknown>) => acc + (parseFloat(String(item.cantidad_recibida || 0)) || 0), 0);
+      const totalPendiente = Number.isFinite(totalPendienteApi)
+        ? totalPendienteApi
+        : Math.max(0, totalSolicitada - totalRecibida);
 
       setMontoYaAbonadoOC(parseFloat(data.importe_abonado) || 0);
       setHistorialPagos(Array.isArray(data.historial_pagos) ? data.historial_pagos : []);
+      setCantidadTotalSolicitada(totalSolicitada);
+      setCantidadTotalRecibida(totalRecibida);
+      setCantidadTotalPendienteRecepcion(totalPendiente);
       setFecha(formatearFecha(data.fecha_creacion));
       setProveedorId(data.proveedor_id?.toString() ?? '');
       setProducto(itemPrincipal.producto_id?.toString() ?? '0');
@@ -130,8 +149,10 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       setCuenta(data.cuenta?.toString() ?? '');
       setIibb(data.iibb?.toString() ?? '');
       setShowIibb(Boolean(data.iibb));
-      setIva(data.iva?.toString() ?? '');
-      setShowIva(Boolean(data.iva));
+      const ivaRaw = data.iva;
+      const ivaNormalizado = ivaRaw !== undefined && ivaRaw !== null ? String(ivaRaw).trim() : '';
+      setIva(ivaNormalizado);
+      setShowIva(ivaNormalizado !== '' && ivaNormalizado !== '0');
       // Parse TC snapshot from notas_recepcion (format: __TC_SNAPSHOT__:{...})
       if (data.notas_recepcion) {
         try {
@@ -147,9 +168,9 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
           // Snapshot parsing failed, continue without TC
         }
       }
-      // Load IVA from database if it exists
-      if (data.iva) {
-        setIva(String(data.iva));
+      // Si no viene IVA en la solicitud, usar 21% por defecto para evitar que desaparezca del flujo.
+      if (ivaNormalizado === '') {
+        setIva('21');
         setShowIva(true);
       }
       const totalOC = typeof data.importe_total_estimado === 'number'
@@ -208,8 +229,25 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
     setChequePerteneceA(String(orden.cheque_perteneciente_a || ''));
     setHistorialPagos(Array.isArray(orden.historial_pagos) ? (orden.historial_pagos as HistorialPago[]) : []);
     if (Array.isArray(orden.items) && orden.items.length > 0) {
-      const itemPrincipal = orden.items[0] as Record<string, unknown>;
+      const items = orden.items as Array<Record<string, unknown>>;
+      const itemPrincipal = items[0];
+      const totalSolicitadaApi = Number(orden.cantidad_total_solicitada);
+      const totalRecibidaApi = Number(orden.cantidad_total_recibida);
+      const totalPendienteApi = Number(orden.cantidad_total_pendiente_recepcion);
+      const totalSolicitada = Number.isFinite(totalSolicitadaApi)
+        ? totalSolicitadaApi
+        : items.reduce((acc: number, item) => acc + (parseFloat(String(item.cantidad_solicitada || 0)) || 0), 0);
+      const totalRecibida = Number.isFinite(totalRecibidaApi)
+        ? totalRecibidaApi
+        : items.reduce((acc: number, item) => acc + (parseFloat(String(item.cantidad_recibida || 0)) || 0), 0);
+      const totalPendiente = Number.isFinite(totalPendienteApi)
+        ? totalPendienteApi
+        : Math.max(0, totalSolicitada - totalRecibida);
+
       setCantidadYaRecibida(parseFloat(String(itemPrincipal.cantidad_recibida || 0)) || 0);
+      setCantidadTotalSolicitada(totalSolicitada);
+      setCantidadTotalRecibida(totalRecibida);
+      setCantidadTotalPendienteRecepcion(totalPendiente);
     }
     setImporteAbonado('');
     setImporteAbonadoVisual('');
@@ -482,8 +520,11 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
         throw new Error('Ingrese un monto valido en A Abonar Ahora.');
       }
 
-      // Si el usuario ingresa más que el saldo, se aplica solo el saldo pendiente.
-      const montoPagoAplicado = Math.min(montoElegido, saldoPendiente);
+      if (montoElegido > saldoPendiente) {
+        throw new Error(`El monto supera la deuda pendiente (${saldoPendiente.toFixed(2)} ${showTc ? 'USD' : 'ARS'}).`);
+      }
+
+      const montoPagoAplicado = montoElegido;
 
       const userItem = localStorage.getItem('user') || sessionStorage.getItem('user');
       const user = userItem ? JSON.parse(userItem) : null;
@@ -541,8 +582,10 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data?.error || data?.mensaje || `Error ${response.status}`);
       aplicarOrdenActualizada((data?.orden || {}) as Record<string, unknown>);
-      if (data?.pago_ajustado) {
-        alert('Pago registrado. El monto se ajusto automaticamente al saldo pendiente de la orden.');
+      if (String(data?.tipo_pago || '').toUpperCase() === 'PARCIAL') {
+        alert('Pago parcial registrado correctamente.');
+      } else if (String(data?.tipo_pago || '').toUpperCase() === 'TOTAL') {
+        alert('Pago total registrado correctamente.');
       } else {
         alert('Pago registrado correctamente.');
       }
@@ -615,15 +658,20 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
   const importeTotalNum = parseFloat(importeTotal) || 0;
   const montoAbonadoNum = montoYaAbonadoOC || 0;
   const importeAbonadoNum = parseFloat(importeAbonado) || 0;
-  const deudaARS = Math.max(0, importeTotalNum - montoAbonadoNum);
+  const deudaPendienteOC = Math.max(0, importeTotalNum - montoAbonadoNum);
   const tcNum = parseFloat(tc);
   const tcValido = !isNaN(tcNum) && tcNum > 0;
-  const totalOcUsd = tcValido ? (importeTotalNum / tcNum) : 0;
-  const pagoSuperaDeuda = deudaARS > 0 && importeAbonadoNum > deudaARS;
-  const pagoAproxUsd = tcValido
-    ? (Math.min(Math.max(0, importeAbonadoNum), deudaARS) / tcNum)
+  const ordenEnUsd = showTc;
+  const monedaOrden = ordenEnUsd ? 'USD' : 'ARS';
+  const totalOcUsd = ordenEnUsd ? importeTotalNum : (tcValido ? (importeTotalNum / tcNum) : 0);
+  const pagoSuperaDeuda = deudaPendienteOC > 0 && importeAbonadoNum > deudaPendienteOC;
+  const pagoAproxUsd = !ordenEnUsd && tcValido
+    ? (Math.min(Math.max(0, importeAbonadoNum), deudaPendienteOC) / tcNum)
     : 0;
-  const bloquearRegistrarPago = importeAbonadoNum <= 0 || pagoSuperaDeuda || deudaARS <= 0;
+  const pagoAproxArs = ordenEnUsd && tcValido
+    ? (Math.min(Math.max(0, importeAbonadoNum), deudaPendienteOC) * tcNum)
+    : 0;
+  const bloquearRegistrarPago = importeAbonadoNum <= 0 || pagoSuperaDeuda || deudaPendienteOC <= 0;
   const normalizarMontoPagoEnBlur = () => {
     const valorParseado = parsearMontoEnPesos(importeAbonadoVisual || importeAbonado || '0');
     const valor = Number.isFinite(valorParseado) ? valorParseado : parseFloat(importeAbonado || '0');
@@ -633,9 +681,8 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       setEditandoImporteAbonado(false);
       return;
     }
-    const aplicado = Math.min(valor, deudaARS);
-    setImporteAbonado(aplicado.toFixed(2));
-    setImporteAbonadoVisual(aplicado.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+    setImporteAbonado(valor.toFixed(2));
+    setImporteAbonadoVisual(valor.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
     setEditandoImporteAbonado(false);
   };
   const parsearMontoEnPesos = (valor: string) => {
@@ -877,39 +924,59 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
         <div className="mb-8 bg-white/20 rounded-lg p-6 shadow flex flex-col gap-4">
           <h2 className="text-lg font-bold text-white mb-2">Resumen Financiero</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-2">
+            <div className="flex flex-col items-center bg-sky-100 rounded-lg p-3 shadow">
+              <span className="text-xs text-gray-700 font-semibold mb-1">Cantidad Total Solicitada</span>
+              <span className="text-2xl font-bold text-sky-700">{cantidadTotalSolicitada.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            </div>
+            <div className="flex flex-col items-center bg-emerald-100 rounded-lg p-3 shadow">
+              <span className="text-xs text-gray-700 font-semibold mb-1">Cantidad Total Recepcionada</span>
+              <span className="text-2xl font-bold text-emerald-700">{cantidadTotalRecibida.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            </div>
+            <div className={`flex flex-col items-center rounded-lg p-3 shadow ${cantidadTotalPendienteRecepcion > 0 ? 'bg-orange-200' : 'bg-green-100'}`}>
+              <span className="text-xs text-gray-700 font-semibold mb-1">Cantidad Pendiente de Recepción</span>
+              <span className={`text-2xl font-bold ${cantidadTotalPendienteRecepcion > 0 ? 'text-orange-700' : 'text-green-700'}`}>
+                {cantidadTotalPendienteRecepcion.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-2">
             <div className="flex flex-col items-center bg-yellow-100 rounded-lg p-3 shadow">
               <span className="text-xs text-gray-700 font-semibold mb-1">Importe Total OC</span>
-              <span className="text-2xl font-bold text-yellow-700">${importeTotalNum.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              <span className="text-2xl font-bold text-yellow-700">{monedaOrden} {importeTotalNum.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
               <span className="text-xs text-gray-600 mt-1">
-                {tcValido
+                {!ordenEnUsd && tcValido
                   ? `Equivalente: USD ${totalOcUsd.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                  : 'Equivalente USD no disponible'}
+                  : ordenEnUsd && tcValido
+                    ? `Equivalente: ARS ${(importeTotalNum * tcNum).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                    : 'Equivalente no disponible'}
               </span>
             </div>
             <div className="flex flex-col items-center bg-green-100 rounded-lg p-3 shadow">
               <span className="text-xs text-gray-700 font-semibold mb-1">Total Abonado</span>
-              <span className="text-2xl font-bold text-green-700">${montoAbonadoNum.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              <span className="text-2xl font-bold text-green-700">{monedaOrden} {montoAbonadoNum.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
-            <div className={`flex flex-col items-center rounded-lg p-3 shadow ${deudaARS > 0 ? 'bg-red-200' : 'bg-green-100'}`}>
-              <span className="text-xs text-gray-700 font-semibold mb-1">Deuda Pendiente (ARS)</span>
-              <span className={`text-2xl font-bold ${deudaARS > 0 ? 'text-red-700' : 'text-green-700'}`}>${(deudaARS > 0 ? deudaARS : 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            <div className={`flex flex-col items-center rounded-lg p-3 shadow ${deudaPendienteOC > 0 ? 'bg-red-200' : 'bg-green-100'}`}>
+              <span className="text-xs text-gray-700 font-semibold mb-1">Deuda Pendiente ({monedaOrden})</span>
+              <span className={`text-2xl font-bold ${deudaPendienteOC > 0 ? 'text-red-700' : 'text-green-700'}`}>{monedaOrden} {(deudaPendienteOC > 0 ? deudaPendienteOC : 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
             <div>
-              <label htmlFor="importeAbonado" className={labelClass}>A Abonar Ahora</label>
+              <label htmlFor="importeAbonado" className={labelClass}>A Abonar Ahora ({monedaOrden})</label>
               <input id="importeAbonado" type="text" inputMode="decimal" value={importeAbonadoVisual} onFocus={iniciarEdicionImporteAbonado} onChange={(e) => manejarCambioImporteAbonado(e.target.value)} onBlur={normalizarMontoPagoEnBlur} className={baseInputClass + ' mt-2'} placeholder={placeholderParaImporteAbonado} />
-              {normalizarEstado(estadoOC) === "CON DEUDA" && montoYaAbonadoOC > 0 && (<p className="text-xs text-gray-300 mt-1">Ya abonado: ${montoYaAbonadoOC.toFixed(2)}</p>)}
+              {normalizarEstado(estadoOC) === "CON DEUDA" && montoYaAbonadoOC > 0 && (<p className="text-xs text-gray-300 mt-1">Ya abonado: {monedaOrden} {montoYaAbonadoOC.toFixed(2)}</p>)}
               {importeAbonadoNum > 0 && (
                 <p className="text-xs text-gray-200 mt-1">
-                  {tcValido
+                  {!ordenEnUsd && tcValido
                     ? `Este pago en ARS cancela aprox USD ${pagoAproxUsd.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (TC ${tc}).`
-                    : 'No se puede estimar el equivalente en USD porque el TC no es válido.'}
+                    : ordenEnUsd && tcValido
+                      ? `Este pago en USD equivale aprox ARS ${pagoAproxArs.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (TC ${tc}).`
+                      : 'No se puede estimar equivalencia porque el TC no es válido.'}
                 </p>
               )}
               {pagoSuperaDeuda && (
                 <p className="text-xs text-red-200 mt-1">
-                  El monto ingresado supera la deuda pendiente (${deudaARS.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}).
+                  El monto ingresado supera la deuda pendiente ({monedaOrden} {deudaPendienteOC.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}).
                 </p>
               )}
               <div className="mt-2 flex items-center gap-2">
@@ -1014,6 +1081,7 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
                   proveedor_id: proveedorId,
                   cuenta,
                   iibb: showIibb ? iibb : '',
+                  iva: showIva ? iva : '',
                   tc: showTc ? tc : '',
                   referencia_pago: referenciaPago,
                   observaciones_solicitud: '',

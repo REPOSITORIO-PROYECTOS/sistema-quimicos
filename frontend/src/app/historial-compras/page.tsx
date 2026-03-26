@@ -168,11 +168,16 @@ export default function OrdenesRecibidasPage() {
   useEffect(() => {
     const fetchTC = async () => {
       try {
-        const resp = await fetch('https://quimex.sistemataup.online/api/tipos_cambio/obtener/USD');
-        if (resp.ok) {
-          const data = await resp.json();
-          const val = Number(data?.valor ?? 0);
-          if (val > 0) setTipoCambio(val);
+        const candidatos = ['Oficial', 'USD', 'Empresa'];
+        for (const nombre of candidatos) {
+          const resp = await fetch(`https://quimex.sistemataup.online/api/tipos_cambio/obtener/${nombre}`);
+          if (!resp.ok) continue;
+          const data = await resp.json().catch(() => ({}));
+          const val = Number((data as { valor?: number })?.valor ?? 0);
+          if (val > 0) {
+            setTipoCambio(val);
+            break;
+          }
         }
       } catch { /* ignorar */ }
     };

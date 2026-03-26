@@ -1,18 +1,11 @@
-// app/proveedores/registrar/page.tsx (o tu ruta de creación)
 "use client";
 
 import { useState, FormEvent } from 'react';
 import Link from 'next/link';
-import FormularioProveedorFields, { ProveedorFieldsData } from '@/components/FormularioProveedorFields'; // Ajusta la ruta
+import { useRouter } from 'next/navigation';
+import FormularioProveedorFields, { ProveedorFieldsData } from '@/components/FormularioProveedorFields';
 
-// Si necesitas metadata estática, considera un layout.tsx o generateMetadata en un page.server.tsx
-// import type { Metadata } from 'next';
-// export const metadata: Metadata = {
-//   title: 'Registrar Nuevo Proveedor',
-//   description: 'Formulario para registrar un nuevo proveedor en el sistema.',
-// };
-
-const API_BASE_URL = 'https://quimex.sistemataup.online/api'; // O usa variable de entorno
+const API_BASE_URL = 'https://quimex.sistemataup.online/api';
 
 const initialPageFormData: ProveedorFieldsData = {
   nombre: '',
@@ -25,11 +18,14 @@ const initialPageFormData: ProveedorFieldsData = {
 };
 
 export default function RegistrarProveedorPage() {
+  const router = useRouter();
   const [formData, setFormData] = useState<ProveedorFieldsData>(initialPageFormData);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const token = typeof window !== 'undefined' ? localStorage.getItem("authToken") : null;
+  const token = typeof window !== 'undefined'
+    ? (localStorage.getItem("authToken") || sessionStorage.getItem("authToken"))
+    : null;
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -51,88 +47,105 @@ export default function RegistrarProveedorPage() {
       return;
     }
     if (!token) {
-      setError("No se encontró token de autenticación. Por favor, inicie sesión.");
+      setError("No se encontro token de autenticacion. Por favor, inicie sesion.");
       setIsLoading(false);
       return;
     }
+
+    const payloadNormalizado = {
+      ...formData,
+      nombre: formData.nombre.trim(),
+      cuit: formData.cuit.trim(),
+      direccion: formData.direccion.trim(),
+      telefono: formData.telefono.trim(),
+      email: formData.email.trim(),
+      contacto: formData.contacto.trim(),
+      condiciones_pago: formData.condiciones_pago.trim(),
+    };
 
     try {
       const response = await fetch(`${API_BASE_URL}/proveedores/crear`, {
         method: 'POST',
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payloadNormalizado),
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ message: 'Error al registrar el proveedor.' }));
-        throw new Error(errorData.message || `Error ${response.status}: ${response.statusText}`);
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage =
+          errorData?.error ||
+          errorData?.message ||
+          errorData?.mensaje ||
+          errorData?.detalle ||
+          `Error ${response.status}: ${response.statusText}`;
+        throw new Error(errorMessage);
       }
 
-      // const result = await response.json(); // Podrías usar el resultado si lo necesitas
       setSuccessMessage('¡Proveedor registrado exitosamente!');
-      setFormData(initialPageFormData); // Limpiar el formulario
+      setFormData(initialPageFormData);
+      setTimeout(() => router.push('/lista-proveedores'), 900);
 
       //eslint-disable-next-line
     } catch (err: any) {
-      setError(err.message || 'Ocurrió un error inesperado.');
+      setError(err.message || 'Ocurrio un error inesperado.');
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-start py-12 px-4 sm:px-6 lg:px-8">
-      <div className="w-full max-w-3xl space-y-8 bg-white p-8 md:p-10 shadow-xl rounded-lg">
-        <div>
-          <h2 className="text-center text-3xl font-extrabold text-gray-900">
-            Registrar Nuevo Proveedor
-          </h2>
-          <p className="mt-2 text-center text-sm text-gray-600">
-            Complete los siguientes campos para añadir un proveedor.
+    <div className="min-h-screen bg-slate-100">
+      <div className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+        <div className="mb-6 rounded-2xl bg-gradient-to-r from-blue-700 to-cyan-600 px-6 py-7 text-white shadow-lg">
+          <p className="text-sm font-semibold uppercase tracking-wide text-blue-100">Proveedores</p>
+          <h1 className="mt-1 text-2xl font-bold sm:text-3xl">Registrar Nuevo Proveedor</h1>
+          <p className="mt-2 text-sm text-blue-100 sm:text-base">
+            Carga los datos comerciales y de contacto para habilitar compras y seguimiento de deuda.
           </p>
         </div>
 
-        {error && (
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
-            <strong className="font-bold">Error: </strong>
-            <span className="block sm:inline">{error}</span>
-          </div>
-        )}
-        {successMessage && (
-          <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative" role="alert">
-            <strong className="font-bold">Éxito: </strong>
-            <span className="block sm:inline">{successMessage}</span>
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <FormularioProveedorFields formData={formData} handleChange={handleChange} />
-
-          {/* Botones de Acción para la página de creación */}
-          <div className="flex flex-col sm:flex-row justify-end space-y-3 sm:space-y-0 sm:space-x-3 pt-4">
-            <Link
-              href="/proveedores-acciones" // Ajusta a tu página de lista
-              className="w-full sm:w-auto flex justify-center items-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-            >
-              Volver
-            </Link>
-            <button
-              type="submit"
-              disabled={isLoading || !!successMessage} // Deshabilitar si está cargando o si ya hay mensaje de éxito
-              className="w-full sm:w-auto flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-300 disabled:cursor-not-allowed"
-            >
-              {isLoading ? 'Registrando...' : 'Registrar Proveedor'}
-            </button>
-          </div>
-        </form>
-
-        {!isLoading && !successMessage && ( // Mostrar solo si no está cargando ni hay mensaje de éxito
-            <div className="text-center mt-8">
-                <Link href="/lista-proveedores" className="font-medium text-indigo-600 hover:text-indigo-500">
-                    Ir a la lista de proveedores
-                </Link>
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8">
+          {error && (
+            <div className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">
+              <span className="font-semibold">Error: </span>
+              <span>{error}</span>
             </div>
-        )}
+          )}
+          {successMessage && (
+            <div className="mb-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700" role="alert">
+              <span className="font-semibold">Exito: </span>
+              <span>{successMessage}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <FormularioProveedorFields formData={formData} handleChange={handleChange} />
+
+            <div className="flex flex-col gap-3 border-t border-slate-200 pt-5 sm:flex-row sm:justify-end">
+              <Link
+                href="/proveedores-acciones"
+                className="inline-flex w-full items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 sm:w-auto"
+              >
+                Volver
+              </Link>
+              <button
+                type="submit"
+                disabled={isLoading || !!successMessage}
+                className="inline-flex w-full items-center justify-center rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300 sm:w-auto"
+              >
+                {isLoading ? 'Registrando...' : 'Registrar Proveedor'}
+              </button>
+            </div>
+          </form>
+
+          {!isLoading && !successMessage && (
+            <div className="mt-6 text-center">
+              <Link href="/lista-proveedores" className="text-sm font-semibold text-blue-700 hover:text-blue-800">
+                Ir a la lista de proveedores
+              </Link>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -27,6 +27,11 @@ def token_required(f):
             return jsonify({'message': 'Token expirado'}), 401
         except jwt.InvalidTokenError:
             return jsonify({'message': 'Token inválido'}), 401
+        except Exception:
+            return jsonify({'message': 'Token inválido'}), 401
+
+        if not current_user:
+            return jsonify({'message': 'Usuario no encontrado para el token'}), 401
 
         return f(current_user, *args, **kwargs)
     return decorated

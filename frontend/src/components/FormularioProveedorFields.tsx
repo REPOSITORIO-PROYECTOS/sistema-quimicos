@@ -1,9 +1,7 @@
-// components/FormularioProveedorFields.tsx
 "use client";
 
 import React from 'react';
 
-// Interfaz para los datos del proveedor que manejan los campos
 export interface ProveedorFieldsData {
   nombre: string;
   cuit: string;
@@ -17,8 +15,6 @@ export interface ProveedorFieldsData {
 interface FormularioProveedorFieldsProps {
   formData: ProveedorFieldsData;
   handleChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
-  // Podríamos añadir una prop 'isEditMode' si algunos campos deben comportarse diferente,
-  // pero por ahora lo mantenemos simple.
 }
 
 export default function FormularioProveedorFields({
@@ -26,10 +22,9 @@ export default function FormularioProveedorFields({
   handleChange,
 }: FormularioProveedorFieldsProps) {
   return (
-    <>
-      {/* Nombre del Proveedor (Obligatorio) */}
-      <div>
-        <label htmlFor="nombre" className="block text-sm font-medium text-gray-700 mb-1">
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <div className="md:col-span-2">
+        <label htmlFor="nombre" className="mb-1 block text-sm font-semibold text-slate-700">
           Nombre del Proveedor <span className="text-red-500">*</span>
         </label>
         <input
@@ -39,13 +34,12 @@ export default function FormularioProveedorFields({
           value={formData.nombre}
           onChange={handleChange}
           required
-          className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+          className="block w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
         />
       </div>
 
-      {/* CUIT */}
       <div>
-        <label htmlFor="cuit" className="block text-sm font-medium text-gray-700 mb-1">
+        <label htmlFor="cuit" className="mb-1 block text-sm font-semibold text-slate-700">
           CUIT
         </label>
         <input
@@ -54,29 +48,13 @@ export default function FormularioProveedorFields({
           id="cuit"
           value={formData.cuit}
           onChange={handleChange}
-          className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+          className="block w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
         />
       </div>
 
-      {/* Dirección */}
       <div>
-        <label htmlFor="direccion" className="block text-sm font-medium text-gray-700 mb-1">
-          Dirección
-        </label>
-        <input
-          type="text"
-          name="direccion"
-          id="direccion"
-          value={formData.direccion}
-          onChange={handleChange}
-          className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-        />
-      </div>
-
-      {/* Teléfono */}
-      <div>
-        <label htmlFor="telefono" className="block text-sm font-medium text-gray-700 mb-1">
-          Teléfono
+        <label htmlFor="telefono" className="mb-1 block text-sm font-semibold text-slate-700">
+          Telefono
         </label>
         <input
           type="tel"
@@ -84,13 +62,26 @@ export default function FormularioProveedorFields({
           id="telefono"
           value={formData.telefono}
           onChange={handleChange}
-          className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+          className="block w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
         />
       </div>
 
-      {/* Email */}
+      <div className="md:col-span-2">
+        <label htmlFor="direccion" className="mb-1 block text-sm font-semibold text-slate-700">
+          Direccion
+        </label>
+        <input
+          type="text"
+          name="direccion"
+          id="direccion"
+          value={formData.direccion}
+          onChange={handleChange}
+          className="block w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+        />
+      </div>
+
       <div>
-        <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+        <label htmlFor="email" className="mb-1 block text-sm font-semibold text-slate-700">
           Email
         </label>
         <input
@@ -99,14 +90,13 @@ export default function FormularioProveedorFields({
           id="email"
           value={formData.email}
           onChange={handleChange}
-          className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+          className="block w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
         />
       </div>
 
-      {/* Persona de Contacto */}
       <div>
-        <label htmlFor="contacto" className="block text-sm font-medium text-gray-700 mb-1">
-         Contacto
+        <label htmlFor="contacto" className="mb-1 block text-sm font-semibold text-slate-700">
+          Contacto
         </label>
         <input
           type="text"
@@ -114,13 +104,12 @@ export default function FormularioProveedorFields({
           id="contacto"
           value={formData.contacto}
           onChange={handleChange}
-          className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+          className="block w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
         />
       </div>
 
-      {/* Condiciones de Pago */}
-      <div>
-        <label htmlFor="condiciones_pago" className="block text-sm font-medium text-gray-700 mb-1">
+      <div className="md:col-span-2">
+        <label htmlFor="condiciones_pago" className="mb-1 block text-sm font-semibold text-slate-700">
           Condiciones de Pago
         </label>
         <textarea
@@ -129,9 +118,9 @@ export default function FormularioProveedorFields({
           value={formData.condiciones_pago}
           onChange={handleChange}
           rows={3}
-          className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+          className="block w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
         />
       </div>
-    </>
+    </div>
   );
 }

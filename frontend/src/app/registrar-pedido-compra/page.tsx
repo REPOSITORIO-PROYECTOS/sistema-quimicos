@@ -259,7 +259,7 @@ export default function RegistrarIngreso() {
 
           if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData?.mensaje || `Error ${response.status}`);
+            throw new Error(errorData?.error || errorData?.mensaje || errorData?.detail || `Error ${response.status}`);
           }
 
           const data = await response.json();

@@ -76,6 +76,15 @@ def create_app(config_object='config.Config'):
         DB_NAME = os.environ.get("DB_NAME", "quimex_db")
         database_uri = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}?charset=utf8mb4"
         app.config['SQLALCHEMY_DATABASE_URI'] = database_uri
+
+        # Ajustes del pool para evitar Timeouts bajo picos de concurrencia.
+        app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+            'pool_pre_ping': True,
+            'pool_recycle': int(os.environ.get('DB_POOL_RECYCLE', '1800')),
+            'pool_size': int(os.environ.get('DB_POOL_SIZE', '20')),
+            'max_overflow': int(os.environ.get('DB_POOL_MAX_OVERFLOW', '30')),
+            'pool_timeout': int(os.environ.get('DB_POOL_TIMEOUT', '30')),
+        }
         
         app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', 'dev-secret-key-change-in-prod')
         

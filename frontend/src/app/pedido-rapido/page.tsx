@@ -268,6 +268,31 @@ export default function PedidoRapidoAdmin() {
     return data as T;
   };
 
+  const calcularTotalesPedido = () => {
+    const cantNum = parseFloat(cantidad);
+    const precioNum = parseFloat(precioUnitario);
+    const tcNum = parseFloat(tc);
+
+    if (isNaN(cantNum) || isNaN(precioNum) || cantNum <= 0 || precioNum < 0) {
+      return { totalOrden: 0, totalArs: 0, tcNum };
+    }
+
+    // El backend calcula el total en la moneda de la orden (USD cuando ajuste_tc=true).
+    let totalOrden = cantNum * precioNum;
+    if (showIva && iva && !isNaN(parseFloat(iva))) totalOrden *= (1 + parseFloat(iva) / 100);
+    if (showIibb && iibb && !isNaN(parseFloat(iibb))) totalOrden *= (1 + parseFloat(iibb) / 100);
+
+    const totalArs = (showTc && !isNaN(tcNum) && tcNum > 0) ? (totalOrden * tcNum) : totalOrden;
+    return { totalOrden, totalArs, tcNum };
+  };
+
+  const normalizarAbonadoMonedaOrden = (montoIngresado: number, tcNum: number) => {
+    if (showTc && !isNaN(tcNum) && tcNum > 0) {
+      return montoIngresado / tcNum;
+    }
+    return montoIngresado;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -297,45 +322,33 @@ export default function PedidoRapidoAdmin() {
       }
 
       // Validaciones de pago
-      const totalCalculadoForm = (() => {
-        const cantNum = parseFloat(cantidad);
-        const precioNum = parseFloat(precioUnitario);
-        const tcNum = parseFloat(tc);
-        let subtotal = 0;
-        if (!isNaN(cantNum) && !isNaN(precioNum) && cantNum > 0 && precioNum >= 0) {
-          subtotal = (showTc && !isNaN(tcNum) && tcNum > 0) ? (cantNum * precioNum * tcNum) : (cantNum * precioNum);
-          let total = subtotal;
-          // Aplicar impuestos de forma encadenada (multiplicar porcentajes)
-          if (showIva && iva && !isNaN(parseFloat(iva))) total *= (1 + parseFloat(iva) / 100);
-          if (showIibb && iibb && !isNaN(parseFloat(iibb))) total *= (1 + parseFloat(iibb) / 100);
-          return total;
-        }
-        return 0;
-      })();
+      const { totalOrden, tcNum } = calcularTotalesPedido();
       if (!pagoCompleto) {
         const abonadoNum = parseFloat(importeAbonado || '0');
         if (isNaN(abonadoNum) || abonadoNum < 0) {
           setPagoError("Ingrese un importe abonado válido (0 o mayor).");
           return;
         }
-        const t = Math.max(0, Number(totalCalculadoForm.toFixed(2)));
-        const a = Math.max(0, Number(abonadoNum.toFixed(2)));
+        const t = Math.max(0, Number(totalOrden.toFixed(2)));
+        const a = Math.max(0, Number(normalizarAbonadoMonedaOrden(abonadoNum, tcNum).toFixed(2)));
         if (a > t) {
-          setImporteAbonado(String(t));
+          // El input del usuario está en ARS cuando hay TC; lo reconvertimos para mostrarlo coherente.
+          const toInput = (showTc && !isNaN(tcNum) && tcNum > 0) ? (t * tcNum) : t;
+          setImporteAbonado(String(toInput.toFixed(2)));
           setPagoError("");
         }
       }
 
       // 1) Crear OC
       // Calcular observaciones de pago para registrar en la creación
-      const totalCalculadoRedondeado = Math.max(0, Number(totalCalculadoForm.toFixed(2)));
+      const totalOrdenRedondeado = Math.max(0, Number(totalOrden.toFixed(2)));
       const importeAbonadoCrear = pagoCompleto
-        ? totalCalculadoRedondeado
-        : (parseFloat(importeAbonado || '0') || 0);
-      const deudaRestanteCrear = Math.max(0, totalCalculadoRedondeado - importeAbonadoCrear);
+        ? totalOrdenRedondeado
+        : Math.max(0, Number(normalizarAbonadoMonedaOrden(parseFloat(importeAbonado || '0') || 0, tcNum).toFixed(2)));
+      const deudaRestanteCrear = Math.max(0, totalOrdenRedondeado - importeAbonadoCrear);
       const observacionesPagoCrear = pagoCompleto
         ? 'Pago completo'
-        : `Pago parcial: abonado=${(typeof deudaRestanteCrear === 'number' ? deudaRestanteCrear : 0).toFixed(2)}`;
+        : `Pago parcial: abonado=${(typeof importeAbonadoCrear === 'number' ? importeAbonadoCrear : 0).toFixed(2)}; pendiente=${(typeof deudaRestanteCrear === 'number' ? deudaRestanteCrear : 0).toFixed(2)}`;
       const observacionesChequeCrear = formaPago === 'Cheque'
         ? ` | Cheque: Emisor=${chequeEmisor}; Banco=${chequeBanco}; N°=${chequeNumero}; Fecha=${chequeFecha}`
         : '';
@@ -401,8 +414,8 @@ export default function PedidoRapidoAdmin() {
       }
 
       const importe_abonado = pagoCompleto
-        ? Math.max(0, Number(totalCalculadoForm.toFixed(2)))
-        : (parseFloat(importeAbonado || '0') || 0);
+        ? totalOrdenRedondeado
+        : Math.max(0, Number(normalizarAbonadoMonedaOrden(parseFloat(importeAbonado || '0') || 0, tcNum).toFixed(2)));
       const observacionesPago = pagoCompleto ? 'Pago completo' : `Pago parcial: abonado=${(typeof importe_abonado === 'number' ? importe_abonado : 0).toFixed(2)}`;
       const observacionesCheque = formaPago === 'Cheque'
         ? ` | Cheque: Emisor=${chequeEmisor}; Banco=${chequeBanco}; N°=${chequeNumero}; Fecha=${chequeFecha}`
@@ -467,10 +480,17 @@ export default function PedidoRapidoAdmin() {
       const cantNum = parseFloat(cantidad);
       const precioNum = parseFloat(precioUnitario);
       if (!isNaN(cantNum) && !isNaN(precioNum) && cantNum > 0 && precioNum >= 0) {
-        const importeAbonadoCrear = pagoCompleto ? 0 : (parseFloat(importeAbonado || '0') || 0);
-        const observacionesPagoCrear = pagoCompleto ? 'Pago completo' : `Pago parcial: abonado=${(typeof importeAbonadoCrear === 'number' ? importeAbonadoCrear : 0).toFixed(2)}`;
+        const { totalOrden, tcNum } = calcularTotalesPedido();
+        const totalOrdenRedondeado = Math.max(0, Number(totalOrden.toFixed(2)));
+        const importeAbonadoCrear = pagoCompleto
+          ? totalOrdenRedondeado
+          : Math.max(0, Number(normalizarAbonadoMonedaOrden(parseFloat(importeAbonado || '0') || 0, tcNum).toFixed(2)));
+        const deudaRestanteCrear = Math.max(0, totalOrdenRedondeado - importeAbonadoCrear);
+        const observacionesPagoFinal = pagoCompleto
+          ? 'Pago completo'
+          : `Pago parcial: abonado=${(typeof importeAbonadoCrear === 'number' ? importeAbonadoCrear : 0).toFixed(2)}; pendiente=${(typeof deudaRestanteCrear === 'number' ? deudaRestanteCrear : 0).toFixed(2)}`;
         const observacionesChequeCrear = formaPago === 'Cheque' ? ` | Cheque: Emisor=${chequeEmisor}; Banco=${chequeBanco}; N°=${chequeNumero}; Fecha=${chequeFecha}` : '';
-        const observacionesFinalCrear = `${observaciones || ''}${observaciones ? ' | ' : ''}${observacionesPagoCrear}${observacionesChequeCrear}`.trim();
+        const observacionesFinalCrear = `${observaciones || ''}${observaciones ? ' | ' : ''}${observacionesPagoFinal}${observacionesChequeCrear}`.trim();
         const crearPayload = {
           usuario_interno_id: user.id || undefined,
           forma_pago: formaPago,
@@ -525,7 +545,8 @@ export default function PedidoRapidoAdmin() {
           ajuste_tc: showTc ? true : false,
           nro_remito_proveedor: '',
           estado_recepcion: estadoRecepcion,
-          importe_abonado: pagoCompleto ? 0 : (parseFloat(importeAbonado || '0') || 0),
+          // El pago ya se aplica en crear/aprobar. En recepción no volver a sumar para evitar doble conteo.
+          importe_abonado: 0,
           forma_pago: formaPago,
           cheque_perteneciente_a: formaPago === 'Cheque' ? chequeEmisor : '',
           tipo_caja: tipoCaja,

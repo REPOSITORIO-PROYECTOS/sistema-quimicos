@@ -228,6 +228,19 @@ def _importe_recepcionado_estimado(orden_db):
     return total.quantize(Decimal('0.01'))
 
 
+def _importe_objetivo_pago(orden_db):
+    """Total objetivo de pago de la OC.
+    Prioriza el total estimado guardado en cabecera (incluye impuestos si fueron cargados).
+    """
+    try:
+        total = Decimal(str(orden_db.importe_total_estimado or 0))
+        if total > Decimal('0'):
+            return total.quantize(Decimal('0.01'))
+    except Exception:
+        pass
+    return _importe_recepcionado_estimado(orden_db)
+
+
 def _actualizar_movimiento_deuda(orden_db, usuario_actualiza=None, descripcion=None):
     importe_recepcionado = _importe_recepcionado_estimado(orden_db)
     restante = importe_recepcionado - (orden_db.importe_abonado or Decimal('0'))
@@ -263,15 +276,15 @@ def _actualizar_movimiento_deuda(orden_db, usuario_actualiza=None, descripcion=N
 
 
 def _estado_orden_post_pago(orden_db):
-    total_recepcionado = _importe_recepcionado_estimado(orden_db)
+    total_objetivo = _importe_objetivo_pago(orden_db)
     abonado = orden_db.importe_abonado or Decimal('0')
     estado_recepcion = _normalizar_estado_texto(orden_db.estado_recepcion)
     estado_actual = _normalizar_estado_texto(orden_db.estado)
 
     if estado_recepcion == 'COMPLETA':
-        return 'RECIBIDO' if abonado >= total_recepcionado else 'RECIBIDA_PARCIAL'
+        return 'RECIBIDO' if abonado >= total_objetivo else 'RECIBIDA_PARCIAL'
 
-    if total_recepcionado > Decimal('0') and abonado < total_recepcionado:
+    if total_objetivo > Decimal('0') and abonado < total_objetivo:
         return 'CON DEUDA'
 
     if estado_actual in ('SOLICITADO', 'RECHAZADO'):
@@ -332,8 +345,9 @@ def _recalcular_importe_y_actualizar_deuda(orden_db, usuario_actualiza=None, iva
         # Calcular impuestos
         iva_amt = Decimal('0')
         if iva_flag is not None:
-            # Si iva_flag=True, aplicar IVA; si False, no aplicar
-            rate = Decimal(str(iva_rate)) if iva_rate is not None else Decimal('0.21')
+            # Si iva_flag=True, aplicar IVA con la tasa enviada (ej: 21 o 0.21).
+            # Si no se envía tasa explícita, usar 21% por compatibilidad.
+            rate = _parse_percentage_rate(iva_rate) if iva_rate is not None else Decimal('0.21')
             if iva_flag:
                 iva_amt = (base * rate).quantize(Decimal('0.01'))
             else:
@@ -429,6 +443,7 @@ def formatear_orden_por_rol(orden_db, rol="almacen", incluir_pagos=False):
         "importe_abonado": float(orden_db.importe_abonado) if orden_db.importe_abonado is not None else None,
         "cuenta": orden_db.cuenta,
         "iibb": orden_db.iibb,
+        "iva": orden_db.iva,
         "observaciones_solicitud": orden_db.observaciones_solicitud,
         "cheque_perteneciente_a": orden_db.cheque_perteneciente_a,
         "tipo_caja": orden_db.tipo_caja,
@@ -456,9 +471,17 @@ def formatear_orden_por_rol(orden_db, rol="almacen", incluir_pagos=False):
 
     # Procesar items
     items_list = []
+    cantidad_total_solicitada = Decimal('0')
+    cantidad_total_recibida = Decimal('0')
     items_db = orden_db.items
     if items_db:
         for item_db in items_db:
+            cantidad_solicitada_item = Decimal(str(item_db.cantidad_solicitada or 0))
+            cantidad_recibida_item = Decimal(str(item_db.cantidad_recibida or 0))
+            cantidad_pendiente_item = max(Decimal('0'), cantidad_solicitada_item - cantidad_recibida_item)
+            cantidad_total_solicitada += cantidad_solicitada_item
+            cantidad_total_recibida += cantidad_recibida_item
+
             item_dict = {
                 "id_linea": item_db.id,
                 "producto_id": item_db.producto_id,
@@ -466,6 +489,7 @@ def formatear_orden_por_rol(orden_db, rol="almacen", incluir_pagos=False):
                 "producto_nombre": item_db.producto.nombre if item_db.producto else 'N/A',
                 "cantidad_solicitada": float(item_db.cantidad_solicitada) if item_db.cantidad_solicitada is not None else None,
                 "cantidad_recibida": float(item_db.cantidad_recibida) if item_db.cantidad_recibida is not None else None,
+                "cantidad_pendiente_recepcion": float(cantidad_pendiente_item),
                 "notas_item_recepcion": item_db.notas_item_recepcion,
                 "precio_unitario_estimado": float(item_db.precio_unitario_estimado) if item_db.precio_unitario_estimado is not None else None,
                 "importe_linea_estimado": float(item_db.importe_linea_estimado) if item_db.importe_linea_estimado is not None else None,
@@ -473,6 +497,17 @@ def formatear_orden_por_rol(orden_db, rol="almacen", incluir_pagos=False):
             }
             items_list.append(item_dict)
     orden_dict["items"] = items_list
+    cantidad_total_pendiente = max(Decimal('0'), cantidad_total_solicitada - cantidad_total_recibida)
+    importe_recepcionado = _importe_recepcionado_estimado(orden_db)
+    importe_abonado_actual = Decimal(str(orden_db.importe_abonado or 0))
+    saldo_a_favor_operativo = max(Decimal('0'), importe_abonado_actual - importe_recepcionado)
+    orden_dict.update({
+        "cantidad_total_solicitada": float(cantidad_total_solicitada),
+        "cantidad_total_recibida": float(cantidad_total_recibida),
+        "cantidad_total_pendiente_recepcion": float(cantidad_total_pendiente),
+        "tiene_recepciones": cantidad_total_recibida > Decimal('0'),
+        "saldo_a_favor_operativo": float(saldo_a_favor_operativo)
+    })
 
     if rol and str(rol).upper() == "ADMIN":
         orden_dict.update({
@@ -640,6 +675,7 @@ def crear_orden_compra(current_user):
         # Campos adicionales de cabecera si vienen en el payload
         nueva_orden.cuenta = data.get('cuenta', nueva_orden.cuenta)
         nueva_orden.iibb = data.get('iibb', nueva_orden.iibb)
+        nueva_orden.iva = data.get('iva', nueva_orden.iva)
         nueva_orden.tipo_caja = data.get('tipo_caja', nueva_orden.tipo_caja)
         # Registrar pago inicial si viene
         importe_abonado_payload = data.get('importe_abonado')
@@ -925,8 +961,9 @@ def aprobar_orden_compra(current_user, orden_id):
 
         # Si el payload incluye cambios en IVA o IIBB, recalcular importe
         try:
-            iva_flag = data.get('iva') if 'iva' in data else None
-            iva_rate = data.get('iva_rate') if 'iva_rate' in data else None
+            iva_payload = data.get('iva') if 'iva' in data else None
+            iva_flag = (iva_payload is not None)
+            iva_rate = iva_payload
             iibb_payload = data.get('iibb') if 'iibb' in data else None
             _recalcular_importe_y_actualizar_deuda(orden_db,
                                                    usuario_actualiza=usuario_aprobador,
@@ -1106,7 +1143,7 @@ def registrar_pago_orden(current_user, orden_id):
         if monto_pago <= Decimal('0'):
             return jsonify({"error": "El monto del pago debe ser mayor a cero"}), 400
 
-        total_estimado = _importe_recepcionado_estimado(orden_db)
+        total_estimado = _importe_objetivo_pago(orden_db)
         abonado_previo = orden_db.importe_abonado or Decimal('0')
         pago_ajustado = False
         saldo_pendiente = total_estimado - abonado_previo
@@ -1116,12 +1153,14 @@ def registrar_pago_orden(current_user, orden_id):
                 return jsonify({"error": "La orden no tiene saldo pendiente"}), 409
 
             if monto_pago > saldo_pendiente:
-                # Aplicar solo el saldo restante evita bloquear el cierre de deuda
-                # cuando el frontend envía un monto mayor al pendiente.
-                monto_pago = saldo_pendiente
-                pago_ajustado = True
+                return jsonify({
+                    "error": "El monto supera el saldo pendiente de la orden",
+                    "saldo_pendiente": float(saldo_pendiente)
+                }), 400
 
         abonado_nuevo = abonado_previo + monto_pago
+        es_pago_total = (total_estimado > Decimal('0')) and (abonado_nuevo >= total_estimado)
+        tipo_pago = 'TOTAL' if es_pago_total else 'PARCIAL'
 
         referencia_pago = data.get('referencia_pago') or data.get('descripcion')
         forma_pago = data.get('forma_pago', orden_db.forma_pago)
@@ -1180,7 +1219,7 @@ def registrar_pago_orden(current_user, orden_id):
             monto=_convert_to_ars(monto_pago, orden_db.ajuste_tc, tc_override=_obtener_tc_para_orden(orden_db)),
             descripcion=_descripcion_pago_orden(
                 orden_db.id,
-                'Pago parcial registrado',
+                'Pago total registrado' if es_pago_total else 'Pago parcial registrado',
                 forma_pago=forma_pago,
                 referencia=referencia_pago
             ),
@@ -1209,6 +1248,7 @@ def registrar_pago_orden(current_user, orden_id):
             "status": "success",
             "message": "Pago registrado correctamente.",
             "pago_ajustado": pago_ajustado,
+            "tipo_pago": tipo_pago,
             "orden": formatear_orden_por_rol(orden_db, rol_usuario, incluir_pagos=True),
             "pago": {
                 "id": movimiento_pago.id,
@@ -1375,14 +1415,14 @@ def recibir_orden_compra(current_user, orden_id):
         nuevo_abono = Decimal(str(data.get('importe_abonado', '0')))
         importe_abonado_previo = orden_db.importe_abonado or Decimal('0')
         orden_db.importe_abonado = importe_abonado_previo + nuevo_abono
-        total_recepcionado = _importe_recepcionado_estimado(orden_db)
-        saldo_recepcion = total_recepcionado - (orden_db.importe_abonado or Decimal('0'))
+        total_objetivo_pago = _importe_objetivo_pago(orden_db)
+        saldo_recepcion = total_objetivo_pago - (orden_db.importe_abonado or Decimal('0'))
         saldo_recepcion = saldo_recepcion if saldo_recepcion > Decimal('0') else Decimal('0')
 
         # Estado final de la orden según recepción y pagos
-        if all_received and orden_db.importe_abonado >= total_recepcionado:
+        if all_received and orden_db.importe_abonado >= total_objetivo_pago:
             orden_db.estado = 'RECIBIDO'
-        elif all_received and orden_db.importe_abonado < total_recepcionado:
+        elif all_received and orden_db.importe_abonado < total_objetivo_pago:
             orden_db.estado = 'RECIBIDA_PARCIAL'
         else:
             # Con recepción parcial, solo hay deuda si lo recepcionado supera lo abonado.
