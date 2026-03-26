@@ -228,16 +228,69 @@ def _importe_recepcionado_estimado(orden_db):
     return total.quantize(Decimal('0.01'))
 
 
+def _importe_solicitado_estimado(orden_db):
+    """Calcula el total solicitado (cantidad_solicitada * precio_unitario) para todos los items.
+    Fórmula: sum(cantidad_solicitada * precio_unitario_estimado).
+    """
+    total = Decimal('0')
+    try:
+        for item in getattr(orden_db, 'items', []) or []:
+            cantidad_solicitada = Decimal(str(item.cantidad_solicitada or 0))
+            precio_estimado = Decimal(str(item.precio_unitario_estimado or 0))
+            total += (cantidad_solicitada * precio_estimado)
+    except Exception:
+        logger.exception("No se pudo calcular importe solicitado estimado para OC %s", getattr(orden_db, 'id', 'N/A'))
+    return total.quantize(Decimal('0.01'))
+
+
+def _importe_solicitado_con_impuestos(orden_db):
+    """Calcula total solicitado con impuestos (IVA + IIBB) sobre la base solicitada.
+    """
+    base = _importe_solicitado_estimado(orden_db)
+    if base <= Decimal('0'):
+        return Decimal('0.00')
+
+    iva_raw = getattr(orden_db, 'iva', None)
+    iibb_raw = getattr(orden_db, 'iibb', None)
+
+    # Aplicar impuestos solo cuando el campo está habilitado/cargado en la orden.
+    iva_rate = _parse_percentage_rate(iva_raw) if str(iva_raw or '').strip() != '' else Decimal('0')
+    iibb_rate = _parse_iibb_rate(iibb_raw) if str(iibb_raw or '').strip() != '' else Decimal('0')
+
+    iva_amt = (base * iva_rate).quantize(Decimal('0.01')) if iva_rate > 0 else Decimal('0.00')
+    iibb_amt = (base * iibb_rate).quantize(Decimal('0.01')) if iibb_rate > 0 else Decimal('0.00')
+    return (base + iva_amt + iibb_amt).quantize(Decimal('0.01'))
+
+
 def _importe_objetivo_pago(orden_db):
     """Total objetivo de pago de la OC.
     Prioriza el total estimado guardado en cabecera (incluye impuestos si fueron cargados).
     """
+    total_cabecera = Decimal('0')
     try:
-        total = Decimal(str(orden_db.importe_total_estimado or 0))
-        if total > Decimal('0'):
-            return total.quantize(Decimal('0.01'))
+        total_cabecera = Decimal(str(orden_db.importe_total_estimado or 0))
     except Exception:
-        pass
+        total_cabecera = Decimal('0')
+
+    total_solicitado = Decimal('0')
+    try:
+        total_solicitado = Decimal(str(_importe_solicitado_estimado(orden_db) or 0))
+    except Exception:
+        total_solicitado = Decimal('0')
+
+    total_solicitado_con_impuestos = Decimal('0')
+    try:
+        total_solicitado_con_impuestos = Decimal(str(_importe_solicitado_con_impuestos(orden_db) or 0))
+    except Exception:
+        total_solicitado_con_impuestos = Decimal('0')
+
+    # Si cabecera quedo desactualizada por debajo de lo solicitado,
+    # usar el mayor para evitar falsos 409 de "sin saldo".
+    total_objetivo = max(total_cabecera, total_solicitado, total_solicitado_con_impuestos)
+    if total_objetivo > Decimal('0'):
+        return total_objetivo.quantize(Decimal('0.01'))
+
+    # Ultimo fallback: retornar lo recepcionado
     return _importe_recepcionado_estimado(orden_db)
 
 

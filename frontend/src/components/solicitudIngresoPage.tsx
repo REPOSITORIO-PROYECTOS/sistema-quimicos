@@ -32,6 +32,23 @@ const derivarEstadoSolicitud = (estado?: string | null, estadoRecepcion?: string
   return 'Recepción pendiente';
 };
 
+const normalizarTasa = (valor: unknown, tasaPorDefecto = 0) => {
+  if (valor === null || valor === undefined) return tasaPorDefecto;
+  const raw = String(valor).trim();
+  if (!raw) return tasaPorDefecto;
+  const parsed = Number(raw.replace(',', '.'));
+  if (!Number.isFinite(parsed) || parsed <= 0) return tasaPorDefecto;
+  return parsed > 1 ? (parsed / 100) : parsed;
+};
+
+const calcularObjetivoPagoConImpuestos = (base: number, ivaRaw: unknown, iibbRaw: unknown) => {
+  const safeBase = Number.isFinite(base) ? base : 0;
+  if (safeBase <= 0) return 0;
+  const ivaRate = normalizarTasa(ivaRaw, 0);
+  const iibbRate = normalizarTasa(iibbRaw, 0);
+  return safeBase * (1 + ivaRate + iibbRate);
+};
+
 export default function SolicitudIngresoPage({ id }: { id: number | string }) {
   const [fecha, setFecha] = useState('');
   const [proveedorId, setProveedorId] = useState('');
@@ -168,14 +185,22 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
           // Snapshot parsing failed, continue without TC
         }
       }
-      // Si no viene IVA en la solicitud, usar 21% por defecto para evitar que desaparezca del flujo.
-      if (ivaNormalizado === '') {
-        setIva('21');
-        setShowIva(true);
-      }
-      const totalOC = typeof data.importe_total_estimado === 'number'
-        ? data.importe_total_estimado
-        : (typeof itemPrincipal.importe_linea_estimado === 'number' ? itemPrincipal.importe_linea_estimado : 0);
+      const totalCabecera = Number(data.importe_total_estimado);
+      const totalItems = items.reduce((acc: number, item: Record<string, unknown>) => {
+        const importeLinea = Number(item.importe_linea_estimado);
+        if (Number.isFinite(importeLinea) && importeLinea > 0) return acc + importeLinea;
+        const cant = Number(item.cantidad_solicitada);
+        const precio = Number(item.precio_unitario_estimado);
+        return acc + ((Number.isFinite(cant) ? cant : 0) * (Number.isFinite(precio) ? precio : 0));
+      }, 0);
+      const totalBase = Math.max(
+        Number.isFinite(totalCabecera) ? totalCabecera : 0,
+        Number.isFinite(totalItems) ? totalItems : 0,
+      );
+      const totalOC = Math.max(
+        totalBase,
+        calcularObjetivoPagoConImpuestos(totalItems, data.iva, data.iibb),
+      );
       setImporteTotal(totalOC.toFixed(2));
       setEstadoOC(data.estado || '');
       setEstadoRecepcionActual(data.estado_recepcion || '');
@@ -218,7 +243,23 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
   const aplicarOrdenActualizada = useCallback((orden: Record<string, unknown>) => {
     const estadoNuevo = String(orden.estado || estadoOC);
     const estadoRecepcionNuevo = String(orden.estado_recepcion || estadoRecepcionActual);
-    const totalNuevo = parseFloat(String(orden.importe_total_estimado ?? importeTotal)) || 0;
+    const totalCabeceraNuevo = parseFloat(String(orden.importe_total_estimado ?? 0)) || 0;
+    let totalItemsNuevo = 0;
+    if (Array.isArray(orden.items) && orden.items.length > 0) {
+      totalItemsNuevo = (orden.items as Array<Record<string, unknown>>).reduce((acc: number, item) => {
+        const importeLinea = Number(item.importe_linea_estimado);
+        if (Number.isFinite(importeLinea) && importeLinea > 0) return acc + importeLinea;
+        const cant = Number(item.cantidad_solicitada);
+        const precio = Number(item.precio_unitario_estimado);
+        return acc + ((Number.isFinite(cant) ? cant : 0) * (Number.isFinite(precio) ? precio : 0));
+      }, 0);
+    }
+    const totalNuevo = Math.max(
+      totalCabeceraNuevo,
+      totalItemsNuevo,
+      calcularObjetivoPagoConImpuestos(totalItemsNuevo, orden.iva, orden.iibb),
+      parseFloat(String(importeTotal || 0)) || 0,
+    );
     const abonadoNuevo = parseFloat(String(orden.importe_abonado ?? montoYaAbonadoOC)) || 0;
 
     setEstadoOC(estadoNuevo);
@@ -483,6 +524,7 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
 
       // Recargar datos antes de registrar pago para asegurar que tenemos el importe_abonado correcto
       let abonadoActual = montoYaAbonadoOC;
+      let totalObjetivoActual = parseFloat(importeTotal) || 0;
       const reloadResponse = await fetch(`https://quimex.sistemataup.online/api/ordenes_compra/obtener/${id}`, {
         headers: {
           "Content-Type": "application/json",
@@ -493,6 +535,24 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       if (reloadResponse.ok) {
         const reloadData = await reloadResponse.json();
         abonadoActual = parseFloat(reloadData.importe_abonado) || 0;
+        const totalCabecera = Number(reloadData.importe_total_estimado);
+        const totalItems = Array.isArray(reloadData.items)
+          ? reloadData.items.reduce((acc: number, item: Record<string, unknown>) => {
+            const importeLinea = Number(item.importe_linea_estimado);
+            if (Number.isFinite(importeLinea) && importeLinea > 0) return acc + importeLinea;
+            const cant = Number(item.cantidad_solicitada);
+            const precio = Number(item.precio_unitario_estimado);
+            return acc + ((Number.isFinite(cant) ? cant : 0) * (Number.isFinite(precio) ? precio : 0));
+          }, 0)
+          : 0;
+        totalObjetivoActual = Math.max(
+          Number.isFinite(totalCabecera) ? totalCabecera : 0,
+          Number.isFinite(totalItems) ? totalItems : 0,
+          calcularObjetivoPagoConImpuestos(totalItems, reloadData?.iva, reloadData?.iibb),
+        );
+        if (totalObjetivoActual > 0) {
+          setImporteTotal(totalObjetivoActual.toFixed(2));
+        }
         setMontoYaAbonadoOC(abonadoActual);
       }
 
@@ -501,8 +561,7 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
         throw new Error('Ingrese un monto a pagar mayor a cero.');
       }
 
-      const totalOC = parseFloat(importeTotal) || 0;
-      const saldoPendiente = Math.max(0, totalOC - abonadoActual);
+      const saldoPendiente = Math.max(0, totalObjetivoActual - abonadoActual);
       if (saldoPendiente <= 0) {
         throw new Error('La orden no tiene saldo pendiente.');
       }
@@ -658,12 +717,15 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
   const importeTotalNum = parseFloat(importeTotal) || 0;
   const montoAbonadoNum = montoYaAbonadoOC || 0;
   const importeAbonadoNum = parseFloat(importeAbonado) || 0;
-  const deudaPendienteOC = Math.max(0, importeTotalNum - montoAbonadoNum);
+  const totalItemPrincipal = (parseFloat(cantidad || '0') || 0) * (parseFloat(precioUnitario || '0') || 0);
+  const totalConImpuestosUI = calcularObjetivoPagoConImpuestos(totalItemPrincipal, iva, iibb);
+  const totalObjetivoUI = Math.max(importeTotalNum, totalItemPrincipal, totalConImpuestosUI);
+  const deudaPendienteOC = Math.max(0, totalObjetivoUI - montoAbonadoNum);
   const tcNum = parseFloat(tc);
   const tcValido = !isNaN(tcNum) && tcNum > 0;
   const ordenEnUsd = showTc;
   const monedaOrden = ordenEnUsd ? 'USD' : 'ARS';
-  const totalOcUsd = ordenEnUsd ? importeTotalNum : (tcValido ? (importeTotalNum / tcNum) : 0);
+  const totalOcUsd = ordenEnUsd ? totalObjetivoUI : (tcValido ? (totalObjetivoUI / tcNum) : 0);
   const pagoSuperaDeuda = deudaPendienteOC > 0 && importeAbonadoNum > deudaPendienteOC;
   const pagoAproxUsd = !ordenEnUsd && tcValido
     ? (Math.min(Math.max(0, importeAbonadoNum), deudaPendienteOC) / tcNum)
