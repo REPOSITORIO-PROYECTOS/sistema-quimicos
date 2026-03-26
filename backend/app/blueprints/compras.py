@@ -1472,14 +1472,9 @@ def recibir_orden_compra(current_user, orden_id):
         saldo_recepcion = total_objetivo_pago - (orden_db.importe_abonado or Decimal('0'))
         saldo_recepcion = saldo_recepcion if saldo_recepcion > Decimal('0') else Decimal('0')
 
-        # Estado final de la orden según recepción y pagos
-        if all_received and orden_db.importe_abonado >= total_objetivo_pago:
-            orden_db.estado = 'RECIBIDO'
-        elif all_received and orden_db.importe_abonado < total_objetivo_pago:
-            orden_db.estado = 'RECIBIDA_PARCIAL'
-        else:
-            # Con recepción parcial, solo hay deuda si lo recepcionado supera lo abonado.
-            orden_db.estado = 'CON DEUDA' if saldo_recepcion > Decimal('0') else 'APROBADO'
+        # Estado final de la orden según recepción + pagos.
+        # Unificar en la misma regla usada por pagos evita estados inconsistentes.
+        orden_db.estado = _estado_orden_post_pago(orden_db)
         
         # 6. Actualizar datos de pago
         orden_db.forma_pago = data.get('forma_pago', orden_db.forma_pago)

@@ -32,22 +32,7 @@ const derivarEstadoSolicitud = (estado?: string | null, estadoRecepcion?: string
   return 'Recepción pendiente';
 };
 
-const normalizarTasa = (valor: unknown, tasaPorDefecto = 0) => {
-  if (valor === null || valor === undefined) return tasaPorDefecto;
-  const raw = String(valor).trim();
-  if (!raw) return tasaPorDefecto;
-  const parsed = Number(raw.replace(',', '.'));
-  if (!Number.isFinite(parsed) || parsed <= 0) return tasaPorDefecto;
-  return parsed > 1 ? (parsed / 100) : parsed;
-};
-
-const calcularObjetivoPagoConImpuestos = (base: number, ivaRaw: unknown, iibbRaw: unknown) => {
-  const safeBase = Number.isFinite(base) ? base : 0;
-  if (safeBase <= 0) return 0;
-  const ivaRate = normalizarTasa(ivaRaw, 0);
-  const iibbRate = normalizarTasa(iibbRaw, 0);
-  return safeBase * (1 + ivaRate + iibbRate);
-};
+const CENT_TOLERANCE = 0.009;
 
 export default function SolicitudIngresoPage({ id }: { id: number | string }) {
   const [fecha, setFecha] = useState('');
@@ -166,6 +151,7 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       setCuenta(data.cuenta?.toString() ?? '');
       setIibb(data.iibb?.toString() ?? '');
       setShowIibb(Boolean(data.iibb));
+      setShowTc(Boolean(data.ajuste_tc));
       const ivaRaw = data.iva;
       const ivaNormalizado = ivaRaw !== undefined && ivaRaw !== null ? String(ivaRaw).trim() : '';
       setIva(ivaNormalizado);
@@ -185,23 +171,8 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
           // Snapshot parsing failed, continue without TC
         }
       }
-      const totalCabecera = Number(data.importe_total_estimado);
-      const totalItems = items.reduce((acc: number, item: Record<string, unknown>) => {
-        const importeLinea = Number(item.importe_linea_estimado);
-        if (Number.isFinite(importeLinea) && importeLinea > 0) return acc + importeLinea;
-        const cant = Number(item.cantidad_solicitada);
-        const precio = Number(item.precio_unitario_estimado);
-        return acc + ((Number.isFinite(cant) ? cant : 0) * (Number.isFinite(precio) ? precio : 0));
-      }, 0);
-      const totalBase = Math.max(
-        Number.isFinite(totalCabecera) ? totalCabecera : 0,
-        Number.isFinite(totalItems) ? totalItems : 0,
-      );
-      const totalOC = Math.max(
-        totalBase,
-        calcularObjetivoPagoConImpuestos(totalItems, data.iva, data.iibb),
-      );
-      setImporteTotal(totalOC.toFixed(2));
+      const totalOC = Number(data.importe_total_estimado);
+      setImporteTotal((Number.isFinite(totalOC) ? totalOC : 0).toFixed(2));
       setEstadoOC(data.estado || '');
       setEstadoRecepcionActual(data.estado_recepcion || '');
       setIdLineaOCOriginal(itemPrincipal.id_linea || '');
@@ -243,23 +214,7 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
   const aplicarOrdenActualizada = useCallback((orden: Record<string, unknown>) => {
     const estadoNuevo = String(orden.estado || estadoOC);
     const estadoRecepcionNuevo = String(orden.estado_recepcion || estadoRecepcionActual);
-    const totalCabeceraNuevo = parseFloat(String(orden.importe_total_estimado ?? 0)) || 0;
-    let totalItemsNuevo = 0;
-    if (Array.isArray(orden.items) && orden.items.length > 0) {
-      totalItemsNuevo = (orden.items as Array<Record<string, unknown>>).reduce((acc: number, item) => {
-        const importeLinea = Number(item.importe_linea_estimado);
-        if (Number.isFinite(importeLinea) && importeLinea > 0) return acc + importeLinea;
-        const cant = Number(item.cantidad_solicitada);
-        const precio = Number(item.precio_unitario_estimado);
-        return acc + ((Number.isFinite(cant) ? cant : 0) * (Number.isFinite(precio) ? precio : 0));
-      }, 0);
-    }
-    const totalNuevo = Math.max(
-      totalCabeceraNuevo,
-      totalItemsNuevo,
-      calcularObjetivoPagoConImpuestos(totalItemsNuevo, orden.iva, orden.iibb),
-      parseFloat(String(importeTotal || 0)) || 0,
-    );
+    const totalNuevo = parseFloat(String(orden.importe_total_estimado ?? importeTotal ?? 0)) || 0;
     const abonadoNuevo = parseFloat(String(orden.importe_abonado ?? montoYaAbonadoOC)) || 0;
 
     setEstadoOC(estadoNuevo);
@@ -319,34 +274,11 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
         const valor = Number((data && (data.valor ?? data.data?.valor)) ?? NaN);
         if (isFinite(valor) && valor > 0) {
           setTc(String(valor));
-          setShowTc(true);
         }
       } catch { }
     };
     fetchTC();
   }, []);
-
-  useEffect(() => {
-    const cantNum = parseFloat(cantidad);
-    const precioNum = parseFloat(precioUnitario);
-    const tcNum = parseFloat(tc);
-    let subtotal = 0;
-    if (!isNaN(cantNum) && !isNaN(precioNum) && cantNum > 0 && precioNum >= 0) {
-      if (!isNaN(tcNum) && tcNum > 0) {
-        subtotal = cantNum * precioNum * tcNum;
-      } else {
-        subtotal = cantNum * precioNum;
-      }
-      let total = subtotal;
-      if (iva && !isNaN(parseFloat(iva))) {
-        total += subtotal * (parseFloat(iva) / 100);
-      }
-      if (iibb && !isNaN(parseFloat(iibb))) {
-        total += subtotal * (parseFloat(iibb) / 100);
-      }
-      setImporteTotal(total.toFixed(2));
-    }
-  }, [cantidad, precioUnitario, tc, iva, iibb]);
 
   useEffect(() => {
     if (pagoCompletoUI) {
@@ -406,7 +338,6 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       }
       const cantidad_solicitada = typeof solicitud.cantidad === 'string' || typeof solicitud.cantidad === 'number' ? Number(solicitud.cantidad) : 0;
       const precio_unitario_estimado = typeof solicitud.precioUnitario === 'string' ? parseFloat(solicitud.precioUnitario) : 0;
-      const importe_total_estimado = typeof solicitud.importeTotal === 'string' ? parseFloat(solicitud.importeTotal) : 0;
       const payload = {
         proveedor_id,
         cuenta,
@@ -423,7 +354,6 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
             precio_unitario_estimado,
           }
         ],
-        importe_total_estimado,
         importe_abonado: parseFloat(importeAbonado || '0') || 0,
         referencia_pago: typeof solicitud.referencia_pago === 'string' ? solicitud.referencia_pago : referenciaPago,
       };
@@ -473,7 +403,6 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       const id_linea = Number(idLineaOCOriginal || 0);
       const cantidad_solicitada_val = Number(cantidad || 0);
       const precio_unitario_est_val = parseFloat(precioUnitario || '0');
-      const importe_total_est_val = parseFloat(importeTotal || '0');
       const importe_abonado_val = parseFloat(importeAbonado || '0') || 0;
 
       const payload = {
@@ -491,7 +420,6 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
             precio_unitario_estimado: precio_unitario_est_val,
           }
         ],
-        importe_total_estimado: importe_total_est_val,
         importe_abonado: importe_abonado_val,
       };
       const userItem = localStorage.getItem("user") || sessionStorage.getItem("user");
@@ -535,21 +463,7 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       if (reloadResponse.ok) {
         const reloadData = await reloadResponse.json();
         abonadoActual = parseFloat(reloadData.importe_abonado) || 0;
-        const totalCabecera = Number(reloadData.importe_total_estimado);
-        const totalItems = Array.isArray(reloadData.items)
-          ? reloadData.items.reduce((acc: number, item: Record<string, unknown>) => {
-            const importeLinea = Number(item.importe_linea_estimado);
-            if (Number.isFinite(importeLinea) && importeLinea > 0) return acc + importeLinea;
-            const cant = Number(item.cantidad_solicitada);
-            const precio = Number(item.precio_unitario_estimado);
-            return acc + ((Number.isFinite(cant) ? cant : 0) * (Number.isFinite(precio) ? precio : 0));
-          }, 0)
-          : 0;
-        totalObjetivoActual = Math.max(
-          Number.isFinite(totalCabecera) ? totalCabecera : 0,
-          Number.isFinite(totalItems) ? totalItems : 0,
-          calcularObjetivoPagoConImpuestos(totalItems, reloadData?.iva, reloadData?.iibb),
-        );
+        totalObjetivoActual = Number(reloadData.importe_total_estimado) || 0;
         if (totalObjetivoActual > 0) {
           setImporteTotal(totalObjetivoActual.toFixed(2));
         }
@@ -579,11 +493,13 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
         throw new Error('Ingrese un monto valido en A Abonar Ahora.');
       }
 
-      if (montoElegido > saldoPendiente) {
+      if ((montoElegido - saldoPendiente) > CENT_TOLERANCE) {
         throw new Error(`El monto supera la deuda pendiente (${saldoPendiente.toFixed(2)} ${showTc ? 'USD' : 'ARS'}).`);
       }
 
-      const montoPagoAplicado = montoElegido;
+      const montoPagoAplicado = Math.abs(montoElegido - saldoPendiente) <= CENT_TOLERANCE
+        ? Number(saldoPendiente.toFixed(2))
+        : Number(montoElegido.toFixed(2));
 
       const userItem = localStorage.getItem('user') || sessionStorage.getItem('user');
       const user = userItem ? JSON.parse(userItem) : null;
@@ -717,16 +633,14 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
   const importeTotalNum = parseFloat(importeTotal) || 0;
   const montoAbonadoNum = montoYaAbonadoOC || 0;
   const importeAbonadoNum = parseFloat(importeAbonado) || 0;
-  const totalItemPrincipal = (parseFloat(cantidad || '0') || 0) * (parseFloat(precioUnitario || '0') || 0);
-  const totalConImpuestosUI = calcularObjetivoPagoConImpuestos(totalItemPrincipal, iva, iibb);
-  const totalObjetivoUI = Math.max(importeTotalNum, totalItemPrincipal, totalConImpuestosUI);
+  const totalObjetivoUI = importeTotalNum;
   const deudaPendienteOC = Math.max(0, totalObjetivoUI - montoAbonadoNum);
   const tcNum = parseFloat(tc);
   const tcValido = !isNaN(tcNum) && tcNum > 0;
   const ordenEnUsd = showTc;
   const monedaOrden = ordenEnUsd ? 'USD' : 'ARS';
   const totalOcUsd = ordenEnUsd ? totalObjetivoUI : (tcValido ? (totalObjetivoUI / tcNum) : 0);
-  const pagoSuperaDeuda = deudaPendienteOC > 0 && importeAbonadoNum > deudaPendienteOC;
+  const pagoSuperaDeuda = deudaPendienteOC > 0 && (importeAbonadoNum - deudaPendienteOC) > CENT_TOLERANCE;
   const pagoAproxUsd = !ordenEnUsd && tcValido
     ? (Math.min(Math.max(0, importeAbonadoNum), deudaPendienteOC) / tcNum)
     : 0;
@@ -963,7 +877,7 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
             </div>
             <div>
               <label htmlFor="importeTotal" className={labelClass}>Importe Total OC</label>
-              <input id="importeTotal" type="number" step="0.01" value={importeTotal} onChange={(e) => setImporteTotal(e.target.value)} className={baseInputClass} />
+              <input id="importeTotal" type="number" step="0.01" value={importeTotal} readOnly className={`${baseInputClass} ${disabledInputClass}`} />
             </div>
             <div>
               <label htmlFor="cantidadRecepcionada" className={labelClass}>Cantidad a Recepcionar</label>

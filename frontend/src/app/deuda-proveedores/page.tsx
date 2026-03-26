@@ -16,6 +16,21 @@ const API = 'https://quimex.sistemataup.online/api';
 const formatMoney = (value: number) => `$${Number(value || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const MONEDA_CONTABLE = 'ARS';
 const formatMoneyWithCurrency = (value: number, currency: 'ARS' | 'USD') => `${currency} ${formatMoney(value)}`;
+const DEFAULT_TC = 1;
+
+const extraerTcSnapshot = (texto?: string | null): number | null => {
+  const raw = String(texto || '');
+  const marker = '__TC_SNAPSHOT__:';
+  const line = raw.split('\n').find((part) => part.startsWith(marker));
+  if (!line) return null;
+  try {
+    const payload = JSON.parse(line.slice(marker.length).trim());
+    const valor = Number(payload?.tc_usado);
+    return Number.isFinite(valor) && valor > 0 ? valor : null;
+  } catch {
+    return null;
+  }
+};
 const formatPaymentDate = (value?: string | null) => {
   if (!value) return 'Sin fecha';
   const date = new Date(value);
@@ -39,6 +54,7 @@ export default function DeudaProveedoresPage() {
   const [itemsPorOrden, setItemsPorOrden] = useState<Record<number, ItemDetalle[]>>({});
   const [proveedorPorOrden, setProveedorPorOrden] = useState<Record<number, string>>({});
   const [movimientos, setMovimientos] = useState<Movimiento[]>([]);
+  const [tcPorOrden, setTcPorOrden] = useState<Record<number, number>>({});
   const [filtroDesde, setFiltroDesde] = useState('');
   const [filtroHasta, setFiltroHasta] = useState('');
   const [filtroProveedor, setFiltroProveedor] = useState('');
@@ -77,6 +93,7 @@ export default function DeudaProveedoresPage() {
     const detalles: Record<number, ItemDetalle[]> = {};
     const proveedoresMap = new Map<number, string>();
     const productosMap = new Map<number, string>();
+    const tcMap: Record<number, number> = {};
 
     for (const oc of lista) {
       const rd = await fetch(`${API}/ordenes_compra/obtener/${oc.id}`, { headers: { 'Authorization': `Bearer ${token}`, 'X-User-Role': user?.role || '', 'X-User-Name': user?.usuario || user?.name || '', 'Content-Type': 'application/json' } });
@@ -92,6 +109,10 @@ export default function DeudaProveedoresPage() {
       }));
       const provNombre = (dd.proveedor_nombre as string) || (dd.proveedor && typeof dd.proveedor.nombre === 'string' ? dd.proveedor.nombre : '') || '';
       proveedorPorOrden[oc.id] = provNombre;
+      const tcNotas = extraerTcSnapshot(dd?.notas_recepcion);
+      const tcObs = extraerTcSnapshot(dd?.observaciones_solicitud);
+      if (tcNotas) tcMap[oc.id] = tcNotas;
+      else if (tcObs) tcMap[oc.id] = tcObs;
 
       // Llenar proveedores disponibles
       if (provNombre) {
@@ -109,6 +130,7 @@ export default function DeudaProveedoresPage() {
     }
     setItemsPorOrden(detalles);
     setProveedorPorOrden({ ...proveedorPorOrden });
+    setTcPorOrden(tcMap);
     setProveedoresDisponibles(Array.from(proveedoresMap.entries()).map(([id, nombre]) => ({ id, nombre })).sort((a, b) => a.nombre.localeCompare(b.nombre)));
     setProductosDisponibles(Array.from(productosMap.entries()).map(([id, nombre]) => ({ id, nombre })).sort((a, b) => a.nombre.localeCompare(b.nombre)));
   };
@@ -145,6 +167,7 @@ export default function DeudaProveedoresPage() {
       pendiente: number;
       recepcionado: number;
       saldoOperativo: number;
+      anticipoArs: number;
       cantidadRecibidaTotal: number;
       cantidadSolicitadaTotal: number;
       ultimoPago?: string;
@@ -153,6 +176,8 @@ export default function DeudaProveedoresPage() {
       items: ItemDetalle[];
       pagos: Movimiento[];
       esUSD?: boolean;
+      pendienteOCMoneda: number;
+      pendienteArs: number;
     }[] = [];
     for (const oc of ordenes) {
       const items = itemsPorOrden[oc.id] || [];
@@ -162,16 +187,12 @@ export default function DeudaProveedoresPage() {
       const cantidadRecibidaTotal = items.reduce((acc, it) => acc + Number(it.cantidad_recibida || 0), 0);
       const cantidadSolicitadaTotal = items.reduce((acc, it) => acc + Number(it.cantidad_solicitada || 0), 0);
       const saldoOperativo = recepcionadoOC - abonadoOC;
-      const movsOCAll = movimientos.filter(m => m.orden_id === oc.id);
-      const debitosOC = movsOCAll
-        .filter(m => m.tipo === 'DEBITO')
-        .reduce((acc, mov) => acc + Number(mov.monto || 0), 0);
-      const creditosOC = movsOCAll
-        .filter(m => m.tipo === 'CREDITO')
-        .reduce((acc, mov) => acc + Number(mov.monto || 0), 0);
-      const pendienteOC = Math.max(0, debitosOC - creditosOC);
-
       const esUSD = oc.ajuste_tc === true;
+      const tcOrden = esUSD ? (tcPorOrden[oc.id] || DEFAULT_TC) : 1;
+      const pendienteOCMoneda = Math.max(0, totalOC - abonadoOC);
+      const pendienteArs = esUSD ? (pendienteOCMoneda * tcOrden) : pendienteOCMoneda;
+      const anticipoArs = saldoOperativo < 0 ? (esUSD ? (Math.abs(saldoOperativo) * tcOrden) : Math.abs(saldoOperativo)) : 0;
+      const movsOCAll = movimientos.filter(m => m.orden_id === oc.id);
       const movsOC = movsOCAll
         .filter(m => m.tipo === 'CREDITO')
         .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
@@ -183,15 +204,18 @@ export default function DeudaProveedoresPage() {
       const okProveedor = filtroProveedor ? proveedor === filtroProveedor : true;
       const okProducto = filtroProducto ? items.some(item => item.producto_nombre === filtroProducto) : true;
       if (!(okDesde && okHasta && okProveedor && okProducto)) continue;
-      // Mostrar filas con deuda o con saldo operativo distinto de cero para auditar pagos/recepciones.
-      if (pendienteOC <= 0 && Math.abs(saldoOperativo) < 0.01) continue;
+      // Mostrar solo deuda real vigente (no historial contable arrastrado).
+      if (pendienteArs <= 0 || pendienteOCMoneda <= 0) continue;
       rows.push({
         ocId: oc.id,
         total: totalOC,
         abonado: abonadoOC,
-        pendiente: pendienteOC,
+        pendiente: pendienteArs,
+        pendienteOCMoneda,
+        pendienteArs,
         recepcionado: recepcionadoOC,
         saldoOperativo,
+        anticipoArs,
         cantidadRecibidaTotal,
         cantidadSolicitadaTotal,
         ultimoPago,
@@ -205,7 +229,7 @@ export default function DeudaProveedoresPage() {
     if (ordenarPor === 'pendiente') rows.sort((a, b) => b.pendiente - a.pendiente);
     if (ordenarPor === 'orden') rows.sort((a, b) => a.ocId - b.ocId);
     return rows;
-  }, [ordenes, itemsPorOrden, movimientos, ordenarPor, filtroDesde, filtroHasta, filtroProveedor, filtroProducto, proveedorPorOrden]);
+  }, [ordenes, itemsPorOrden, movimientos, ordenarPor, filtroDesde, filtroHasta, filtroProveedor, filtroProducto, proveedorPorOrden, tcPorOrden]);
 
   const totalPendienteFiltrado = useMemo(
     () => filasOrdenes.reduce((acc, row) => acc + row.pendiente, 0),
@@ -215,7 +239,7 @@ export default function DeudaProveedoresPage() {
   const totalAnticiposSinRecepcion = useMemo(
     () => filasOrdenes
       .filter((row) => row.cantidadRecibidaTotal <= 0 && row.abonado > 0)
-      .reduce((acc, row) => acc + Math.abs(Math.min(row.saldoOperativo, 0)), 0),
+      .reduce((acc, row) => acc + row.anticipoArs, 0),
     [filasOrdenes]
   );
 
@@ -414,7 +438,8 @@ export default function DeudaProveedoresPage() {
                   <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">{formatMoneyWithCurrency(r.abonado, r.esUSD ? 'USD' : 'ARS')}</td>
                   <td className={`px-3 py-2 text-right tabular-nums whitespace-nowrap ${r.pendiente > 0 ? 'text-red-700' : 'text-green-700'}`}>
                     <div>{formatMoney(r.pendiente)}</div>
-                    {r.saldoOperativo < 0 && <div className="text-xs text-amber-700">Anticipo: {formatMoneyWithCurrency(Math.abs(r.saldoOperativo), r.esUSD ? 'USD' : 'ARS')}</div>}
+                    <div className="text-xs text-gray-600">Pend. OC: {formatMoneyWithCurrency(r.pendienteOCMoneda, r.esUSD ? 'USD' : 'ARS')}</div>
+                    {r.saldoOperativo < 0 && <div className="text-xs text-amber-700">Anticipo: {formatMoney(r.anticipoArs)} (ARS)</div>}
                     {r.esUSD && <div className="text-xs text-gray-500">(Convertido a ARS)</div>}
                   </td>
                 </tr>
