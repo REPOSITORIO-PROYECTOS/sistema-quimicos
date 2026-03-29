@@ -12,6 +12,8 @@ from decimal import Decimal, InvalidOperation, DivisionByZero, ROUND_HALF_UP, RO
 import traceback
 import datetime
 import math
+import os
+import threading
 import jwt
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment
@@ -21,6 +23,62 @@ from ..utils.permissions import ROLES
 
 # Crear el Blueprint para productos
 productos_bp = Blueprint('productos', __name__, url_prefix='/api/productos')
+
+# Throttle para no recalcular costos en cada request de lista.
+_SYNC_COSTOS_LOCK = threading.Lock()
+_ULTIMA_SYNC_COSTOS_UTC = None
+
+
+def _sincronizar_costos_recetas_si_corresponde():
+    """
+    Sincroniza costo_referencia_usd para productos receta con un intervalo minimo.
+    Esto mantiene la lista con costos actualizados sin depender de ejecucion manual.
+    """
+    global _ULTIMA_SYNC_COSTOS_UTC
+
+    interval_seconds = int(os.environ.get("LISTA_COSTOS_SYNC_INTERVAL_SECONDS", "300"))
+    now_utc = datetime.datetime.utcnow()
+
+    if _ULTIMA_SYNC_COSTOS_UTC is not None:
+        elapsed = (now_utc - _ULTIMA_SYNC_COSTOS_UTC).total_seconds()
+        if elapsed < interval_seconds:
+            return
+
+    if not _SYNC_COSTOS_LOCK.acquire(blocking=False):
+        return
+
+    try:
+        # Re-check luego de tomar lock para evitar carrera.
+        now_utc = datetime.datetime.utcnow()
+        if _ULTIMA_SYNC_COSTOS_UTC is not None:
+            elapsed = (now_utc - _ULTIMA_SYNC_COSTOS_UTC).total_seconds()
+            if elapsed < interval_seconds:
+                return
+
+        productos_receta = Producto.query.filter_by(es_receta=True).all()
+        cambios = 0
+        for producto in productos_receta:
+            try:
+                costo_calculado = calcular_costo_producto_referencia(producto.id)
+            except Exception:
+                continue
+
+            costo_actual = Decimal(producto.costo_referencia_usd or '0.0').quantize(Decimal("0.0001"))
+            costo_nuevo = Decimal(costo_calculado or '0.0').quantize(Decimal("0.0001"))
+
+            if costo_actual != costo_nuevo:
+                producto.costo_referencia_usd = costo_nuevo
+                cambios += 1
+
+        if cambios > 0:
+            db.session.commit()
+
+        _ULTIMA_SYNC_COSTOS_UTC = now_utc
+    except Exception:
+        db.session.rollback()
+        traceback.print_exc()
+    finally:
+        _SYNC_COSTOS_LOCK.release()
 
 # --- Función de Cálculo de Costo en Moneda de Referencia (USD) ---
 # En app/blueprints/productos.py
@@ -237,6 +295,7 @@ def crear_producto():
 def obtener_productos_paginado():
     """Obtiene una lista de productos con paginación."""
     try:
+        _sincronizar_costos_recetas_si_corresponde()
         query = Producto.query.order_by(Producto.nombre)
 
         # Paginación
@@ -270,6 +329,7 @@ def obtener_productos_paginado():
 def obtener_productos_paginado_activos():
     """Obtiene una lista de productos con paginación."""
     try:
+        _sincronizar_costos_recetas_si_corresponde()
         query = Producto.query.order_by(Producto.nombre)
 
         # Paginación
@@ -303,6 +363,7 @@ def obtener_productos_paginado_activos():
 def obtener_productos():
     """Obtiene una lista de todos los productos."""
     try:
+        _sincronizar_costos_recetas_si_corresponde()
         # Considerar añadir paginación para listas potencialmente largas
         page = request.args.get('page', 1, type=int)
         per_page = request.args.get('per_page', 20, type=int)

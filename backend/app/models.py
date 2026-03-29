@@ -97,6 +97,7 @@ class Producto(db.Model):
     ref_calculo = db.Column(db.String(50), nullable=True)
     margen = db.Column(db.Numeric(10, 4), default=Decimal('0.0'))
     costo_referencia_usd = db.Column(db.Numeric(15, 4), nullable=True)
+    costo_manual_override = db.Column(db.Boolean, default=False, nullable=False)
     es_receta = db.Column(db.Boolean, default=False, nullable=False, index=True)
     activo = db.Column(db.Boolean, default=False, nullable=False, index=True)
     fecha_actualizacion_costo = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
