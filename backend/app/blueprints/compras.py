@@ -481,6 +481,8 @@ def formatear_orden_por_rol(orden_db, rol="almacen", incluir_pagos=False):
     # Inferir moneda: True -> USD, False -> ARS
     moneda = 'USD' if orden_db.ajuste_tc else 'ARS'
 
+    tc_snapshot = _obtener_tc_para_orden(orden_db)
+
     orden_dict = {
         "id": orden_db.id,
         "nro_solicitud_interno": orden_db.nro_solicitud_interno,
@@ -509,6 +511,7 @@ def formatear_orden_por_rol(orden_db, rol="almacen", incluir_pagos=False):
         "recibido_por": getattr(orden_db, 'recibido_por_id', None),
         "estado_recepcion": orden_db.estado_recepcion,
         "notas_recepcion": orden_db.notas_recepcion,
+        "tc_snapshot": float(tc_snapshot) if tc_snapshot is not None else None,
         "fecha_entrega_tentativa": None,  # Inicializar para extraer de observaciones
     }
 
@@ -1154,6 +1157,16 @@ def editar_orden_compra(current_user, orden_id):
                 logger.warning("importe_abonado inválido en edición, se mantiene valor previo")
 
         orden_db.forma_pago = data.get('forma_pago', orden_db.forma_pago)
+
+        # Mantener snapshot de TC histórico cuando se edita la OC.
+        try:
+            tc_snapshot = _resolver_tc_snapshot_payload(data)
+            orden_db.observaciones_solicitud = _upsert_tc_snapshot_text(
+                orden_db.observaciones_solicitud,
+                tc_snapshot
+            )
+        except Exception:
+            pass
 
         db.session.commit()
         logger.info("Orden %s editada por %s", orden_id, usuario_editor)

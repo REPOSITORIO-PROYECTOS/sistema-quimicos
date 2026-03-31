@@ -48,6 +48,7 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
   const [showIva, setShowIva] = useState(false);
   const [tc, setTc] = useState('');
   const [showTc, setShowTc] = useState(false);
+  const [tcInicializadoDesdeSnapshot, setTcInicializadoDesdeSnapshot] = useState(false);
   // Simular valor oficial del día (en real, fetch desde API)
   const valorTcOficial = '900.00';
   const [tipo, setTipo] = useState('Litro');
@@ -156,19 +157,40 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       const ivaNormalizado = ivaRaw !== undefined && ivaRaw !== null ? String(ivaRaw).trim() : '';
       setIva(ivaNormalizado);
       setShowIva(ivaNormalizado !== '' && ivaNormalizado !== '0');
-      // Parse TC snapshot from notas_recepcion (format: __TC_SNAPSHOT__:{...})
-      if (data.notas_recepcion) {
-        try {
-          const snapshotMatch = data.notas_recepcion.match(/__TC_SNAPSHOT__:(.*?)(?:\n|$)/);
-          if (snapshotMatch && snapshotMatch[1]) {
-            const snapshot = JSON.parse(snapshotMatch[1]);
-            if (snapshot.tc_usado && typeof snapshot.tc_usado === 'number') {
-              setTc(String(snapshot.tc_usado));
-              setShowTc(true);
+      // Prioridad: tc_snapshot provisto por backend.
+      const tcSnapshotBackend = Number(data.tc_snapshot);
+      if (Number.isFinite(tcSnapshotBackend) && tcSnapshotBackend > 0) {
+        setTc(String(tcSnapshotBackend));
+        setShowTc(true);
+        setTcInicializadoDesdeSnapshot(true);
+      } else {
+        // Fallback legacy: snapshot embebido en observaciones/notas.
+        const textos = [
+          String(data.observaciones_solicitud || ''),
+          String(data.notas_recepcion || ''),
+        ];
+        let tcEncontrado: number | null = null;
+        for (const txt of textos) {
+          try {
+            const snapshotMatch = txt.match(/__TC_SNAPSHOT__:(.*?)(?:\n|$)/);
+            if (snapshotMatch && snapshotMatch[1]) {
+              const snapshot = JSON.parse(snapshotMatch[1]);
+              const tcParsed = Number(snapshot.tc_usado);
+              if (Number.isFinite(tcParsed) && tcParsed > 0) {
+                tcEncontrado = tcParsed;
+                break;
+              }
             }
+          } catch {
+            // ignore parsing error and continue
           }
-        } catch {
-          // Snapshot parsing failed, continue without TC
+        }
+        if (tcEncontrado !== null) {
+          setTc(String(tcEncontrado));
+          setShowTc(true);
+          setTcInicializadoDesdeSnapshot(true);
+        } else {
+          setTcInicializadoDesdeSnapshot(false);
         }
       }
       const totalOC = Number(data.importe_total_estimado);
@@ -264,6 +286,7 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
 
   useEffect(() => {
     const fetchTC = async () => {
+      if (tcInicializadoDesdeSnapshot) return;
       try {
         const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://quimex.sistemataup.online/api';
         const tkn = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
@@ -272,13 +295,13 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
         if (!res.ok) return;
         const data = await res.json().catch(() => ({}));
         const valor = Number((data && (data.valor ?? data.data?.valor)) ?? NaN);
-        if (isFinite(valor) && valor > 0) {
+        if (isFinite(valor) && valor > 0 && (!tc || !isFinite(Number(tc)) || Number(tc) <= 0)) {
           setTc(String(valor));
         }
       } catch { }
     };
     fetchTC();
-  }, []);
+  }, [tc, tcInicializadoDesdeSnapshot]);
 
   useEffect(() => {
     if (pagoCompletoUI) {
