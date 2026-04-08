@@ -236,12 +236,15 @@ export default function RegistrarIngreso() {
           const payload = {
             usuario_interno_id: user.id,
             proveedor_id: Number(proveedorParaSolicitud.id),
+            tc_transaccion: 1,
+            ajuste_tc: false,
             items: [{
               codigo_interno: Number(item.producto_id),
               cantidad: Number(item.cantidad),
               precio_unitario_estimado: 0,
               unidad_medida: item.unidad_medida,
             }],
+            importe_abonado: 0,
             fecha_limite: fecha,
             // Forma de pago se omite (campo simplificado)
           };

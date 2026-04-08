@@ -32,7 +32,8 @@ export default function PedidoRapidoAdmin() {
   const [iva, setIva] = useState<string>("");
   const [showIva, setShowIva] = useState<boolean>(true);
   const [tc, setTc] = useState<string>("");
-  const [showTc, setShowTc] = useState<boolean>(true);
+  const [showTc, setShowTc] = useState<boolean>(false);
+  const [tcOficialActual, setTcOficialActual] = useState<number | null>(null);
   const [tipoCaja, setTipoCaja] = useState<string>("caja diaria");
   const [formaPago, setFormaPago] = useState<string>("Efectivo");
   const [importeTotal, setImporteTotal] = useState<string>("0");
@@ -177,8 +178,8 @@ export default function PedidoRapidoAdmin() {
         const data = await res.json();
         const valor = Number((data && (data.valor ?? data.data?.valor)) ?? NaN);
         if (isFinite(valor) && valor > 0) {
+          setTcOficialActual(valor);
           setTc(valor.toString());
-          setShowTc(true);
         }
       } catch (e) {
         // Si falla, mantenemos TC oculto o vacío
@@ -372,6 +373,7 @@ export default function PedidoRapidoAdmin() {
         iibb: showIibb ? iibb : '',
         iva: showIva ? iva : '',
         tc: showTc ? tc : '',
+        tc_transaccion: showTc ? Number(tc) : 1,
         ajuste_tc: showTc ? true : false,
         fecha_limite: new Date().toISOString().split('T')[0],
         cuenta,
@@ -428,6 +430,7 @@ export default function PedidoRapidoAdmin() {
         iibb: showIibb ? iibb : '',
         iva: showIva ? iva : '',
         tc: showTc ? tc : '',
+        tc_transaccion: showTc ? Number(tc) : 1,
         ajuste_tc: showTc ? true : false,
         observaciones_solicitud: observacionesFinal,
         tipo_caja: tipoCaja,
@@ -501,6 +504,7 @@ export default function PedidoRapidoAdmin() {
           iibb: showIibb ? iibb : '',
           iva: showIva ? iva : '',
           tc: showTc ? tc : '',
+          tc_transaccion: showTc ? Number(tc) : 1,
           ajuste_tc: showTc ? true : false,
           fecha_limite: new Date().toISOString().split('T')[0],
           cuenta,
@@ -522,7 +526,7 @@ export default function PedidoRapidoAdmin() {
 
         // Solo intentar aprobar si la orden está en SOLICITADO (no si ya está APROBADO)
         if (String(user.role).toUpperCase() === 'ADMIN' && estadoCreadoNormalizado === 'SOLICITADO') {
-          const aprobarPayload = { proveedor_id: Number(proveedorId), cuenta, iibb: showIibb ? iibb : '', iva: showIva ? iva : '', tc: showTc ? tc : '', ajuste_tc: showTc ? true : false, observaciones_solicitud: observacionesFinalCrear, tipo_caja: tipoCaja, forma_pago: formaPago, items: [{ id_linea, cantidad_solicitada, precio_unitario_estimado }], importe_abonado: importeAbonadoCrear, cheque_perteneciente_a: formaPago === 'Cheque' ? chequeEmisor : undefined };
+          const aprobarPayload = { proveedor_id: Number(proveedorId), cuenta, iibb: showIibb ? iibb : '', iva: showIva ? iva : '', tc: showTc ? tc : '', tc_transaccion: showTc ? Number(tc) : 1, ajuste_tc: showTc ? true : false, observaciones_solicitud: observacionesFinalCrear, tipo_caja: tipoCaja, forma_pago: formaPago, items: [{ id_linea, cantidad_solicitada, precio_unitario_estimado }], importe_abonado: importeAbonadoCrear, cheque_perteneciente_a: formaPago === 'Cheque' ? chequeEmisor : undefined };
           try {
             await apiRequest(`${apiBase}/ordenes_compra/aprobar/${nuevaOCId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-User-Role': user.role, 'X-User-Name': user.usuario || user.name, 'Authorization': `Bearer ${token}` }, body: JSON.stringify(aprobarPayload) });
           } catch (approvalErr) {
@@ -542,6 +546,7 @@ export default function PedidoRapidoAdmin() {
           iibb: showIibb ? Number(iibb) : undefined,
           iva: showIva ? Number(iva) : undefined,
           tc: showTc ? Number(tc) : undefined,
+          tc_transaccion: showTc ? Number(tc) : 1,
           ajuste_tc: showTc ? true : false,
           nro_remito_proveedor: '',
           estado_recepcion: estadoRecepcion,
@@ -657,9 +662,23 @@ export default function PedidoRapidoAdmin() {
           </div>
           <div className="flex items-center gap-2 mt-2">
             <label className="text-white text-sm font-medium">TC</label>
-            <input type="checkbox" checked={showTc} onChange={() => setShowTc(!showTc)} className="accent-blue-600 w-4 h-4" />
+            <input
+              type="checkbox"
+              checked={showTc}
+              onChange={() => {
+                const next = !showTc;
+                setShowTc(next);
+                if (next && (!tc || Number.isNaN(Number.parseFloat(tc))) && tcOficialActual && tcOficialActual > 0) {
+                  setTc(tcOficialActual.toString());
+                }
+              }}
+              className="accent-blue-600 w-4 h-4"
+            />
             {showTc && (
               <input type="number" step="0.01" value={tc} onChange={(e) => setTc(e.target.value)} className={baseInput + ' ml-2 w-24'} placeholder="Ej: 900.00" />
+            )}
+            {tcOficialActual && (
+              <span className="ml-2 text-xs text-white/80">TC oficial actual: {tcOficialActual}</span>
             )}
           </div>
         </div>

@@ -62,6 +62,20 @@ def _extraer_estado_nombre_vendedor(nombre_vendedor: str) -> str:
     estado = partes[0].strip().upper()
     return estado
 
+
+def _monto_oc_a_ars(oc: OrdenCompra, monto: Decimal) -> Decimal:
+    """Normaliza montos de OC a ARS usando tc_transaccion cuando la orden está en USD."""
+    base = Decimal(str(monto or Decimal('0.0')))
+    if not getattr(oc, 'ajuste_tc', False):
+        return base
+    try:
+        tc = Decimal(str(getattr(oc, 'tc_transaccion', Decimal('1.0')) or Decimal('1.0')))
+        if tc <= 0:
+            tc = Decimal('1.0')
+    except Exception:
+        tc = Decimal('1.0')
+    return (base * tc).quantize(Decimal('0.01'))
+
 @reportes_bp.route('/movimientos-excel', methods=['GET'])
 @token_required
 @roles_required(ROLES['ADMIN'], ROLES['CONTABLE']) # Ajustado para permitir ADMIN, CONTABLE y VENTAS_PEDIDOS
@@ -680,15 +694,17 @@ def _get_kpis_entregas_manana(fecha_seleccionada: date):
 
 def _get_kpis_de_compras():
     """Calcula y devuelve los KPIs globales de compras y proveedores."""
-    deuda_proveedores_raw = db.session.query(
-        func.sum(OrdenCompra.importe_total_estimado).label('total'),
-        func.sum(OrdenCompra.importe_abonado).label('abonado')
-    ).one()
-    
-    deuda_proveedores = (deuda_proveedores_raw.total or Decimal('0.0')) - (deuda_proveedores_raw.abonado or Decimal('0.0'))
-    
-    compras_por_recibir = db.session.query(func.sum(OrdenCompra.importe_total_estimado))\
-        .filter(OrdenCompra.estado == 'APROBADO').scalar() or Decimal('0.0')
+    ordenes = db.session.query(OrdenCompra).all()
+    deuda_proveedores = Decimal('0.0')
+    compras_por_recibir = Decimal('0.0')
+
+    for oc in ordenes:
+        total_ars = _monto_oc_a_ars(oc, oc.importe_total_estimado or Decimal('0.0'))
+        abonado_ars = _monto_oc_a_ars(oc, oc.importe_abonado or Decimal('0.0'))
+        deuda_oc = total_ars - abonado_ars
+        deuda_proveedores += deuda_oc
+        if (oc.estado or '').upper() == 'APROBADO':
+            compras_por_recibir += total_ars
         
     return {
         "deuda_proveedores": deuda_proveedores,
@@ -1061,6 +1077,8 @@ def ordenes_pendientes_vencimientos(current_user):
 
             monto_total = oc.importe_total_estimado or Decimal('0.0')
             monto_pagado = oc.importe_abonado or Decimal('0.0')
+            monto_total = _monto_oc_a_ars(oc, monto_total)
+            monto_pagado = _monto_oc_a_ars(oc, monto_pagado)
             deuda = monto_total - monto_pagado
 
             resultados.append({

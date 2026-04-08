@@ -79,6 +79,13 @@ def test_recalcular_crea_mov_debito_and_actualiza_total(monkeypatch):
             self.importe_total_estimado = Decimal('100')
             self.importe_abonado = Decimal('20')
             self.ajuste_tc = False
+            # La deuda se calcula sobre recepción efectiva, no sobre total cabecera.
+            self.items = [
+                types.SimpleNamespace(
+                    cantidad_recibida=Decimal('1'),
+                    precio_unitario_estimado=Decimal('124')
+                )
+            ]
 
     orden = DummyOrder()
 
@@ -126,7 +133,7 @@ def test_recalcular_crea_mov_debito_and_actualiza_total(monkeypatch):
     assert ok is True
     assert orden.importe_total_estimado == Decimal('124.00')
 
-    # restante = 124 - 20 = 104 -> should have created a DEBITO Movimiento with monto 104.00
+    # recepcionado = 124, abonado = 20 -> restante = 104 (deuda por recepción efectiva)
     assert len(fake_db.session.added) == 1
     mov = fake_db.session.added[0]
     assert mov.tipo == 'DEBITO'

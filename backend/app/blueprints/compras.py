@@ -89,7 +89,16 @@ def _extract_tc_snapshot_from_text(texto):
 
 
 def _obtener_tc_para_orden(orden_db):
-    """Devuelve el TC guardado en la orden (observaciones/notas) o None."""
+    """Devuelve el TC de la orden priorizando campo tipado y luego snapshot."""
+    try:
+        tc_columna = getattr(orden_db, 'tc_transaccion', None)
+        if tc_columna is not None:
+            tc_dec = Decimal(str(tc_columna))
+            if tc_dec > 0:
+                return tc_dec
+    except Exception:
+        pass
+
     tc_obs = _extract_tc_snapshot_from_text(getattr(orden_db, 'observaciones_solicitud', None))
     if tc_obs is not None:
         return tc_obs
@@ -102,7 +111,11 @@ def _obtener_tc_para_orden(orden_db):
 def _resolver_tc_snapshot_payload(data):
     """Resuelve el TC a guardar en snapshot: primero payload.tc, luego TC Oficial."""
     try:
-        tc_payload = data.get('tc') if isinstance(data, dict) else None
+        tc_payload = None
+        if isinstance(data, dict):
+            tc_payload = data.get('tc_transaccion')
+            if tc_payload is None or str(tc_payload).strip() == '':
+                tc_payload = data.get('tc')
         if tc_payload is not None and str(tc_payload).strip() != '':
             tc_from_payload = Decimal(str(tc_payload).replace(',', '.'))
             if tc_from_payload > 0:
@@ -119,6 +132,32 @@ def _resolver_tc_snapshot_payload(data):
         pass
 
     return None
+
+
+def _resolver_tc_transaccion(data, ajuste_tc_flag, actual_tc=None):
+    """Resuelve el TC transaccional inmutable para la OC.
+
+    - Si la orden no ajusta por TC, retorna 1.00.
+    - Si ajusta por TC y viene TC en payload/snapshot, usa ese valor.
+    - Si no viene TC y existe valor previo, conserva el valor previo.
+    - En ultimo caso, usa 1.00 como fallback seguro.
+    """
+    if not ajuste_tc_flag:
+        return Decimal('1.00')
+
+    tc_payload = _resolver_tc_snapshot_payload(data)
+    if tc_payload is not None:
+        return Decimal(str(tc_payload)).quantize(Decimal('0.01'))
+
+    try:
+        if actual_tc is not None:
+            tc_prev = Decimal(str(actual_tc))
+            if tc_prev > 0:
+                return tc_prev.quantize(Decimal('0.01'))
+    except Exception:
+        pass
+
+    return Decimal('1.00')
 
 
 def _upsert_tc_snapshot_text(texto_base, tc_snapshot):
@@ -488,6 +527,7 @@ def formatear_orden_por_rol(orden_db, rol="almacen", incluir_pagos=False):
         "nro_solicitud_interno": orden_db.nro_solicitud_interno,
         "nro_remito_proveedor": orden_db.nro_remito_proveedor,
         "ajuste_tc": orden_db.ajuste_tc,
+        "tc_transaccion": float(orden_db.tc_transaccion) if getattr(orden_db, 'tc_transaccion', None) is not None else None,
         "moneda": moneda,  # NUEVO: Campo explícito de moneda
         "fecha_creacion": orden_db.fecha_creacion.isoformat() if orden_db.fecha_creacion else None,
         "fecha_actualizacion": orden_db.fecha_actualizacion.isoformat() if orden_db.fecha_actualizacion else None,
@@ -723,6 +763,8 @@ def crear_orden_compra(current_user):
                 ajuste_tc=ajuste_tc_payload
             )
 
+        nueva_orden.tc_transaccion = _resolver_tc_transaccion(data, ajuste_tc_payload)
+
         # Asociar detalles a la orden (no usar direct assignment a relationship)
         # En su lugar, usar la relación inversa: establecer la FK en cada detalle
         for detalle in detalles_db:
@@ -733,9 +775,11 @@ def crear_orden_compra(current_user):
         nueva_orden.iibb = data.get('iibb', nueva_orden.iibb)
         nueva_orden.iva = data.get('iva', nueva_orden.iva)
         nueva_orden.tipo_caja = data.get('tipo_caja', nueva_orden.tipo_caja)
-        # Registrar pago inicial si viene
+        # Registrar pago inicial si viene; por defecto siempre 0.00 en solicitudes.
         importe_abonado_payload = data.get('importe_abonado')
-        if importe_abonado_payload is not None:
+        if importe_abonado_payload is None or str(importe_abonado_payload).strip() == '':
+            nueva_orden.importe_abonado = Decimal('0.00')
+        else:
             try:
                 abonado = Decimal(str(importe_abonado_payload))
                 if abonado < 0:
@@ -955,6 +999,12 @@ def aprobar_orden_compra(current_user, orden_id):
             ajuste_valor = data.get('ajuste_tc')
             orden_db.ajuste_tc = str(ajuste_valor).lower() == 'true' or ajuste_valor is True
 
+        orden_db.tc_transaccion = _resolver_tc_transaccion(
+            data,
+            bool(orden_db.ajuste_tc),
+            actual_tc=getattr(orden_db, 'tc_transaccion', None)
+        )
+
         # --- Actualizar items (solo si vienen en el payload) ANTES de validar pago---
         items_payload = data.get('items', [])
         if items_payload and orden_db.items:
@@ -1047,7 +1097,7 @@ def aprobar_orden_compra(current_user, orden_id):
                     proveedor_id=orden_db.proveedor_id,
                     orden_id=orden_db.id,
                     tipo='CREDITO',
-                    monto=_convert_to_ars(abonado_aprob, orden_db.ajuste_tc, tc_override=_obtener_tc_para_orden(orden_db)),
+                    monto=_convert_to_ars(abonado_aprob, orden_db.ajuste_tc, tc_override=orden_db.tc_transaccion),
                     descripcion=_descripcion_pago_orden(
                         orden_db.id,
                         'Pago al aprobar',
@@ -1109,6 +1159,13 @@ def editar_orden_compra(current_user, orden_id):
         if not orden_db:
             return jsonify({"error": "Orden de compra no encontrada"}), 404
 
+        # Candado explícito: una vez que la orden avanza, el TC transaccional no puede cambiarse.
+        estado_upper_pre = (orden_db.estado or '').upper()
+        if 'tc_transaccion' in data and estado_upper_pre in ('APROBADO', 'RECIBIDO', 'CON DEUDA', 'RECIBIDA_PARCIAL', 'EN_ESPERA_RECEPCION'):
+            return jsonify({
+                "error": f"No se puede modificar 'tc_transaccion' para una orden en estado {orden_db.estado}."
+            }), 409
+
         # Validar que esté en estado SOLICITADO (sin aprobar)
         estado_upper = (orden_db.estado or '').upper()
         if estado_upper not in ('SOLICITADO', 'PENDIENTE'):
@@ -1124,6 +1181,12 @@ def editar_orden_compra(current_user, orden_id):
         if 'ajuste_tc' in data:
             ajuste_valor = data.get('ajuste_tc')
             orden_db.ajuste_tc = str(ajuste_valor).lower() == 'true' or ajuste_valor is True
+
+        orden_db.tc_transaccion = _resolver_tc_transaccion(
+            data,
+            bool(orden_db.ajuste_tc),
+            actual_tc=getattr(orden_db, 'tc_transaccion', None)
+        )
 
         # Actualizar items si vienen
         items_payload = data.get('items', [])
@@ -1282,7 +1345,7 @@ def registrar_pago_orden(current_user, orden_id):
             proveedor_id=orden_db.proveedor_id,
             orden_id=orden_db.id,
             tipo='CREDITO',
-            monto=_convert_to_ars(monto_pago, orden_db.ajuste_tc, tc_override=_obtener_tc_para_orden(orden_db)),
+            monto=_convert_to_ars(monto_pago, orden_db.ajuste_tc, tc_override=orden_db.tc_transaccion),
             descripcion=_descripcion_pago_orden(
                 orden_db.id,
                 'Pago total registrado' if es_pago_total else 'Pago parcial registrado',
@@ -1515,7 +1578,7 @@ def recibir_orden_compra(current_user, orden_id):
             
             # Registrar crédito si se abonó ahora (convertir a ARS si OC estaba en USD)
             if nuevo_abono > Decimal('0'):
-                monto_credito_ars = _convert_to_ars(nuevo_abono, orden_db.ajuste_tc, tc_override=_obtener_tc_para_orden(orden_db))
+                monto_credito_ars = _convert_to_ars(nuevo_abono, orden_db.ajuste_tc, tc_override=orden_db.tc_transaccion)
                 mov_credito = MovimientoProveedor(  # type: ignore [call-arg]
                     proveedor_id=orden_db.proveedor_id,
                     orden_id=orden_db.id,

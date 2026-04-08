@@ -18,9 +18,17 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'backend'))
 
 from decimal import Decimal
+import pytest
 from app import create_app, db
 from app.models import OrdenCompra, DetalleOrdenCompra, MovimientoProveedor, Producto, Proveedor
 import datetime
+
+
+def _ensure_db_available():
+    try:
+        db.session.execute('SELECT 1')
+    except Exception as exc:
+        pytest.skip(f'DB no disponible para tests de integración: {exc}')
 
 def test_pago_completo():
     """Test 1: Pago completo - importe_abonado = importe_total"""
@@ -30,6 +38,7 @@ def test_pago_completo():
     
     app = create_app()
     with app.app_context():
+        _ensure_db_available()
         try:
             # Datos de prueba
             total = Decimal('1000.00')
@@ -85,13 +94,13 @@ def test_pago_completo():
             db.session.commit()
             
             print("✅ TEST 1 PASADO: Pago completo funciona correctamente")
-            return True
+            return
             
         except Exception as e:
             print(f"❌ TEST 1 FALLIDO: {str(e)}")
             import traceback
             traceback.print_exc()
-            return False
+            assert False, f"TEST 1 FALLIDO: {e}"
 
 
 def test_pago_parcial():
@@ -102,6 +111,7 @@ def test_pago_parcial():
     
     app = create_app()
     with app.app_context():
+        _ensure_db_available()
         try:
             # Datos de prueba
             total = Decimal('1000.00')
@@ -143,13 +153,13 @@ def test_pago_parcial():
             db.session.commit()
             
             print("✅ TEST 2 PASADO: Pago parcial funciona correctamente")
-            return True
+            return
             
         except Exception as e:
             print(f"❌ TEST 2 FALLIDO: {str(e)}")
             import traceback
             traceback.print_exc()
-            return False
+            assert False, f"TEST 2 FALLIDO: {e}"
 
 
 def test_pago_cero():
@@ -160,6 +170,7 @@ def test_pago_cero():
     
     app = create_app()
     with app.app_context():
+        _ensure_db_available()
         try:
             # Datos de prueba
             total = Decimal('1000.00')
@@ -198,13 +209,13 @@ def test_pago_cero():
             db.session.commit()
             
             print("✅ TEST 3 PASADO: Sin pago inicial funciona correctamente")
-            return True
+            return
             
         except Exception as e:
             print(f"❌ TEST 3 FALLIDO: {str(e)}")
             import traceback
             traceback.print_exc()
-            return False
+            assert False, f"TEST 3 FALLIDO: {e}"
 
 
 def test_validacion_monto_negativo():
@@ -215,6 +226,7 @@ def test_validacion_monto_negativo():
     
     app = create_app()
     with app.app_context():
+        _ensure_db_available()
         try:
             # Intentar crear orden con monto negativo
             total = Decimal('1000.00')
@@ -226,14 +238,14 @@ def test_validacion_monto_negativo():
             if abonado < 0:
                 print(f"✅ Validación correcta: Monto negativo ${abonado} es rechazado")
                 print("✅ TEST 4 PASADO: Validación de montos negativos funciona")
-                return True
+                return
             else:
                 print("❌ TEST 4 FALLIDO: Validación no rechaza montos negativos")
-                return False
+                assert False, "TEST 4 FALLIDO: validación no rechaza montos negativos"
                 
         except Exception as e:
             print(f"❌ TEST 4 FALLIDO: {str(e)}")
-            return False
+            assert False, f"TEST 4 FALLIDO: {e}"
 
 
 def test_validacion_excede_total():
@@ -244,6 +256,7 @@ def test_validacion_excede_total():
     
     app = create_app()
     with app.app_context():
+        _ensure_db_available()
         try:
             # Si el usuario intenta abonar más que el total
             total = Decimal('1000.00')
@@ -258,11 +271,11 @@ def test_validacion_excede_total():
             print(f"✅ Monto intentado: ${abonado_intentado}")
             print(f"✅ Monto clamped: ${abonado_real}")
             print("✅ TEST 5 PASADO: Clamp funciona correctamente")
-            return True
+            return
             
         except Exception as e:
             print(f"❌ TEST 5 FALLIDO: {str(e)}")
-            return False
+            assert False, f"TEST 5 FALLIDO: {e}"
 
 
 def test_pago_con_impuestos():
@@ -273,6 +286,7 @@ def test_pago_con_impuestos():
     
     app = create_app()
     with app.app_context():
+        _ensure_db_available()
         try:
             # Base: $1000
             base = Decimal('1000.00')
@@ -315,13 +329,13 @@ def test_pago_con_impuestos():
             db.session.commit()
             
             print("✅ TEST 6 PASADO: Pagos con impuestos funcionan correctamente")
-            return True
+            return
             
         except Exception as e:
             print(f"❌ TEST 6 FALLIDO: {str(e)}")
             import traceback
             traceback.print_exc()
-            return False
+            assert False, f"TEST 6 FALLIDO: {e}"
 
 
 def test_pago_multiples_abonos():
@@ -332,6 +346,7 @@ def test_pago_multiples_abonos():
     
     app = create_app()
     with app.app_context():
+        _ensure_db_available()
         try:
             # Datos de prueba
             total = Decimal('1000.00')
@@ -379,13 +394,13 @@ def test_pago_multiples_abonos():
             db.session.commit()
             
             print("✅ TEST 7 PASADO: Múltiples abonos funcionan correctamente")
-            return True
+            return
             
         except Exception as e:
             print(f"❌ TEST 7 FALLIDO: {str(e)}")
             import traceback
             traceback.print_exc()
-            return False
+            assert False, f"TEST 7 FALLIDO: {e}"
 
 
 def run_all_tests():
@@ -407,8 +422,8 @@ def run_all_tests():
     results = []
     for name, test_func in tests:
         try:
-            passed = test_func()
-            results.append((name, passed))
+            test_func()
+            results.append((name, True))
         except Exception as e:
             print(f"❌ Error ejecutando {name}: {str(e)}")
             results.append((name, False))
