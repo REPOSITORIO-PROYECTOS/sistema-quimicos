@@ -23,6 +23,87 @@ export default function AccionesPedidos() {
   const [esCompras, setEsCompras] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [tcComprasHoy, setTcComprasHoy] = useState<string>('');
+  const [loadingTc, setLoadingTc] = useState(false);
+  const [savingTc, setSavingTc] = useState(false);
+  const [errorTc, setErrorTc] = useState<string | null>(null);
+  const [okTc, setOkTc] = useState<string | null>(null);
+
+  const cargarTcCompras = async () => {
+    setLoadingTc(true);
+    setErrorTc(null);
+    setOkTc(null);
+    try {
+      const token = localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
+      const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://quimex.sistemataup.online/api';
+
+      const res = await fetch(`${API_BASE_URL}/tipos_cambio/obtener/DolarCompras`, { headers });
+      let data: { valor?: number; data?: { valor?: number } } = {};
+
+      if (!res.ok) {
+        const fallback = await fetch(`${API_BASE_URL}/tipos_cambio/obtener/Oficial`, { headers });
+        if (!fallback.ok) {
+          throw new Error('No se pudo obtener cotizacion de compras');
+        }
+        data = await fallback.json();
+      } else {
+        data = await res.json();
+      }
+
+      const valor = Number((data && (data.valor ?? data.data?.valor)) ?? NaN);
+      if (!Number.isFinite(valor) || valor <= 0) {
+        throw new Error('Cotizacion invalida');
+      }
+      setTcComprasHoy(valor.toFixed(2));
+    } catch (e) {
+      console.error('Error cargando cotizacion de compras:', e);
+      setErrorTc('No se pudo cargar la cotizacion de compras.');
+    } finally {
+      setLoadingTc(false);
+    }
+  };
+
+  const guardarTcCompras = async () => {
+    setSavingTc(true);
+    setErrorTc(null);
+    setOkTc(null);
+    try {
+      const valor = Number.parseFloat(String(tcComprasHoy).replace(',', '.'));
+      if (!Number.isFinite(valor) || valor <= 0) {
+        throw new Error('Ingrese una cotizacion valida mayor a 0.');
+      }
+
+      const token = localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
+      if (!token) {
+        throw new Error('Sesion no valida. Inicie sesion nuevamente.');
+      }
+
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://quimex.sistemataup.online/api';
+      const res = await fetch(`${API_BASE_URL}/tipos_cambio/actualizar/DolarCompras`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ valor }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        const msg = String(data?.error || data?.mensaje || `Error ${res.status}`);
+        throw new Error(msg);
+      }
+
+      setTcComprasHoy(valor.toFixed(2));
+      setOkTc('Cotizacion de compras actualizada.');
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'No se pudo guardar la cotizacion.';
+      setErrorTc(msg);
+    } finally {
+      setSavingTc(false);
+    }
+  };
 
   // Función para obtener y sincronizar el rol del usuario
   const sincronizarUsuario = () => {
@@ -87,6 +168,12 @@ export default function AccionesPedidos() {
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
+  useEffect(() => {
+    if (esAdmin) {
+      cargarTcCompras();
+    }
+  }, [esAdmin]);
+
   const irARegistrarPedido = () => router.push('/registrar-pedido-compra');
   const irAVerPendientesAprobacion = () => router.push('/ver-lista-pedidos?estado=Solicitado');
   const irAVerRecepcionesPendientes = () => router.push('/recepciones-pendientes');
@@ -110,6 +197,39 @@ export default function AccionesPedidos() {
 
       {/* Debug - Mostrar rol (opcional, eliminar en producción) */}
       <p className="text-white text-sm mb-6 opacity-75">👤 Rol: {user?.role || 'No asignado'}</p>
+
+      {esAdmin && (
+        <div className="w-full max-w-md mb-6 rounded-lg border border-white/30 bg-white/10 p-4">
+          <p className="text-white text-sm font-semibold mb-2">Cotizacion del dia (Compras)</p>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={tcComprasHoy}
+              onChange={(e) => setTcComprasHoy(e.target.value.replace(',', '.'))}
+              placeholder={loadingTc ? 'Cargando...' : 'Ej: 1420.50'}
+              className="flex-1 rounded-md border border-white/40 bg-white px-3 py-2 text-[#2c239d] font-semibold"
+            />
+            <button
+              type="button"
+              onClick={cargarTcCompras}
+              disabled={loadingTc || savingTc}
+              className="rounded-md bg-white px-3 py-2 text-[#2c239d] font-bold hover:bg-gray-100 disabled:opacity-60"
+            >
+              {loadingTc ? 'Actualizando...' : 'Refrescar'}
+            </button>
+            <button
+              type="button"
+              onClick={guardarTcCompras}
+              disabled={savingTc || loadingTc}
+              className="rounded-md bg-emerald-500 px-3 py-2 text-white font-bold hover:bg-emerald-600 disabled:opacity-60"
+            >
+              {savingTc ? 'Guardando...' : 'Guardar'}
+            </button>
+          </div>
+          {errorTc && <p className="mt-2 text-xs text-red-200">{errorTc}</p>}
+          {okTc && <p className="mt-2 text-xs text-green-200">{okTc}</p>}
+        </div>
+      )}
 
       <div className="flex flex-col gap-5 w-full max-w-md">
         {/* OPCIÓN PRINCIPAL PARA ADMIN: PEDIDO RÁPIDO */}

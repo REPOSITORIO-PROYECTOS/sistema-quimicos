@@ -29,7 +29,7 @@ def extract_tc_snapshot(texto):
 
 
 def get_tc_oficial_fallback():
-    tc = TipoCambio.query.filter_by(nombre='Oficial').first()
+    tc = TipoCambio.query.filter_by(nombre='DolarCompras').first() or TipoCambio.query.filter_by(nombre='Oficial').first()
     if tc and tc.valor:
         try:
             value = Decimal(str(tc.valor))
@@ -50,8 +50,9 @@ def run_backfill(dry_run=True, limit=None):
     by_snapshot = 0
     by_fallback = 0
     unchanged = 0
+    manual_review = []
 
-    tc_fallback = get_tc_oficial_fallback() or Decimal('1.00')
+    tc_fallback = get_tc_oficial_fallback()
 
     for oc in q.all():
         total += 1
@@ -65,8 +66,12 @@ def run_backfill(dry_run=True, limit=None):
                 nuevo_tc = snapshot_tc
                 by_snapshot += 1
             else:
-                nuevo_tc = tc_fallback
-                by_fallback += 1
+                if tc_fallback is not None:
+                    nuevo_tc = tc_fallback
+                    by_fallback += 1
+                else:
+                    manual_review.append(oc.id)
+                    continue
 
         actual_tc = Decimal(str(oc.tc_transaccion or Decimal('1.00'))).quantize(Decimal('0.01'))
         if actual_tc == nuevo_tc:
@@ -88,6 +93,9 @@ def run_backfill(dry_run=True, limit=None):
     print(f'from_fallback={by_fallback}')
     print(f'fallback_tc_oficial={tc_fallback}')
     print(f'dry_run={dry_run}')
+    print(f'manual_review_count={len(manual_review)}')
+    if manual_review:
+        print(f'manual_review_ids={manual_review}')
 
 
 if __name__ == '__main__':

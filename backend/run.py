@@ -47,6 +47,12 @@ if __name__ == "__main__":
                 db.session.add(TipoCambio(nombre='Empresa', valor=Decimal('1050.0'))) # Ejemplo
                 print("--- [run.py] TC 'Empresa' creado.")
 
+            tc_compras = TipoCambio.query.filter_by(nombre='DolarCompras').first()
+            if not tc_compras:
+                valor_base = tc_oficial.valor if tc_oficial and tc_oficial.valor else Decimal('850.0')
+                db.session.add(TipoCambio(nombre='DolarCompras', valor=valor_base))
+                print("--- [run.py] TC 'DolarCompras' creado.")
+
             db.session.commit()
             print("--- [run.py] Tipos de Cambio base verificados/creados.")
 

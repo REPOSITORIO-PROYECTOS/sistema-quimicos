@@ -33,7 +33,7 @@ export default function PedidoRapidoAdmin() {
   const [showIva, setShowIva] = useState<boolean>(true);
   const [tc, setTc] = useState<string>("");
   const [showTc, setShowTc] = useState<boolean>(false);
-  const [tcOficialActual, setTcOficialActual] = useState<number | null>(null);
+  const [tcComprasActual, setTcComprasActual] = useState<number | null>(null);
   const [tipoCaja, setTipoCaja] = useState<string>("caja diaria");
   const [formaPago, setFormaPago] = useState<string>("Efectivo");
   const [importeTotal, setImporteTotal] = useState<string>("0");
@@ -173,17 +173,23 @@ export default function PedidoRapidoAdmin() {
         const API_BASE_URL = 'https://quimex.sistemataup.online/api';
         const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
         const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
-        const res = await fetch(`${API_BASE_URL}/tipos_cambio/obtener/Oficial`, { headers });
-        if (!res.ok) throw new Error('No se pudo obtener TC Oficial');
-        const data = await res.json();
+        const res = await fetch(`${API_BASE_URL}/tipos_cambio/obtener/DolarCompras`, { headers });
+        let data: { valor?: number; data?: { valor?: number } } = {};
+        if (!res.ok) {
+          const fallback = await fetch(`${API_BASE_URL}/tipos_cambio/obtener/Oficial`, { headers });
+          if (!fallback.ok) throw new Error('No se pudo obtener TC de compras');
+          data = await fallback.json();
+        } else {
+          data = await res.json();
+        }
         const valor = Number((data && (data.valor ?? data.data?.valor)) ?? NaN);
         if (isFinite(valor) && valor > 0) {
-          setTcOficialActual(valor);
+          setTcComprasActual(valor);
           setTc(valor.toString());
         }
       } catch (e) {
         // Si falla, mantenemos TC oculto o vacío
-        console.warn('PedidoRapido: Error obteniendo TC Oficial', e);
+        console.warn('PedidoRapido: Error obteniendo TC de compras', e);
       }
     };
     fetchTC();
@@ -668,17 +674,25 @@ export default function PedidoRapidoAdmin() {
               onChange={() => {
                 const next = !showTc;
                 setShowTc(next);
-                if (next && (!tc || Number.isNaN(Number.parseFloat(tc))) && tcOficialActual && tcOficialActual > 0) {
-                  setTc(tcOficialActual.toString());
+                if (next && (!tc || Number.isNaN(Number.parseFloat(tc))) && tcComprasActual && tcComprasActual > 0) {
+                  setTc(tcComprasActual.toString());
                 }
               }}
               className="accent-blue-600 w-4 h-4"
             />
             {showTc && (
-              <input type="number" step="0.01" value={tc} onChange={(e) => setTc(e.target.value)} className={baseInput + ' ml-2 w-24'} placeholder="Ej: 900.00" />
+              <input
+                type="number"
+                step="0.01"
+                value={tc}
+                readOnly
+                disabled
+                className={baseInput + ' ml-2 w-24 disabled:cursor-not-allowed disabled:opacity-70'}
+                placeholder="TC compras"
+              />
             )}
-            {tcOficialActual && (
-              <span className="ml-2 text-xs text-white/80">TC oficial actual: {tcOficialActual}</span>
+            {tcComprasActual && (
+              <span className="ml-2 text-xs text-white/80">TC compras actual: {tcComprasActual}</span>
             )}
           </div>
         </div>

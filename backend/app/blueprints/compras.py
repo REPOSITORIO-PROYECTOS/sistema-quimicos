@@ -31,6 +31,9 @@ compras_bp = Blueprint('compras', __name__, url_prefix='/api/ordenes_compra')
 # Logger del módulo
 logger = logging.getLogger(__name__)
 
+TC_COMPRAS_NOMBRE = 'DolarCompras'
+TC_COMPRAS_FALLBACK = 'Oficial'
+
 
 def _normalizar_estado_texto(estado):
     return str(estado or '').strip().upper()
@@ -59,13 +62,38 @@ def _convert_to_ars(amount, ajuste_tc_flag, moneda_origen=None, tc_override=None
                 except Exception:
                     pass
 
-            from ..models import TipoCambio
-            tc = TipoCambio.query.filter_by(nombre='Oficial').first()
-            if tc and tc.valor:
-                return (amount_dec * Decimal(str(tc.valor))).quantize(Decimal('0.01'))
+            tc_compra = _obtener_tc_compras_actual()
+            if tc_compra is not None:
+                return (amount_dec * tc_compra).quantize(Decimal('0.01'))
         return amount_dec.quantize(Decimal('0.01'))
     except Exception:
         return Decimal(str(amount)).quantize(Decimal('0.01'))
+
+
+def _obtener_tc_compras_actual():
+    """Obtiene el TC vigente para compras.
+
+    Prioriza `DolarCompras` y usa `Oficial` como fallback temporal de despliegue.
+    """
+    try:
+        tc_compra = TipoCambio.query.filter_by(nombre=TC_COMPRAS_NOMBRE).first()
+        if tc_compra and tc_compra.valor:
+            tc_val = Decimal(str(tc_compra.valor))
+            if tc_val > 0:
+                return tc_val.quantize(Decimal('0.01'))
+    except Exception:
+        logger.exception("Error consultando %s", TC_COMPRAS_NOMBRE)
+
+    try:
+        tc_fallback = TipoCambio.query.filter_by(nombre=TC_COMPRAS_FALLBACK).first()
+        if tc_fallback and tc_fallback.valor:
+            tc_val = Decimal(str(tc_fallback.valor))
+            if tc_val > 0:
+                return tc_val.quantize(Decimal('0.01'))
+    except Exception:
+        logger.exception("Error consultando fallback %s", TC_COMPRAS_FALLBACK)
+
+    return None
 
 
 def _extract_tc_snapshot_from_text(texto):
@@ -109,7 +137,7 @@ def _obtener_tc_para_orden(orden_db):
 
 
 def _resolver_tc_snapshot_payload(data):
-    """Resuelve el TC a guardar en snapshot: primero payload.tc, luego TC Oficial."""
+    """Resuelve el TC a guardar en snapshot: primero payload.tc, luego TC compras actual."""
     try:
         tc_payload = None
         if isinstance(data, dict):
@@ -123,13 +151,9 @@ def _resolver_tc_snapshot_payload(data):
     except Exception:
         pass
 
-    try:
-        o = TipoCambio.query.filter_by(nombre='Oficial').first()
-        if o and o.valor:
-            tc_oficial = Decimal(str(o.valor))
-            return tc_oficial if tc_oficial > 0 else None
-    except Exception:
-        pass
+    tc_compra = _obtener_tc_compras_actual()
+    if tc_compra is not None:
+        return tc_compra
 
     return None
 
@@ -138,16 +162,16 @@ def _resolver_tc_transaccion(data, ajuste_tc_flag, actual_tc=None):
     """Resuelve el TC transaccional inmutable para la OC.
 
     - Si la orden no ajusta por TC, retorna 1.00.
-    - Si ajusta por TC y viene TC en payload/snapshot, usa ese valor.
-    - Si no viene TC y existe valor previo, conserva el valor previo.
-    - En ultimo caso, usa 1.00 como fallback seguro.
+    - Si ajusta por TC, toma el TC global de compras (DolarCompras).
+    - Si no hay TC global disponible, conserva valor previo valido.
+    - Si sigue sin TC valido, lanza error de negocio.
     """
     if not ajuste_tc_flag:
         return Decimal('1.00')
 
-    tc_payload = _resolver_tc_snapshot_payload(data)
-    if tc_payload is not None:
-        return Decimal(str(tc_payload)).quantize(Decimal('0.01'))
+    tc_compra = _obtener_tc_compras_actual()
+    if tc_compra is not None:
+        return tc_compra
 
     try:
         if actual_tc is not None:
@@ -157,7 +181,10 @@ def _resolver_tc_transaccion(data, ajuste_tc_flag, actual_tc=None):
     except Exception:
         pass
 
-    return Decimal('1.00')
+    raise ValueError(
+        "No se pudo resolver un tipo de cambio valido para compras USD. "
+        f"Configure '{TC_COMPRAS_NOMBRE}' o '{TC_COMPRAS_FALLBACK}'."
+    )
 
 
 def _upsert_tc_snapshot_text(texto_base, tc_snapshot):
@@ -763,7 +790,10 @@ def crear_orden_compra(current_user):
                 ajuste_tc=ajuste_tc_payload
             )
 
-        nueva_orden.tc_transaccion = _resolver_tc_transaccion(data, ajuste_tc_payload)
+        try:
+            nueva_orden.tc_transaccion = _resolver_tc_transaccion(data, ajuste_tc_payload)
+        except ValueError as tc_err:
+            return jsonify({"error": str(tc_err)}), 400
 
         # Asociar detalles a la orden (no usar direct assignment a relationship)
         # En su lugar, usar la relación inversa: establecer la FK en cada detalle
@@ -999,11 +1029,14 @@ def aprobar_orden_compra(current_user, orden_id):
             ajuste_valor = data.get('ajuste_tc')
             orden_db.ajuste_tc = str(ajuste_valor).lower() == 'true' or ajuste_valor is True
 
-        orden_db.tc_transaccion = _resolver_tc_transaccion(
-            data,
-            bool(orden_db.ajuste_tc),
-            actual_tc=getattr(orden_db, 'tc_transaccion', None)
-        )
+        try:
+            orden_db.tc_transaccion = _resolver_tc_transaccion(
+                data,
+                bool(orden_db.ajuste_tc),
+                actual_tc=getattr(orden_db, 'tc_transaccion', None)
+            )
+        except ValueError as tc_err:
+            return jsonify({"error": str(tc_err)}), 400
 
         # --- Actualizar items (solo si vienen en el payload) ANTES de validar pago---
         items_payload = data.get('items', [])
@@ -1182,11 +1215,14 @@ def editar_orden_compra(current_user, orden_id):
             ajuste_valor = data.get('ajuste_tc')
             orden_db.ajuste_tc = str(ajuste_valor).lower() == 'true' or ajuste_valor is True
 
-        orden_db.tc_transaccion = _resolver_tc_transaccion(
-            data,
-            bool(orden_db.ajuste_tc),
-            actual_tc=getattr(orden_db, 'tc_transaccion', None)
-        )
+        try:
+            orden_db.tc_transaccion = _resolver_tc_transaccion(
+                data,
+                bool(orden_db.ajuste_tc),
+                actual_tc=getattr(orden_db, 'tc_transaccion', None)
+            )
+        except ValueError as tc_err:
+            return jsonify({"error": str(tc_err)}), 400
 
         # Actualizar items si vienen
         items_payload = data.get('items', [])

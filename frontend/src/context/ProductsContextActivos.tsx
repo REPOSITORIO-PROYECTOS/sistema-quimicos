@@ -28,6 +28,10 @@ export const ProductsActivosProvider = ({ children }: any) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const token = typeof window !== 'undefined'
+    ? (localStorage.getItem("authToken") || sessionStorage.getItem("authToken"))
+    : null;
+
   const fetchProductos = async () => {
     try {
       setLoading(true);
@@ -46,8 +50,15 @@ export const ProductsActivosProvider = ({ children }: any) => {
   ;
 
   useEffect(() => {
+    if (!token) {
+      setLoading(false);
+      setError(null);
+      setProductos([]);
+      return;
+    }
+
     fetchProductos();
-  }, []);
+  }, [token]);
 
   return (
     <ProductsContextActivos.Provider value={{

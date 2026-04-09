@@ -51,6 +51,10 @@ export const ClientesProvider = ({ children }: ClientesProviderProps) => {
   const [error, setError] = useState<string | null>(null);
   const [pagination, setPagination] = useState<ClientesContextType['pagination']>(null);
 
+  const token = typeof window !== 'undefined'
+    ? (localStorage.getItem("authToken") || sessionStorage.getItem("authToken"))
+    : null;
+
   const fetchClientes = async (searchTerm = '', page = 1, perPage = 20) => {
     setLoading(true);
     setError(null);
@@ -84,8 +88,16 @@ export const ClientesProvider = ({ children }: ClientesProviderProps) => {
   };
 
   useEffect(() => {
+    if (!token) {
+      setLoading(false);
+      setError(null);
+      setClientes([]);
+      setPagination(null);
+      return;
+    }
+
     fetchClientes();
-  }, []);
+  }, [token]);
 
   return (
     <ClientesContext.Provider value={{

@@ -49,7 +49,7 @@ export const ProveedoresProvider = ({ children }: ProveedoresProviderProps) => {
   const fetchProveedores = useCallback(async () => {
     // Si no hay token, no intentar el fetch y marcar error o estado vacío
     if (!token) {
-      setError("No autenticado. No se pueden cargar proveedores.");
+      setError(null);
       setProveedores([]);
       setLoading(false);
       return;

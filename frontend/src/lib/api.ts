@@ -9,6 +9,11 @@ function emitAuthExpired(message?: string) {
   window.dispatchEvent(new CustomEvent("auth:expired", { detail: { message } }));
 }
 
+function getStoredToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("authToken") || sessionStorage.getItem("authToken");
+}
+
 export interface FetchOptions extends RequestInit {
   requireAuth?: boolean;
 }
@@ -34,7 +39,7 @@ export async function apiFetch(endpoint: string, options: FetchOptions = {}) {
 
   // Si requiere autenticación, agregar token
   if (requireAuth) {
-    const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
+    const token = getStoredToken();
     if (!token) {
       throw new Error("No autenticado. Por favor, inicie sesión.");
     }

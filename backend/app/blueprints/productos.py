@@ -18,15 +18,31 @@ import jwt
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment
 from io import BytesIO # Para
+import logging
 from ..utils.decorators import token_required, roles_required
 from ..utils.permissions import ROLES
 
 # Crear el Blueprint para productos
 productos_bp = Blueprint('productos', __name__, url_prefix='/api/productos')
+logger = logging.getLogger(__name__)
 
 # Throttle para no recalcular costos en cada request de lista.
 _SYNC_COSTOS_LOCK = threading.Lock()
 _ULTIMA_SYNC_COSTOS_UTC = None
+
+
+def _normalizar_tipo_calculo(valor):
+    if valor is None:
+        return None
+
+    tipo_calculo = str(valor).strip().upper()
+    if not tipo_calculo:
+        return None
+
+    if len(tipo_calculo) > 2:
+        print(f"WARN: tipo_calculo '{tipo_calculo}' excede 2 caracteres. Se truncará a '{tipo_calculo[:2]}'.")
+
+    return tipo_calculo[:2]
 
 
 def _sincronizar_costos_recetas_si_corresponde():
@@ -268,7 +284,7 @@ def crear_producto():
             nombre=data['nombre'],
             categoria_id=categoria_id,
             unidad_venta=data.get('unidad_venta'),
-            tipo_calculo=data.get('tipo_calculo'),
+            tipo_calculo=_normalizar_tipo_calculo(data.get('tipo_calculo')),
             ref_calculo=data.get('ref_calculo'),
             margen=Decimal(str(data['margen'])) if 'margen' in data else None,
             costo_referencia_usd=costo_ref_inicial,
@@ -426,7 +442,8 @@ def actualizar_producto(producto_id):
         producto.margen = data.get('margen', producto.margen)
         
         producto.ref_calculo = data.get('ref_calculo', producto.ref_calculo)
-        producto.tipo_calculo = data.get('tipo_calculo', producto.tipo_calculo)
+        if 'tipo_calculo' in data:
+            producto.tipo_calculo = _normalizar_tipo_calculo(data.get('tipo_calculo'))
         producto.unidad_venta = data.get('unidad_venta', producto.unidad_venta)
         producto.ajusta_por_tc = data.get('ajusta_por_tc', producto.ajusta_por_tc)
         producto.activo = data.get('activo',producto.activo)

@@ -49,8 +49,7 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
   const [tc, setTc] = useState('');
   const [showTc, setShowTc] = useState(false);
   const [tcInicializadoDesdeSnapshot, setTcInicializadoDesdeSnapshot] = useState(false);
-  // Simular valor oficial del día (en real, fetch desde API)
-  const valorTcOficial = '900.00';
+  const [tcComprasActual, setTcComprasActual] = useState<string>('');
   const [tipo, setTipo] = useState('Litro');
   const [importeTotal, setImporteTotal] = useState('');
   const [estado_recepcion, setEstadoRecepcion] = useState('Completa');
@@ -291,12 +290,21 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
         const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://quimex.sistemataup.online/api';
         const tkn = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
         const headers: Record<string, string> = tkn ? { Authorization: `Bearer ${tkn}` } : {};
-        const res = await fetch(`${API_BASE_URL}/tipos_cambio/obtener/Oficial`, { headers });
-        if (!res.ok) return;
-        const data = await res.json().catch(() => ({}));
+        const res = await fetch(`${API_BASE_URL}/tipos_cambio/obtener/DolarCompras`, { headers });
+        let data: { valor?: number; data?: { valor?: number } } = {};
+        if (!res.ok) {
+          const fallback = await fetch(`${API_BASE_URL}/tipos_cambio/obtener/Oficial`, { headers });
+          if (!fallback.ok) return;
+          data = await fallback.json().catch(() => ({}));
+        } else {
+          data = await res.json().catch(() => ({}));
+        }
         const valor = Number((data && (data.valor ?? data.data?.valor)) ?? NaN);
-        if (isFinite(valor) && valor > 0 && (!tc || !isFinite(Number(tc)) || Number(tc) <= 0)) {
-          setTc(String(valor));
+        if (isFinite(valor) && valor > 0) {
+          setTcComprasActual(String(valor));
+          if (!tc || !isFinite(Number(tc)) || Number(tc) <= 0) {
+            setTc(String(valor));
+          }
         }
       } catch { }
     };
@@ -859,13 +867,22 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
                   const next = !showTc;
                   setShowTc(next);
                   if (next && (!tc || isNaN(parseFloat(tc)))) {
-                    setTc(valorTcOficial);
+                    setTc(tcComprasActual || tc);
                   }
                 }} className="accent-blue-600 w-4 h-4 mr-1" />
                 <span className="text-white text-sm font-medium select-none">TC</span>
               </label>
               {showTc && (
-                <input id="tc" type="number" step="0.01" value={tc} onChange={(e) => setTc(e.target.value)} className={baseInputClass + ' ml-2 w-28'} placeholder="Ej: 900.00" />
+                <input
+                  id="tc"
+                  type="number"
+                  step="0.01"
+                  value={tc}
+                  readOnly
+                  disabled
+                  className={baseInputClass + ' ml-2 w-28 disabled:cursor-not-allowed disabled:opacity-70'}
+                  placeholder="TC compras"
+                />
               )}
             </div>
             <div>

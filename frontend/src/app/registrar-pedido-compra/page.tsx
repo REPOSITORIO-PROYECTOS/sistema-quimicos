@@ -236,7 +236,6 @@ export default function RegistrarIngreso() {
           const payload = {
             usuario_interno_id: user.id,
             proveedor_id: Number(proveedorParaSolicitud.id),
-            tc_transaccion: 1,
             ajuste_tc: false,
             items: [{
               codigo_interno: Number(item.producto_id),

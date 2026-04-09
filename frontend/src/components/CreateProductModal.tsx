@@ -74,6 +74,8 @@ export interface CreateProductModalProps {
 
 const unidadesDeVenta = ["LT", "KG", "UNIDAD"];
 
+const normalizarTipoCalculo = (value: string) => value.trim().toUpperCase().slice(0, 2);
+
 const CreateProductModal: React.FC<CreateProductModalProps> = ({
     onClose, onProductCreatedOrUpdated, productIdToEdit
 }) => {
@@ -137,7 +139,7 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({
                         ajustaPorTc: productData.ajusta_por_tc || false,
                         unidadReferencia: productData.ref_calculo?.toString() || '',
                         margenProducto: productData.margen?.toString() || '',
-                        tipoCalculo: (productData.tipo_calculo || '').toUpperCase(),
+                        tipoCalculo: normalizarTipoCalculo(productData.tipo_calculo || ''),
                         categoriaId: productData.categoria_id ? productData.categoria_id.toString() : '',
                         esReceta: productData.es_receta || false,
                         activo : productData.activo || false,
@@ -255,7 +257,7 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({
                     activo: formData.activo,
                     ref_calculo: parseFloat(formData.unidadReferencia) || null,
                     margen: parseFloat(formData.margenProducto) || null,
-                    tipo_calculo: (formData.tipoCalculo.trim() || '').toUpperCase() || null,
+                    tipo_calculo: normalizarTipoCalculo(formData.tipoCalculo) || null,
                     es_receta: formData.esReceta,
                     es_combo: false,
                     combo_id: null,
@@ -353,7 +355,7 @@ return (
                     </div>
                     <div>
                         <label htmlFor="tipoCalculo" className="block text-sm font-medium mb-1">Tipo Cálculo</label>
-                        <input type="text" id="tipoCalculo" name="tipoCalculo" value={formData.tipoCalculo} onChange={handleInputChange} className={`w-full p-2 border rounded ${isProductFieldsDisabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} disabled={isProductFieldsDisabled} />
+                        <input type="text" id="tipoCalculo" name="tipoCalculo" value={formData.tipoCalculo} onChange={handleInputChange} maxLength={2} placeholder="PL o PD" className={`w-full p-2 border rounded ${isProductFieldsDisabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} disabled={isProductFieldsDisabled} />
                     </div>
                     <div>
                         <label htmlFor="unidadReferencia" className="block text-sm font-medium mb-1">Unidad Ref. (Cálculo)</label>
