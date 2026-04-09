@@ -472,6 +472,38 @@ def actualizar_producto(producto_id):
                 # Si no es una receta, el override no tiene sentido. Lo dejamos en False.
                 producto.costo_manual_override = False
 
+        # --- ACTUALIZAR PRECIOS ESPECIALES CON MARGEN PORCENTUAL ---
+        # Si se actualizó el costo o margen del producto, recalcular todos los precios especiales
+        # que usen usar_precio_base=True
+        try:
+            if 'costo_referencia_usd' in data or 'margen' in data:
+                precios_especiales_dinámicos = db.session.query(PrecioEspecialCliente).filter(
+                    PrecioEspecialCliente.producto_id == producto_id,
+                    PrecioEspecialCliente.usar_precio_base == True,
+                    PrecioEspecialCliente.activo == True
+                ).all()
+                
+                if precios_especiales_dinámicos:
+                    # Importar función de cálculo desde precios_especiales
+                    from .precios_especiales import calcular_precio_ars
+                    
+                    for precio_esp in precios_especiales_dinámicos:
+                        try:
+                            # Recalcular el precio ARS con el nuevo costo/margen del producto
+                            precio_ars_nuevo, tc_nuevo = calcular_precio_ars(precio_esp)
+                            if precio_ars_nuevo is not None:
+                                precio_esp.precio_unitario_fijo_ars = precio_ars_nuevo
+                                if tc_nuevo is not None:
+                                    precio_esp.tipo_cambio_usado = tc_nuevo
+                                logger.info(f"Precio especial actualizado para cliente {precio_esp.cliente_id}, producto {producto_id}: {precio_ars_nuevo} ARS")
+                        except Exception as e:
+                            logger.warning(f"No se pudo recalcular precio especial para cliente {precio_esp.cliente_id}, producto {producto_id}: {e}")
+                            # Continuar con los demás precios especiales aunque uno falle
+                            pass
+        except Exception as e:
+            logger.warning(f"Error al actualizar precios especiales para producto {producto_id}: {e}")
+            # No detener la operación por error en precios especiales
+
         db.session.commit()
         return jsonify(producto_a_dict(producto))
 

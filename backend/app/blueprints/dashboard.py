@@ -275,6 +275,8 @@ def get_dashboard_ventas_pedidos(current_user):
 
         # Filtro: Solo pedidos (con dirección de entrega)
         filtro_pedido = (Venta.direccion_entrega.isnot(None)) & (Venta.direccion_entrega != '')
+        # Filtro: Excluir pedidos cancelados (aplica para hoy y mañana)
+        filtro_no_cancelado = ~Venta.nombre_vendedor.ilike('%CANCELADO%')
         # Tomar solo pedidos de manana y considerar pendiente por defecto
         # cuando no hay prefijo de estado; excluir entregados/cancelados.
         filtro_pendiente = (
@@ -282,7 +284,7 @@ def get_dashboard_ventas_pedidos(current_user):
             & Venta.fecha_pedido.between(manana_start_dt, manana_end_dt)
             & and_(
                 ~Venta.nombre_vendedor.ilike('%ENTREGADO%'),
-                ~Venta.nombre_vendedor.ilike('%CANCELADO%')
+                filtro_no_cancelado
             )
         )
         # Filtro: Solo puerta (sin dirección de entrega)
@@ -290,7 +292,7 @@ def get_dashboard_ventas_pedidos(current_user):
 
         # 0. Ingresos puerta hoy - SIN DESGLOSE (total general)
         ingresos_puerta_hoy = db.session.query(
-            func.sum(Venta.monto_final_con_recargos)
+            func.sum(Venta.monto_final_redondeado)
         ).filter(
             filtro_puerta,
             Venta.fecha_pedido.between(today_start_dt, today_end_dt)
@@ -299,7 +301,7 @@ def get_dashboard_ventas_pedidos(current_user):
         # 0b. Ingresos puerta hoy - CON DESGLOSE POR FORMA DE PAGO
         ingresos_puerta_por_pago = db.session.query(
             Venta.forma_pago,
-            func.sum(Venta.monto_final_con_recargos)
+            func.sum(Venta.monto_final_redondeado)
         ).filter(
             filtro_puerta,
             Venta.fecha_pedido.between(today_start_dt, today_end_dt)
@@ -310,20 +312,22 @@ def get_dashboard_ventas_pedidos(current_user):
             forma_pago_key = str(forma_pago or 'Desconocido').strip()
             desglose_puerta[forma_pago_key] = float(monto or 0)
 
-        # 1. Ingresos del día - Pedidos
+        # 1. Ingresos del día - Pedidos (excluye cancelados)
         ingresos_pedido_hoy = db.session.query(
-            func.sum(Venta.monto_final_con_recargos)
+            func.sum(Venta.monto_final_redondeado)
         ).filter(
             filtro_pedido,
+            filtro_no_cancelado,
             Venta.fecha_pedido.between(today_start_dt, today_end_dt)
         ).scalar() or Decimal('0.0')
 
-        # 1b. Ingresos pedidos hoy - CON DESGLOSE POR FORMA DE PAGO
+        # 1b. Ingresos pedidos hoy - CON DESGLOSE POR FORMA DE PAGO (excluye cancelados)
         ingresos_pedidos_por_pago = db.session.query(
             Venta.forma_pago,
-            func.sum(Venta.monto_final_con_recargos)
+            func.sum(Venta.monto_final_redondeado)
         ).filter(
             filtro_pedido,
+            filtro_no_cancelado,
             Venta.fecha_pedido.between(today_start_dt, today_end_dt)
         ).group_by(Venta.forma_pago).all()
         
@@ -332,20 +336,22 @@ def get_dashboard_ventas_pedidos(current_user):
             forma_pago_key = str(forma_pago or 'Desconocido').strip()
             desglose_pedidos[forma_pago_key] = float(monto or 0)
 
-        # 2. Cantidad de pedidos del día
+        # 2. Cantidad de pedidos del día (excluye cancelados)
         cantidad_pedidos_hoy = db.session.query(
             func.count(Venta.id)
         ).filter(
             filtro_pedido,
+            filtro_no_cancelado,
             Venta.fecha_pedido.between(today_start_dt, today_end_dt)
         ).scalar() or 0
 
-        # 2b. Cantidad de pedidos del día - CON DESGLOSE POR FORMA DE PAGO
+        # 2b. Cantidad de pedidos del día - CON DESGLOSE POR FORMA DE PAGO (excluye cancelados)
         cantidad_pedidos_por_pago = db.session.query(
             Venta.forma_pago,
             func.count(Venta.id)
         ).filter(
             filtro_pedido,
+            filtro_no_cancelado,
             Venta.fecha_pedido.between(today_start_dt, today_end_dt)
         ).group_by(Venta.forma_pago).all()
         
@@ -354,11 +360,12 @@ def get_dashboard_ventas_pedidos(current_user):
             forma_pago_key = str(forma_pago or 'Desconocido').strip()
             desglose_cantidad_pedidos[forma_pago_key] = int(cantidad or 0)
 
-        # 3. Cantidad de kilos del día
+        # 3. Cantidad de kilos del día (excluye cancelados)
         kgs_hoy = db.session.query(
             func.sum(DetalleVenta.cantidad)
         ).select_from(DetalleVenta).join(Venta).filter(
             filtro_pedido,
+            filtro_no_cancelado,
             Venta.fecha_pedido.between(today_start_dt, today_end_dt)
         ).scalar() or Decimal('0.0')
 

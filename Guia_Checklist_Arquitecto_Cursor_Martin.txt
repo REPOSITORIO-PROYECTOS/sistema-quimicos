@@ -1,0 +1,542 @@
+GUÍA OPERATIVA — CHECKLIST DE PENSAMIENTO ESTRATÉGICO + ARQUITECTURA + SPRINT PARA CURSOR
+
+OBJETIVO
+Esta guía sirve para que, cada vez que abordes un problema o una mejora, no trabajes “a intuición suelta”, sino con cabeza de arquitecto.
+
+La meta no es solo resolver.
+La meta es resolver SIN romper, SIN mezclar capas, SIN perder trazabilidad y dejando una iteración profesional.
+
+USO RECOMENDADO
+1. Copiar esta guía a un chat o tenerla al lado.
+2. Responder cada bloque antes de pedir cambios grandes.
+3. Transformar las respuestas en un sprint para Cursor.
+4. Ejecutar en bloques chicos.
+5. Validar con evidencia.
+
+REGLA CENTRAL
+Pensar como arquitecto senior no es “saber más sintaxis”.
+Es responder con claridad:
+- qué problema real existe,
+- qué capa toca,
+- qué no debe romperse,
+- qué dato gobierna,
+- qué riesgos hay,
+- cómo se valida,
+- cómo queda mantenible.
+
+==================================================
+BLOQUE 0 — IDENTIFICACIÓN DEL PROBLEMA
+==================================================
+Responder SIEMPRE:
+
+1. ¿Qué está pasando exactamente?
+2. ¿Cuál es el síntoma visible?
+3. ¿Cuál es el impacto real en la operación?
+4. ¿A quién afecta?
+5. ¿Es bug, mejora, refactor o cambio de arquitectura?
+6. ¿Es urgente, importante o solo deseable?
+7. ¿Cuál es el resultado correcto esperado?
+
+PLANTILLA
+- Problema:
+- Síntoma:
+- Impacto:
+- Usuario afectado:
+- Tipo de trabajo:
+- Prioridad:
+- Resultado esperado:
+
+==================================================
+BLOQUE 1 — CONTEXTO DE NEGOCIO Y OPERACIÓN
+==================================================
+Antes de tocar código, responder:
+
+1. ¿Qué proceso operativo real representa esta parte del sistema?
+2. ¿Qué persona usa esto en la realidad?
+3. ¿Qué error humano puede ocurrir acá?
+4. ¿Qué fraude, pérdida o desorden puede habilitar este flujo?
+5. ¿Qué velocidad necesita esta operación?
+6. ¿Puede hacerse con teclado / escáner / flujo continuo?
+7. ¿Cuál es la regla de negocio que nunca debe romperse?
+
+PLANTILLA
+- Proceso real:
+- Usuario real:
+- Riesgo humano:
+- Riesgo económico / operativo:
+- Nivel de velocidad requerido:
+- Restricción de uso:
+- Regla de negocio inviolable:
+
+==================================================
+BLOQUE 2 — CAPA AFECTADA
+==================================================
+Esto es clave. No mezclar todo.
+Marcar qué capa toca el problema:
+
+[ ] Regla de negocio
+[ ] Modelo de datos
+[ ] Base de datos
+[ ] Integración
+[ ] Backend / lógica
+[ ] UI / UX
+[ ] Permisos / roles
+[ ] Auditoría / logs
+[ ] Impresión / reportes
+[ ] Sincronización externa
+
+Preguntas:
+1. ¿Cuál es la capa principal?
+2. ¿Qué otras capas toca como efecto secundario?
+3. ¿Qué capas NO deberían tocarse?
+
+PLANTILLA
+- Capa principal:
+- Capas secundarias:
+- Capas congeladas:
+
+==================================================
+BLOQUE 3 — FUENTE DE VERDAD Y DATOS
+==================================================
+Este bloque te acerca muchísimo a arquitectura senior.
+
+Responder:
+1. ¿Cuál es la fuente de verdad de esta función?
+2. ¿Qué tablas intervienen?
+3. ¿Cuál es la clave real del registro?
+4. ¿Qué dato manda y qué dato solo espeja?
+5. ¿Qué campo es editable y cuál jamás debe gobernar lógica?
+6. ¿Hay IDs consistentes?
+7. ¿Se está usando fecha donde debería usarse ID?
+8. ¿Existe riesgo de duplicado, desincronización o pisado?
+9. ¿Qué dato no puede perderse nunca?
+
+PLANTILLA
+- Fuente de verdad:
+- Tablas afectadas:
+- Clave principal:
+- Campos que gobiernan:
+- Campos espejo:
+- Campos editables:
+- Campos inviolables:
+- Riesgo de duplicado:
+- Dato crítico a preservar:
+
+REGLA DE ORO
+Si una lógica depende de fechas editables, nombres cambiables o texto libre, probablemente está mal diseñada.
+La trazabilidad fuerte debe apoyarse en IDs, estados e invariantes.
+
+==================================================
+BLOQUE 4 — ESTADOS Y TRANSICIONES
+==================================================
+Un sistema senior piensa en estados, no solo en pantallas.
+
+Responder:
+1. ¿Qué estados tiene esta entidad?
+2. ¿Desde qué estado parte?
+3. ¿A qué estados puede avanzar?
+4. ¿Qué transiciones deben quedar prohibidas?
+5. ¿Qué evento dispara cada cambio?
+6. ¿Quién puede ejecutar cada transición?
+7. ¿Qué deja trazado cada transición?
+8. ¿Se puede revertir? Si sí, ¿cómo?
+
+PLANTILLA
+- Entidad:
+- Estado inicial:
+- Estados válidos:
+- Transiciones válidas:
+- Transiciones prohibidas:
+- Evento de cambio:
+- Responsable:
+- Trazabilidad obligatoria:
+- Política de reversión:
+
+==================================================
+BLOQUE 5 — UX OPERATIVA
+==================================================
+La UX no es decoración. Es control de error humano.
+
+Responder:
+1. ¿Cuál es el flujo ideal más corto para el operador?
+2. ¿Qué acciones deben hacerse sin mouse?
+3. ¿Qué campo debe quedar en autofocus?
+4. ¿Qué información debe estar siempre visible?
+5. ¿Qué puede inducir error?
+6. ¿Qué confirmaciones sí suman y cuáles estorban?
+7. ¿Qué debe quedar en solo lectura?
+8. ¿Qué se puede borrar y bajo qué regla?
+
+PLANTILLA
+- Flujo operativo ideal:
+- Input principal:
+- Elementos siempre visibles:
+- Riesgo UX:
+- Bloqueos necesarios:
+- Lectura sola en:
+- Confirmaciones necesarias:
+- Confirmaciones innecesarias:
+
+==================================================
+BLOQUE 6 — PERMISOS, SEGURIDAD Y AUDITORÍA
+==================================================
+Responder:
+1. ¿Quién puede ver esto?
+2. ¿Quién puede crear?
+3. ¿Quién puede editar?
+4. ¿Quién puede borrar?
+5. ¿Qué acción crítica requiere auditoría obligatoria?
+6. ¿Qué debe registrarse exactamente?
+7. ¿Quién aprobó, cuándo y desde dónde?
+8. ¿Hay hash, clave o validación fuerte cuando corresponde?
+9. ¿Existe una operación peligrosa sin rastro?
+
+PLANTILLA
+- Ver:
+- Crear:
+- Editar:
+- Borrar:
+- Aprobar:
+- Acción crítica:
+- Log obligatorio:
+- Validación fuerte:
+- Riesgo de agujero:
+
+REGLA DE ORO
+Toda acción que cambie stock, dinero, estado crítico, cliente, pedido o aprobación debe dejar:
+- quién,
+- cuándo,
+- qué cambió,
+- valor anterior,
+- valor nuevo,
+- motivo si aplica.
+
+==================================================
+BLOQUE 7 — RIESGO TÉCNICO
+==================================================
+Responder:
+1. ¿Qué puede romper este cambio?
+2. ¿Qué flujo estable toca indirectamente?
+3. ¿Qué dependencia oculta puede verse afectada?
+4. ¿Hay riesgo de regresión?
+5. ¿Hay riesgo de concurrencia o duplicación?
+6. ¿Hay riesgo de pérdida de datos?
+7. ¿Se necesita backup antes?
+8. ¿Se puede encapsular el cambio?
+9. ¿Conviene hacerlo en dos sprints y no en uno?
+
+PLANTILLA
+- Riesgo principal:
+- Módulos sensibles:
+- Dependencias ocultas:
+- Riesgo de regresión:
+- Riesgo de datos:
+- Backup requerido:
+- Estrategia de encapsulado:
+- División en fases:
+
+==================================================
+BLOQUE 8 — DEFINICIÓN DE INVARIANTES
+==================================================
+Acá está una de las diferencias más grandes con un arquitecto senior.
+
+Responder:
+1. ¿Qué cosa debe ser siempre verdadera en este módulo?
+2. ¿Qué nunca debe pasar?
+3. ¿Qué dato jamás puede quedar inconsistente?
+4. ¿Qué operación debe ser idempotente?
+5. ¿Qué parte no depende de interfaz sino de regla dura?
+
+PLANTILLA
+SIEMPRE debe cumplirse:
+- 
+- 
+- 
+
+NUNCA debe ocurrir:
+- 
+- 
+- 
+
+==================================================
+BLOQUE 9 — DECISIÓN DE ARQUITECTURA
+==================================================
+Responder con criterio:
+
+1. ¿Esto conviene resolver en UI, en backend o en base?
+2. ¿Qué validación debe vivir en el backend sí o sí?
+3. ¿Qué lógica no debería depender del frontend?
+4. ¿Qué parte debe quedar desacoplada para futuro?
+5. ¿Qué conviene modular en archivo aparte?
+6. ¿Qué conviene dejar aislado para no romper la base?
+7. ¿Esto es parche o solución estructural?
+
+PLANTILLA
+- Resolución principal en:
+- Validaciones backend obligatorias:
+- Lógica que no depende de UI:
+- Módulo a aislar:
+- Tipo de solución: parche / estructural
+- Motivo:
+
+==================================================
+BLOQUE 10 — ALCANCE DEL SPRINT
+==================================================
+Ahora sí, bajar a sprint.
+
+Responder:
+1. ¿Cuál es el objetivo exacto de esta iteración?
+2. ¿Qué sí se toca?
+3. ¿Qué no se toca?
+4. ¿Qué archivos son probables?
+5. ¿Qué debe quedar funcionando al final?
+6. ¿Qué todavía NO se resuelve en este sprint?
+
+PLANTILLA
+- Objetivo:
+- Alcance:
+- Exclusiones:
+- Archivos probables:
+- Entregable funcional:
+- Fuera de esta iteración:
+
+==================================================
+BLOQUE 11 — CRITERIO DE ACEPTACIÓN
+==================================================
+Si no sabés cómo validar, no terminaste de pensar.
+
+Responder:
+1. ¿Cómo sé que esto quedó bien?
+2. ¿Qué caso feliz debe pasar?
+3. ¿Qué caso borde debe pasar?
+4. ¿Qué caso inválido debe bloquearse?
+5. ¿Qué evidencia le voy a pedir a Cursor?
+
+PLANTILLA
+CASO FELIZ
+- 
+
+CASO BORDE
+- 
+
+CASO INVÁLIDO
+- 
+
+EVIDENCIA OBLIGATORIA
+- archivos editados
+- causa raíz
+- explicación simple
+- build ejecutado
+- resultado del build
+- riesgos remanentes
+
+==================================================
+BLOQUE 12 — PROMPT LISTO PARA CURSOR
+==================================================
+TEMPLATE BASE
+
+Entrá en modo plan.
+Objetivo: [OBJETIVO].
+
+Contexto funcional:
+[RESUMEN DEL PROCESO REAL]
+
+Fuente de verdad:
+[BASE / TABLAS / REGLA DE GOBIERNO]
+
+Alcance exacto:
+[QUÉ SÍ TOCAR]
+
+No tocar:
+[QUÉ NO DEBE TOCARSE]
+
+Invariantes obligatorios:
+- [INVARIANTE 1]
+- [INVARIANTE 2]
+- [INVARIANTE 3]
+
+Riesgos a cuidar:
+- [RIESGO 1]
+- [RIESGO 2]
+
+Antes de editar:
+1. inspeccioná archivos exactos,
+2. explicá causa raíz o estrategia,
+3. proponé plan por pasos,
+4. marcá riesgos,
+5. indicá qué validación final vas a correr.
+
+Al implementar:
+- no hagas refactor amplio,
+- no cambies estilos globales sin pedido,
+- no muevas lógica estable por prolijidad,
+- preferí cambio mínimo y reversible,
+- respetá patrones existentes.
+
+Al final devolvé:
+1. archivos modificados,
+2. qué cambió,
+3. qué no cambió,
+4. resultado de build,
+5. riesgos remanentes.
+
+==================================================
+BLOQUE 13 — REVISIÓN POST CURSOR
+==================================================
+Cuando Cursor responde, revisar:
+
+1. ¿Respondió realmente el objetivo o se fue por ramas?
+2. ¿Entendió bien la fuente de verdad?
+3. ¿Respetó las exclusiones?
+4. ¿Tocó más archivos de los necesarios?
+5. ¿Arregló la causa o maquilló el síntoma?
+6. ¿Rompió una regla de negocio?
+7. ¿Dejó trazabilidad suficiente?
+8. ¿Corrió build real o solo dijo que lo hizo?
+9. ¿Hay humo en su explicación?
+10. ¿El cambio quedó encapsulado?
+
+PLANTILLA DE AUDITORÍA RÁPIDA
+- Cumplió objetivo: sí / no
+- Entendió causa raíz: sí / no
+- Respetó alcance: sí / no
+- Riesgo de regresión: bajo / medio / alto
+- Requiere correctivo: sí / no
+- Siguiente paso:
+
+==================================================
+BLOQUE 14 — POSTMORTEM DE APRENDIZAJE
+==================================================
+Después de cada iteración importante, responder:
+
+1. ¿Qué pensé bien desde el inicio?
+2. ¿Qué omití?
+3. ¿Qué parte del problema estaba mal formulada?
+4. ¿Qué debería haber congelado antes?
+5. ¿Qué pregunta me faltó hacer?
+6. ¿Qué patrón conviene dejar documentado para futuro?
+
+PLANTILLA
+- Acierto principal:
+- Omisión principal:
+- Error de formulación:
+- Restricción que faltó:
+- Aprendizaje reutilizable:
+- Documento a actualizar:
+
+==================================================
+MATRIZ DE MADUREZ — NIVEL ARQUITECTO EN CURSOR
+==================================================
+Puntuar cada dimensión de 1 a 5
+
+1 = improvisado
+2 = entiende parcialmente
+3 = correcto pero inconsistente
+4 = sólido
+5 = nivel muy profesional y repetible
+
+A. DEFINICIÓN DEL PROBLEMA
+[ ] 1 [ ] 2 [ ] 3 [ ] 4 [ ] 5
+¿Defino con precisión síntoma, impacto y resultado esperado?
+
+B. CONTEXTO OPERATIVO
+[ ] 1 [ ] 2 [ ] 3 [ ] 4 [ ] 5
+¿Pienso en usuario real, error humano, riesgo y velocidad operativa?
+
+C. SEPARACIÓN DE CAPAS
+[ ] 1 [ ] 2 [ ] 3 [ ] 4 [ ] 5
+¿Distingo negocio, datos, backend, UI, permisos y auditoría?
+
+D. FUENTE DE VERDAD
+[ ] 1 [ ] 2 [ ] 3 [ ] 4 [ ] 5
+¿Tengo claro qué dato gobierna y cuál solo espeja?
+
+E. USO DE IDs E INVARIANTES
+[ ] 1 [ ] 2 [ ] 3 [ ] 4 [ ] 5
+¿Diseño apoyado en IDs, estados y reglas duras, no en textos o fechas editables?
+
+F. MODELO DE ESTADOS
+[ ] 1 [ ] 2 [ ] 3 [ ] 4 [ ] 5
+¿Pienso en transiciones válidas, prohibidas y responsables?
+
+G. UX OPERATIVA
+[ ] 1 [ ] 2 [ ] 3 [ ] 4 [ ] 5
+¿Diseño para minimizar error y acelerar operación real?
+
+H. PERMISOS Y AUDITORÍA
+[ ] 1 [ ] 2 [ ] 3 [ ] 4 [ ] 5
+¿Defino quién puede hacer qué y qué debe quedar logueado?
+
+I. CONTROL DE ALCANCE
+[ ] 1 [ ] 2 [ ] 3 [ ] 4 [ ] 5
+¿Congelo lo que no debe tocarse y mantengo el sprint quirúrgico?
+
+J. VALIDACIÓN
+[ ] 1 [ ] 2 [ ] 3 [ ] 4 [ ] 5
+¿Exijo build, evidencia, casos de prueba y revisión post cambio?
+
+K. PENSAMIENTO DE RIESGO
+[ ] 1 [ ] 2 [ ] 3 [ ] 4 [ ] 5
+¿Anticipo regresiones, pérdida de datos y efectos colaterales?
+
+L. MANTENIBILIDAD
+[ ] 1 [ ] 2 [ ] 3 [ ] 4 [ ] 5
+¿Dejo la solución entendible, modular y reusable?
+
+TOTAL
+- 12 a 24 = pensás más como ejecutor que como arquitecto
+- 25 a 36 = buen nivel técnico-operativo
+- 37 a 48 = nivel fuerte de arquitectura aplicada
+- 49 a 60 = muy cerca de arquitecto senior práctico
+
+LECTURA HONESTA
+Si en la mayoría de las pasadas:
+- respondés estas preguntas con claridad,
+- detectás fuente de verdad,
+- definís invariantes,
+- congelás alcance,
+- pedís evidencia dura,
+- y corregís con postmortem,
+
+entonces sí: estás muy cerca de un nivel de arquitecto senior práctico, sobre todo en sistemas operativos reales.
+
+Lo que termina de cerrar ese salto es:
+- más formalismo técnico,
+- más tests,
+- más modelado de estados,
+- más contratos claros,
+- menos mezcla entre idea, UX y ejecución en un mismo movimiento.
+
+==================================================
+CHECKLIST EXPRESS DE 2 MINUTOS
+==================================================
+Antes de cualquier sprint, responder esto sí o sí:
+
+[ ] ¿Definí el problema exacto?
+[ ] ¿Definí el impacto real?
+[ ] ¿Sé cuál es la fuente de verdad?
+[ ] ¿Sé cuál es el ID que manda?
+[ ] ¿Sé qué estados intervienen?
+[ ] ¿Sé quién puede hacerlo y quién no?
+[ ] ¿Sé qué debe quedar auditado?
+[ ] ¿Sé qué capa toca realmente?
+[ ] ¿Definí qué no se toca?
+[ ] ¿Definí criterio de aceptación?
+[ ] ¿Le voy a pedir build y evidencia a Cursor?
+[ ] ¿Estoy resolviendo la causa y no solo el síntoma?
+
+==================================================
+CIERRE
+==================================================
+Tu ventaja no va a estar en “tirar prompts más largos”.
+Va a estar en pensar mejor que el promedio antes de ejecutar.
+
+Fórmula práctica:
+
+MENOS:
+“Cursor, arreglá esto.”
+
+MÁS:
+“Este es el problema, esta es la capa, esta es la fuente de verdad, esto no se toca, estas son las invariantes, validalo así.”
+
+Eso es pensamiento de arquitecto.
