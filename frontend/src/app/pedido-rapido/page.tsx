@@ -1,6 +1,45 @@
 "use client";
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { PUBLIC_API_BASE_URL } from "@/lib/publicApiBase";
+
+/** Igual que backend `compras._parse_percentage_rate` (21 → 0.21). */
+function parsePercentageRateBackend(value: string | undefined): number {
+  if (value == null) return 0;
+  const raw = String(value).trim();
+  if (!raw) return 0;
+  const v = parseFloat(raw.replace(",", "."));
+  if (!Number.isFinite(v) || v < 0) return 0;
+  return v <= 1 ? v : v / 100;
+}
+
+/** Igual que backend `compras._parse_iibb_rate` ("3%", "3.5" → fracción). */
+function parseIibbRateBackend(value: string | undefined): number {
+  if (value == null) return 0;
+  const s0 = String(value).trim();
+  if (!s0) return 0;
+  if (s0.endsWith("%")) {
+    const v = parseFloat(s0.slice(0, -1).trim().replace(",", "."));
+    if (!Number.isFinite(v)) return 0;
+    return v / 100;
+  }
+  const v = parseFloat(s0.replace(",", "."));
+  if (!Number.isFinite(v) || v < 0) return 0;
+  return v <= 1 ? v : v / 100;
+}
+
+/** Total en moneda de la orden: base + IVA(base) + IIBB(base), como `crear` en el API. */
+function totalMonedaOrdenConImpuestosAdditive(
+  baseMonedaOrden: number,
+  showIva: boolean,
+  ivaStr: string,
+  showIibb: boolean,
+  iibbStr: string
+): number {
+  const ivaR = showIva ? parsePercentageRateBackend(ivaStr) : 0;
+  const iibbR = showIibb ? parseIibbRateBackend(iibbStr) : 0;
+  return baseMonedaOrden + baseMonedaOrden * ivaR + baseMonedaOrden * iibbR;
+}
 import { useProductsContext } from "@/context/ProductsContext";
 import { useProveedoresContext } from "@/context/ProveedoresContext";
 
@@ -38,8 +77,8 @@ export default function PedidoRapidoAdmin() {
   const [formaPago, setFormaPago] = useState<string>("Efectivo");
   const [importeTotal, setImporteTotal] = useState<string>("0");
   const [importeTotalUsd, setImporteTotalUsd] = useState<string>("");
-  // Pago completo / parcial
-  const [pagoCompleto, setPagoCompleto] = useState<boolean>(true);
+  // Pago completo / parcial (por defecto parcial: solo marcar si realmente abona el total)
+  const [pagoCompleto, setPagoCompleto] = useState<boolean>(false);
   const [importeAbonado, setImporteAbonado] = useState<string>("");
   const [pagoError, setPagoError] = useState<string>("");
 
@@ -129,30 +168,26 @@ export default function PedidoRapidoAdmin() {
     const tcNum = parseFloat(tc);
     let subtotal = 0;
     if (!isNaN(cantNum) && !isNaN(precioNum) && cantNum > 0 && precioNum >= 0) {
+      const baseMoneda = cantNum * precioNum;
+      const totalMoneda = totalMonedaOrdenConImpuestosAdditive(
+        baseMoneda,
+        showIva,
+        iva,
+        showIibb,
+        iibb
+      );
       if (showTc && !isNaN(tcNum) && tcNum > 0) {
-        subtotal = cantNum * precioNum * tcNum;
+        subtotal = totalMoneda * tcNum;
+        setImporteTotal(subtotal.toFixed(2));
+        setImporteTotalUsd(totalMoneda.toFixed(2));
       } else {
-        subtotal = cantNum * precioNum;
-      }
-      let total = subtotal;
-      // Aplicar impuestos de forma encadenada (multiplicar porcentajes)
-      if (showIva && iva && !isNaN(parseFloat(iva))) {
-        total *= (1 + parseFloat(iva) / 100);
-      }
-      if (showIibb && iibb && !isNaN(parseFloat(iibb))) {
-        total *= (1 + parseFloat(iibb) / 100);
-      }
-      setImporteTotal(total.toFixed(2));
-      if (pagoCompleto) {
-        setImporteAbonado(total.toFixed(2));
-        setPagoError("");
-      }
-      // Si hay TC activo, calcular también en USD
-      if (showTc && !isNaN(tcNum) && tcNum > 0) {
-        const totalUsd = total / tcNum;
-        setImporteTotalUsd(totalUsd.toFixed(2));
-      } else {
+        subtotal = totalMoneda;
+        setImporteTotal(totalMoneda.toFixed(2));
         setImporteTotalUsd("");
+      }
+      if (pagoCompleto) {
+        setImporteAbonado(subtotal.toFixed(2));
+        setPagoError("");
       }
     } else {
       setImporteTotal("0");
@@ -170,13 +205,12 @@ export default function PedidoRapidoAdmin() {
     // Traer Tipo de Cambio Oficial
     const fetchTC = async () => {
       try {
-        const API_BASE_URL = 'https://quimex.sistemataup.online/api';
         const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
         const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
-        const res = await fetch(`${API_BASE_URL}/tipos_cambio/obtener/DolarCompras`, { headers });
+        const res = await fetch(`${PUBLIC_API_BASE_URL}/tipos_cambio/obtener/DolarCompras`, { headers });
         let data: { valor?: number; data?: { valor?: number } } = {};
         if (!res.ok) {
-          const fallback = await fetch(`${API_BASE_URL}/tipos_cambio/obtener/Oficial`, { headers });
+          const fallback = await fetch(`${PUBLIC_API_BASE_URL}/tipos_cambio/obtener/Oficial`, { headers });
           if (!fallback.ok) throw new Error('No se pudo obtener TC de compras');
           data = await fallback.json();
         } else {
@@ -258,7 +292,6 @@ export default function PedidoRapidoAdmin() {
     );
   }
 
-  const apiBase = process.env.NEXT_PUBLIC_API_URL || 'https://quimex.sistemataup.online/api';
   type ApiErrorShape = { error?: string; mensaje?: string; detail?: string };
   const apiRequest = async <T = unknown>(url: string, init: RequestInit): Promise<T> => {
     const resp = await fetch(url, init);
@@ -284,12 +317,20 @@ export default function PedidoRapidoAdmin() {
       return { totalOrden: 0, totalArs: 0, tcNum };
     }
 
-    // El backend calcula el total en la moneda de la orden (USD cuando ajuste_tc=true).
-    let totalOrden = cantNum * precioNum;
-    if (showIva && iva && !isNaN(parseFloat(iva))) totalOrden *= (1 + parseFloat(iva) / 100);
-    if (showIibb && iibb && !isNaN(parseFloat(iibb))) totalOrden *= (1 + parseFloat(iibb) / 100);
-
-    const totalArs = (showTc && !isNaN(tcNum) && tcNum > 0) ? (totalOrden * tcNum) : totalOrden;
+    // Misma fórmula que backend `crear`: base + IVA(base) + IIBB(base) en moneda de la orden (USD si showTc).
+    const baseMoneda = cantNum * precioNum;
+    const totalMoneda = totalMonedaOrdenConImpuestosAdditive(
+      baseMoneda,
+      showIva,
+      iva,
+      showIibb,
+      iibb
+    );
+    const totalOrden = Number(totalMoneda.toFixed(2));
+    const totalArs =
+      showTc && !isNaN(tcNum) && tcNum > 0
+        ? Number((totalMoneda * tcNum).toFixed(2))
+        : totalOrden;
     return { totalOrden, totalArs, tcNum };
   };
 
@@ -389,7 +430,7 @@ export default function PedidoRapidoAdmin() {
       };
 
       type CreateOcResponse = { orden?: { id?: number; estado?: string }; id?: number; orden_id?: number; estado?: string } & ApiErrorShape;
-      const crearData = await apiRequest<CreateOcResponse>(`${apiBase}/ordenes_compra/crear`, {
+      const crearData = await apiRequest<CreateOcResponse>(`${PUBLIC_API_BASE_URL}/ordenes_compra/crear`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-User-Role': user.role, 'X-User-Name': user.usuario || user.name, 'Authorization': `Bearer ${token}` },
         body: JSON.stringify(crearPayload)
@@ -401,7 +442,7 @@ export default function PedidoRapidoAdmin() {
 
       // 2) Obtener OC para id_linea
       type ObtenerOcResponse = { items?: Array<{ id_linea?: number; cantidad_solicitada?: number; precio_unitario_estimado?: number; producto_codigo?: string }> };
-      const obtenerData = await apiRequest<ObtenerOcResponse>(`${apiBase}/ordenes_compra/obtener/${nuevaOCId}`, { headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` } });
+      const obtenerData = await apiRequest<ObtenerOcResponse>(`${PUBLIC_API_BASE_URL}/ordenes_compra/obtener/${nuevaOCId}`, { headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` } });
       const itemPrincipal = Array.isArray(obtenerData.items) ? obtenerData.items[0] : null;
       const id_linea = itemPrincipal?.id_linea ? Number(itemPrincipal.id_linea) : 0;
       const cantidad_solicitada = itemPrincipal?.cantidad_solicitada ? Number(itemPrincipal.cantidad_solicitada) : Number(cantidad);
@@ -447,7 +488,7 @@ export default function PedidoRapidoAdmin() {
       };
 
       try {
-        await apiRequest(`${apiBase}/ordenes_compra/aprobar/${nuevaOCId}`, {
+        await apiRequest(`${PUBLIC_API_BASE_URL}/ordenes_compra/aprobar/${nuevaOCId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json', 'X-User-Role': user.role, 'X-User-Name': user.usuario || user.name, 'Authorization': `Bearer ${token}` },
           body: JSON.stringify(aprobarPayload)
@@ -519,12 +560,12 @@ export default function PedidoRapidoAdmin() {
           cheque_perteneciente_a: formaPago === 'Cheque' ? chequeEmisor : undefined,
         };
         type CreateOcResponse = { orden?: { id?: number; estado?: string }; id?: number; orden_id?: number; estado?: string } & ApiErrorShape;
-        const crearData = await apiRequest<CreateOcResponse>(`${apiBase}/ordenes_compra/crear`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-User-Role': user.role, 'X-User-Name': user.usuario || user.name, 'Authorization': `Bearer ${token}` }, body: JSON.stringify(crearPayload) });
+        const crearData = await apiRequest<CreateOcResponse>(`${PUBLIC_API_BASE_URL}/ordenes_compra/crear`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-User-Role': user.role, 'X-User-Name': user.usuario || user.name, 'Authorization': `Bearer ${token}` }, body: JSON.stringify(crearPayload) });
         const nuevaOCId = crearData?.orden?.id || crearData?.id || crearData?.orden_id;
         if (!nuevaOCId) throw new Error('No se pudo obtener ID de la OC creada.');
         const estadoCreado = crearData?.orden?.estado || crearData?.estado || 'SOLICITADO';
         const estadoCreadoNormalizado = String(estadoCreado).trim().toUpperCase();
-        const obtenerData = await apiRequest<{ items?: Array<{ id_linea?: number; cantidad_solicitada?: number; precio_unitario_estimado?: number; producto_codigo?: string }> }>(`${apiBase}/ordenes_compra/obtener/${nuevaOCId}`, { headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` } });
+        const obtenerData = await apiRequest<{ items?: Array<{ id_linea?: number; cantidad_solicitada?: number; precio_unitario_estimado?: number; producto_codigo?: string }> }>(`${PUBLIC_API_BASE_URL}/ordenes_compra/obtener/${nuevaOCId}`, { headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` } });
         const itemPrincipal = Array.isArray(obtenerData.items) ? obtenerData.items[0] : null;
         const id_linea = itemPrincipal?.id_linea ? Number(itemPrincipal.id_linea) : 0;
         const cantidad_solicitada = itemPrincipal?.cantidad_solicitada ? Number(itemPrincipal.cantidad_solicitada) : Number(cantidad);
@@ -534,7 +575,7 @@ export default function PedidoRapidoAdmin() {
         if (String(user.role).toUpperCase() === 'ADMIN' && estadoCreadoNormalizado === 'SOLICITADO') {
           const aprobarPayload = { proveedor_id: Number(proveedorId), cuenta, iibb: showIibb ? iibb : '', iva: showIva ? iva : '', tc: showTc ? tc : '', tc_transaccion: showTc ? Number(tc) : 1, ajuste_tc: showTc ? true : false, observaciones_solicitud: observacionesFinalCrear, tipo_caja: tipoCaja, forma_pago: formaPago, items: [{ id_linea, cantidad_solicitada, precio_unitario_estimado }], importe_abonado: importeAbonadoCrear, cheque_perteneciente_a: formaPago === 'Cheque' ? chequeEmisor : undefined };
           try {
-            await apiRequest(`${apiBase}/ordenes_compra/aprobar/${nuevaOCId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-User-Role': user.role, 'X-User-Name': user.usuario || user.name, 'Authorization': `Bearer ${token}` }, body: JSON.stringify(aprobarPayload) });
+            await apiRequest(`${PUBLIC_API_BASE_URL}/ordenes_compra/aprobar/${nuevaOCId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-User-Role': user.role, 'X-User-Name': user.usuario || user.name, 'Authorization': `Bearer ${token}` }, body: JSON.stringify(aprobarPayload) });
           } catch (approvalErr) {
             const approvalMsg = approvalErr instanceof Error ? approvalErr.message : 'Error desconocido';
             console.warn('Error al aprobar OC en recepcionar:', { nuevaOCId, approvalMsg });
@@ -563,7 +604,7 @@ export default function PedidoRapidoAdmin() {
           tipo_caja: tipoCaja,
           items_recibidos: itemsRecibidos
         };
-        await apiRequest(`${apiBase}/ordenes_compra/recibir/${nuevaOCId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-User-Role': user.role, 'X-User-Name': user.usuario || user.name, 'Authorization': `Bearer ${token}` }, body: JSON.stringify(recibirPayload) });
+        await apiRequest(`${PUBLIC_API_BASE_URL}/ordenes_compra/recibir/${nuevaOCId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-User-Role': user.role, 'X-User-Name': user.usuario || user.name, 'Authorization': `Bearer ${token}` }, body: JSON.stringify(recibirPayload) });
         alert('Pedido Rápido creado, aprobado y recepcionado.');
         router.push('/recepciones-pendientes');
       } else {

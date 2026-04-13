@@ -1,6 +1,6 @@
 # blueprints/tipos_cambio.py
 from flask import Blueprint, request, jsonify
-from ..models import db, TipoCambio # Ajusta import
+from ..models import TipoCambio
 from decimal import Decimal, InvalidOperation
 import traceback
 from .. import db
@@ -10,6 +10,55 @@ from ..utils.decorators import token_required, roles_required
 from ..utils.permissions import ROLES # Importar diccionario de roles
 
 tipos_cambio_bp = Blueprint('tipos_cambio', __name__, url_prefix='/api/tipos_cambio')
+
+
+def _estado_upper(estado):
+    return str(estado or '').strip().upper()
+
+
+def _recalcular_deuda_oc_en_ars(orden_db, tc_actualizado):
+    """Recalcula el DEBITO usando la misma regla que el módulo de compras (ARS según TC de la orden)."""
+    try:
+        from ..blueprints.compras import _actualizar_movimiento_deuda
+
+        # `tc_actualizado` ya se asignó en `oc.tc_transaccion` antes de llamar aquí.
+        _actualizar_movimiento_deuda(
+            orden_db,
+            usuario_actualiza="Sistema",
+            descripcion=(
+                f"OC {orden_db.id} - Deuda recalculada por actualización de dólar compras "
+                f"(TC {tc_actualizado})"
+            ),
+        )
+    except Exception:
+        # No cortar el proceso masivo por una orden puntual.
+        pass
+
+
+def _actualizar_ocs_pendientes_por_dolar(nuevo_valor):
+    """Actualiza tc_transaccion y deuda para OCs abiertas en USD."""
+    from ..models import OrdenCompra
+
+    # Solo excluir anuladas: en RECIBIDO puede seguir habiendo deuda en USD y debe
+    # expresarse en ARS según el DolarCompras vigente (no dejar montos "congelados").
+    estados_excluidos = {'RECHAZADO', 'CANCELADO', 'CANCELADA'}
+    ocs = OrdenCompra.query.filter(
+        OrdenCompra.ajuste_tc.is_(True)
+    ).all()
+
+    ocs_actualizadas = 0
+    deudas_recalculadas = 0
+
+    for oc in ocs:
+        if _estado_upper(getattr(oc, 'estado', None)) in estados_excluidos:
+            continue
+
+        oc.tc_transaccion = nuevo_valor
+        ocs_actualizadas += 1
+        _recalcular_deuda_oc_en_ars(oc, nuevo_valor)
+        deudas_recalculadas += 1
+
+    return ocs_actualizadas, deudas_recalculadas
 
 @tipos_cambio_bp.route('/crear', methods=['POST'])
 @token_required
@@ -50,8 +99,9 @@ def obtener_tipos_cambio():
 def obtener_tipo_cambio_por_nombre(nombre):
     # Usar .first() y manejar None, o .one() y capturar NoResultFound
     tc = TipoCambio.query.filter_by(nombre=nombre).first()
-    # Alias de compatibilidad: en frontend antiguo se consulta "USD"
-    if not tc and str(nombre).upper() == 'USD':
+    nombre_upper = str(nombre).strip().upper()
+    # Alias "USD" (frontend antiguo) y lectura de "DolarCompras" si aún no está dado de alta en BD.
+    if not tc and nombre_upper in ('USD', 'DOLARCOMPRAS'):
         tc = (
             TipoCambio.query.filter_by(nombre='DolarCompras').first()
             or TipoCambio.query.filter_by(nombre='Oficial').first()
@@ -79,7 +129,6 @@ def actualizar_tipo_cambio(current_user, nombre):
             return jsonify({"error": "El valor debe ser positivo"}), 400
 
         tc.valor = nuevo_valor
-        db.session.commit()
 
         # --- Actualizar precios especiales en USD ---
         from ..models import PrecioEspecialCliente
@@ -94,11 +143,19 @@ def actualizar_tipo_cambio(current_user, nombre):
                     actualizados += 1
                 except Exception as e:
                     print(f"Error actualizando precio especial ID {p.id}: {e}")
+
+        ocs_actualizadas = 0
+        deudas_recalculadas = 0
+        if str(nombre).strip().upper() in {'DOLARCOMPRAS', 'OFICIAL', 'USD'}:
+            ocs_actualizadas, deudas_recalculadas = _actualizar_ocs_pendientes_por_dolar(nuevo_valor)
+
         db.session.commit()
 
         return jsonify({
             "tipo_cambio": tipo_cambio_a_dict(tc),
-            "precios_usd_actualizados": actualizados
+            "precios_usd_actualizados": actualizados,
+            "ordenes_compra_tc_actualizadas": ocs_actualizadas,
+            "ordenes_compra_deuda_recalculada": deudas_recalculadas
         })
     except (ValueError, TypeError, InvalidOperation):
         db.session.rollback()

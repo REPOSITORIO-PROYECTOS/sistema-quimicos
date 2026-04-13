@@ -1,5 +1,6 @@
 'use client';
 
+import { PUBLIC_API_BASE_URL } from '@/lib/publicApiBase';
 import { useProductsContext } from "@/context/ProductsContext";
 import { useProveedoresContext } from "@/context/ProveedoresContext";
 import React, { useEffect, useState, useCallback } from 'react';
@@ -21,6 +22,21 @@ type ChequePago = {
   perteneceA: string;
 };
 
+/** Rol del usuario en sesión (solo cliente). */
+function leerRolSesionCliente(): string {
+  if (typeof window === 'undefined') return '';
+  try {
+    const raw = localStorage.getItem('user') || sessionStorage.getItem('user');
+    if (raw) {
+      const u = JSON.parse(raw) as { role?: string; rol?: string };
+      return String(u?.role || u?.rol || localStorage.getItem('rol') || '').trim().toUpperCase();
+    }
+  } catch {
+    /* ignore */
+  }
+  return String(localStorage.getItem('rol') || '').trim().toUpperCase();
+}
+
 const derivarEstadoSolicitud = (estado?: string | null, estadoRecepcion?: string | null) => {
   const e = normalizarEstado(estado);
   const er = normalizarEstado(estadoRecepcion);
@@ -33,6 +49,36 @@ const derivarEstadoSolicitud = (estado?: string | null, estadoRecepcion?: string
 };
 
 const CENT_TOLERANCE = 0.009;
+
+/** Misma lógica que el backend (`_parse_percentage_rate`). */
+function parsePctRateCompras(raw: string | number | undefined | null): number {
+  if (raw === undefined || raw === null) return 0;
+  const s = String(raw).trim();
+  if (!s) return 0;
+  const v = parseFloat(s.replace(',', '.'));
+  if (!Number.isFinite(v) || v < 0) return 0;
+  return v <= 1 ? v : v / 100;
+}
+
+/** Misma lógica que el backend (`_parse_iibb_rate`). */
+function parseIibbRateCompras(raw: string | number | undefined | null): number {
+  if (raw === undefined || raw === null) return 0;
+  const s0 = String(raw).trim();
+  if (!s0) return 0;
+  if (s0.endsWith('%')) {
+    const v = parseFloat(s0.slice(0, -1).trim().replace(',', '.'));
+    if (!Number.isFinite(v)) return 0;
+    return v / 100;
+  }
+  const v = parseFloat(s0.replace(',', '.'));
+  if (!Number.isFinite(v) || v < 0) return 0;
+  return v <= 1 ? v : v / 100;
+}
+
+/** Total OC en moneda de la orden: base + IVA(base) + IIBB(base) como en `crear` / `editar`. */
+function totalConImpuestosAdditive(base: number, ivaStr: string, iibbStr: string): number {
+  return base + base * parsePctRateCompras(ivaStr) + base * parseIibbRateCompras(iibbStr);
+}
 
 export default function SolicitudIngresoPage({ id }: { id: number | string }) {
   const [fecha, setFecha] = useState('');
@@ -102,7 +148,7 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
 
   const cargarCamposProducto = useCallback(async (id_producto: number) => {
     try {
-      const response = await fetch(`https://quimex.sistemataup.online/api/productos/obtener/${id_producto}`, { headers: { "Authorization": `Bearer ${token}` } });
+      const response = await fetch(`${PUBLIC_API_BASE_URL}/productos/obtener/${id_producto}`, { headers: { "Authorization": `Bearer ${token}` } });
       if (!response.ok) return;
       const dataProd = await response.json();
       const unidad = dataProd.unidad_venta;
@@ -117,7 +163,7 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
   const cargarFormulario = useCallback(async () => {
     try {
       setErrorMensaje('');
-      const response = await fetch(`https://quimex.sistemataup.online/api/ordenes_compra/obtener/${id}`, { headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` } });
+      const response = await fetch(`${PUBLIC_API_BASE_URL}/ordenes_compra/obtener/${id}`, { headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` } });
       if (!response.ok) throw new Error(`Error al traer la orden`);
       const data = await response.json();
       if (!data?.items?.length) throw new Error("No se encontraron items en la OC.");
@@ -149,26 +195,36 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       setCantidad(itemPrincipal.cantidad_solicitada?.toString() ?? '');
       setPrecioUnitario(itemPrincipal.precio_unitario_estimado?.toString() ?? '0');
       setCuenta(data.cuenta?.toString() ?? '');
-      setIibb(data.iibb?.toString() ?? '');
-      setShowIibb(Boolean(data.iibb));
+      const iibbStrNorm = data.iibb != null && data.iibb !== '' ? String(data.iibb).trim() : '';
+      setIibb(iibbStrNorm);
+      setShowIibb(iibbStrNorm !== '' && iibbStrNorm !== '0');
       setShowTc(Boolean(data.ajuste_tc));
       const ivaRaw = data.iva;
-      const ivaNormalizado = ivaRaw !== undefined && ivaRaw !== null ? String(ivaRaw).trim() : '';
+      let ivaNormalizado = ivaRaw !== undefined && ivaRaw !== null ? String(ivaRaw).trim() : '';
+      // Si la cabecera perdió IVA (null/0) pero la OC es USD y tiene IIBB, asumir IVA 21 % (caso típico Quimex).
+      if (
+        (!ivaNormalizado || ivaNormalizado === '0') &&
+        data.ajuste_tc &&
+        iibbStrNorm &&
+        iibbStrNorm !== '0'
+      ) {
+        ivaNormalizado = '21';
+      }
       setIva(ivaNormalizado);
       setShowIva(ivaNormalizado !== '' && ivaNormalizado !== '0');
-      // Prioridad: tc_snapshot provisto por backend.
+      // TC: solo para OC en USD (`ajuste_tc`). En pesos el backend guarda tc_transaccion=1 como placeholder;
+      // si lo mostramos, el usuario ve "1" y además se bloquea la carga de DolarCompras.
+      const ordenEnDolar = Boolean(data.ajuste_tc);
       const tcSnapshotBackend = Number(data.tc_snapshot);
-      if (Number.isFinite(tcSnapshotBackend) && tcSnapshotBackend > 0) {
+      if (ordenEnDolar && Number.isFinite(tcSnapshotBackend) && tcSnapshotBackend > 0) {
         setTc(String(tcSnapshotBackend));
-        setShowTc(true);
         setTcInicializadoDesdeSnapshot(true);
-      } else {
-        // Fallback legacy: snapshot embebido en observaciones/notas.
+      } else if (ordenEnDolar) {
+        let tcEncontrado: number | null = null;
         const textos = [
           String(data.observaciones_solicitud || ''),
           String(data.notas_recepcion || ''),
         ];
-        let tcEncontrado: number | null = null;
         for (const txt of textos) {
           try {
             const snapshotMatch = txt.match(/__TC_SNAPSHOT__:(.*?)(?:\n|$)/);
@@ -186,14 +242,33 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
         }
         if (tcEncontrado !== null) {
           setTc(String(tcEncontrado));
-          setShowTc(true);
           setTcInicializadoDesdeSnapshot(true);
         } else {
+          setTc('');
           setTcInicializadoDesdeSnapshot(false);
         }
+      } else {
+        setTc('');
+        setTcInicializadoDesdeSnapshot(false);
       }
+      const baseSolicitudLineas = items.reduce((acc: number, item: Record<string, unknown>) => {
+        const c = parseFloat(String(item.cantidad_solicitada ?? 0)) || 0;
+        const p = parseFloat(String(item.precio_unitario_estimado ?? 0)) || 0;
+        return acc + c * p;
+      }, 0);
       const totalOC = Number(data.importe_total_estimado);
-      setImporteTotal((Number.isFinite(totalOC) ? totalOC : 0).toFixed(2));
+      const totalEsperado = totalConImpuestosAdditive(
+        baseSolicitudLineas,
+        ivaNormalizado || '0',
+        iibbStrNorm || '0'
+      );
+      // Si el total guardado quedó por debajo de la base solicitada (p. ej. solo recepcionado), mostrar el total coherente con líneas + impuestos.
+      const totalApi = Number.isFinite(totalOC) ? totalOC : 0;
+      const usarCorreccion =
+        baseSolicitudLineas > 0.0001 &&
+        totalApi < baseSolicitudLineas * 0.9 &&
+        totalEsperado >= baseSolicitudLineas * 0.99;
+      setImporteTotal((usarCorreccion ? totalEsperado : totalApi).toFixed(2));
       setEstadoOC(data.estado || '');
       setEstadoRecepcionActual(data.estado_recepcion || '');
       setIdLineaOCOriginal(itemPrincipal.id_linea || '');
@@ -273,6 +348,44 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
     setFechaPago('');
     setPagoCompletoUI(false);
     setChequesPago([{ numero: '', perteneceA: '' }]);
+
+    if ('iva' in orden) {
+      const iv = orden.iva != null ? String(orden.iva).trim() : '';
+      let ivAdj = iv;
+      if ((!ivAdj || ivAdj === '0') && orden.ajuste_tc && orden.iibb != null) {
+        const ib0 = String(orden.iibb).trim();
+        if (ib0 && ib0 !== '0') ivAdj = '21';
+      }
+      setIva(ivAdj);
+      setShowIva(ivAdj !== '' && ivAdj !== '0');
+    }
+    if ('iibb' in orden) {
+      const ib = orden.iibb != null ? String(orden.iibb).trim() : '';
+      setIibb(ib);
+      setShowIibb(ib !== '' && ib !== '0');
+    }
+    if ('ajuste_tc' in orden && orden.ajuste_tc != null) {
+      setShowTc(Boolean(orden.ajuste_tc));
+    }
+
+    if (Array.isArray(orden.items) && orden.items.length > 0) {
+      const itemsArr = orden.items as Array<Record<string, unknown>>;
+      const baseLin = itemsArr.reduce((acc: number, item) => {
+        const c = parseFloat(String(item.cantidad_solicitada ?? 0)) || 0;
+        const p = parseFloat(String(item.precio_unitario_estimado ?? 0)) || 0;
+        return acc + c * p;
+      }, 0);
+      const totN = parseFloat(String(orden.importe_total_estimado ?? 0)) || 0;
+      const ivs = 'iva' in orden && orden.iva != null ? String(orden.iva).trim() : '';
+      const ibs = 'iibb' in orden && orden.iibb != null ? String(orden.iibb).trim() : '';
+      let ivu = ivs;
+      if ((!ivu || ivu === '0') && orden.ajuste_tc && ibs && ibs !== '0') ivu = '21';
+      const esp = totalConImpuestosAdditive(baseLin, ivu || '0', ibs || '0');
+      if (baseLin > 0.0001 && totN < baseLin * 0.9 && esp >= baseLin * 0.99) {
+        setImporteTotal(esp.toFixed(2));
+      }
+    }
+
     actualizarEstadoPersistente(derivarEstadoSolicitud(estadoNuevo, estadoRecepcionNuevo));
   }, [estadoOC, estadoRecepcionActual, importeTotal, montoYaAbonadoOC, formaPago, actualizarEstadoPersistente]);
 
@@ -287,13 +400,12 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
     const fetchTC = async () => {
       if (tcInicializadoDesdeSnapshot) return;
       try {
-        const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://quimex.sistemataup.online/api';
         const tkn = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
         const headers: Record<string, string> = tkn ? { Authorization: `Bearer ${tkn}` } : {};
-        const res = await fetch(`${API_BASE_URL}/tipos_cambio/obtener/DolarCompras`, { headers });
+        const res = await fetch(`${PUBLIC_API_BASE_URL}/tipos_cambio/obtener/DolarCompras`, { headers });
         let data: { valor?: number; data?: { valor?: number } } = {};
         if (!res.ok) {
-          const fallback = await fetch(`${API_BASE_URL}/tipos_cambio/obtener/Oficial`, { headers });
+          const fallback = await fetch(`${PUBLIC_API_BASE_URL}/tipos_cambio/obtener/Oficial`, { headers });
           if (!fallback.ok) return;
           data = await fallback.json().catch(() => ({}));
         } else {
@@ -356,19 +468,40 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       const ajuste_tc = showTc ? true : false;
       const observaciones_solicitud = typeof solicitud.observaciones_solicitud === 'string' ? solicitud.observaciones_solicitud : '';
       const tipo_caja = typeof solicitud.tipo_caja === 'string' ? solicitud.tipo_caja : '';
-      // items_recibidos
-      let id_linea = 0;
-      if (
+      // El botón "Aprobar" manda cantidad/precio dentro de items_recibidos[0], no en la raíz del objeto.
+      const primerItemRecibido =
         Array.isArray(solicitud.items_recibidos) &&
         solicitud.items_recibidos.length > 0 &&
         typeof solicitud.items_recibidos[0] === 'object' &&
-        solicitud.items_recibidos[0] !== null &&
-        'id_linea' in solicitud.items_recibidos[0]
-      ) {
-        id_linea = Number((solicitud.items_recibidos[0] as Record<string, unknown>).id_linea);
+        solicitud.items_recibidos[0] !== null
+          ? (solicitud.items_recibidos[0] as Record<string, unknown>)
+          : null;
+
+      let id_linea = 0;
+      if (primerItemRecibido && 'id_linea' in primerItemRecibido) {
+        id_linea = Number(primerItemRecibido.id_linea);
       }
-      const cantidad_solicitada = typeof solicitud.cantidad === 'string' || typeof solicitud.cantidad === 'number' ? Number(solicitud.cantidad) : 0;
-      const precio_unitario_estimado = typeof solicitud.precioUnitario === 'string' ? parseFloat(solicitud.precioUnitario) : 0;
+
+      const parseNumOpcional = (v: unknown): number | null => {
+        if (v === undefined || v === null) return null;
+        const s = String(v).trim().replace(',', '.');
+        if (s === '') return null;
+        const n = Number(s);
+        return Number.isFinite(n) ? n : null;
+      };
+
+      const rawCantidad = solicitud.cantidad ?? primerItemRecibido?.cantidad;
+      const rawPrecio = solicitud.precioUnitario ?? primerItemRecibido?.precioUnitario;
+      const cantidadNum = parseNumOpcional(rawCantidad);
+      const precioNum = parseNumOpcional(rawPrecio);
+
+      const lineaAprobar: Record<string, unknown> = { id_linea };
+      if (cantidadNum !== null) lineaAprobar.cantidad_solicitada = cantidadNum;
+      if (precioNum !== null) lineaAprobar.precio_unitario_estimado = precioNum;
+
+      const itemsPayload =
+        id_linea > 0 && (cantidadNum !== null || precioNum !== null) ? [lineaAprobar] : [];
+
       const payload = {
         proveedor_id,
         cuenta,
@@ -378,20 +511,14 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
         ajuste_tc,
         observaciones_solicitud,
         tipo_caja,
-        items: [
-          {
-            id_linea,
-            cantidad_solicitada,
-            precio_unitario_estimado,
-          }
-        ],
+        items: itemsPayload,
         importe_abonado: parseFloat(importeAbonado || '0') || 0,
         referencia_pago: typeof solicitud.referencia_pago === 'string' ? solicitud.referencia_pago : referenciaPago,
       };
       const userItem = localStorage.getItem("user") || sessionStorage.getItem("user");
       const user = userItem ? JSON.parse(userItem) : null;
       if (!user || !token) throw new Error("Error de autenticación.");
-      const response = await fetch(`https://quimex.sistemataup.online/api/ordenes_compra/aprobar/${id}`, {
+      const response = await fetch(`${PUBLIC_API_BASE_URL}/ordenes_compra/aprobar/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -456,7 +583,7 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       const userItem = localStorage.getItem("user") || sessionStorage.getItem("user");
       const user = userItem ? JSON.parse(userItem) : null;
       if (!user || !token) throw new Error("Error de autenticación.");
-      const response = await fetch(`https://quimex.sistemataup.online/api/ordenes_compra/editar/${id}`, {
+      const response = await fetch(`${PUBLIC_API_BASE_URL}/ordenes_compra/editar/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -484,7 +611,7 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       // Recargar datos antes de registrar pago para asegurar que tenemos el importe_abonado correcto
       let abonadoActual = montoYaAbonadoOC;
       let totalObjetivoActual = parseFloat(importeTotal) || 0;
-      const reloadResponse = await fetch(`https://quimex.sistemataup.online/api/ordenes_compra/obtener/${id}`, {
+      const reloadResponse = await fetch(`${PUBLIC_API_BASE_URL}/ordenes_compra/obtener/${id}`, {
         headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${token}`
@@ -567,7 +694,7 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
           .join(' | ');
       }
 
-      const response = await fetch(`https://quimex.sistemataup.online/api/ordenes_compra/pagos/${id}`, {
+      const response = await fetch(`${PUBLIC_API_BASE_URL}/ordenes_compra/pagos/${id}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -776,6 +903,12 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
     });
   };
 
+  const rolUsuario = leerRolSesionCliente();
+  const esAdmin = rolUsuario === 'ADMIN';
+  const solicitudPendienteAprobacion = normalizarEstado(estadoOC) === 'SOLICITADO';
+  // Almacén (y resto de no-admin): en SOLICITADO no define TC/moneda; lo hace admin al aprobar.
+  const mostrarBloqueTc = !solicitudPendienteAprobacion || esAdmin;
+
   return (
     <div className="min-h-screen flex flex-col items-center bg-[#20119d] px-4 py-10">
       <h1 className="text-white text-3xl font-bold mb-8 text-center">Solicitud de Ingreso (OC: {id})</h1>
@@ -861,30 +994,32 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
                 <input id="iva" type="number" step="0.01" value={iva} onChange={(e) => setIva(e.target.value)} className={baseInputClass + ' ml-2 w-24'} placeholder="Ej: 21" />
               )}
             </div>
-            <div className="flex items-center gap-1 mt-2">
-              <label htmlFor="toggleTc" className="flex items-center cursor-pointer">
-                <input id="toggleTc" type="checkbox" checked={showTc} onChange={() => {
-                  const next = !showTc;
-                  setShowTc(next);
-                  if (next && (!tc || isNaN(parseFloat(tc)))) {
-                    setTc(tcComprasActual || tc);
-                  }
-                }} className="accent-blue-600 w-4 h-4 mr-1" />
-                <span className="text-white text-sm font-medium select-none">TC</span>
-              </label>
-              {showTc && (
-                <input
-                  id="tc"
-                  type="number"
-                  step="0.01"
-                  value={tc}
-                  readOnly
-                  disabled
-                  className={baseInputClass + ' ml-2 w-28 disabled:cursor-not-allowed disabled:opacity-70'}
-                  placeholder="TC compras"
-                />
-              )}
-            </div>
+            {mostrarBloqueTc && (
+              <div className="flex items-center gap-1 mt-2">
+                <label htmlFor="toggleTc" className="flex items-center cursor-pointer">
+                  <input id="toggleTc" type="checkbox" checked={showTc} onChange={() => {
+                    const next = !showTc;
+                    setShowTc(next);
+                    if (next && (!tc || isNaN(parseFloat(tc)))) {
+                      setTc(tcComprasActual || tc);
+                    }
+                  }} className="accent-blue-600 w-4 h-4 mr-1" />
+                  <span className="text-white text-sm font-medium select-none">TC (USD)</span>
+                </label>
+                {showTc && (
+                  <input
+                    id="tc"
+                    type="number"
+                    step="0.01"
+                    value={tc}
+                    readOnly
+                    disabled
+                    className={baseInputClass + ' ml-2 w-28 disabled:cursor-not-allowed disabled:opacity-70'}
+                    placeholder="TC compras"
+                  />
+                )}
+              </div>
+            )}
             <div>
               <label htmlFor="tipoCaja" className={labelClass}>Tipo de Caja</label>
               <select id="tipoCaja" value={tipoCaja ?? ''} onChange={(e) => setTipoCaja(e.target.value)} className={baseInputClass}>
@@ -1090,7 +1225,7 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
         <div className="flex flex-col md:flex-row items-center justify-between mt-8 gap-4">
           <button onClick={handleDescargarPDF} type="button" className="bg-blue-500 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-600 transition">Descargar</button>
           <div className="flex flex-col md:flex-row gap-4 w-full md:w-auto">
-            {normalizarEstado(estadoOC) === 'SOLICITADO' && (
+            {normalizarEstado(estadoOC) === 'SOLICITADO' && esAdmin && (
               <button onClick={async () => {
                 actualizarEstadoPersistente('Recepción pendiente');
                 await enviarAprobacionAPI({

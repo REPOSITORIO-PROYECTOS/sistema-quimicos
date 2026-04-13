@@ -4,6 +4,7 @@
 import type React from "react";
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { PUBLIC_API_BASE_URL } from "@/lib/publicApiBase";
 
 /**
  * AuthProvider - Gestor centralizado de autenticación para Quimex
@@ -52,7 +53,7 @@ type AuthContextType = {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://quimex.sistemataup.online/api";
+const API_BASE_URL = PUBLIC_API_BASE_URL;
 
 // Función auxiliar para validar que el objeto user tenga la estructura correcta
 function isValidUser(obj: unknown): obj is Exclude<User, null> {

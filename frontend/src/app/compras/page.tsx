@@ -1,5 +1,6 @@
 'use client';
 
+import { PUBLIC_API_BASE_URL } from '@/lib/publicApiBase';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { FaRegFileAlt, FaClipboardList, FaCheckCircle, FaHistory, FaMoneyCheckAlt, FaBolt } from 'react-icons/fa';
@@ -36,13 +37,11 @@ export default function AccionesPedidos() {
     try {
       const token = localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
       const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://quimex.sistemataup.online/api';
-
-      const res = await fetch(`${API_BASE_URL}/tipos_cambio/obtener/DolarCompras`, { headers });
+      const res = await fetch(`${PUBLIC_API_BASE_URL}/tipos_cambio/obtener/DolarCompras`, { headers });
       let data: { valor?: number; data?: { valor?: number } } = {};
 
       if (!res.ok) {
-        const fallback = await fetch(`${API_BASE_URL}/tipos_cambio/obtener/Oficial`, { headers });
+        const fallback = await fetch(`${PUBLIC_API_BASE_URL}/tipos_cambio/obtener/Oficial`, { headers });
         if (!fallback.ok) {
           throw new Error('No se pudo obtener cotizacion de compras');
         }
@@ -79,8 +78,7 @@ export default function AccionesPedidos() {
         throw new Error('Sesion no valida. Inicie sesion nuevamente.');
       }
 
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://quimex.sistemataup.online/api';
-      const res = await fetch(`${API_BASE_URL}/tipos_cambio/actualizar/DolarCompras`, {
+      const res = await fetch(`${PUBLIC_API_BASE_URL}/tipos_cambio/actualizar/DolarCompras`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

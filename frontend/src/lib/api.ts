@@ -2,7 +2,11 @@
  * API Helper - Centraliza todas las llamadas a la API con autenticación automática
  */
 
-const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || "https://quimex.sistemataup.online/api").replace(/\/$/, "");
+import { PUBLIC_API_BASE_URL } from "./publicApiBase";
+
+const API_BASE_URL = PUBLIC_API_BASE_URL;
+
+export { PUBLIC_API_BASE_URL };
 
 function emitAuthExpired(message?: string) {
   if (typeof window === "undefined") return;

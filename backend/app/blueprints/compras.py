@@ -361,14 +361,27 @@ def _importe_objetivo_pago(orden_db):
 
 
 def _actualizar_movimiento_deuda(orden_db, usuario_actualiza=None, descripcion=None):
-    importe_recepcionado = _importe_recepcionado_estimado(orden_db)
-    restante = importe_recepcionado - (orden_db.importe_abonado or Decimal('0'))
+    """Saldo proveedor en moneda de la orden: total objetivo OC menos abonado.
+
+    Usa `_importe_objetivo_pago` (cabecera / solicitado / impuestos), no solo lo ya
+    recepcionado, para que con recepción PARCIAL o EN_ESPERA el resto a pagar siga al
+    tipo de cambio al actualizar DolarCompras (misma regla que migración 20260326).
+
+    En `SOLICITADO` sin líneas recepcionadas aún no hay deuda contable por recepción.
+    """
+    estado = _normalizar_estado_texto(getattr(orden_db, 'estado', None))
+    recepcionado = _importe_recepcionado_estimado(orden_db)
+    if estado == 'SOLICITADO' and recepcionado <= Decimal('0'):
+        base_deuda = Decimal('0.00')
+    else:
+        base_deuda = _importe_objetivo_pago(orden_db)
+    restante = base_deuda - (orden_db.importe_abonado or Decimal('0'))
     restante = restante if restante > Decimal('0') else Decimal('0')
     debito = db.session.query(MovimientoProveedor).filter(
         MovimientoProveedor.orden_id == orden_db.id,
         MovimientoProveedor.tipo == 'DEBITO'
     ).first()
-    descripcion_final = descripcion or f"OC {orden_db.id} - Deuda por recepción recalculada"
+    descripcion_final = descripcion or f"OC {orden_db.id} - Deuda por total OC recalculada"
     monto_debito = _convert_to_ars(
         restante,
         orden_db.ajuste_tc,

@@ -1,4 +1,5 @@
 'use client';
+import { PUBLIC_API_BASE_URL } from '@/lib/publicApiBase';
 import BotonVolver from '@/components/BotonVolver';
 import { useProductsContext } from '@/context/ProductsContext';
 import { useProveedoresContext } from '@/context/ProveedoresContext';
@@ -11,6 +12,8 @@ interface IProductoCarrito {
   producto_nombre: string;
   cantidad: string;
   unidad_medida: string;
+  /** Precio unitario estimado (ARS) que verá compras/admin en la solicitud */
+  precio_unitario_estimado: string;
   ordenId?: number; // Se llena después de crear la orden
 }
 
@@ -30,6 +33,8 @@ export default function RegistrarIngreso() {
   const [productoSeleccionado, setProductoSeleccionado] = useState('');
   const [cantidadActual, setCantidadActual] = useState('');
   const [unidadMedidaActual, setUnidadMedidaActual] = useState('');
+  const [precioEstimadoActual, setPrecioEstimadoActual] = useState('');
+  const [observacionesSolicitud, setObservacionesSolicitud] = useState('');
 
   // Carrito de productos (múltiples productos, múltiples órdenes)
   const [carrito, setCarrito] = useState<IProductoCarrito[]>([]);
@@ -90,6 +95,25 @@ export default function RegistrarIngreso() {
       else if (uv === 'KG' || uv === 'KILOS') setUnidadMedidaActual('Kilos');
       else setUnidadMedidaActual('Unidades');
     } catch { }
+  }, [productoSeleccionado, productos]);
+
+  // Precio estimado por defecto desde costo del catálogo (editable antes de agregar al carrito)
+  useEffect(() => {
+    if (!productoSeleccionado) {
+      setPrecioEstimadoActual('');
+      return;
+    }
+    const prod = productos.find((p) => String(p.id) === String(productoSeleccionado));
+    if (!prod) {
+      setPrecioEstimadoActual('');
+      return;
+    }
+    const c = Number(prod.costo_unitario);
+    if (Number.isFinite(c) && c > 0) {
+      setPrecioEstimadoActual(String(c));
+    } else {
+      setPrecioEstimadoActual('');
+    }
   }, [productoSeleccionado, productos]);
 
   // Obtener proveedor predeterminado
@@ -164,6 +188,10 @@ export default function RegistrarIngreso() {
     if (!productoSeleccionado) return 'Selecciona un producto';
     if (!cantidadActual || Number(cantidadActual) <= 0) return 'La cantidad debe ser mayor a 0';
     if (!unidadMedidaActual) return 'Selecciona una unidad de medida';
+    const pu = Number(String(precioEstimadoActual).replace(',', '.'));
+    if (!Number.isFinite(pu) || pu <= 0) {
+      return 'Ingresá un precio unitario estimado mayor a 0 (se sugiere desde el costo del catálogo).';
+    }
     return null;
   };
 
@@ -177,9 +205,10 @@ export default function RegistrarIngreso() {
 
     const nuevoProducto: IProductoCarrito = {
       producto_id: productoSeleccionado,
-      producto_nombre: productos.find(p => String(p.id) === productoSeleccionado)?.nombre || 'Producto desconocido',
+      producto_nombre: productos.find(p => String(p.id) === String(productoSeleccionado))?.nombre || 'Producto desconocido',
       cantidad: cantidadActual,
       unidad_medida: unidadMedidaActual,
+      precio_unitario_estimado: String(precioEstimadoActual).replace(',', '.').trim(),
     };
 
     setCarrito([...carrito, nuevoProducto]);
@@ -189,6 +218,7 @@ export default function RegistrarIngreso() {
     setProductoSeleccionado('');
     setCantidadActual('');
     setUnidadMedidaActual('');
+    setPrecioEstimadoActual('');
   };
 
   // Quitar producto del carrito
@@ -231,24 +261,40 @@ export default function RegistrarIngreso() {
       const erroresOrdenes: string[] = [];
 
       // Crear una orden por cada producto en el carrito
+      const obsTrim = observacionesSolicitud.trim();
+
       for (const item of carrito) {
         try {
+          const precioUnit = Number(String(item.precio_unitario_estimado).replace(',', '.'));
+          if (!Number.isFinite(precioUnit) || precioUnit <= 0) {
+            throw new Error(`Precio unitario inválido para ${item.producto_nombre}`);
+          }
+          const cantNum = Number(String(item.cantidad).replace(',', '.'));
+          if (!Number.isFinite(cantNum) || cantNum <= 0) {
+            throw new Error(`Cantidad inválida para ${item.producto_nombre}`);
+          }
+
+          const observacionesPayload =
+            obsTrim ||
+            `Solicitud almacén: ${item.producto_nombre} — ${cantNum} ${item.unidad_medida}. Fecha referencia: ${fecha}.`;
+
           const payload = {
             usuario_interno_id: user.id,
             proveedor_id: Number(proveedorParaSolicitud.id),
             ajuste_tc: false,
+            forma_pago: 'Efectivo',
+            observaciones_solicitud: observacionesPayload,
+            fecha_entrega_tentativa: `${fecha}T12:00:00`,
             items: [{
               codigo_interno: Number(item.producto_id),
-              cantidad: Number(item.cantidad),
-              precio_unitario_estimado: 0,
+              cantidad: cantNum,
+              precio_unitario_estimado: precioUnit,
               unidad_medida: item.unidad_medida,
             }],
             importe_abonado: 0,
-            fecha_limite: fecha,
-            // Forma de pago se omite (campo simplificado)
           };
 
-          const response = await fetch('https://quimex.sistemataup.online/api/ordenes_compra/crear', {
+          const response = await fetch(`${PUBLIC_API_BASE_URL}/ordenes_compra/crear`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -333,7 +379,7 @@ export default function RegistrarIngreso() {
                         const user = getStoredUser();
                         const role = user?.role || user?.rol || localStorage.getItem('rol') || '';
                         const userName = user?.usuario || user?.name || localStorage.getItem('user_name') || '';
-                        const response = await fetch('https://quimex.sistemataup.online/api/ordenes_compra/crear', {
+                        const response = await fetch(`${PUBLIC_API_BASE_URL}/ordenes_compra/crear`, {
                           method: 'POST',
                           headers: {
                             'Content-Type': 'application/json',
@@ -369,6 +415,8 @@ export default function RegistrarIngreso() {
                   setProductoSeleccionado('');
                   setCantidadActual('');
                   setUnidadMedidaActual('');
+                  setPrecioEstimadoActual('');
+                  setObservacionesSolicitud('');
                   setCarrito([]);
                   setErrorApi(null);
                 }}
@@ -412,14 +460,15 @@ export default function RegistrarIngreso() {
         )}
 
         <div className="mb-4">
-          <label htmlFor="fecha" className={labelClass}>Fecha</label>
+          <label htmlFor="fecha" className={labelClass}>Fecha tentativa / necesidad</label>
           <input
             id="fecha"
             value={fecha}
+            onChange={(e) => setFecha(e.target.value)}
             type="date"
-            disabled
-            className={`${baseInputClass} ${disabledInputClass}`}
+            className={baseInputClass}
           />
+          <p className="text-xs text-blue-100 mt-1">Se guarda en la solicitud para que compras vea la referencia de entrega.</p>
         </div>
 
         {/* FORMULARIO SIMPLIFICADO: Solo Producto + Cantidad */}
@@ -472,6 +521,23 @@ export default function RegistrarIngreso() {
         </div>
 
         <div className="mb-4">
+          <label htmlFor="precioEstimado" className={labelClass}>
+            Precio unitario estimado (ARS) *
+          </label>
+          <input
+            id="precioEstimado"
+            value={precioEstimadoActual}
+            onChange={(e) => setPrecioEstimadoActual(e.target.value)}
+            type="number"
+            min="0.01"
+            step="0.01"
+            placeholder="Se completa con el costo del catálogo; podés corregirlo"
+            className={baseInputClass}
+          />
+          <p className="text-xs text-blue-100 mt-1">Es el dato que verá quien apruebe el pedido (total = cantidad × precio).</p>
+        </div>
+
+        <div className="mb-4">
           <label htmlFor="unidadMedida" className={labelClass}>
             Unidad de Medida {unidadMedidaActual && `(Detectada: ${unidadMedidaActual})`}
           </label>
@@ -488,6 +554,17 @@ export default function RegistrarIngreso() {
           </select>
         </div>
 
+        <div className="mb-4">
+          <label htmlFor="obsSolicitud" className={labelClass}>Observaciones para compras (opcional)</label>
+          <textarea
+            id="obsSolicitud"
+            value={observacionesSolicitud}
+            onChange={(e) => setObservacionesSolicitud(e.target.value)}
+            rows={3}
+            placeholder="Ej: urgencia, lote, contacto proveedor…"
+            className={`${baseInputClass} resize-y min-h-[4.5rem]`}
+          />
+        </div>
 
         <div className="flex flex-col sm:flex-row gap-4 justify-center mt-6">
           <BotonVolver />
@@ -521,6 +598,14 @@ export default function RegistrarIngreso() {
                   <p className="font-semibold text-gray-900">{item.producto_nombre}</p>
                   <p className="text-xs text-gray-600 mt-1">
                     {item.cantidad} {item.unidad_medida}
+                    {Number(item.precio_unitario_estimado) > 0 && (
+                      <>
+                        {' '}· ${Number(String(item.precio_unitario_estimado).replace(',', '.')).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                        {' /u.'}
+                        {' '}· Subt.{' '}
+                        {(Number(String(item.cantidad).replace(',', '.')) * Number(String(item.precio_unitario_estimado).replace(',', '.'))).toLocaleString('es-AR', { style: 'currency', currency: 'ARS' })}
+                      </>
+                    )}
                   </p>
                 </div>
                 <button

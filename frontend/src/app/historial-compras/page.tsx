@@ -3,6 +3,7 @@
 import BotonVolver from '@/components/BotonVolver';
 import SolicitudIngresoPage from '@/components/solicitudIngresoPage'; // Se usa para ver los detalles
 import { useState, useEffect, useCallback } from 'react';
+import { PUBLIC_API_BASE_URL } from '@/lib/publicApiBase';
 
 type ItemOrden = {
   producto_id: number;
@@ -75,7 +76,7 @@ export default function OrdenesRecibidasPage() {
       const token = localStorage.getItem("authToken");
       if (!token) throw new Error("Usuario no autenticado.");
 
-      const response = await fetch(`https://quimex.sistemataup.online/api/ordenes_compra/obtener_todas?page=${currentPage}&per_page=20`, {
+      const response = await fetch(`${PUBLIC_API_BASE_URL}/ordenes_compra/obtener_todas?page=${currentPage}&per_page=20`, {
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }
       });
       if (!response.ok) {
@@ -139,7 +140,7 @@ export default function OrdenesRecibidasPage() {
       if (!token) throw new Error("Usuario no autenticado.");
       const userRaw = localStorage.getItem('user') || sessionStorage.getItem('user');
       const user = userRaw ? JSON.parse(userRaw) : null;
-      const response = await fetch('https://quimex.sistemataup.online/api/finanzas/movimientos', {
+      const response = await fetch(`${PUBLIC_API_BASE_URL}/finanzas/movimientos`, {
         headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${token}`,
@@ -170,7 +171,7 @@ export default function OrdenesRecibidasPage() {
       try {
         const candidatos = ['DolarCompras', 'Oficial', 'USD', 'Empresa'];
         for (const nombre of candidatos) {
-          const resp = await fetch(`https://quimex.sistemataup.online/api/tipos_cambio/obtener/${nombre}`);
+          const resp = await fetch(`${PUBLIC_API_BASE_URL}/tipos_cambio/obtener/${nombre}`);
           if (!resp.ok) continue;
           const data = await resp.json().catch(() => ({}));
           const val = Number((data as { valor?: number })?.valor ?? 0);

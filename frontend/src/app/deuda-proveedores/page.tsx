@@ -1,5 +1,6 @@
 "use client";
 
+import { PUBLIC_API_BASE_URL } from '@/lib/publicApiBase';
 import BotonVolver from '@/components/BotonVolver';
 import SolicitudIngresoPage from '@/components/solicitudIngresoPage';
 import { ProductsProvider } from '@/context/ProductsContext';
@@ -12,7 +13,7 @@ type ItemDetalle = { id_linea: number; producto_id: number; producto_nombre?: st
 type ItemAPI = { id_linea: number | string; producto_id: number | string; producto_nombre?: string; cantidad_solicitada?: number | string; cantidad_recibida?: number | string; precio_unitario_estimado?: number | string; importe_linea_estimado?: number | string };
 type Movimiento = { id: number; proveedor_id: number; orden_id: number | null; tipo: 'DEBITO' | 'CREDITO'; monto: number; fecha: string; descripcion?: string | null; usuario?: string | null };
 
-const API = 'https://quimex.sistemataup.online/api';
+const API = PUBLIC_API_BASE_URL;
 const formatMoney = (value: number) => `$${Number(value || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const MONEDA_CONTABLE = 'ARS';
 const formatMoneyWithCurrency = (value: number, currency: 'ARS' | 'USD') => `${currency} ${formatMoney(value)}`;
@@ -61,8 +62,29 @@ export default function DeudaProveedoresPage() {
   const [filtroProducto, setFiltroProducto] = useState('');
   const [ordenarPor, setOrdenarPor] = useState<'pendiente' | 'orden'>('pendiente');
   const [seleccionOcId, setSeleccionOcId] = useState<number | null>(null);
+  const [refrescando, setRefrescando] = useState(false);
   const [proveedoresDisponibles, setProveedoresDisponibles] = useState<{ id: number, nombre: string }[]>([]);
   const [productosDisponibles, setProductosDisponibles] = useState<{ id: number, nombre: string }[]>([]);
+  /** Misma fuente que Historial de Compras: cotización compras actual (no el TC snapshot por OC). */
+  const [tipoCambioCompras, setTipoCambioCompras] = useState(0);
+
+  const fetchTipoCambioCompras = async () => {
+    try {
+      const candidatos = ['DolarCompras', 'Oficial', 'USD', 'Empresa'];
+      for (const nombre of candidatos) {
+        const resp = await fetch(`${API}/tipos_cambio/obtener/${nombre}`);
+        if (!resp.ok) continue;
+        const data = await resp.json().catch(() => ({}));
+        const val = Number((data as { valor?: number })?.valor ?? 0);
+        if (val > 0) {
+          setTipoCambioCompras(val);
+          return;
+        }
+      }
+    } catch {
+      /* ignorar */
+    }
+  };
 
   const fetchDeudaOrdenes = async () => {
     if (!token) throw new Error('No autenticado');
@@ -109,10 +131,19 @@ export default function DeudaProveedoresPage() {
       }));
       const provNombre = (dd.proveedor_nombre as string) || (dd.proveedor && typeof dd.proveedor.nombre === 'string' ? dd.proveedor.nombre : '') || '';
       proveedorPorOrden[oc.id] = provNombre;
-      const tcNotas = extraerTcSnapshot(dd?.notas_recepcion);
-      const tcObs = extraerTcSnapshot(dd?.observaciones_solicitud);
-      if (tcNotas) tcMap[oc.id] = tcNotas;
-      else if (tcObs) tcMap[oc.id] = tcObs;
+      // TC vigente de la OC: priorizar columnas del API (se actualizan al cambiar DolarCompras), luego snapshot en texto.
+      const tcTrans = Number((dd as { tc_transaccion?: number }).tc_transaccion);
+      const tcSnapCol = Number((dd as { tc_snapshot?: number }).tc_snapshot);
+      let tcOrden = 0;
+      if (Number.isFinite(tcTrans) && tcTrans > 0) tcOrden = tcTrans;
+      else if (Number.isFinite(tcSnapCol) && tcSnapCol > 0) tcOrden = tcSnapCol;
+      else {
+        const tcNotas = extraerTcSnapshot(dd?.notas_recepcion);
+        const tcObs = extraerTcSnapshot(dd?.observaciones_solicitud);
+        if (tcNotas) tcOrden = tcNotas;
+        else if (tcObs) tcOrden = tcObs;
+      }
+      if (tcOrden > 0) tcMap[oc.id] = tcOrden;
 
       // Llenar proveedores disponibles
       if (provNombre) {
@@ -144,17 +175,34 @@ export default function DeudaProveedoresPage() {
 
   // Simplificado: esta página solo lista boletas con total, abonado, pendiente y último pago
 
+  const recargarTodo = async () => {
+    if (!token) return;
+    setRefrescando(true);
+    setError(null);
+    try {
+      await Promise.all([fetchDeudaOrdenes(), fetchMovs(), fetchTipoCambioCompras()]);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error cargando datos');
+    } finally {
+      setRefrescando(false);
+    }
+  };
+
   useEffect(() => {
     (async () => {
       try {
         setLoading(true); setError(null);
-        await Promise.all([fetchDeudaOrdenes(), fetchMovs()]);
+        await Promise.all([fetchDeudaOrdenes(), fetchMovs(), fetchTipoCambioCompras()]);
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : 'Error cargando datos';
         setError(msg);
       } finally { setLoading(false); }
     })();
-    const interval = setInterval(() => { fetchDeudaOrdenes(); fetchMovs(); }, 30000);
+    const interval = setInterval(() => {
+      void fetchDeudaOrdenes();
+      void fetchMovs();
+      void fetchTipoCambioCompras();
+    }, 30000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filtroDesde, filtroHasta]);
@@ -181,17 +229,35 @@ export default function DeudaProveedoresPage() {
     }[] = [];
     for (const oc of ordenes) {
       const items = itemsPorOrden[oc.id] || [];
-      const totalOC = Number(oc.importe_total_estimado || 0) || items.reduce((acc, it) => acc + (it.importe_linea_estimado || (it.cantidad_solicitada * it.precio_unitario_estimado)), 0);
-      const abonadoOC = Number(oc.importe_abonado || 0);
+      const totalCabecera = Number(oc.importe_total_estimado || 0);
+      const baseSolicitud = items.reduce(
+        (acc, it) => acc + Number(it.cantidad_solicitada || 0) * Number(it.precio_unitario_estimado || 0),
+        0
+      );
+      const totalOC =
+        totalCabecera ||
+        items.reduce((acc, it) => acc + (it.importe_linea_estimado || (it.cantidad_solicitada * it.precio_unitario_estimado)), 0);
       const recepcionadoOC = items.reduce((acc, it) => acc + ((Number(it.cantidad_recibida || 0) * Number(it.precio_unitario_estimado || 0)) || 0), 0);
+      const totalRef = Math.max(totalOC, baseSolicitud, recepcionadoOC);
+      const abonadoOC = Number(oc.importe_abonado || 0);
       const cantidadRecibidaTotal = items.reduce((acc, it) => acc + Number(it.cantidad_recibida || 0), 0);
       const cantidadSolicitadaTotal = items.reduce((acc, it) => acc + Number(it.cantidad_solicitada || 0), 0);
       const saldoOperativo = recepcionadoOC - abonadoOC;
       const esUSD = oc.ajuste_tc === true;
-      const tcOrden = esUSD ? (tcPorOrden[oc.id] || DEFAULT_TC) : 1;
-      const pendienteOCMoneda = Math.max(0, totalOC - abonadoOC);
-      const pendienteArs = esUSD ? (pendienteOCMoneda * tcOrden) : pendienteOCMoneda;
-      const anticipoArs = saldoOperativo < 0 ? (esUSD ? (Math.abs(saldoOperativo) * tcOrden) : Math.abs(saldoOperativo)) : 0;
+      // ARS alineado con Historial: cotización compras actual; fallback TC de la OC si aún no cargó el API.
+      const tcParaArs = esUSD
+        ? (tipoCambioCompras > 0 ? tipoCambioCompras : (tcPorOrden[oc.id] || DEFAULT_TC))
+        : 1;
+      const recepNorm = String(oc.estado_recepcion || '').toUpperCase();
+      const recepcionCompleta =
+        recepNorm === 'COMPLETA' ||
+        recepNorm === 'RECIBIDO' ||
+        (cantidadSolicitadaTotal > 0 && cantidadRecibidaTotal >= cantidadSolicitadaTotal);
+      // Con recepción parcial solo se adeuda lo ya recepcionado; el saldo del pedido pendiente de entrega no entra acá.
+      const basePendienteOC = recepcionCompleta ? totalRef : recepcionadoOC;
+      const pendienteOCMoneda = Math.max(0, basePendienteOC - abonadoOC);
+      const pendienteArs = esUSD ? (pendienteOCMoneda * tcParaArs) : pendienteOCMoneda;
+      const anticipoArs = saldoOperativo < 0 ? (esUSD ? (Math.abs(saldoOperativo) * tcParaArs) : Math.abs(saldoOperativo)) : 0;
       const movsOCAll = movimientos.filter(m => m.orden_id === oc.id);
       const movsOC = movsOCAll
         .filter(m => m.tipo === 'CREDITO')
@@ -208,7 +274,7 @@ export default function DeudaProveedoresPage() {
       if (pendienteArs <= 0 || pendienteOCMoneda <= 0) continue;
       rows.push({
         ocId: oc.id,
-        total: totalOC,
+        total: totalRef,
         abonado: abonadoOC,
         pendiente: pendienteArs,
         pendienteOCMoneda,
@@ -229,7 +295,7 @@ export default function DeudaProveedoresPage() {
     if (ordenarPor === 'pendiente') rows.sort((a, b) => b.pendiente - a.pendiente);
     if (ordenarPor === 'orden') rows.sort((a, b) => a.ocId - b.ocId);
     return rows;
-  }, [ordenes, itemsPorOrden, movimientos, ordenarPor, filtroDesde, filtroHasta, filtroProveedor, filtroProducto, proveedorPorOrden, tcPorOrden]);
+  }, [ordenes, itemsPorOrden, movimientos, ordenarPor, filtroDesde, filtroHasta, filtroProveedor, filtroProducto, proveedorPorOrden, tcPorOrden, tipoCambioCompras]);
 
   const totalPendienteFiltrado = useMemo(
     () => filasOrdenes.reduce((acc, row) => acc + row.pendiente, 0),
@@ -372,6 +438,14 @@ export default function DeudaProveedoresPage() {
               <option value="orden">Orden</option>
             </select>
           </div>
+          <button
+            type="button"
+            onClick={() => void recargarTodo()}
+            disabled={refrescando || !token}
+            className="px-3 py-2 bg-emerald-600 text-white rounded disabled:opacity-50"
+          >
+            {refrescando ? 'Actualizando…' : 'Actualizar'}
+          </button>
           <button onClick={exportCSV} className="px-3 py-2 bg-indigo-600 text-white rounded">Exportar CSV</button>
           <button onClick={exportPDF} className="px-3 py-2 bg-gray-200 rounded">Exportar PDF</button>
         </div>
@@ -380,6 +454,11 @@ export default function DeudaProveedoresPage() {
         <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 mb-4 flex flex-wrap justify-between gap-3">
           <div className="text-sm text-red-900">
             Total adeudado contable (filtro actual, {MONEDA_CONTABLE}): <span className="font-bold text-base tabular-nums">{formatMoney(totalPendienteFiltrado)}</span>
+            {tipoCambioCompras > 0 && (
+              <span className="block text-xs font-normal text-red-800 mt-1">
+                Equivalente USD→ARS con cotización compras vigente: {tipoCambioCompras.toLocaleString('es-AR', { maximumFractionDigits: 4 })}
+              </span>
+            )}
           </div>
           <div className="text-sm text-amber-900">
             Anticipos sin recepción ({MONEDA_CONTABLE}): <span className="font-bold">{formatMoney(totalAnticiposSinRecepcion)}</span>
@@ -433,7 +512,7 @@ export default function DeudaProveedoresPage() {
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">
                     <div>{formatMoneyWithCurrency(r.total, r.esUSD ? 'USD' : 'ARS')}</div>
-                    <div className="text-xs text-gray-500">Rec: {formatMoneyWithCurrency(r.recepcionado, r.esUSD ? 'USD' : 'ARS')}</div>
+                    <div className="text-xs text-gray-500">Recepcionado (est.): {formatMoneyWithCurrency(r.recepcionado, r.esUSD ? 'USD' : 'ARS')}</div>
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">{formatMoneyWithCurrency(r.abonado, r.esUSD ? 'USD' : 'ARS')}</td>
                   <td className={`px-3 py-2 text-right tabular-nums whitespace-nowrap ${r.pendiente > 0 ? 'text-red-700' : 'text-green-700'}`}>

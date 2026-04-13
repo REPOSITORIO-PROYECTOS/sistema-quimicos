@@ -33,6 +33,13 @@ type ItemRecepcion = {
 
 const normalizarEstado = (estado?: string | null) => String(estado || '').trim().toUpperCase();
 
+/** True si hay algo físico pendiente de recepcionar (evita listar OC con cantidad_solicitada 0 por datos viejos o errores). */
+const lineaTienePendienteRecepcion = (item: { cantidad_solicitada?: number | null; cantidad_recibida?: number | null }) => {
+  const solicitada = Number(item.cantidad_solicitada ?? 0);
+  const recibida = Number(item.cantidad_recibida ?? 0);
+  return solicitada > 0 && solicitada > recibida;
+};
+
 const tienePendientesRecepcion = (orden: OrdenCompra) => {
   const estado = normalizarEstado(orden.estado);
   const estadoRecepcion = normalizarEstado(orden.estado_recepcion);
@@ -41,19 +48,17 @@ const tienePendientesRecepcion = (orden: OrdenCompra) => {
     return false;
   }
 
+  const items = Array.isArray(orden.items) ? orden.items : [];
+  if (items.length > 0) {
+    return items.some(lineaTienePendienteRecepcion);
+  }
+
+  // Sin líneas en el listado: no listar como pendiente (evita filas sin datos o solo con flags).
   if (estadoRecepcion === 'EN_ESPERA_RECEPCION' || estadoRecepcion === 'PARCIAL') {
-    return true;
+    return false;
   }
 
-  if (Array.isArray(orden.items) && orden.items.length > 0) {
-    return orden.items.some((item) => {
-      const solicitada = Number(item.cantidad_solicitada || 0);
-      const recibida = Number(item.cantidad_recibida || 0);
-      return solicitada > recibida;
-    });
-  }
-
-  return estado === 'APROBADO' || estado === 'RECIBIDA_PARCIAL' || estado === 'EN_ESPERA_RECEPCION' || estado === 'CON DEUDA';
+  return false;
 };
 
 export default function RecepcionesPendientesPage() {
@@ -112,8 +117,8 @@ export default function RecepcionesPendientesPage() {
               }
               return {
                 nombre,
-                cantidad: item.cantidad_solicitada as number,
-                cantidadRecibida: (item.cantidad_recibida as number) || 0,
+                cantidad: Number(item.cantidad_solicitada ?? 0),
+                cantidadRecibida: Number(item.cantidad_recibida ?? 0) || 0,
               };
             });
           }
@@ -158,8 +163,8 @@ export default function RecepcionesPendientesPage() {
             (typeof item.producto_nombre === 'string' && item.producto_nombre) ||
             (item.producto && typeof (item.producto as Record<string, unknown>).nombre === 'string' && (item.producto as Record<string, unknown>).nombre) ||
             (item.producto_id ? String(item.producto_id) : 'Producto'),
-          cantidadSolicitada: item.cantidad_solicitada as number,
-          cantidadRecibida: (item.cantidad_recibida as number) || 0,
+          cantidadSolicitada: Number(item.cantidad_solicitada ?? 0),
+          cantidadRecibida: Number(item.cantidad_recibida ?? 0) || 0,
           productoCodigo: typeof (item.producto_codigo as unknown) === 'string' ? (item.producto_codigo as string) : undefined,
           costoUnitarioARS: typeof (item.precio_unitario_estimado as unknown) === 'number' ? (item.precio_unitario_estimado as number) : undefined,
         }));
@@ -277,7 +282,7 @@ export default function RecepcionesPendientesPage() {
               if (typeof item.producto_nombre === 'string') nombre = item.producto_nombre;
               else if (item.producto && typeof item.producto === 'object' && (item.producto as Record<string, unknown>).nombre) nombre = (item.producto as Record<string, unknown>).nombre as string;
               else nombre = item.producto_id ? `ID: ${item.producto_id}` : 'Producto';
-              return { nombre, cantidad: item.cantidad_solicitada as number, cantidadRecibida: (item.cantidad_recibida as number) || 0 };
+              return { nombre, cantidad: Number(item.cantidad_solicitada ?? 0), cantidadRecibida: Number(item.cantidad_recibida ?? 0) || 0 };
             });
           }
         });
