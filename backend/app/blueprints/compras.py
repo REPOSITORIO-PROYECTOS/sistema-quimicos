@@ -1059,12 +1059,29 @@ def aprobar_orden_compra(current_user, orden_id):
                 detalle = next((item for item in orden_db.items if item.id == id_linea), None)
                 if detalle:
                     if 'cantidad_solicitada' in item_data:
-                        detalle.cantidad_solicitada = Decimal(str(item_data.get('cantidad_solicitada', detalle.cantidad_solicitada or 0)))
+                        try:
+                            nuevo_qty = Decimal(str(item_data.get('cantidad_solicitada')))
+                            prev_qty = detalle.cantidad_solicitada or Decimal('0')
+                            # No pisar cantidad real con 0 por payloads incompletos (lista / TC).
+                            if nuevo_qty > 0 or prev_qty <= 0:
+                                detalle.cantidad_solicitada = nuevo_qty
+                        except (InvalidOperation, TypeError, ValueError):
+                            pass
                     if 'precio_unitario_estimado' in item_data:
-                        detalle.precio_unitario_estimado = Decimal(str(item_data.get('precio_unitario_estimado', detalle.precio_unitario_estimado or 0)))
-                    # Recalcular importe línea si ambos presentes
-                    if 'cantidad_solicitada' in item_data and 'precio_unitario_estimado' in item_data:
-                        detalle.importe_linea_estimado = detalle.cantidad_solicitada * detalle.precio_unitario_estimado
+                        try:
+                            nuevo_pu = Decimal(str(item_data.get('precio_unitario_estimado')))
+                            prev_pu = detalle.precio_unitario_estimado or Decimal('0')
+                            if nuevo_pu > 0 or prev_pu <= 0:
+                                detalle.precio_unitario_estimado = nuevo_pu
+                        except (InvalidOperation, TypeError, ValueError):
+                            pass
+                    try:
+                        if detalle.cantidad_solicitada is not None and detalle.precio_unitario_estimado is not None:
+                            detalle.importe_linea_estimado = (
+                                detalle.cantidad_solicitada * detalle.precio_unitario_estimado
+                            ).quantize(Decimal('0.01'))
+                    except Exception:
+                        pass
 
         # Actualizar el importe total de la orden con el del payload o recalcular
         if 'importe_total_estimado' in data:
@@ -1245,11 +1262,28 @@ def editar_orden_compra(current_user, orden_id):
                 detalle = next((item for item in orden_db.items if item.id == id_linea), None)
                 if detalle:
                     if 'cantidad_solicitada' in item_data:
-                        detalle.cantidad_solicitada = Decimal(str(item_data.get('cantidad_solicitada', detalle.cantidad_solicitada or 0)))
+                        try:
+                            nuevo_qty = Decimal(str(item_data.get('cantidad_solicitada')))
+                            prev_qty = detalle.cantidad_solicitada or Decimal('0')
+                            if nuevo_qty > 0 or prev_qty <= 0:
+                                detalle.cantidad_solicitada = nuevo_qty
+                        except (InvalidOperation, TypeError, ValueError):
+                            pass
                     if 'precio_unitario_estimado' in item_data:
-                        detalle.precio_unitario_estimado = Decimal(str(item_data.get('precio_unitario_estimado', detalle.precio_unitario_estimado or 0)))
-                    if 'cantidad_solicitada' in item_data and 'precio_unitario_estimado' in item_data:
-                        detalle.importe_linea_estimado = detalle.cantidad_solicitada * detalle.precio_unitario_estimado
+                        try:
+                            nuevo_pu = Decimal(str(item_data.get('precio_unitario_estimado')))
+                            prev_pu = detalle.precio_unitario_estimado or Decimal('0')
+                            if nuevo_pu > 0 or prev_pu <= 0:
+                                detalle.precio_unitario_estimado = nuevo_pu
+                        except (InvalidOperation, TypeError, ValueError):
+                            pass
+                    try:
+                        if detalle.cantidad_solicitada is not None and detalle.precio_unitario_estimado is not None:
+                            detalle.importe_linea_estimado = (
+                                detalle.cantidad_solicitada * detalle.precio_unitario_estimado
+                            ).quantize(Decimal('0.01'))
+                    except Exception:
+                        pass
 
         # Recalcular importe total
         if 'importe_total_estimado' in data:

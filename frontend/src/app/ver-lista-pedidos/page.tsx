@@ -210,12 +210,32 @@ export default function ListaOrdenesCompra() {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
+          'X-User-Role': user?.role || 'ADMIN',
+          'X-User-Name': user?.name || user?.usuario || '',
         }
       });
       const detalleData = await detalleResp.json().catch(() => ({}));
       const proveedor_id = Number((detalleData?.proveedor_id) ?? (detalleData?.proveedor?.id) ?? 0);
       const itemsFull = Array.isArray(detalleData?.items) ? detalleData.items : [];
-      const itemsPayload = (itemsFull as DetalleItem[]).map((it) => ({ id_linea: typeof it.id_linea === 'number' ? it.id_linea : Number(it.id_linea ?? 0), cantidad_solicitada: typeof it.cantidad_solicitada === 'number' ? it.cantidad_solicitada : Number(it.cantidad_solicitada ?? 0), precio_unitario_estimado: typeof it.precio_unitario_estimado === 'number' ? it.precio_unitario_estimado : Number(it.precio_unitario_estimado ?? 0) }));
+      const parseNum = (v: unknown): number | null => {
+        if (v === undefined || v === null) return null;
+        if (typeof v === 'number' && Number.isFinite(v)) return v;
+        const s = String(v).trim().replace(',', '.');
+        if (s === '') return null;
+        const n = Number(s);
+        return Number.isFinite(n) ? n : null;
+      };
+      const itemsPayload: { id_linea: number; cantidad_solicitada?: number; precio_unitario_estimado?: number }[] = [];
+      for (const it of itemsFull as DetalleItem[]) {
+        const id_linea = typeof it.id_linea === 'number' ? it.id_linea : Number(it.id_linea ?? 0);
+        if (!id_linea) continue;
+        const line: { id_linea: number; cantidad_solicitada?: number; precio_unitario_estimado?: number } = { id_linea };
+        const cs = parseNum(it.cantidad_solicitada);
+        const pu = parseNum(it.precio_unitario_estimado);
+        if (cs !== null && cs > 0) line.cantidad_solicitada = cs;
+        if (pu !== null && pu > 0) line.precio_unitario_estimado = pu;
+        if (Object.keys(line).length > 1) itemsPayload.push(line);
+      }
       const importe_total_estimado = Number(detalleData?.importe_total_estimado ?? totalRef ?? 0);
       if (isFinite(importe_total_estimado)) {
         const t = Math.max(0, Number(importe_total_estimado.toFixed(2)));
@@ -226,7 +246,7 @@ export default function ListaOrdenesCompra() {
         if (a > t) a = t;
         abonadoRef = a;
       }
-      const payload = {
+      const payload: Record<string, unknown> = {
         proveedor_id,
         cuenta: '',
         iibb: '',
@@ -236,11 +256,13 @@ export default function ListaOrdenesCompra() {
         observaciones_solicitud: 'Aprobada desde Lista',
         tipo_caja: '',
         forma_pago: aprobacionFormaPago,
-        items: itemsPayload.length > 0 ? itemsPayload : [{ id_linea: 0, cantidad_solicitada: 0, precio_unitario_estimado: 0 }],
         importe_total_estimado,
         importe_abonado: abonadoRef,
         cheque_perteneciente_a: undefined,
       };
+      if (itemsPayload.length > 0) {
+        payload.items = itemsPayload;
+      }
       const response = await fetch(`https://quimex.sistemataup.online/api/ordenes_compra/aprobar/${ordenId}`, {
         method: 'PUT',
         headers: {

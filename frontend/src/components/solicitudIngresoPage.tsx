@@ -98,8 +98,6 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
   const [tcComprasActual, setTcComprasActual] = useState<string>('');
   const [tipo, setTipo] = useState('Litro');
   const [importeTotal, setImporteTotal] = useState('');
-  const [estado_recepcion, setEstadoRecepcion] = useState('Completa');
-  const [cantidad_recepcionada, setCantidadRecepcionada] = useState('');
   const [nro_remito_proveedor, setNroRemitoProveedor] = useState('');
   const [importeAbonado, setImporteAbonado] = useState('');
   const [importeAbonadoVisual, setImporteAbonadoVisual] = useState('');
@@ -278,8 +276,6 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       setTipoCaja(data.tipo_caja);
       setCantidadYaRecibida(parseFloat(itemPrincipal.cantidad_recibida) || 0);
 
-      setEstadoRecepcion('Completa');
-      setCantidadRecepcionada('');
       setImporteAbonado('');
       setImporteAbonadoVisual('');
       setEditandoImporteAbonado(false);
@@ -496,11 +492,12 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       const precioNum = parseNumOpcional(rawPrecio);
 
       const lineaAprobar: Record<string, unknown> = { id_linea };
-      if (cantidadNum !== null) lineaAprobar.cantidad_solicitada = cantidadNum;
-      if (precioNum !== null) lineaAprobar.precio_unitario_estimado = precioNum;
+      // No mandar 0: el backend lo aplicaría y borraría la cantidad real (p. ej. solo se actualiza TC).
+      if (cantidadNum !== null && cantidadNum > 0) lineaAprobar.cantidad_solicitada = cantidadNum;
+      if (precioNum !== null && precioNum > 0) lineaAprobar.precio_unitario_estimado = precioNum;
 
       const itemsPayload =
-        id_linea > 0 && (cantidadNum !== null || precioNum !== null) ? [lineaAprobar] : [];
+        id_linea > 0 && Object.keys(lineaAprobar).length > 1 ? [lineaAprobar] : [];
 
       const payload = {
         proveedor_id,
@@ -760,8 +757,8 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
     y += 5; doc.line(20, y, 190, y); y += 10;
 
     doc.setFontSize(14); doc.text('Información de Recepción:', 20, y); y += 8; doc.setFontSize(12);
-    agregarCampo('Estado Recepción:', estado_recepcion);
-    agregarCampo('Cantidad Recepcionada (Total):', `${cantidadYaRecibida + parseFloat(cantidad_recepcionada || '0')} ${tipo}`);
+    agregarCampo('Estado Recepción:', estadoRecepcionActual || 'N/A');
+    agregarCampo('Cantidad recepcionada (total OC):', `${cantidadTotalRecibida.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${tipo}`);
     agregarCampo('N° Remito Proveedor:', nro_remito_proveedor);
     doc.save(`Orden_de_Compra_${id}.pdf`);
   };
@@ -1054,20 +1051,6 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
               <label htmlFor="importeTotal" className={labelClass}>Importe Total OC</label>
               <input id="importeTotal" type="number" step="0.01" value={importeTotal} readOnly className={`${baseInputClass} ${disabledInputClass}`} />
             </div>
-            <div>
-              <label htmlFor="cantidadRecepcionada" className={labelClass}>Cantidad a Recepcionar</label>
-              <input
-                id="cantidadRecepcionada"
-                type="number"
-                step="0.01"
-                min="0"
-                value={cantidad_recepcionada}
-                onChange={(e) => setCantidadRecepcionada(e.target.value)}
-                className={baseInputClass}
-                placeholder="Ej: 5"
-              />
-            </div>
-            {/* Estado Recepción removido por requerimiento */}
           </div>
         </div>
 
