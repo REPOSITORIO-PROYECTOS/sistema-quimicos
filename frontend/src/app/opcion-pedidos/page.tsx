@@ -220,33 +220,31 @@ const handlePrint = async (tipo: 'comprobante' | 'orden_de_trabajo') => {
 
       const boletasAImprimir: VentaData[] = boletasDetalladas.map((data: BoletaOriginal) => {
         const detalles = data.detalles || [];
-        
-        // Lógica de distribución de recargos igual que en registrar-pedido
+
+        // Política alineada con actualización:
+        // usar los importes ya calculados por backend y no recalcular precios/recargos en frontend.
         const itemsFiltrados = detalles.filter(item => item.producto_id && item.cantidad > 0);
-        const totalesOriginales = itemsFiltrados.map(item => item.precio_total_item_ars || 0);
-        const sumaTotales = totalesOriginales.reduce((sum, val) => sum + val, 0);
-        const recargoTotal = (data.recargos?.transferencia || 0) + (data.recargos?.factura_iva || 0);
-        
-        const adjustedItems = itemsFiltrados.map((item, idx) => {
-          const totalOriginal = totalesOriginales[idx];
-          const proporcion = sumaTotales > 0 ? totalOriginal / sumaTotales : 0;
-          const recargoItem = recargoTotal * proporcion;
-          const totalFinalItem = totalOriginal + recargoItem;
-          
+        const adjustedItems = itemsFiltrados.map((item) => {
+          const subtotalConRecargos = item.subtotal_proporcional_con_recargos;
+          const precioItem = typeof subtotalConRecargos === 'number'
+            ? subtotalConRecargos
+            : (item.precio_total_item_ars || 0);
+
           return {
             producto_id: item.producto_id,
             producto_nombre: item.producto_nombre,
             cantidad: item.cantidad,
-            precio_total_item_ars: Math.round(totalFinalItem * 100) / 100,
+            precio_total_item_ars: Math.round(precioItem * 100) / 100,
             descuento_item_porcentaje: item.descuento_item_porcentaje,
             subtotal_bruto_item_ars: item.subtotal_bruto_item_ars,
             observacion_item: item.observacion_item,
           };
         });
-        
-        // Ajustar el último item para que la suma sea exacta (sin descuento global, eso lo muestra Ticket separado)
-        const targetSum = data.monto_final_con_recargos || sumaTotales + recargoTotal;
+
+        // Ajuste de centavos para asegurar consistencia visual con el total con recargos
+        // (el descuento global se muestra aparte en Ticket).
         const sumAdjusted = adjustedItems.reduce((sum, item) => sum + item.precio_total_item_ars, 0);
+        const targetSum = data.monto_final_con_recargos || sumAdjusted;
         const difference = Math.round((targetSum - sumAdjusted) * 100) / 100;
         if (adjustedItems.length > 0 && Math.abs(difference) > 0.01) {
           adjustedItems[adjustedItems.length - 1].precio_total_item_ars += difference;
