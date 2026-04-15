@@ -118,7 +118,6 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
   const [estadoSolicitud, setEstadoSolicitud] = useState<string>('');
   const [montoYaAbonadoOC, setMontoYaAbonadoOC] = useState<number>(0);
   const [idLineaOCOriginal, setIdLineaOCOriginal] = useState<string | number>('');
-  const [cantidadYaRecibida, setCantidadYaRecibida] = useState<number>(0);
   const [cantidadTotalSolicitada, setCantidadTotalSolicitada] = useState<number>(0);
   const [cantidadTotalRecibida, setCantidadTotalRecibida] = useState<number>(0);
   const [cantidadTotalPendienteRecepcion, setCantidadTotalPendienteRecepcion] = useState<number>(0);
@@ -274,7 +273,6 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       setNroRemitoProveedor(data.nro_remito_proveedor || '');
       setChequePerteneceA(data.cheque_perteneciente_a?.toString() ?? '');
       setTipoCaja(data.tipo_caja);
-      setCantidadYaRecibida(parseFloat(itemPrincipal.cantidad_recibida) || 0);
 
       setImporteAbonado('');
       setImporteAbonadoVisual('');
@@ -318,7 +316,6 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
     setHistorialPagos(Array.isArray(orden.historial_pagos) ? (orden.historial_pagos as HistorialPago[]) : []);
     if (Array.isArray(orden.items) && orden.items.length > 0) {
       const items = orden.items as Array<Record<string, unknown>>;
-      const itemPrincipal = items[0];
       const totalSolicitadaApi = Number(orden.cantidad_total_solicitada);
       const totalRecibidaApi = Number(orden.cantidad_total_recibida);
       const totalPendienteApi = Number(orden.cantidad_total_pendiente_recepcion);
@@ -332,7 +329,6 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
         ? totalPendienteApi
         : Math.max(0, totalSolicitada - totalRecibida);
 
-      setCantidadYaRecibida(parseFloat(String(itemPrincipal.cantidad_recibida || 0)) || 0);
       setCantidadTotalSolicitada(totalSolicitada);
       setCantidadTotalRecibida(totalRecibida);
       setCantidadTotalPendienteRecepcion(totalPendiente);

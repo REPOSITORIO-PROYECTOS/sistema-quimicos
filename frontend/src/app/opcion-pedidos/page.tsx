@@ -173,29 +173,29 @@ export default function TotalPedidos() {
     setError(null);
     const token = localStorage.getItem("authToken");
     try {
-        const response = await fetch('https://quimex.sistemataup.online/api/ventas/actualizar-estado-lote', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-            body: JSON.stringify({
-                venta_ids: Array.from(selectedBoletas),
-                nuevo_estado: estadoSeleccionado
-            })
-        });
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error || 'Error al actualizar estados.');
-        await fetchBoletasPorFecha();
-        setSelectedBoletas(new Set());
+      const response = await fetch('https://quimex.sistemataup.online/api/ventas/actualizar-estado-lote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({
+          venta_ids: Array.from(selectedBoletas),
+          nuevo_estado: estadoSeleccionado
+        })
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Error al actualizar estados.');
+      await fetchBoletasPorFecha();
+      setSelectedBoletas(new Set());
     } catch (err) {
-        setError(err instanceof Error ? err.message : 'Error desconocido.');
+      setError(err instanceof Error ? err.message : 'Error desconocido.');
     } finally {
-        setIsUpdatingStatus(false);
+      setIsUpdatingStatus(false);
     }
   };
 
-const handlePrint = async (tipo: 'comprobante' | 'orden_de_trabajo') => {
-    if (selectedBoletas.size === 0) { 
-      alert(`Por favor, seleccione al menos un pedido para imprimir.`); 
-      return; 
+  const handlePrint = async (tipo: 'comprobante' | 'orden_de_trabajo') => {
+    if (selectedBoletas.size === 0) {
+      alert(`Por favor, seleccione al menos un pedido para imprimir.`);
+      return;
     }
     setLoading(true);
     setError(null);
@@ -213,10 +213,10 @@ const handlePrint = async (tipo: 'comprobante' | 'orden_de_trabajo') => {
         const errorData = await response.json();
         throw new Error(errorData.error || `No se pudieron cargar los detalles.`);
       }
-      
-  const boletasDetalladas: BoletaOriginal[] = await response.json();
-  // DEBUG temporal: mostrar en consola la respuesta completa para verificar precios especiales
-  console.log('DEBUG obtener-detalles-lote response:', boletasDetalladas);
+
+      const boletasDetalladas: BoletaOriginal[] = await response.json();
+      // DEBUG temporal: mostrar en consola la respuesta completa para verificar precios especiales
+      console.log('DEBUG obtener-detalles-lote response:', boletasDetalladas);
 
       const boletasAImprimir: VentaData[] = boletasDetalladas.map((data: BoletaOriginal) => {
         const detalles = data.detalles || [];
@@ -250,10 +250,21 @@ const handlePrint = async (tipo: 'comprobante' | 'orden_de_trabajo') => {
           adjustedItems[adjustedItems.length - 1].precio_total_item_ars += difference;
           adjustedItems[adjustedItems.length - 1].precio_total_item_ars = Math.round(adjustedItems[adjustedItems.length - 1].precio_total_item_ars * 100) / 100;
         }
-        
+
+        // DEBUG temporal: comparar suma de items del ticket con totales del backend.
+        const finalItemsSum = adjustedItems.reduce((sum, item) => sum + item.precio_total_item_ars, 0);
+        console.log("DEBUG impresion opcion-pedidos:", {
+          venta_id: data.venta_id,
+          suma_items_ticket: Math.round(finalItemsSum * 100) / 100,
+          monto_final_con_recargos_backend: data.monto_final_con_recargos,
+          monto_final_con_descuento_backend: data.monto_final_con_descuento,
+          descuento_global_porcentaje: data.descuento_total_global_porcentaje || 0,
+          diferencia_vs_recargos: Math.round((data.monto_final_con_recargos - finalItemsSum) * 100) / 100,
+        });
+
         // El total_final que se pasa es el monto con descuento (si existe)
         const totalFinal = (typeof data.monto_final_con_descuento === 'number') ? data.monto_final_con_descuento : data.monto_final_con_recargos;
-        
+
         return {
           venta_id: data.venta_id,
           fecha_emision: data.fecha_pedido || data.fecha_emision || '',
@@ -268,30 +279,30 @@ const handlePrint = async (tipo: 'comprobante' | 'orden_de_trabajo') => {
           descuento_total_global_porcentaje: data.descuento_total_global_porcentaje || 0,
         };
       });
-      
+
       // 3. El resto de la lógica se queda igual
       if (boletasAImprimir.length > 0) {
-  const printWindow = window.open('/imprimir', '_blank');
-  const printJobData = { tipo, boletas: boletasAImprimir };
-  console.log('Intentando enviar datos a la ventana de impresión:', printJobData);
-  const sendPrintData = () => {
-    if (printWindow) {
-      console.log('Enviando printJobData por postMessage');
-      printWindow.postMessage({ type: 'PRINT_JOB_DATA', payload: printJobData }, window.location.origin);
-    }
-  };
-  let attempts = 0;
-  const interval = setInterval(() => {
-    if (printWindow && !printWindow.closed) {
-      console.log('Intento', attempts + 1, 'de enviar printJobData');
-      printWindow.postMessage({ type: 'PRINT_JOB_DATA', payload: printJobData }, window.location.origin);
-      attempts++;
-      if (attempts > 10) clearInterval(interval);
-    } else {
-      clearInterval(interval);
-    }
-  }, 300);
-  setTimeout(sendPrintData, 700);
+        const printWindow = window.open('/imprimir', '_blank');
+        const printJobData = { tipo, boletas: boletasAImprimir };
+        console.log('Intentando enviar datos a la ventana de impresión:', printJobData);
+        const sendPrintData = () => {
+          if (printWindow) {
+            console.log('Enviando printJobData por postMessage');
+            printWindow.postMessage({ type: 'PRINT_JOB_DATA', payload: printJobData }, window.location.origin);
+          }
+        };
+        let attempts = 0;
+        const interval = setInterval(() => {
+          if (printWindow && !printWindow.closed) {
+            console.log('Intento', attempts + 1, 'de enviar printJobData');
+            printWindow.postMessage({ type: 'PRINT_JOB_DATA', payload: printJobData }, window.location.origin);
+            attempts++;
+            if (attempts > 10) clearInterval(interval);
+          } else {
+            clearInterval(interval);
+          }
+        }, 300);
+        setTimeout(sendPrintData, 700);
       } else {
         setError("No se encontraron datos válidos para las boletas seleccionadas.");
       }
@@ -301,14 +312,14 @@ const handlePrint = async (tipo: 'comprobante' | 'orden_de_trabajo') => {
       setLoading(false);
     }
   };
-  
+
   const getColorForStatus = (status: string) => {
-    switch(status.toLowerCase().replace(/ /g, '')) {
-        case 'pendiente': return 'bg-yellow-100 text-yellow-800';
-        case 'listoparaentregar': return 'bg-blue-100 text-blue-800';
-        case 'entregado': return 'bg-green-100 text-green-800';
-        case 'cancelado': return 'bg-red-100 text-red-800';
-        default: return 'bg-gray-100 text-gray-800';
+    switch (status.toLowerCase().replace(/ /g, '')) {
+      case 'pendiente': return 'bg-yellow-100 text-yellow-800';
+      case 'listoparaentregar': return 'bg-blue-100 text-blue-800';
+      case 'entregado': return 'bg-green-100 text-green-800';
+      case 'cancelado': return 'bg-red-100 text-red-800';
+      default: return 'bg-gray-100 text-gray-800';
     }
   };
 
@@ -319,94 +330,94 @@ const handlePrint = async (tipo: 'comprobante' | 'orden_de_trabajo') => {
 
   return (
     <>
-  {/* Render único, sin edición de boleta */}
-        <div className="flex flex-col items-center justify-center min-h-screen bg-indigo-900 py-10 px-4">
-          <div className="bg-white p-6 md:p-8 rounded-lg shadow-md w-full max-w-7xl">
-            <BotonVolver className="ml-0" />
-            <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
-              <h2 className="text-2xl md:text-3xl font-semibold text-indigo-800">Gestión de Pedidos</h2>
-              <div className="flex items-center gap-2">
-                <label className="font-medium text-gray-700">Fecha de Entrega:</label>
-                <input type="date" value={fechaSeleccionada} onChange={handleDateChange} className="border border-gray-300 rounded-md p-2"/>
-              </div>
+      {/* Render único, sin edición de boleta */}
+      <div className="flex flex-col items-center justify-center min-h-screen bg-indigo-900 py-10 px-4">
+        <div className="bg-white p-6 md:p-8 rounded-lg shadow-md w-full max-w-7xl">
+          <BotonVolver className="ml-0" />
+          <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
+            <h2 className="text-2xl md:text-3xl font-semibold text-indigo-800">Gestión de Pedidos</h2>
+            <div className="flex items-center gap-2">
+              <label className="font-medium text-gray-700">Fecha de Entrega:</label>
+              <input type="date" value={fechaSeleccionada} onChange={handleDateChange} className="border border-gray-300 rounded-md p-2" />
             </div>
+          </div>
 
-            <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4 p-3 bg-gray-50 rounded-lg">
-                <div className="flex items-center gap-2">
-                    <label className="font-medium text-sm">Cambiar estado de ({selectedBoletas.size}) a:</label>
-                    <select value={estadoSeleccionado} onChange={(e) => setEstadoSeleccionado(e.target.value)}
-                        className="border border-gray-300 rounded-md p-2 text-sm" disabled={selectedBoletas.size === 0 || loading || isUpdatingStatus}>
-                        <option>Listo para Entregar</option><option>Entregado</option><option>Pendiente</option><option>Cancelado</option>
-                    </select>
-                    <button onClick={handleCambiarEstado} disabled={selectedBoletas.size === 0 || loading || isUpdatingStatus}
-                        className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded disabled:opacity-50">
-                        {isUpdatingStatus ? 'Aplicando...' : 'Aplicar'}
-                    </button>
-                </div>
-                <div className="flex items-center gap-2">
-                    <button onClick={() => handlePrint('comprobante')} disabled={loading || isUpdatingStatus || selectedBoletas.size === 0} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded disabled:opacity-50">Imprimir Boletas</button>
-                    <button onClick={() => handlePrint('orden_de_trabajo')} disabled={loading || isUpdatingStatus || selectedBoletas.size === 0} className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded disabled:opacity-50">Imprimir OT
-                    </button>
-                </div>
-            </div>
-
-            {/* Filtros de búsqueda automáticos */}
-            <div className="flex flex-col md:flex-row gap-2 mb-4 items-center">
-              <input
-                type="text"
-                className="border p-2 rounded w-full md:w-64"
-                placeholder="Buscar cliente..."
-                value={searchCliente}
-                onChange={e => setSearchCliente(e.target.value)}
-              />
-              <select
-                className="border p-2 rounded w-full md:w-48"
-                value={filterEstado}
-                onChange={e => setFilterEstado(e.target.value)}
-              >
-                <option value="">Todos los estados</option>
-                <option value="Pendiente">Pendiente</option>
-                <option value="Listo para Entregar">Listo para Entregar</option>
-                <option value="Entregado">Entregado</option>
-                <option value="Cancelado">Cancelado</option>
+          <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4 p-3 bg-gray-50 rounded-lg">
+            <div className="flex items-center gap-2">
+              <label className="font-medium text-sm">Cambiar estado de ({selectedBoletas.size}) a:</label>
+              <select value={estadoSeleccionado} onChange={(e) => setEstadoSeleccionado(e.target.value)}
+                className="border border-gray-300 rounded-md p-2 text-sm" disabled={selectedBoletas.size === 0 || loading || isUpdatingStatus}>
+                <option>Listo para Entregar</option><option>Entregado</option><option>Pendiente</option><option>Cancelado</option>
               </select>
+              <button onClick={handleCambiarEstado} disabled={selectedBoletas.size === 0 || loading || isUpdatingStatus}
+                className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded disabled:opacity-50">
+                {isUpdatingStatus ? 'Aplicando...' : 'Aplicar'}
+              </button>
             </div>
+            <div className="flex items-center gap-2">
+              <button onClick={() => handlePrint('comprobante')} disabled={loading || isUpdatingStatus || selectedBoletas.size === 0} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded disabled:opacity-50">Imprimir Boletas</button>
+              <button onClick={() => handlePrint('orden_de_trabajo')} disabled={loading || isUpdatingStatus || selectedBoletas.size === 0} className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded disabled:opacity-50">Imprimir OT
+              </button>
+            </div>
+          </div>
 
-            {loading && !isUpdatingStatus && <p className="text-center text-gray-600 my-4">Cargando pedidos...</p>}
+          {/* Filtros de búsqueda automáticos */}
+          <div className="flex flex-col md:flex-row gap-2 mb-4 items-center">
+            <input
+              type="text"
+              className="border p-2 rounded w-full md:w-64"
+              placeholder="Buscar cliente..."
+              value={searchCliente}
+              onChange={e => setSearchCliente(e.target.value)}
+            />
+            <select
+              className="border p-2 rounded w-full md:w-48"
+              value={filterEstado}
+              onChange={e => setFilterEstado(e.target.value)}
+            >
+              <option value="">Todos los estados</option>
+              <option value="Pendiente">Pendiente</option>
+              <option value="Listo para Entregar">Listo para Entregar</option>
+              <option value="Entregado">Entregado</option>
+              <option value="Cancelado">Cancelado</option>
+            </select>
+          </div>
 
-            {!loading && !error && (
-              <div className="overflow-x-auto">
-                <ul className="min-w-full space-y-2">
-                  <li className="grid grid-cols-13 gap-3 items-center bg-indigo-100 p-2 rounded-md font-semibold text-indigo-800 text-xs uppercase">
-                    <div className="col-span-1 flex justify-center"><input type="checkbox" onChange={handleSelectAllOnPage} checked={isAllOnPageSelected} /></div>
-                    <span className="col-span-3">Cliente</span>
-                    <span className="col-span-2">Monto</span>
-                    <span className="col-span-3">Dirección</span>
-                    <span className="col-span-2">Localidad</span>
-                    <span className="col-span-2">Estado</span>
-                  </li>
-                  {boletas
-                    .filter(b => {
-                      // Búsqueda por similitud automática
-                      const input = searchCliente.trim().toLowerCase();
-                      const nombre = b.cliente_nombre.toLowerCase();
-                      if (!input) return filterEstado ? b.estado === filterEstado : true;
-                      // Coincidencia directa o fuzzy simple
-                      const incluye = nombre.includes(input);
-                      // Fuzzy: permite hasta 1 letra de diferencia si input >= 3
-                      function fuzzy(str: string, pattern: string) {
-                        if (pattern.length < 3) return str.includes(pattern);
-                        let mismatches = 0, i = 0, j = 0;
-                        while (i < str.length && j < pattern.length) {
-                          if (str[i] === pattern[j]) { j++; } else { mismatches++; }
-                          i++;
-                        }
-                        return (j === pattern.length && mismatches <= 1) || str.includes(pattern);
+          {loading && !isUpdatingStatus && <p className="text-center text-gray-600 my-4">Cargando pedidos...</p>}
+
+          {!loading && !error && (
+            <div className="overflow-x-auto">
+              <ul className="min-w-full space-y-2">
+                <li className="grid grid-cols-13 gap-3 items-center bg-indigo-100 p-2 rounded-md font-semibold text-indigo-800 text-xs uppercase">
+                  <div className="col-span-1 flex justify-center"><input type="checkbox" onChange={handleSelectAllOnPage} checked={isAllOnPageSelected} /></div>
+                  <span className="col-span-3">Cliente</span>
+                  <span className="col-span-2">Monto</span>
+                  <span className="col-span-3">Dirección</span>
+                  <span className="col-span-2">Localidad</span>
+                  <span className="col-span-2">Estado</span>
+                </li>
+                {boletas
+                  .filter(b => {
+                    // Búsqueda por similitud automática
+                    const input = searchCliente.trim().toLowerCase();
+                    const nombre = b.cliente_nombre.toLowerCase();
+                    if (!input) return filterEstado ? b.estado === filterEstado : true;
+                    // Coincidencia directa o fuzzy simple
+                    const incluye = nombre.includes(input);
+                    // Fuzzy: permite hasta 1 letra de diferencia si input >= 3
+                    function fuzzy(str: string, pattern: string) {
+                      if (pattern.length < 3) return str.includes(pattern);
+                      let mismatches = 0, i = 0, j = 0;
+                      while (i < str.length && j < pattern.length) {
+                        if (str[i] === pattern[j]) { j++; } else { mismatches++; }
+                        i++;
                       }
-                      const fuzzyMatch = fuzzy(nombre, input);
-                      return (incluye || fuzzyMatch) && (filterEstado ? b.estado === filterEstado : true);
-                    })
-                    .length > 0 ? boletas
+                      return (j === pattern.length && mismatches <= 1) || str.includes(pattern);
+                    }
+                    const fuzzyMatch = fuzzy(nombre, input);
+                    return (incluye || fuzzyMatch) && (filterEstado ? b.estado === filterEstado : true);
+                  })
+                  .length > 0 ? boletas
                     .filter(b => {
                       const input = searchCliente.trim().toLowerCase();
                       const nombre = b.cliente_nombre.toLowerCase();
@@ -445,15 +456,15 @@ const handlePrint = async (tipo: 'comprobante' | 'orden_de_trabajo') => {
                           <span className="col-span-2"><span className={`px-2 py-1 text-xs font-semibold rounded-full ${getColorForStatus(boleta.estado)}`}>{boleta.estado}</span></span>
                         </li>
                       );
-                  }) : (
-                    <li className="text-center text-gray-500 py-8">No se encontraron pedidos para esta fecha.</li>
-                  )}
-                </ul>
-              </div>
-            )}
-            {/* Eliminar el bloque de paginación al final */}
-          </div>
+                    }) : (
+                  <li className="text-center text-gray-500 py-8">No se encontraron pedidos para esta fecha.</li>
+                )}
+              </ul>
+            </div>
+          )}
+          {/* Eliminar el bloque de paginación al final */}
         </div>
-      </>
+      </div>
+    </>
   );
 }
