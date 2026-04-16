@@ -253,17 +253,23 @@ export default function TotalPedidos() {
 
         // DEBUG temporal: comparar suma de items del ticket con totales del backend.
         const finalItemsSum = adjustedItems.reduce((sum, item) => sum + item.precio_total_item_ars, 0);
+        const montoConRecargos = data.monto_final_con_recargos || finalItemsSum;
+        const montoConDescuento = typeof data.monto_final_con_descuento === 'number'
+          ? data.monto_final_con_descuento
+          : montoConRecargos;
+        const descuentoPorcentajeApi = data.descuento_total_global_porcentaje || 0;
+
         console.log("DEBUG impresion opcion-pedidos:", {
           venta_id: data.venta_id,
           suma_items_ticket: Math.round(finalItemsSum * 100) / 100,
-          monto_final_con_recargos_backend: data.monto_final_con_recargos,
-          monto_final_con_descuento_backend: data.monto_final_con_descuento,
-          descuento_global_porcentaje: data.descuento_total_global_porcentaje || 0,
-          diferencia_vs_recargos: Math.round((data.monto_final_con_recargos - finalItemsSum) * 100) / 100,
+          monto_final_con_recargos_backend: montoConRecargos,
+          monto_final_con_descuento_backend: montoConDescuento,
+          descuento_global_porcentaje_api: descuentoPorcentajeApi,
+          diferencia_vs_recargos: Math.round((montoConRecargos - finalItemsSum) * 100) / 100,
         });
 
         // El total_final que se pasa es el monto con descuento (si existe)
-        const totalFinal = (typeof data.monto_final_con_descuento === 'number') ? data.monto_final_con_descuento : data.monto_final_con_recargos;
+        const totalFinal = montoConDescuento;
 
         return {
           venta_id: data.venta_id,
@@ -276,7 +282,7 @@ export default function TotalPedidos() {
           forma_pago: data.forma_pago,
           monto_pagado_cliente: data.monto_pagado_cliente,
           vuelto_calculado: data.vuelto_calculado,
-          descuento_total_global_porcentaje: data.descuento_total_global_porcentaje || 0,
+          descuento_total_global_porcentaje: descuentoPorcentajeApi,
         };
       });
 

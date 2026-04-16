@@ -745,9 +745,30 @@ def obtener_ventas_con_entrega(current_user):
         # --- Filtros adicionales ---
         estado_filtro = request.args.get('estado')
         if estado_filtro:
-            # El estado se guarda en nombre_vendedor como 'ESTADO-Vendedor'
-            # Filtramos por el prefijo en nombre_vendedor
-            query = query.filter(Venta.nombre_vendedor.ilike(f"{estado_filtro}-%"))
+            estado_norm = estado_filtro.strip().upper().replace(' ', '_')
+            estados_validos = {'PENDIENTE', 'LISTO_PARA_ENTREGAR', 'ENTREGADO', 'CANCELADO'}
+            if estado_norm not in estados_validos:
+                return jsonify({
+                    "error": "Estado inválido. Válidos: Pendiente, Listo para Entregar, Entregado, Cancelado"
+                }), 400
+
+            estado_norm_con_espacios = estado_norm.replace('_', ' ')
+            if estado_norm == 'PENDIENTE':
+                # Compatibilidad: pedidos antiguos pueden no tener prefijo de estado.
+                query = query.filter(
+                    or_(
+                        Venta.nombre_vendedor.ilike(f"{estado_norm}-%"),
+                        Venta.nombre_vendedor.ilike(f"{estado_norm_con_espacios}-%"),
+                        ~Venta.nombre_vendedor.contains('-')
+                    )
+                )
+            else:
+                query = query.filter(
+                    or_(
+                        Venta.nombre_vendedor.ilike(f"{estado_norm}-%"),
+                        Venta.nombre_vendedor.ilike(f"{estado_norm_con_espacios}-%")
+                    )
+                )
 
         cliente_nombre_filtro = request.args.get('cliente_nombre')
         if cliente_nombre_filtro:
@@ -1019,139 +1040,61 @@ def obtener_detalles_lote(current_user):
     venta_ids = data['venta_ids']
     if not isinstance(venta_ids, list):
         return jsonify({"error": "'venta_ids' debe ser una lista."}), 400
+    if len(venta_ids) == 0:
+        return jsonify({"error": "'venta_ids' no puede ser una lista vacía."}), 400
+
+    # Normalizar IDs para evitar búsquedas parciales o inconsistentes.
+    venta_ids_normalizados = []
+    try:
+        for vid in venta_ids:
+            vid_int = int(vid)
+            if vid_int <= 0:
+                raise ValueError("ID no positivo")
+            if vid_int not in venta_ids_normalizados:
+                venta_ids_normalizados.append(vid_int)
+    except (TypeError, ValueError):
+        return jsonify({"error": "'venta_ids' debe contener solo IDs numéricos positivos."}), 400
 
     try:
-        multiplicador_lote = Decimal(str(data.get('multiplicador_lote', '1.0')))
         # --- CONSULTA EFICIENTE ---
         ventas_db = db.session.query(Venta).options(
             selectinload(Venta.detalles).selectinload(DetalleVenta.producto),
             selectinload(Venta.cliente),
             selectinload(Venta.usuario_interno)
-        ).filter(Venta.id.in_(venta_ids)).all()
+        ).filter(Venta.id.in_(venta_ids_normalizados)).all()
 
         if not ventas_db:
             return jsonify({"error": "No se encontraron ventas con los IDs proporcionados."}), 404
 
-        ventas_completas = [venta_a_dict_completo(v) for v in ventas_db]
+        ventas_por_id = {v.id: v for v in ventas_db}
+        ids_faltantes = [vid for vid in venta_ids_normalizados if vid not in ventas_por_id]
+        if ids_faltantes:
+            return jsonify({
+                "error": "No se encontraron todas las ventas solicitadas.",
+                "ids_faltantes": ids_faltantes
+            }), 404
+
+        ventas_ordenadas = [ventas_por_id[vid] for vid in venta_ids_normalizados]
+        ventas_completas = [venta_a_dict_completo(v) for v in ventas_ordenadas]
         for venta in ventas_completas:
-            # Redondear y limpiar campos
             if 'descuento_total_global_porcentaje' in venta:
-                venta['descuento_total_global_porcentaje'] = round(venta['descuento_total_global_porcentaje'])
+                venta['descuento_total_global_porcentaje'] = float(venta['descuento_total_global_porcentaje'] or 0.0)
             if 'observaciones' not in venta:
                 venta['observaciones'] = ''
-            monto_total_items = Decimal('0.00')
-            # 1. NO aplicar descuento por ítem nuevamente, solo usar el valor guardado
-            # Usar funciones canónicas de redondeo centralizadas
-            from ..utils.math_utils import redondear_a_siguiente_decena, redondear_a_siguiente_centena
-            for detalle in venta.get('detalles', []):
-                # Calcular precio base y total por ítem desde cero, igual que en registro/actualización
+
+            monto_final = Decimal(str(venta.get('monto_final_con_recargos') or 0))
+            detalles = venta.get('detalles', [])
+            suma_items = sum(Decimal(str(d.get('precio_total_item_ars') or 0)) for d in detalles)
+
+            # Importante: NO recalcular precios en este endpoint.
+            # Se imprime exactamente lo guardado al momento de registrar/actualizar la venta.
+            for detalle in detalles:
                 if 'observacion_item' not in detalle:
                     detalle['observacion_item'] = ''
-                producto_id = detalle.get('producto_id')
-                cantidad = Decimal(str(detalle.get('cantidad', 0.0)))
-                descuento_item = Decimal(str(detalle.get('descuento_item_porcentaje', 0.0))) if 'descuento_item_porcentaje' in detalle else Decimal('0.0')
-                # Calcular precio unitario base desde cero
-                precio_u_bruto, _, _, _, error_msg, es_precio_especial_calculo = calcular_precio_item_venta(producto_id, cantidad, venta.get('cliente_id'))
-                # Si hubo error o el cálculo devuelve None/0, usar fallback a los valores guardados en el detalle
-                if error_msg or precio_u_bruto is None or (isinstance(precio_u_bruto, Decimal) and precio_u_bruto <= Decimal('0')):
-                    # Intentamos recuperar un precio unitario guardado en el detalle (serializado en venta_a_dict_completo)
-                    try:
-                        stored_unit = Decimal(str(detalle.get('precio_unitario_venta_ars', '0') or '0'))
-                    except Exception:
-                        stored_unit = Decimal('0')
-                    if stored_unit and stored_unit > Decimal('0'):
-                        precio_u_bruto = stored_unit
-                        # Log de depuración para identificar casos que cayeron en fallback
-                        print(f"WARN [obtener_detalles_lote]: fallback unitario para prod {producto_id} usando stored_unit={stored_unit}, cliente={venta.get('cliente_id')}")
-                    else:
-                        # Intentar fallback 2: si existe una regla de PrecioEspecialCliente, calcular usando ella (soporta usar_precio_base)
-                        try:
-                            precio_esp_obj = db.session.query(PrecioEspecialCliente).filter_by(cliente_id=venta.get('cliente_id'), producto_id=producto_id, activo=True).first()
-                            if precio_esp_obj:
-                                from .precios_especiales import calcular_precio_ars
-                                precio_calc, tc_used = calcular_precio_ars(precio_esp_obj)
-                                if precio_calc is not None and Decimal(str(precio_calc)) > Decimal('0'):
-                                    precio_u_bruto = Decimal(str(precio_calc))
-                                    es_precio_especial_calculo = True
-                                    print(f"INFO [obtener_detalles_lote]: fallback desde PrecioEspecialCliente para prod {producto_id}, cliente {venta.get('cliente_id')}")
-                                else:
-                                    raise ValueError("PrecioEspecialCliente existía pero no devolvió precio calculado")
-                            else:
-                                raise ValueError("No existe PrecioEspecialCliente activo para este producto/cliente")
-                        except Exception as e_fallback:
-                            # Si no funciona el fallback con regla especial, intentar usar total guardado dividido por cantidad
-                            try:
-                                stored_total = Decimal(str(detalle.get('precio_total_item_ars', '0') or '0'))
-                            except Exception:
-                                stored_total = Decimal('0')
-                            if stored_total and cantidad > Decimal('0'):
-                                precio_u_bruto = (stored_total / cantidad)
-                                print(f"WARN [obtener_detalles_lote]: fallback unitario calculado = total_guardado/cantidad for prod {producto_id}")
-                            else:
-                                precio_u_bruto = Decimal('0')
-                                print(f"ERROR [obtener_detalles_lote]: No se pudo calcular precio para prod {producto_id} (cliente {venta.get('cliente_id')}). Se usará 0 en respuesta. Detalle fallback error: {e_fallback}")
-                # Determinar si hay un precio especial activo (si la llamada directa no lo marcó ya)
-                if not es_precio_especial_calculo:
-                    try:
-                        es_precio_especial_activo = db.session.query(PrecioEspecialCliente).filter_by(
-                            cliente_id=venta.get('cliente_id'), producto_id=producto_id, activo=True
-                        ).first() is not None
-                    except Exception:
-                        es_precio_especial_activo = False
-                else:
-                    es_precio_especial_activo = True
-                precio_unitario_redondeado = redondear_a_siguiente_decena(precio_u_bruto)
-                # Aplicar descuento particular si corresponde
-                if descuento_item > 0:
-                    precio_unitario_con_descuento = precio_unitario_redondeado * (Decimal('1.0') - descuento_item / Decimal('100'))
-                else:
-                    precio_unitario_con_descuento = precio_unitario_redondeado
-                subtotal_item = precio_unitario_con_descuento * cantidad
-                # Regla: si es precio especial -> total a decena; si no -> centena
-                if es_precio_especial_activo:
-                    precio_total_item = redondear_a_siguiente_decena(subtotal_item)
-                else:
-                    precio_total_item = redondear_a_siguiente_centena(subtotal_item)
-                detalle['precio_unitario_con_descuento_ars'] = float(precio_unitario_con_descuento)
-                detalle['precio_unitario_venta_ars'] = float(precio_unitario_con_descuento)
-                detalle['precio_total_item_ars'] = float(precio_total_item)
-                detalle['descuento_item_porcentaje'] = float(descuento_item)
-                detalle['es_precio_especial'] = bool(es_precio_especial_activo)
-                monto_total_items += precio_total_item
-            # 2. Aplica descuento global sobre la suma de ítems ya descontados y redondeados
-            descuento_global = Decimal(str(venta.get('descuento_total_global_porcentaje', 0.0)))
-            monto_total_items_con_descuento = monto_total_items * (Decimal('1.0') - descuento_global / Decimal('100'))
-            # 3. Aplica recargos al total con descuento global
-            forma_pago = venta.get('forma_pago')
-            requiere_factura = venta.get('requiere_factura', False)
-            monto_final_con_recargos, recargo_t, recargo_f, _, _ = calcular_monto_final_y_vuelto(
-                monto_total_items_con_descuento, forma_pago, requiere_factura, None, multiplicador_lote
-            )
-            # 4. Redondea monto final del lote a múltiplo de 100
-            monto_final_redondeado = monto_final_con_recargos
-            if monto_final_redondeado % 100 != 0:
-                monto_final_redondeado = Decimal(math.ceil(monto_final_redondeado / 100) * 100)
-            venta['monto_final_con_recargos'] = float(monto_final_redondeado)
-            venta['recargos'] = {
-                'transferencia': float(recargo_t),
-                'factura_iva': float(recargo_f)
-            }
-            # 5. Recalcula subtotales proporcionales agrupando por producto_id
-            from collections import defaultdict
-            agrupados = defaultdict(lambda: {'cantidad': Decimal('0.00'), 'precio_total': Decimal('0.00')})
-            for d in venta.get('detalles', []):
-                producto_id = d.get('producto_id')
-                agrupados[producto_id]['cantidad'] += Decimal(str(d.get('cantidad', 0.0)))
-                agrupados[producto_id]['precio_total'] += Decimal(str(d.get('precio_total_item_ars', 0.0)))
-            suma_items = sum([v['precio_total'] for v in agrupados.values()])
-            for detalle in venta.get('detalles', []):
-                producto_id = detalle.get('producto_id')
-                precio = Decimal(str(detalle.get('precio_total_item_ars', 0.0)))
-                total_producto = agrupados[producto_id]['precio_total']
                 if suma_items > Decimal('0.00'):
-                    proporcion = total_producto / suma_items
-                    subtotal = monto_final_con_recargos * proporcion
-                    detalle['subtotal_proporcional_con_recargos'] = float(subtotal)
+                    precio_item = Decimal(str(detalle.get('precio_total_item_ars') or 0))
+                    proporcion = precio_item / suma_items
+                    detalle['subtotal_proporcional_con_recargos'] = float((monto_final * proporcion).quantize(Decimal("0.01"), ROUND_HALF_UP))
                 else:
                     detalle['subtotal_proporcional_con_recargos'] = 0.0
         return jsonify(ventas_completas)
