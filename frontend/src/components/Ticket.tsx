@@ -31,6 +31,11 @@ export interface VentaData {
     monto_pagado_cliente?: number;
     vuelto_calculado?: number;
     descuento_total_global_porcentaje?: number;
+    /**
+     * Si true, precio_total_item_ars ya incluye descuento global y recargos (reparto al total final).
+     * No mostrar fila de descuento global calculada sobre la suma de ítems (evita doble descuento).
+     */
+    items_ya_neto_global?: boolean;
 }
 
 interface TicketProps {
@@ -49,12 +54,50 @@ const Ticket: React.FC<TicketProps> = ({ tipo, ventaData }) => {
         }).format(value);
     };
 
-    // Calcular el descuento global en plata basado en la suma de los items
-    const sumaTotalesItems = ventaData.items.reduce((sum, item) => sum + item.precio_total_item_ars, 0);
-    const descuentoGlobalPorc = ventaData.descuento_total_global_porcentaje || 0;
-    const descuentoGlobalEnPlata = descuentoGlobalPorc > 0 ? sumaTotalesItems * (descuentoGlobalPorc / 100) : 0;
+    const itemsYaNeto = ventaData.items_ya_neto_global === true;
 
-    if (descuentoGlobalPorc > 0) {
+    // Para pedidos (items_ya_neto_global), mostramos importes de ítems redondeados sin centavos
+    // pero manteniendo que la suma coincida exactamente con el total_final.
+    const itemsParaMostrar: ProductoVenta[] = React.useMemo(() => {
+        if (!itemsYaNeto || !ventaData.items.length) return ventaData.items;
+
+        const totalFinal = ventaData.total_final ?? 0;
+        if (!Number.isFinite(totalFinal)) return ventaData.items;
+
+        const baseItems = ventaData.items;
+
+        // Trabajar en pesos enteros: redondear cada línea al peso más cercano
+        const redondeados = baseItems.map((it) => ({
+            ...it,
+            precio_total_item_ars: Math.round(it.precio_total_item_ars),
+        }));
+
+        let suma = redondeados.reduce((s, it) => s + it.precio_total_item_ars, 0);
+
+        // Ajustar el último ítem para que la suma coincida EXACTAMENTE con total_final.
+        // Si la diferencia es muy grande o no es número, dejamos tal cual como fallback seguro.
+        const diff = Math.round(totalFinal - suma);
+        if (Math.abs(diff) > 0 && redondeados.length > 0 && Number.isFinite(diff)) {
+            redondeados[redondeados.length - 1] = {
+                ...redondeados[redondeados.length - 1],
+                precio_total_item_ars: redondeados[redondeados.length - 1].precio_total_item_ars + diff,
+            };
+            suma = redondeados.reduce((s, it) => s + it.precio_total_item_ars, 0);
+            // Si pese al ajuste no coincide (caso muy raro), volvemos al valor original sin tocar nada.
+            if (Math.round(suma) !== Math.round(totalFinal)) {
+                return ventaData.items;
+            }
+        }
+
+        return redondeados;
+    }, [itemsYaNeto, ventaData.items, ventaData.total_final]);
+
+    const sumaTotalesItems = itemsParaMostrar.reduce((sum, item) => sum + item.precio_total_item_ars, 0);
+    const descuentoGlobalPorc = ventaData.descuento_total_global_porcentaje || 0;
+    const descuentoGlobalEnPlata =
+      !itemsYaNeto && descuentoGlobalPorc > 0 ? sumaTotalesItems * (descuentoGlobalPorc / 100) : 0;
+
+    if (descuentoGlobalPorc > 0 && !itemsYaNeto) {
       console.log('✓ TICKET RECIBIÓ DESCUENTO:', descuentoGlobalPorc, '% / $', descuentoGlobalEnPlata);
     }
 
@@ -108,7 +151,7 @@ const Ticket: React.FC<TicketProps> = ({ tipo, ventaData }) => {
                         </tr>
                     </thead>
                     <tbody>
-                        {ventaData.items.map((item, index) => {
+                        {itemsParaMostrar.map((item, index) => {
                             // Usar solo los valores del backend
                             const descuentoPorc = item.descuento_item_porcentaje || 0;
                             const subtotalBruto = item.subtotal_bruto_item_ars !== undefined
@@ -159,7 +202,7 @@ const Ticket: React.FC<TicketProps> = ({ tipo, ventaData }) => {
                     <table className="tabla-datos-secundarios">
                         <tbody>
                             {/* Mostrar descuento global si existe */}
-                            {descuentoGlobalPorc > 0 && (
+                            {!itemsYaNeto && descuentoGlobalPorc > 0 && (
                                 <tr>
                                     <td>Descuento {descuentoGlobalPorc}%:</td>
                                     <td className="text-red-700">-$ {formatPrice(descuentoGlobalEnPlata)}</td>

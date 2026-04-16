@@ -71,4 +71,6 @@ export interface VentaDataParaTicket {
   vuelto_calculado?: number;
   descuento_total_global_porcentaje?: number;
   total_bruto_sin_descuento?: number;
+  /** Ítems alineados al total final (desc. global y recargos ya repartidos); ver Ticket.tsx */
+  items_ya_neto_global?: boolean;
 }

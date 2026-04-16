@@ -69,6 +69,7 @@ type VentaData = {
   monto_pagado_cliente?: number;
   vuelto_calculado?: number;
   descuento_total_global_porcentaje?: number;
+  items_ya_neto_global?: boolean;
 };
 
 export default function TotalPedidos() {
@@ -226,8 +227,10 @@ export default function TotalPedidos() {
         const itemsFiltrados = detalles.filter(item => item.producto_id && item.cantidad > 0);
         const adjustedItems = itemsFiltrados.map((item) => {
           const subtotalConRecargos = item.subtotal_proporcional_con_recargos;
-          const precioItem = typeof subtotalConRecargos === 'number'
-            ? subtotalConRecargos
+          const tieneSubtotal =
+            subtotalConRecargos != null && Number.isFinite(Number(subtotalConRecargos));
+          const precioItem = tieneSubtotal
+            ? Number(subtotalConRecargos)
             : (item.precio_total_item_ars || 0);
 
           return {
@@ -246,7 +249,7 @@ export default function TotalPedidos() {
         const sumAdjusted = adjustedItems.reduce((sum, item) => sum + item.precio_total_item_ars, 0);
         const targetSum = data.monto_final_con_recargos || sumAdjusted;
         const difference = Math.round((targetSum - sumAdjusted) * 100) / 100;
-        if (adjustedItems.length > 0 && Math.abs(difference) > 0.01) {
+        if (adjustedItems.length > 0 && Math.abs(difference) > 1e-6) {
           adjustedItems[adjustedItems.length - 1].precio_total_item_ars += difference;
           adjustedItems[adjustedItems.length - 1].precio_total_item_ars = Math.round(adjustedItems[adjustedItems.length - 1].precio_total_item_ars * 100) / 100;
         }
@@ -283,6 +286,7 @@ export default function TotalPedidos() {
           monto_pagado_cliente: data.monto_pagado_cliente,
           vuelto_calculado: data.vuelto_calculado,
           descuento_total_global_porcentaje: descuentoPorcentajeApi,
+          items_ya_neto_global: true,
         };
       });
 

@@ -510,7 +510,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
       const sumAdjusted = adjustedItems.reduce((sum, item) => sum + item.precio_total_item_ars, 0);
       const difference = Math.round((targetSum - sumAdjusted) * 100) / 100;
       
-      if (adjustedItems.length > 0 && Math.abs(difference) > 0.01) {
+      if (adjustedItems.length > 0 && Math.abs(difference) > 1e-6) {
         adjustedItems[adjustedItems.length - 1].precio_total_item_ars += difference;
         adjustedItems[adjustedItems.length - 1].precio_total_item_ars = Math.round(adjustedItems[adjustedItems.length - 1].precio_total_item_ars * 100) / 100;
       }
@@ -554,7 +554,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
       const sumItems = itemsDelBackend.reduce((sum: number, item) => sum + item.precio_total_item_ars, 0);
       const diff = Math.round((totalFinalDelBackend - sumItems) * 100) / 100;
       
-      if (itemsDelBackend.length > 0 && Math.abs(diff) > 0.01) {
+      if (itemsDelBackend.length > 0 && Math.abs(diff) > 1e-6) {
         itemsDelBackend[itemsDelBackend.length - 1].precio_total_item_ars = Math.round((itemsDelBackend[itemsDelBackend.length - 1].precio_total_item_ars + diff) * 100) / 100;
       }
       
@@ -578,6 +578,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
         monto_pagado_cliente: ventaActualizadaParaImprimir.monto_pagado_cliente,
         vuelto_calculado: ventaActualizadaParaImprimir.vuelto_calculado,
         descuento_total_global_porcentaje: ventaActualizadaParaImprimir.descuento_total_global_porcentaje || 0,
+        items_ya_neto_global: true,
       };
     }
     
@@ -594,6 +595,7 @@ export default function DetalleActualizarPedidoPage({ id }: { id: number | undef
       monto_pagado_cliente: formData.montoPagado,
       vuelto_calculado: formData.vuelto,
       descuento_total_global_porcentaje: formData.descuentoTotal || 0,
+      items_ya_neto_global: true,
     };
   })();
 

@@ -423,7 +423,7 @@ export default function RegistrarPedidoPage() {
       // Make the sum exact to displayTotal
       const sumAdjusted = adjustedItems.reduce((sum, item) => sum + item.precio_total_item_ars, 0);
       const difference = Math.round((displayTotal - sumAdjusted) * 100) / 100;
-      if (adjustedItems.length > 0 && Math.abs(difference) > 0.01) {
+      if (adjustedItems.length > 0 && Math.abs(difference) > 1e-6) {
         adjustedItems[adjustedItems.length - 1].precio_total_item_ars += difference;
         adjustedItems[adjustedItems.length - 1].precio_total_item_ars = Math.round(adjustedItems[adjustedItems.length - 1].precio_total_item_ars * 100) / 100;
       }
@@ -435,6 +435,7 @@ export default function RegistrarPedidoPage() {
     monto_pagado_cliente: formData.montoPagado,
     vuelto_calculado: formData.vuelto,
     descuento_total_global_porcentaje: typeof formData.descuentoTotal === 'number' ? formData.descuentoTotal : 0,
+    items_ya_neto_global: true,
   };
   
   if ((ventaDataParaTicket.descuento_total_global_porcentaje ?? 0) > 0) {

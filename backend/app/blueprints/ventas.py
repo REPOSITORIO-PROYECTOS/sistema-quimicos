@@ -11,6 +11,7 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP, ROUND_UP
 import math
 import traceback
 from ..utils import precios_utils
+from ..utils.ventas_montos_utils import asignar_subtotales_proporcionales_en_detalles
 from datetime import datetime, timezone, date
 # --- Imports locales ---
 from .. import db
@@ -908,11 +909,13 @@ def venta_a_dict_completo(venta):
     if not venta: return None
     resumen = venta_a_dict_resumen(venta)
     monto_final_real = float(venta.monto_final_con_recargos) if venta.monto_final_con_recargos is not None else None
-    monto_total_base = float(venta.monto_total) if venta.monto_total is not None else None
-    
+
     # CORRECCIÓN: Calcular suma real de items SIN descuento global para distribución proporcional correcta
     suma_items_sin_descuento_global = sum(float(d.precio_total_item_ars or 0) for d in venta.detalles)
     
+    detalles = [detalle_venta_a_dict(d) for d in venta.detalles]
+    asignar_subtotales_proporcionales_en_detalles(detalles, monto_final_real, suma_items_sin_descuento_global)
+
     resumen.update({
         "observaciones": venta.observaciones,
         "descuento_total_global_porcentaje": float(getattr(venta, "descuento_general", 0.0) or 0.0),
@@ -922,36 +925,21 @@ def venta_a_dict_completo(venta):
         },
         "monto_pagado_cliente": float(venta.monto_pagado_cliente) if venta.monto_pagado_cliente is not None else None,
         "vuelto_calculado": float(venta.vuelto_calculado) if venta.vuelto_calculado is not None else None,
-        "detalles": [
-            detalle_venta_a_dict(d, monto_final_real, suma_items_sin_descuento_global) for d in venta.detalles
-        ]
+        "detalles": detalles
     })
     return resumen
 
-def detalle_venta_a_dict(detalle, monto_final_real=None, suma_items_sin_descuento=None):
+def detalle_venta_a_dict(detalle):
     """
-    Calcula el subtotal proporcional con recargos para cada item.
-    
-    Args:
-        detalle: El detalle de venta
-        monto_final_real: Monto final de la venta CON descuento global y recargos
-        suma_items_sin_descuento: Suma de precio_total_item_ars de todos los items SIN descuento global
+    Serializa un detalle; subtotal_proporcional_con_recargos lo completa venta_a_dict_completo
+    (reparto exacto al monto final de la venta).
     """
     if not detalle:
         return None
     precio_total_item_ars = float(detalle.precio_total_item_ars or 0)
-    descuento_item_porc = float(getattr(detalle, "descuento_item", 0.0) or 0.0)
     cantidad = float(detalle.cantidad)
     precio_unitario_venta_ars = float(detalle.precio_unitario_venta_ars or 0)
-    
-    # Calcular subtotal proporcional: distribuir el monto final proporcionalmente según precio de cada item
-    subtotal_proporcional = None
-    if monto_final_real is not None and suma_items_sin_descuento and suma_items_sin_descuento > 0:
-        # Proporción de este item respecto al total sin descuento
-        proporcion_item = precio_total_item_ars / suma_items_sin_descuento
-        # Aplicar proporción al monto final (que ya incluye descuento global y recargos)
-        subtotal_proporcional = monto_final_real * proporcion_item
-    
+
     return {
         "detalle_id": detalle.id,
         "producto_id": detalle.producto_id,
@@ -960,7 +948,7 @@ def detalle_venta_a_dict(detalle, monto_final_real=None, suma_items_sin_descuent
         "precio_unitario_venta_ars": precio_unitario_venta_ars,
         "precio_total_item_ars": precio_total_item_ars,
         "descuento_item_porcentaje":detalle.descuento_item,
-        "subtotal_proporcional_con_recargos": subtotal_proporcional,
+        "subtotal_proporcional_con_recargos": None,
         "observacion_item": detalle.observacion_item,
     }
     
@@ -1081,22 +1069,10 @@ def obtener_detalles_lote(current_user):
                 venta['descuento_total_global_porcentaje'] = float(venta['descuento_total_global_porcentaje'] or 0.0)
             if 'observaciones' not in venta:
                 venta['observaciones'] = ''
-
-            monto_final = Decimal(str(venta.get('monto_final_con_recargos') or 0))
             detalles = venta.get('detalles', [])
-            suma_items = sum(Decimal(str(d.get('precio_total_item_ars') or 0)) for d in detalles)
-
-            # Importante: NO recalcular precios en este endpoint.
-            # Se imprime exactamente lo guardado al momento de registrar/actualizar la venta.
             for detalle in detalles:
                 if 'observacion_item' not in detalle:
                     detalle['observacion_item'] = ''
-                if suma_items > Decimal('0.00'):
-                    precio_item = Decimal(str(detalle.get('precio_total_item_ars') or 0))
-                    proporcion = precio_item / suma_items
-                    detalle['subtotal_proporcional_con_recargos'] = float((monto_final * proporcion).quantize(Decimal("0.01"), ROUND_HALF_UP))
-                else:
-                    detalle['subtotal_proporcional_con_recargos'] = 0.0
         return jsonify(ventas_completas)
 
     except Exception as e:
