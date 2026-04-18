@@ -13,8 +13,8 @@ def asignar_subtotales_proporcionales_en_detalles(
 ) -> None:
     """
     Reparte monto_final entre líneas en proporción a precio_total_item_ars.
-    Redondea cada línea a centavos salvo la última, que absorbe el remanente
-    para que la suma coincida exactamente con monto_final.
+    Redondea cada línea a centavos salvo la última línea no nula, que absorbe
+    el remanente para que la suma coincida exactamente con monto_final.
     """
     if not detalles:
         return
@@ -31,12 +31,17 @@ def asignar_subtotales_proporcionales_en_detalles(
                 d["subtotal_proporcional_con_recargos"] = 0.0
         return
     acc = Decimal("0.00")
-    n = len(detalles)
+    last_non_none_i = None
+    for i, d in enumerate(detalles):
+        if d is not None:
+            last_non_none_i = i
+    if last_non_none_i is None:
+        return
     for i, d in enumerate(detalles):
         if d is None:
             continue
         precio = Decimal(str(d.get("precio_total_item_ars") or 0))
-        if i < n - 1:
+        if i != last_non_none_i:
             part = (mf * precio / base).quantize(Decimal("0.01"), ROUND_HALF_UP)
             acc += part
         else:

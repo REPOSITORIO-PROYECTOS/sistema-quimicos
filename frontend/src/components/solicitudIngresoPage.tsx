@@ -50,6 +50,16 @@ const derivarEstadoSolicitud = (estado?: string | null, estadoRecepcion?: string
 
 const CENT_TOLERANCE = 0.009;
 
+/** El campo "A abonar" es siempre en pesos; el backend guarda `importe_abonado` en moneda de la OC (USD si `ajuste_tc`). */
+function abonoOrdenDesdePesosIngresados(pesos: number, ordenEnUsd: boolean, tcStr: string): number {
+  const p = Number.isFinite(pesos) ? pesos : 0;
+  if (!ordenEnUsd) return p;
+  if (p <= 0) return p;
+  const t = parseFloat(String(tcStr).trim().replace(',', '.')) || 0;
+  if (t <= 0) return NaN;
+  return Number((p / t).toFixed(2));
+}
+
 /** Misma lógica que el backend (`_parse_percentage_rate`). */
 function parsePctRateCompras(raw: string | number | undefined | null): number {
   if (raw === undefined || raw === null) return 0;
@@ -418,15 +428,18 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
   useEffect(() => {
     if (pagoCompletoUI) {
       const tot = parseFloat(importeTotal || '0') || 0;
-      const restante = Math.max(0, tot - (montoYaAbonadoOC || 0));
-      setImporteAbonado(restante.toFixed(2));
+      const abonadoOc = montoYaAbonadoOC || 0;
+      const restanteOc = Math.max(0, tot - abonadoOc);
+      const tcN = parseFloat(String(tc).replace(',', '.')) || 0;
+      const restantePesos = showTc && tcN > 0 ? restanteOc * tcN : restanteOc;
+      setImporteAbonado(restantePesos.toFixed(2));
       if (editandoImporteAbonado) {
-        setImporteAbonadoVisual(restante.toFixed(2));
+        setImporteAbonadoVisual(restantePesos.toFixed(2));
       } else {
-        setImporteAbonadoVisual(restante.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+        setImporteAbonadoVisual(restantePesos.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
       }
     }
-  }, [pagoCompletoUI, importeTotal, montoYaAbonadoOC, editandoImporteAbonado]);
+  }, [pagoCompletoUI, importeTotal, montoYaAbonadoOC, editandoImporteAbonado, showTc, tc]);
 
   useEffect(() => {
     if (formaPago !== 'Cheque') {
@@ -505,7 +518,14 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
         observaciones_solicitud,
         tipo_caja,
         items: itemsPayload,
-        importe_abonado: parseFloat(importeAbonado || '0') || 0,
+        importe_abonado: (() => {
+          const pesos = parseFloat(importeAbonado || '0') || 0;
+          const enOc = abonoOrdenDesdePesosIngresados(pesos, showTc, tc);
+          if (showTc && pesos > 0 && Number.isNaN(enOc)) {
+            throw new Error('Indique un tipo de cambio válido para registrar el abono en la OC (USD).');
+          }
+          return enOc;
+        })(),
         referencia_pago: typeof solicitud.referencia_pago === 'string' ? solicitud.referencia_pago : referenciaPago,
       };
       const userItem = localStorage.getItem("user") || sessionStorage.getItem("user");
@@ -554,7 +574,11 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
       const id_linea = Number(idLineaOCOriginal || 0);
       const cantidad_solicitada_val = Number(cantidad || 0);
       const precio_unitario_est_val = parseFloat(precioUnitario || '0');
-      const importe_abonado_val = parseFloat(importeAbonado || '0') || 0;
+      const pesosAbono = parseFloat(importeAbonado || '0') || 0;
+      const importe_abonado_val = abonoOrdenDesdePesosIngresados(pesosAbono, ajuste_tc_val, tc_val);
+      if (ajuste_tc_val && pesosAbono > 0 && Number.isNaN(importe_abonado_val)) {
+        throw new Error('Indique un tipo de cambio válido para convertir el abono a dólares de la OC.');
+      }
 
       const payload = {
         proveedor_id,
@@ -621,36 +645,57 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
         setMontoYaAbonadoOC(abonadoActual);
       }
 
-      const montoPago = parseFloat(importeAbonado || '0') || 0;
-      if (montoPago <= 0) {
+      const montoPagoPesos = parseFloat(importeAbonado || '0') || 0;
+      if (montoPagoPesos <= 0) {
         throw new Error('Ingrese un monto a pagar mayor a cero.');
       }
 
-      const saldoPendiente = Math.max(0, totalObjetivoActual - abonadoActual);
-      if (saldoPendiente <= 0) {
+      const saldoPendienteOc = Math.max(0, totalObjetivoActual - abonadoActual);
+      if (saldoPendienteOc <= 0) {
         throw new Error('La orden no tiene saldo pendiente.');
       }
+
+      const tcApi = parseFloat(String(tc).trim().replace(',', '.')) || 0;
+      const saldoPendientePesos = showTc && tcApi > 0 ? saldoPendienteOc * tcApi : saldoPendienteOc;
 
       const montoDesdeInputVisual = parsearMontoEnPesos(importeAbonadoVisual || '');
       const montoDesdeEstado = parseFloat(importeAbonado || '0') || 0;
       const hayMontoManualValido = Number.isFinite(montoDesdeInputVisual) && montoDesdeInputVisual > 0;
-      const montoManual = hayMontoManualValido ? montoDesdeInputVisual : montoDesdeEstado;
-      const manualPareceDistintoAlSaldo = Math.abs((montoManual || 0) - saldoPendiente) > 0.009;
-      const montoElegido = (pagoCompletoUI && !manualPareceDistintoAlSaldo)
-        ? saldoPendiente
-        : montoManual;
+      const montoManualPesos = hayMontoManualValido ? montoDesdeInputVisual : montoDesdeEstado;
+      const manualPareceDistintoAlSaldo = Math.abs((montoManualPesos || 0) - saldoPendientePesos) > CENT_TOLERANCE;
+      const montoElegidoPesos = (pagoCompletoUI && !manualPareceDistintoAlSaldo)
+        ? saldoPendientePesos
+        : montoManualPesos;
 
-      if (!pagoCompletoUI && montoElegido <= 0) {
+      if (showTc && tcApi <= 0) {
+        throw new Error('Se requiere un tipo de cambio válido para pagar una orden en dólares (el importe se ingresa en pesos).');
+      }
+
+      if (!pagoCompletoUI && montoElegidoPesos <= 0) {
         throw new Error('Ingrese un monto valido en A Abonar Ahora.');
       }
 
-      if ((montoElegido - saldoPendiente) > CENT_TOLERANCE) {
-        throw new Error(`El monto supera la deuda pendiente (${saldoPendiente.toFixed(2)} ${showTc ? 'USD' : 'ARS'}).`);
+      if ((montoElegidoPesos - saldoPendientePesos) > CENT_TOLERANCE) {
+        throw new Error(
+          `El monto supera la deuda pendiente ($ ${saldoPendientePesos.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}).`
+        );
       }
 
-      const montoPagoAplicado = Math.abs(montoElegido - saldoPendiente) <= CENT_TOLERANCE
-        ? Number(saldoPendiente.toFixed(2))
-        : Number(montoElegido.toFixed(2));
+      let montoPagoAplicado: number;
+      if (showTc) {
+        if (Math.abs(montoElegidoPesos - saldoPendientePesos) <= CENT_TOLERANCE) {
+          montoPagoAplicado = Number(saldoPendienteOc.toFixed(2));
+        } else {
+          const usd = Number((montoElegidoPesos / tcApi).toFixed(2));
+          montoPagoAplicado = usd > saldoPendienteOc + CENT_TOLERANCE
+            ? Number(saldoPendienteOc.toFixed(2))
+            : usd;
+        }
+      } else {
+        montoPagoAplicado = Math.abs(montoElegidoPesos - saldoPendientePesos) <= CENT_TOLERANCE
+          ? Number(saldoPendienteOc.toFixed(2))
+          : Number(montoElegidoPesos.toFixed(2));
+      }
 
       const userItem = localStorage.getItem('user') || sessionStorage.getItem('user');
       const user = userItem ? JSON.parse(userItem) : null;
@@ -764,19 +809,6 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
   const labelClass = "block text-sm font-medium mb-1 text-white";
   const opcionesFormaPago = ["Cheque", "Efectivo", "Transferencia", "Cuenta Corriente"];
 
-  let placeholderParaImporteAbonado = "Ej: 100.00";
-  if (normalizarEstado(estadoOC) === "CON DEUDA") {
-    const totalDeLaOC = parseFloat(importeTotal) || 0;
-    const deudaActual = totalDeLaOC - montoYaAbonadoOC;
-    if (deudaActual > 0) {
-      placeholderParaImporteAbonado = `Deuda pendiente: $${deudaActual.toFixed(2)}`;
-    }
-  }
-
-
-
-
-
   // --- Cálculos para el resumen ---
   // Cálculos para el resumen (solo declarar una vez)
 
@@ -789,16 +821,45 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
   const tcNum = parseFloat(tc);
   const tcValido = !isNaN(tcNum) && tcNum > 0;
   const ordenEnUsd = showTc;
-  const monedaOrden = ordenEnUsd ? 'USD' : 'ARS';
+  /** Valores de cabecera están en moneda de la OC; para pantalla el usuario ve siempre ARS cuando hay TC (OC en USD × TC). */
+  const aPesosArs = (valorEnMonedaOc: number) =>
+    ordenEnUsd && tcValido ? valorEnMonedaOc * tcNum : !ordenEnUsd ? valorEnMonedaOc : null;
+  const formatearPesosArs = (valorEnMonedaOc: number) => {
+    const ars = aPesosArs(valorEnMonedaOc);
+    if (ars !== null) {
+      return `$ ${ars.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }
+    return `US$ ${valorEnMonedaOc.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
   const totalOcUsd = ordenEnUsd ? totalObjetivoUI : (tcValido ? (totalObjetivoUI / tcNum) : 0);
-  const pagoSuperaDeuda = deudaPendienteOC > 0 && (importeAbonadoNum - deudaPendienteOC) > CENT_TOLERANCE;
-  const pagoAproxUsd = !ordenEnUsd && tcValido
-    ? (Math.min(Math.max(0, importeAbonadoNum), deudaPendienteOC) / tcNum)
-    : 0;
-  const pagoAproxArs = ordenEnUsd && tcValido
-    ? (Math.min(Math.max(0, importeAbonadoNum), deudaPendienteOC) * tcNum)
-    : 0;
-  const bloquearRegistrarPago = importeAbonadoNum <= 0 || pagoSuperaDeuda || deudaPendienteOC <= 0;
+  /** Tope del input "A abonar": siempre en pesos (OC en USD: deuda en USD × TC; sin TC válido en USD → 0). */
+  const topeAbonarPesos = !ordenEnUsd
+    ? deudaPendienteOC
+    : tcValido
+      ? deudaPendienteOC * tcNum
+      : 0;
+  const pagoSuperaDeuda = topeAbonarPesos > 0 && (importeAbonadoNum - topeAbonarPesos) > CENT_TOLERANCE;
+  const pagoEquivUsdEnOc =
+    ordenEnUsd && tcValido && importeAbonadoNum > 0
+      ? Math.min(importeAbonadoNum / tcNum, deudaPendienteOC)
+      : 0;
+  const bloquearRegistrarPago =
+    importeAbonadoNum <= 0 || pagoSuperaDeuda || deudaPendienteOC <= 0 || (ordenEnUsd && !tcValido);
+
+  let placeholderParaImporteAbonado = 'Ej: 100,00 (pesos)';
+  if (normalizarEstado(estadoOC) === 'CON DEUDA') {
+    const totalDeLaOC = parseFloat(importeTotal) || 0;
+    const deudaOc = totalDeLaOC - montoYaAbonadoOC;
+    if (deudaOc > 0) {
+      if (ordenEnUsd && tcValido) {
+        placeholderParaImporteAbonado = `Deuda en pesos (~$ ${(deudaOc * tcNum).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`;
+      } else if (ordenEnUsd) {
+        placeholderParaImporteAbonado = `Deuda en OC: US$ ${deudaOc.toFixed(2)} (defina TC para pagar en $)`;
+      } else {
+        placeholderParaImporteAbonado = `Deuda pendiente: $ ${deudaOc.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      }
+    }
+  }
   const normalizarMontoPagoEnBlur = () => {
     const valorParseado = parsearMontoEnPesos(importeAbonadoVisual || importeAbonado || '0');
     const valor = Number.isFinite(valorParseado) ? valorParseado : parseFloat(importeAbonado || '0');
@@ -1040,11 +1101,15 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
               <input id="unidad" type="text" value={tipo} readOnly className={`${baseInputClass} ${disabledInputClass}`} />
             </div>
             <div>
-              <label htmlFor="precioUnitario" className={labelClass}>Precio Unitario (Sin IVA)</label>
+              <label htmlFor="precioUnitario" className={labelClass}>
+                Precio Unitario (Sin IVA){showTc ? ' — USD' : ' — ARS'}
+              </label>
               <input id="precioUnitario" type="number" step="0.01" value={precioUnitario} onChange={(e) => setPrecioUnitario(e.target.value)} className={baseInputClass} placeholder="Ej: 150.50" />
             </div>
             <div>
-              <label htmlFor="importeTotal" className={labelClass}>Importe Total OC</label>
+              <label htmlFor="importeTotal" className={labelClass}>
+                Importe Total OC{showTc ? ' (USD en sistema)' : ' (ARS)'}
+              </label>
               <input id="importeTotal" type="number" step="0.01" value={importeTotal} readOnly className={`${baseInputClass} ${disabledInputClass}`} />
             </div>
           </div>
@@ -1071,42 +1136,63 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-2">
             <div className="flex flex-col items-center bg-yellow-100 rounded-lg p-3 shadow">
-              <span className="text-xs text-gray-700 font-semibold mb-1">Importe Total OC</span>
-              <span className="text-2xl font-bold text-yellow-700">{monedaOrden} {importeTotalNum.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-              <span className="text-xs text-gray-600 mt-1">
+              <span className="text-xs text-gray-700 font-semibold mb-1">Importe Total OC (ARS)</span>
+              <span className="text-2xl font-bold text-yellow-700">{formatearPesosArs(importeTotalNum)}</span>
+              <span className="text-xs text-gray-600 mt-1 text-center">
                 {!ordenEnUsd && tcValido
-                  ? `Equivalente: USD ${totalOcUsd.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                  ? `TC (compras): ${tcNum.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · Equiv. aprox. US$ ${totalOcUsd.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                   : ordenEnUsd && tcValido
-                    ? `Equivalente: ARS ${(importeTotalNum * tcNum).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                    : 'Equivalente no disponible'}
+                    ? `En la OC (USD): US$ ${importeTotalNum.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · TC ${tcNum.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                    : ordenEnUsd && !tcValido
+                      ? 'Definí el tipo de cambio para ver el total en pesos.'
+                      : 'Sin tipo de cambio para equivalencia en US$.'
+                }
               </span>
             </div>
             <div className="flex flex-col items-center bg-green-100 rounded-lg p-3 shadow">
-              <span className="text-xs text-gray-700 font-semibold mb-1">Total Abonado</span>
-              <span className="text-2xl font-bold text-green-700">{monedaOrden} {montoAbonadoNum.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              <span className="text-xs text-gray-700 font-semibold mb-1">Total Abonado (ARS)</span>
+              <span className="text-2xl font-bold text-green-700">{formatearPesosArs(montoAbonadoNum)}</span>
+              {ordenEnUsd && tcValido && montoAbonadoNum > 0 && (
+                <span className="text-xs text-gray-600 mt-1 text-center">
+                  En la OC: US$ {montoAbonadoNum.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              )}
             </div>
             <div className={`flex flex-col items-center rounded-lg p-3 shadow ${deudaPendienteOC > 0 ? 'bg-red-200' : 'bg-green-100'}`}>
-              <span className="text-xs text-gray-700 font-semibold mb-1">Deuda Pendiente ({monedaOrden})</span>
-              <span className={`text-2xl font-bold ${deudaPendienteOC > 0 ? 'text-red-700' : 'text-green-700'}`}>{monedaOrden} {(deudaPendienteOC > 0 ? deudaPendienteOC : 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              <span className="text-xs text-gray-700 font-semibold mb-1">Deuda Pendiente (ARS)</span>
+              <span className={`text-2xl font-bold ${deudaPendienteOC > 0 ? 'text-red-700' : 'text-green-700'}`}>
+                {formatearPesosArs(deudaPendienteOC > 0 ? deudaPendienteOC : 0)}
+              </span>
+              {ordenEnUsd && tcValido && deudaPendienteOC > 0 && (
+                <span className="text-xs text-gray-600 mt-1 text-center">
+                  En la OC: US$ {deudaPendienteOC.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              )}
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
             <div>
-              <label htmlFor="importeAbonado" className={labelClass}>A Abonar Ahora ({monedaOrden})</label>
+              <label htmlFor="importeAbonado" className={labelClass}>A Abonar Ahora ($ — pesos)</label>
               <input id="importeAbonado" type="text" inputMode="decimal" value={importeAbonadoVisual} onFocus={iniciarEdicionImporteAbonado} onChange={(e) => manejarCambioImporteAbonado(e.target.value)} onBlur={normalizarMontoPagoEnBlur} className={baseInputClass + ' mt-2'} placeholder={placeholderParaImporteAbonado} />
-              {normalizarEstado(estadoOC) === "CON DEUDA" && montoYaAbonadoOC > 0 && (<p className="text-xs text-gray-300 mt-1">Ya abonado: {monedaOrden} {montoYaAbonadoOC.toFixed(2)}</p>)}
-              {importeAbonadoNum > 0 && (
+              {normalizarEstado(estadoOC) === 'CON DEUDA' && montoYaAbonadoOC > 0 && (
+                <p className="text-xs text-gray-300 mt-1">
+                  Ya abonado (ARS): {formatearPesosArs(montoYaAbonadoOC)}
+                  {ordenEnUsd && tcValido && (
+                    <span className="block text-gray-400 mt-0.5">
+                      En la OC: US$ {montoYaAbonadoOC.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  )}
+                </p>
+              )}
+              {ordenEnUsd && importeAbonadoNum > 0 && tcValido && (
                 <p className="text-xs text-gray-200 mt-1">
-                  {!ordenEnUsd && tcValido
-                    ? `Este pago en ARS cancela aprox USD ${pagoAproxUsd.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (TC ${tc}).`
-                    : ordenEnUsd && tcValido
-                      ? `Este pago en USD equivale aprox ARS ${pagoAproxArs.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (TC ${tc}).`
-                      : 'No se puede estimar equivalencia porque el TC no es válido.'}
+                  Impacto en la OC (USD): ~US${' '}
+                  {pagoEquivUsdEnOc.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </p>
               )}
               {pagoSuperaDeuda && (
                 <p className="text-xs text-red-200 mt-1">
-                  El monto ingresado supera la deuda pendiente ({monedaOrden} {deudaPendienteOC.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}).
+                  El monto ingresado supera la deuda pendiente ($ {topeAbonarPesos.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}).
                 </p>
               )}
               <div className="mt-2 flex items-center gap-2">
@@ -1187,7 +1273,21 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
                 {pagosOrdenados.map((pago) => (
                   <div key={pago.id} className="rounded-md border border-white/10 bg-white/10 px-3 py-2 text-sm text-white">
                     <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
-                      <span className="font-semibold">${Number(pago.monto || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      <span className="font-semibold">
+                        {ordenEnUsd && tcValido ? (
+                          <>
+                            $ {(Number(pago.monto || 0) * tcNum).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
+                            <span className="text-slate-300 font-normal">ARS</span>
+                            <span className="block text-[11px] font-normal text-slate-400 mt-0.5">
+                              En OC: US$ {Number(pago.monto || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                          </>
+                        ) : ordenEnUsd && !tcValido ? (
+                          <>US$ {Number(pago.monto || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</>
+                        ) : (
+                          <>$ {Number(pago.monto || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</>
+                        )}
+                      </span>
                       <span className="text-xs text-slate-200">{formatearFechaPago(pago.fecha)}</span>
                     </div>
                     <div className="text-xs text-slate-200 mt-1">{pago.descripcion || 'Pago sin detalle adicional'}</div>

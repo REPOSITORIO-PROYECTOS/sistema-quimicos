@@ -72,6 +72,21 @@ type VentaData = {
   items_ya_neto_global?: boolean;
 };
 
+// Fuzzy simple extraído fuera del componente para no recrearlo en cada render
+function fuzzyMatchNombre(str: string, pattern: string) {
+  if (pattern.length < 3) return str.includes(pattern);
+  let mismatches = 0, i = 0, j = 0;
+  while (i < str.length && j < pattern.length) {
+    if (str[i] === pattern[j]) {
+      j++;
+    } else {
+      mismatches++;
+    }
+    i++;
+  }
+  return (j === pattern.length && mismatches <= 1) || str.includes(pattern);
+}
+
 export default function TotalPedidos() {
   // const [pagination, setPagination] = useState<Pagination | null>(null);
   // const [page, setPage] = useState(1);
@@ -222,21 +237,22 @@ export default function TotalPedidos() {
       const boletasAImprimir: VentaData[] = boletasDetalladas.map((data: BoletaOriginal) => {
         const detalles = data.detalles || [];
 
-        // Política alineada con actualización:
-        // usar los importes ya calculados por backend y no recalcular precios/recargos en frontend.
+        // Para efectivo: mostrar en el ticket los subtotales LIMPIOS (los que ves en la pantalla de pedido),
+        // sin usar el subtotal_proporcional_con_recargos del backend.
+        const esEfectivo = (data.forma_pago || '').toLowerCase() === 'efectivo';
         const itemsFiltrados = detalles.filter(item => item.producto_id && item.cantidad > 0);
+
         const adjustedItems = itemsFiltrados.map((item) => {
-          const subtotalConRecargos = item.subtotal_proporcional_con_recargos;
-          const tieneSubtotal =
-            subtotalConRecargos != null && Number.isFinite(Number(subtotalConRecargos));
-          const precioItem = tieneSubtotal
-            ? Number(subtotalConRecargos)
-            : (item.precio_total_item_ars || 0);
+          const base = item.precio_total_item_ars || 0;
+          const precioItem = esEfectivo
+            ? base
+            : (item.subtotal_proporcional_con_recargos ?? base);
 
           return {
             producto_id: item.producto_id,
             producto_nombre: item.producto_nombre,
             cantidad: item.cantidad,
+            // Redondear a 2 decimales por seguridad, pero sin redistribuir recargos en efectivo.
             precio_total_item_ars: Math.round(precioItem * 100) / 100,
             descuento_item_porcentaje: item.descuento_item_porcentaje,
             subtotal_bruto_item_ars: item.subtotal_bruto_item_ars,
@@ -244,14 +260,16 @@ export default function TotalPedidos() {
           };
         });
 
-        // Ajuste de centavos para asegurar consistencia visual con el total con recargos
-        // (el descuento global se muestra aparte en Ticket).
-        const sumAdjusted = adjustedItems.reduce((sum, item) => sum + item.precio_total_item_ars, 0);
-        const targetSum = data.monto_final_con_recargos || sumAdjusted;
-        const difference = Math.round((targetSum - sumAdjusted) * 100) / 100;
-        if (adjustedItems.length > 0 && Math.abs(difference) > 1e-6) {
-          adjustedItems[adjustedItems.length - 1].precio_total_item_ars += difference;
-          adjustedItems[adjustedItems.length - 1].precio_total_item_ars = Math.round(adjustedItems[adjustedItems.length - 1].precio_total_item_ars * 100) / 100;
+        if (!esEfectivo) {
+          // Solo para casos con recargos / otras formas de pago mantenemos el ajuste de centavos
+          const sumAdjusted = adjustedItems.reduce((sum, item) => sum + item.precio_total_item_ars, 0);
+          const targetSum = data.monto_final_con_recargos || sumAdjusted;
+          const difference = Math.round((targetSum - sumAdjusted) * 100) / 100;
+          if (adjustedItems.length > 0 && Math.abs(difference) > 1e-6) {
+            adjustedItems[adjustedItems.length - 1].precio_total_item_ars += difference;
+            adjustedItems[adjustedItems.length - 1].precio_total_item_ars =
+              Math.round(adjustedItems[adjustedItems.length - 1].precio_total_item_ars * 100) / 100;
+          }
         }
 
         // DEBUG temporal: comparar suma de items del ticket con totales del backend.
@@ -269,6 +287,7 @@ export default function TotalPedidos() {
           monto_final_con_descuento_backend: montoConDescuento,
           descuento_global_porcentaje_api: descuentoPorcentajeApi,
           diferencia_vs_recargos: Math.round((montoConRecargos - finalItemsSum) * 100) / 100,
+          forma_pago: data.forma_pago,
         });
 
         // El total_final que se pasa es el monto con descuento (si existe)
@@ -286,7 +305,8 @@ export default function TotalPedidos() {
           monto_pagado_cliente: data.monto_pagado_cliente,
           vuelto_calculado: data.vuelto_calculado,
           descuento_total_global_porcentaje: descuentoPorcentajeApi,
-          items_ya_neto_global: true,
+          // Para efectivo queremos ver los subtotales limpios; que Ticket no trate de redistribuir global.
+          items_ya_neto_global: !esEfectivo,
         };
       });
 
@@ -337,6 +357,19 @@ export default function TotalPedidos() {
     const selectableIds = boletas.filter(b => b.estado !== 'Entregado' && b.estado !== 'Cancelado').map(b => b.venta_id);
     return selectableIds.length > 0 && selectableIds.every(id => selectedBoletas.has(id));
   }, [boletas, selectedBoletas]);
+
+  const boletasFiltradas = useMemo(() => {
+    const input = searchCliente.trim().toLowerCase();
+    return boletas.filter(b => {
+      const nombre = b.cliente_nombre.toLowerCase();
+      const pasaEstado = filterEstado ? b.estado === filterEstado : true;
+      if (!pasaEstado) return false;
+      if (!input) return true;
+      const incluye = nombre.includes(input);
+      const fuzzy = fuzzyMatchNombre(nombre, input);
+      return incluye || fuzzy;
+    });
+  }, [boletas, searchCliente, filterEstado]);
 
   return (
     <>
@@ -406,68 +439,55 @@ export default function TotalPedidos() {
                   <span className="col-span-2">Localidad</span>
                   <span className="col-span-2">Estado</span>
                 </li>
-                {boletas
-                  .filter(b => {
-                    // Búsqueda por similitud automática
-                    const input = searchCliente.trim().toLowerCase();
-                    const nombre = b.cliente_nombre.toLowerCase();
-                    if (!input) return filterEstado ? b.estado === filterEstado : true;
-                    // Coincidencia directa o fuzzy simple
-                    const incluye = nombre.includes(input);
-                    // Fuzzy: permite hasta 1 letra de diferencia si input >= 3
-                    function fuzzy(str: string, pattern: string) {
-                      if (pattern.length < 3) return str.includes(pattern);
-                      let mismatches = 0, i = 0, j = 0;
-                      while (i < str.length && j < pattern.length) {
-                        if (str[i] === pattern[j]) { j++; } else { mismatches++; }
-                        i++;
-                      }
-                      return (j === pattern.length && mismatches <= 1) || str.includes(pattern);
-                    }
-                    const fuzzyMatch = fuzzy(nombre, input);
-                    return (incluye || fuzzyMatch) && (filterEstado ? b.estado === filterEstado : true);
-                  })
-                  .length > 0 ? boletas
-                    .filter(b => {
-                      const input = searchCliente.trim().toLowerCase();
-                      const nombre = b.cliente_nombre.toLowerCase();
-                      if (!input) return filterEstado ? b.estado === filterEstado : true;
-                      const incluye = nombre.includes(input);
-                      function fuzzy(str: string, pattern: string) {
-                        if (pattern.length < 3) return str.includes(pattern);
-                        let mismatches = 0, i = 0, j = 0;
-                        while (i < str.length && j < pattern.length) {
-                          if (str[i] === pattern[j]) { j++; } else { mismatches++; }
-                          i++;
-                        }
-                        return (j === pattern.length && mismatches <= 1) || str.includes(pattern);
-                      }
-                      const fuzzyMatch = fuzzy(nombre, input);
-                      return (incluye || fuzzyMatch) && (filterEstado ? b.estado === filterEstado : true);
-                    })
-                    .map((boleta) => {
-                      return (
-                        <li key={boleta.venta_id} className={`grid grid-cols-13 gap-3 items-center p-2 rounded-md bg-gray-50`}>
-                          <div className="col-span-1 flex justify-center"><input type="checkbox" checked={selectedBoletas.has(boleta.venta_id)} onChange={() => handleCheckboxChange(boleta.venta_id)} /></div>
-                          <span className="col-span-3 truncate font-medium">{boleta.cliente_nombre}</span>
-                          <span className="col-span-2">
-                            {(() => {
-                              const total = (boleta.monto_final_con_descuento ?? boleta.monto_final_con_recargos) || 0;
-                              // Formato moneda simple sin Intl.NumberFormat pesado en SSR (cliente únicamente)
-                              const formatted = total.toLocaleString('es-AR');
-                              return <>
-                                $ {formatted}{boleta.monto_final_con_descuento !== undefined && boleta.monto_final_con_descuento !== boleta.monto_final_con_recargos ? <span className="text-xs text-green-600 ml-1">(desc)</span> : null}
-                                {boleta.tipo_redondeo_general ? <span className="text-[10px] text-gray-500 ml-1">[{boleta.tipo_redondeo_general === 'decena' ? 'x10' : 'x100'}]</span> : null}
-                              </>;
-                            })()}
-                          </span>
-                          <span className="col-span-3 truncate">{boleta.direccion_entrega}</span>
-                          <span className="col-span-2 truncate">{boleta.cliente_zona || '-'}</span>
-                          <span className="col-span-2"><span className={`px-2 py-1 text-xs font-semibold rounded-full ${getColorForStatus(boleta.estado)}`}>{boleta.estado}</span></span>
-                        </li>
-                      );
-                    }) : (
-                  <li className="text-center text-gray-500 py-8">No se encontraron pedidos para esta fecha.</li>
+                {boletasFiltradas.length > 0 ? (
+                  boletasFiltradas.map((boleta) => (
+                    <li key={boleta.venta_id} className="grid grid-cols-13 gap-3 items-center p-2 rounded-md bg-gray-50">
+                      <div className="col-span-1 flex justify-center">
+                        <input
+                          type="checkbox"
+                          checked={selectedBoletas.has(boleta.venta_id)}
+                          onChange={() => handleCheckboxChange(boleta.venta_id)}
+                        />
+                      </div>
+                      <span className="col-span-3 truncate font-medium">{boleta.cliente_nombre}</span>
+                      <span className="col-span-2">
+                        {(() => {
+                          const total = (boleta.monto_final_con_descuento ?? boleta.monto_final_con_recargos) || 0;
+                          // Formato moneda simple sin Intl.NumberFormat pesado en SSR (cliente únicamente)
+                          const formatted = total.toLocaleString('es-AR');
+                          return (
+                            <>
+                              $ {formatted}
+                              {boleta.monto_final_con_descuento !== undefined &&
+                                boleta.monto_final_con_descuento !== boleta.monto_final_con_recargos ? (
+                                  <span className="text-xs text-green-600 ml-1">(desc)</span>
+                                ) : null}
+                              {boleta.tipo_redondeo_general ? (
+                                <span className="text-[10px] text-gray-500 ml-1">
+                                  [{boleta.tipo_redondeo_general === 'decena' ? 'x10' : 'x100'}]
+                                </span>
+                              ) : null}
+                            </>
+                          );
+                        })()}
+                      </span>
+                      <span className="col-span-3 truncate">{boleta.direccion_entrega}</span>
+                      <span className="col-span-2 truncate">{boleta.cliente_zona || '-'}</span>
+                      <span className="col-span-2">
+                        <span
+                          className={`px-2 py-1 text-xs font-semibold rounded-full ${getColorForStatus(
+                            boleta.estado
+                          )}`}
+                        >
+                          {boleta.estado}
+                        </span>
+                      </span>
+                    </li>
+                  ))
+                ) : (
+                  <li className="text-center text-gray-500 py-8">
+                    No se encontraron pedidos para esta fecha.
+                  </li>
                 )}
               </ul>
             </div>
