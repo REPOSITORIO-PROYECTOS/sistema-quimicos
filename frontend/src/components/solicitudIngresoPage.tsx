@@ -772,6 +772,14 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
     const proveedorInfo = proveedores.find(p => p.id.toString() === proveedorId);
     let y = 20;
 
+    const totOcMoneda = parseFloat(importeTotal || '0') || 0;
+    const tcPdf = parseFloat(String(tc || '').trim().replace(',', '.')) || 0;
+    const pdfOrdenUsd = showTc;
+    const pdfTcOk = pdfOrdenUsd && tcPdf > 0;
+    const puOc = parseFloat(precioUnitario || '0') || 0;
+    const totArs = pdfTcOk ? totOcMoneda * tcPdf : !pdfOrdenUsd ? totOcMoneda : null;
+    const puArs = pdfTcOk ? puOc * tcPdf : !pdfOrdenUsd ? puOc : null;
+
     doc.setFontSize(22);
     doc.text(`Orden de Compra #${id}`, 105, y, { align: 'center' });
     y += 15;
@@ -787,14 +795,43 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
     agregarCampo('Estado OC:', estadoOC);
     agregarCampo('Cuenta Contable:', cuenta);
     agregarCampo('Percepción IIBB (%):', iibb);
+    if (pdfOrdenUsd && tcPdf > 0) {
+      agregarCampo('TC compras (snapshot):', tcPdf.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+    }
     y += 5; doc.line(20, y, 190, y); y += 10;
 
     doc.setFontSize(14); doc.text('Detalles del Pedido:', 20, y); y += 8; doc.setFontSize(12);
 
     agregarCampo('Producto:', `${productoInfo?.nombre || 'N/A'} (${codigo})`);
     agregarCampo('Cantidad Solicitada:', `${cantidad} ${tipo}`);
-    agregarCampo('Precio Unitario:', `$${parseFloat(precioUnitario || '0').toFixed(2)}`);
-    agregarCampo('Importe Total OC:', `$${parseFloat(importeTotal || '0').toFixed(2)}`);
+    if (pdfTcOk && puArs !== null) {
+      agregarCampo(
+        'Precio Unitario (ARS, sin IVA):',
+        `$${puArs.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+      );
+      agregarCampo('Precio en OC (USD):', `US$${puOc.toFixed(2)}`);
+    } else if (pdfOrdenUsd) {
+      agregarCampo('Precio Unitario (OC USD, sin IVA):', `US$${puOc.toFixed(2)}`);
+    } else {
+      agregarCampo(
+        'Precio Unitario (ARS, sin IVA):',
+        `$${puOc.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+      );
+    }
+    if (pdfTcOk && totArs !== null) {
+      agregarCampo(
+        'Importe Total OC (ARS):',
+        `$${totArs.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+      );
+      agregarCampo('Importe total en OC (USD):', `US$${totOcMoneda.toFixed(2)}`);
+    } else if (pdfOrdenUsd) {
+      agregarCampo('Importe Total OC (USD):', `US$${totOcMoneda.toFixed(2)}`);
+    } else {
+      agregarCampo(
+        'Importe Total OC (ARS):',
+        `$${totOcMoneda.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+      );
+    }
     y += 5; doc.line(20, y, 190, y); y += 10;
 
     doc.setFontSize(14); doc.text('Información de Recepción:', 20, y); y += 8; doc.setFontSize(12);
@@ -827,7 +864,7 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
   const formatearPesosArs = (valorEnMonedaOc: number) => {
     const ars = aPesosArs(valorEnMonedaOc);
     if (ars !== null) {
-      return `$ ${ars.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      return `$ ${ars.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ARS`;
     }
     return `US$ ${valorEnMonedaOc.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
@@ -1285,7 +1322,10 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
                         ) : ordenEnUsd && !tcValido ? (
                           <>US$ {Number(pago.monto || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</>
                         ) : (
-                          <>$ {Number(pago.monto || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</>
+                          <>
+                            $ {Number(pago.monto || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
+                            <span className="text-slate-300 font-normal">ARS</span>
+                          </>
                         )}
                       </span>
                       <span className="text-xs text-slate-200">{formatearFechaPago(pago.fecha)}</span>
