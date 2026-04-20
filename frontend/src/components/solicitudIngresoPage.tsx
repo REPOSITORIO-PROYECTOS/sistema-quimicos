@@ -441,6 +441,26 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
     }
   }, [pagoCompletoUI, importeTotal, montoYaAbonadoOC, editandoImporteAbonado, showTc, tc]);
 
+  const aplicarPagoCompleto = () => {
+    const tot = parseFloat(importeTotal || '0') || 0;
+    const abonadoOc = montoYaAbonadoOC || 0;
+    const restanteOc = Math.max(0, tot - abonadoOc);
+    const tcN = parseFloat(String(tc).replace(',', '.')) || 0;
+    const restantePesos = showTc && tcN > 0 ? restanteOc * tcN : restanteOc;
+
+    if (restantePesos <= 0) {
+      setPagoCompletoUI(false);
+      setImporteAbonado('');
+      setImporteAbonadoVisual('');
+      return;
+    }
+
+    setPagoCompletoUI(true);
+    setEditandoImporteAbonado(false);
+    setImporteAbonado(restantePesos.toFixed(2));
+    setImporteAbonadoVisual(restantePesos.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+  };
+
   useEffect(() => {
     if (formaPago !== 'Cheque') {
       setChequesPago([{ numero: '', perteneceA: '' }]);
@@ -794,7 +814,7 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
     agregarCampo('Proveedor:', proveedorInfo?.nombre || 'N/A');
     agregarCampo('Estado OC:', estadoOC);
     agregarCampo('Cuenta Contable:', cuenta);
-    agregarCampo('Percepción IIBB (%):', iibb);
+    agregarCampo('Percepcion IIBB (%):', iibb);
     if (pdfOrdenUsd && tcPdf > 0) {
       agregarCampo('TC compras (snapshot):', tcPdf.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
     }
@@ -1047,10 +1067,6 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
                 {proveedores.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
               </select>
             </div>
-            <div>
-              <label htmlFor="cuenta" className={labelClass}>Cuenta</label>
-              <input id="cuenta" type="text" value={cuenta} onChange={(e) => setCuenta(e.target.value)} className={baseInputClass} placeholder="Ej: 411001" />
-            </div>
             <div className="flex items-center gap-1 mt-2">
               <label htmlFor="toggleIibb" className="flex items-center cursor-pointer">
                 <input id="toggleIibb" type="checkbox" checked={showIibb} onChange={() => {
@@ -1095,7 +1111,7 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
                       setTc(tcComprasActual || tc);
                     }
                   }} className="accent-blue-600 w-4 h-4 mr-1" />
-                  <span className="text-white text-sm font-medium select-none">TC (USD)</span>
+                  <span className="text-white text-sm font-medium select-none">Tipo de cambio (USD)</span>
                 </label>
                 {showTc && (
                   <input
@@ -1233,9 +1249,18 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
                 </p>
               )}
               <div className="mt-2 flex items-center gap-2">
-                <input id="pagoCompletoUI" type="checkbox" className="w-4 h-4" checked={pagoCompletoUI} onChange={() => setPagoCompletoUI(!pagoCompletoUI)} />
-                <label htmlFor="pagoCompletoUI" className="text-white text-sm">Pago completo (usar total)</label>
-                <button type="button" className="px-2 py-1 text-xs rounded bg-green-600 text-white hover:bg-green-700" onClick={() => { setPagoCompletoUI(true); }}>Usar total</button>
+                <button
+                  type="button"
+                  className="px-2 py-1 text-xs rounded bg-green-600 text-white hover:bg-green-700"
+                  onClick={aplicarPagoCompleto}
+                >
+                  Aplicar pago completo
+                </button>
+                {pagoCompletoUI && (
+                  <span className="text-xs text-emerald-200">
+                    Monto completo precargado. Presione Registrar pago para confirmar.
+                  </span>
+                )}
               </div>
             </div>
             <div>
@@ -1311,22 +1336,30 @@ export default function SolicitudIngresoPage({ id }: { id: number | string }) {
                   <div key={pago.id} className="rounded-md border border-white/10 bg-white/10 px-3 py-2 text-sm text-white">
                     <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
                       <span className="font-semibold">
-                        {ordenEnUsd && tcValido ? (
-                          <>
-                            $ {(Number(pago.monto || 0) * tcNum).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
-                            <span className="text-slate-300 font-normal">ARS</span>
-                            <span className="block text-[11px] font-normal text-slate-400 mt-0.5">
-                              En OC: US$ {Number(pago.monto || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </span>
-                          </>
-                        ) : ordenEnUsd && !tcValido ? (
-                          <>US$ {Number(pago.monto || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</>
-                        ) : (
-                          <>
-                            $ {Number(pago.monto || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
-                            <span className="text-slate-300 font-normal">ARS</span>
-                          </>
-                        )}
+                        {(() => {
+                          const pagoMontoArs = Number(pago.monto || 0);
+                          const pagoMontoUsd = ordenEnUsd && tcValido ? (pagoMontoArs / tcNum) : null;
+                          if (ordenEnUsd && tcValido) {
+                            return (
+                              <>
+                                $ {pagoMontoArs.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
+                                <span className="text-slate-300 font-normal">ARS</span>
+                                <span className="block text-[11px] font-normal text-slate-400 mt-0.5">
+                                  En OC: US$ {pagoMontoUsd!.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                              </>
+                            );
+                          }
+                          if (ordenEnUsd && !tcValido) {
+                            return <>$ {pagoMontoArs.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-slate-300 font-normal">ARS</span></>;
+                          }
+                          return (
+                            <>
+                              $ {pagoMontoArs.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
+                              <span className="text-slate-300 font-normal">ARS</span>
+                            </>
+                          );
+                        })()}
                       </span>
                       <span className="text-xs text-slate-200">{formatearFechaPago(pago.fecha)}</span>
                     </div>

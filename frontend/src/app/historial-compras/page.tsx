@@ -42,6 +42,13 @@ type Pagination = {
   has_prev: boolean;
 };
 
+const resumirProductosOrden = (items?: ItemOrden[]): string => {
+  if (!Array.isArray(items) || items.length === 0) return 'N/A';
+  const primerProducto = String(items[0]?.producto_nombre || '').trim() || 'N/A';
+  const adicionales = Math.max(0, items.length - 1);
+  return adicionales > 0 ? `${primerProducto} +${adicionales}` : primerProducto;
+};
+
 export default function OrdenesRecibidasPage() {
   const [ordenes, setOrdenes] = useState<OrdenCompra[]>([]);
   const [pagination, setPagination] = useState<Pagination | null>(null);
@@ -288,11 +295,12 @@ export default function OrdenesRecibidasPage() {
         {!loading && !error && (
           <>
             <div className="overflow-x-auto">
-              <ul className="space-y-2 divide-y divide-gray-200 min-w-[900px]">
-                <li className="grid grid-cols-[0.8fr_1.2fr_1fr_1.2fr_1.2fr_0.8fr_1.2fr_1.2fr_1.2fr_1.2fr] gap-x-3 items-center bg-gray-100 p-3 rounded-t-md font-semibold text-xs text-gray-700 uppercase tracking-wider">
+              <ul className="space-y-2 divide-y divide-gray-200 min-w-[1050px]">
+                <li className="grid grid-cols-[0.8fr_1.1fr_1fr_1.3fr_1.1fr_1.1fr_0.8fr_1.2fr_1.2fr_1.1fr_1.1fr] gap-x-3 items-center bg-gray-100 p-3 rounded-t-md font-semibold text-xs text-gray-700 uppercase tracking-wider">
                   <span>Nº Orden</span>
                   <span>Fecha</span>
                   <span>Proveedor</span>
+                  <span>Producto</span>
                   <span>Cant. Solicitada</span>
                   <span>Cant. Recibida</span>
                   <span>Moneda</span>
@@ -327,7 +335,7 @@ export default function OrdenesRecibidasPage() {
                   return (
                     <li
                       key={orden.id}
-                      className="grid grid-cols-[0.8fr_1.2fr_1fr_1.2fr_1.2fr_0.8fr_1.2fr_1.2fr_1.2fr_1.2fr] gap-x-3 items-center bg-white hover:bg-gray-50 p-3 text-sm cursor-pointer"
+                      className="grid grid-cols-[0.8fr_1.1fr_1fr_1.3fr_1.1fr_1.1fr_0.8fr_1.2fr_1.2fr_1.1fr_1.1fr] gap-x-3 items-center bg-white hover:bg-gray-50 p-3 text-sm cursor-pointer"
                       onClick={() => setIdOrdenSeleccionada(orden.id)}
                       tabIndex={0}
                       onKeyDown={(e) => { if (e.key === 'Enter') setIdOrdenSeleccionada(orden.id); }}
@@ -336,6 +344,9 @@ export default function OrdenesRecibidasPage() {
                       <span className="font-semibold">{`Nº ${orden.id.toString().padStart(4, '0')}`}</span>
                       <span>{fechaFormateada}</span>
                       <span className="text-gray-700 text-xs">{orden.proveedor_nombre || '-'}</span>
+                      <span className="text-gray-700 text-xs truncate" title={resumirProductosOrden(orden.items)}>
+                        {resumirProductosOrden(orden.items)}
+                      </span>
                       <span className="text-center font-semibold text-gray-900">{cantidadSolicitada}</span>
                       <span className="text-center font-semibold text-gray-900">{cantidadRecibida}</span>
                       <span className={`text-center font-semibold px-2 py-1 rounded text-white ${moneda === 'USD' ? 'bg-yellow-500' : 'bg-green-600'
